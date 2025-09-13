@@ -13,7 +13,7 @@
     "test": "turbo test",
     "test:watch": "turbo test:watch",
     "clean": "turbo clean && rm -rf node_modules",
-    "ui:dev": "turbo dev --filter=ui",
+    "web:dev": "turbo dev --filter=web",
     "api:dev": "turbo dev --filter=api"
   },
   "devDependencies": {
