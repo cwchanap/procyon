@@ -1,12 +1,24 @@
 {
   "name": "procyon",
-  "module": "index.ts",
-  "type": "module",
   "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "lint:fix": "turbo lint:fix",
+    "test": "turbo test",
+    "test:watch": "turbo test:watch",
+    "clean": "turbo clean && rm -rf node_modules",
+    "ui:dev": "turbo dev --filter=ui",
+    "api:dev": "turbo dev --filter=api"
   },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
+  "devDependencies": {
+    "@types/bun": "latest",
+    "turbo": "^2.0.0"
+  },
+  "packageManager": "bun@1.2.21"
 }
