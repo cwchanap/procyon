@@ -1,12 +1,16 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import ChessGame from '../components/ChessGame.tsx';
+import ChessGameSelector from '../components/ChessGameSelector.tsx';
 ---
 
-<Layout>
+<Layout title="Chess Games">
   <div class="min-h-screen bg-background">
     <div class="container mx-auto px-4 py-8">
-      <ChessGame client:load />
+      <div class="text-center mb-8">
+        <h1 class="text-4xl font-bold text-foreground mb-4">Choose Your Chess Game</h1>
+        <p class="text-lg text-muted-foreground">Select from various chess game types and variants</p>
+      </div>
+      <ChessGameSelector client:load />
     </div>
   </div>
 </Layout>

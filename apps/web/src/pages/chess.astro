@@ -1,0 +1,23 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ChessGame from '../components/ChessGame.tsx';
+---
+
+<Layout title="Chess Game">
+  <div class="min-h-screen bg-background">
+    <div class="container mx-auto px-4 py-8">
+      <div class="mb-6">
+        <button
+          onclick="window.location.href='/'"
+          class="inline-flex items-center gap-2 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm font-medium transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"></path>
+          </svg>
+          Back to Game Selection
+        </button>
+      </div>
+      <ChessGame client:load />
+    </div>
+  </div>
+</Layout>
