@@ -1,14 +1,38 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
+import { cors } from 'hono/cors';
+import { HTTPException } from 'hono/http-exception';
+import { initializeDB } from './db';
+import authRoutes from './routes/auth';
+import userRoutes from './routes/users';
+
+// Initialize database (will use local SQLite for development)
+initializeDB();
 
 const app = new Hono();
+
+// CORS middleware
+app.use(
+    '/api/*',
+    cors({
+        origin: ['http://localhost:3500', 'http://localhost:3000'], // Allow your web app
+        allowHeaders: ['Content-Type', 'Authorization'],
+        allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    })
+);
 
 // Health check endpoint
 app.get('/health', c => {
     return c.json({ status: 'ok', message: 'API is running' });
 });
 
-// API routes
+// Auth routes
+app.route('/api/auth', authRoutes);
+
+// User routes
+app.route('/api/users', userRoutes);
+
+// API routes (legacy - can be removed later)
 app.get('/api/hello', c => {
     return c.json({
         message: 'Hello from Hono API!',
@@ -16,19 +40,14 @@ app.get('/api/hello', c => {
     });
 });
 
-app.get('/api/users', c => {
-    return c.json([
-        { id: 1, name: 'John Doe', email: 'john@example.com' },
-        { id: 2, name: 'Jane Smith', email: 'jane@example.com' },
-    ]);
-});
+// Global error handler
+app.onError((err, c) => {
+    if (err instanceof HTTPException) {
+        return err.getResponse();
+    }
 
-app.post('/api/users', async c => {
-    const body = await c.req.json();
-    return c.json({
-        message: 'User created',
-        user: { id: Date.now(), ...body },
-    });
+    console.error('Unhandled error:', err);
+    return c.json({ error: 'Internal Server Error' }, 500);
 });
 
 // Start server

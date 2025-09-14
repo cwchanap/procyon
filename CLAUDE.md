@@ -1,111 +1,123 @@
----
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: '*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json'
-alwaysApply: false
----
+# CLAUDE.md
 
-Default to using Bun instead of Node.js.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Bun automatically loads .env, so don't use dotenv.
+## Project Overview
 
-## APIs
+Procyon is a monorepo chess platform built with TypeScript, featuring:
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+- **Web app** (Astro + React + Tailwind CSS) - Frontend chess interface
+- **API server** (Hono) - Backend services
+- **Turbo** - Monorepo build system and task orchestration
+- **Bun** - Package manager and runtime (prefer over npm/node)
 
-## Testing
+## Architecture
 
-Use `bun test` to run tests.
+### Monorepo Structure
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+```
+apps/
+├── web/          # Astro + React frontend (port 3500)
+└── api/          # Hono API server (port 3001)
+packages/         # Shared packages (currently empty)
 ```
 
-## Frontend
+### Web App (`apps/web`)
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+- **Framework**: Astro with React integration and Tailwind CSS
+- **Chess Engine**: Custom implementation in `src/lib/chess/`
+    - `types.ts` - Core chess types (pieces, moves, game state)
+    - `board.ts` - Board representation and manipulation
+    - `game.ts` - Game logic and state management
+    - `moves.ts` - Move validation and generation
+- **Components**: React components in `src/components/`
+    - Chess-specific components (ChessBoard, ChessGame, etc.)
+    - UI components in `src/components/ui/`
 
-Server:
+### API Server (`apps/api`)
 
-```ts#index.ts
-import index from "./index.html"
+- **Framework**: Hono (lightweight web framework)
+- **Server**: @hono/node-server for Node.js compatibility
+- **Current endpoints**: Basic health check and user management examples
 
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
+## Development Commands
+
+**Note**: This project uses Bun as the primary runtime and package manager.
+
+### Root-level commands (using Turbo)
+
+```bash
+bun install              # Install dependencies
+bun run dev             # Start all apps in development
+bun run build           # Build all apps
+bun run test            # Run tests across all apps
+bun run lint            # Run linting across all apps
+bun run lint:fix        # Fix linting issues across all apps
+bun run format          # Format code with Prettier
+bun run clean           # Clean build artifacts and node_modules
 ```
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+### Individual app commands
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
+```bash
+bun run web:dev         # Start only web app
+bun run api:dev         # Start only API server
 ```
 
-With the following `frontend.tsx`:
+### App-specific development
 
-```tsx#frontend.tsx
-import React from "react";
-
-// import .css files directly and it works
-import './index.css';
-
-import { createRoot } from "react-dom/client";
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
+```bash
+cd apps/web && bun run dev      # Web app on port 3500
+cd apps/api && bun run dev      # API server on port 3001
 ```
 
-Then, run index.ts
+## Code Standards
 
-```sh
-bun --hot ./index.ts
-```
+### Linting & Formatting
 
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.md`.
+- **ESLint**: TypeScript-focused configuration with custom rules
+- **Prettier**: Code formatting (runs on pre-commit via Husky)
+- **Husky + lint-staged**: Pre-commit hooks for code quality
+
+### TypeScript Configuration
+
+- Strict TypeScript settings across the monorepo
+- Shared tsconfig.json at root level
+- App-specific configurations extend the root config
+
+### Styling
+
+- **Tailwind CSS** for styling with custom design tokens
+- **class-variance-authority** and **clsx** for conditional styling
+- **tailwind-merge** for class merging utilities
+
+## Chess Engine Architecture
+
+The chess engine is built modularly:
+
+1. **Types** (`types.ts`) - Defines core interfaces and enums
+2. **Board** (`board.ts`) - 8x8 grid representation and piece management
+3. **Game** (`game.ts`) - Game state, turn management, win conditions
+4. **Moves** (`moves.ts`) - Legal move generation and validation
+
+Game state includes board position, current player, move history, and UI state (selected squares, possible moves).
+
+## Key Dependencies
+
+### Web App
+
+- **Astro 4.x** - Static site generator with React integration
+- **React 18** - UI library
+- **Tailwind CSS** - Utility-first CSS framework
+
+### API Server
+
+- **Hono** - Fast web framework
+- **tsx** - TypeScript execution (dev dependency)
+
+### Development Tools
+
+- **Turbo** - Monorepo build system
+- **ESLint 9** with TypeScript support
+- **Prettier** - Code formatting
+- **Husky** - Git hooks
