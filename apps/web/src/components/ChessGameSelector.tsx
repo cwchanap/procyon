@@ -49,14 +49,22 @@ const ChessGameSelector: React.FC = () => {
     };
 
     return (
-        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto'>
+        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto'>
             {chessGames.map((game, index) => (
-                <ChessGameCard
+                <div
                     key={index}
-                    title={game.title}
-                    description={game.description}
-                    onPlay={() => handlePlayGame(game.title)}
-                />
+                    className='animate-fade-in-up'
+                    style={{
+                        animationDelay: `${index * 0.1}s`,
+                        animationFillMode: 'both',
+                    }}
+                >
+                    <ChessGameCard
+                        title={game.title}
+                        description={game.description}
+                        onPlay={() => handlePlayGame(game.title)}
+                    />
+                </div>
             ))}
         </div>
     );

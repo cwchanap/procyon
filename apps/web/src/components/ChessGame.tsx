@@ -67,10 +67,10 @@ const ChessGame: React.FC = () => {
     return (
         <div className='flex flex-col items-center gap-6 p-6'>
             <div className='text-center'>
-                <h1 className='text-3xl font-bold text-foreground mb-2'>
+                <h1 className='text-4xl font-bold bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 bg-clip-text text-transparent mb-4'>
                     Chess Game
                 </h1>
-                <p className='text-lg text-muted-foreground'>
+                <p className='text-xl text-purple-100 font-medium'>
                     {getStatusMessage()}
                 </p>
             </div>
@@ -85,28 +85,33 @@ const ChessGame: React.FC = () => {
             <div className='flex gap-4'>
                 <button
                     onClick={resetGame}
-                    className='px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors'
+                    className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
                 >
-                    New Game
+                    🆕 New Game
                 </button>
 
                 {isGameOver && (
                     <button
                         onClick={resetGame}
-                        className='px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors'
+                        className='bg-gradient-to-r from-green-500 to-emerald-500 hover:from-emerald-500 hover:to-green-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
                     >
-                        Play Again
+                        🎮 Play Again
                     </button>
                 )}
             </div>
 
-            <div className='text-sm text-muted-foreground text-center max-w-md'>
-                <p>
+            <div className='text-sm text-purple-200 text-center max-w-md space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
+                <p className='flex items-center justify-center gap-2'>
+                    <span>🖱️</span>
                     Click on a piece to select it, then click on a highlighted
                     square to move.
                 </p>
-                <p>
-                    Green dots show possible moves, red borders show captures.
+                <p className='flex items-center justify-center gap-2'>
+                    <span className='w-3 h-3 bg-green-400 rounded-full inline-block'></span>
+                    Possible moves
+                    <span className='mx-2'>•</span>
+                    <span className='w-3 h-3 border-2 border-red-500 rounded inline-block'></span>
+                    Captures
                 </p>
             </div>
         </div>

@@ -25,7 +25,9 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 
     const getSquareColor = (row: number, col: number): string => {
         const isLight = (row + col) % 2 === 0;
-        return isLight ? 'bg-amber-100' : 'bg-amber-800';
+        return isLight
+            ? 'bg-gradient-to-br from-amber-100 to-amber-200 shadow-inner'
+            : 'bg-gradient-to-br from-amber-800 to-amber-900 shadow-inner';
     };
 
     const getPieceSymbol = (piece: ChessPiece | null): string => {
@@ -59,28 +61,36 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
             <div
                 key={`${row}-${col}`}
                 className={`
-          w-12 h-12 flex items-center justify-center cursor-pointer relative
+          w-16 h-16 flex items-center justify-center cursor-pointer relative
           ${squareColor}
-          ${isSelected ? 'ring-4 ring-blue-500' : ''}
-          hover:brightness-110 transition-all
+          ${isSelected ? 'ring-4 ring-cyan-400 ring-opacity-80 scale-105' : ''}
+          ${isPossible ? 'animate-pulse' : ''}
+          hover:scale-105 hover:shadow-lg transition-all duration-300
+          border border-black border-opacity-10
         `}
                 onClick={() => onSquareClick({ row, col })}
             >
                 {/* Possible move indicator */}
                 {isPossible && !piece && (
-                    <div className='w-3 h-3 bg-green-500 rounded-full opacity-70' />
+                    <div className='w-4 h-4 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full opacity-80 animate-bounce shadow-lg' />
                 )}
 
                 {/* Piece */}
                 {piece && (
-                    <span className='text-3xl select-none'>
+                    <span
+                        className={`text-4xl select-none transition-all duration-300 hover:scale-110 filter drop-shadow-lg ${
+                            piece.color === 'white'
+                                ? 'text-white'
+                                : 'text-gray-900'
+                        }`}
+                    >
                         {getPieceSymbol(piece)}
                     </span>
                 )}
 
                 {/* Capture indicator */}
                 {isPossible && piece && (
-                    <div className='absolute inset-0 border-4 border-red-500 rounded pointer-events-none' />
+                    <div className='absolute inset-0 border-4 border-red-500 rounded pointer-events-none animate-pulse shadow-lg' />
                 )}
             </div>
         );
@@ -105,8 +115,10 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
     };
 
     return (
-        <div className='inline-block border-4 border-amber-900 rounded-lg overflow-hidden shadow-lg'>
-            {renderBoard()}
+        <div className='inline-block border-4 border-amber-900 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-amber-50 to-amber-100 p-2 transform hover:scale-105 transition-all duration-500'>
+            <div className='rounded-lg overflow-hidden shadow-inner bg-gradient-to-br from-amber-200 to-amber-300 p-1'>
+                {renderBoard()}
+            </div>
         </div>
     );
 };
