@@ -8,8 +8,9 @@ const ChessGameSelector: React.FC = () => {
             description: 'Classic chess with standard rules and time controls.',
         },
         {
-            title: 'Blitz Chess',
-            description: 'Fast-paced chess with 3-5 minutes per player.',
+            title: 'Chinese Chess',
+            description:
+                'Traditional Xiangqi with unique pieces and board layout.',
         },
         {
             title: 'Rapid Chess',
@@ -42,10 +43,15 @@ const ChessGameSelector: React.FC = () => {
         },
     ];
 
-    const handlePlayGame = (_gameTitle: string) => {
-        // For now, all games redirect to the standard chess page
-        // In a real implementation, you'd pass the game type as a parameter
-        window.location.href = '/chess';
+    const handlePlayGame = (gameTitle: string) => {
+        // Route to specific game pages based on game title
+        if (gameTitle === 'Chinese Chess') {
+            window.location.href = '/xiangqi';
+        } else {
+            // For now, other games redirect to the standard chess page
+            // In a real implementation, you'd pass the game type as a parameter
+            window.location.href = '/chess';
+        }
     };
 
     return (
