@@ -13,8 +13,9 @@ const ChessGameSelector: React.FC = () => {
                 'Traditional Xiangqi with unique pieces and board layout.',
         },
         {
-            title: 'Rapid Chess',
-            description: 'Quick chess games with 10-15 minutes per player.',
+            title: 'Japanese Chess (Shogi)',
+            description:
+                'Traditional Japanese chess with unique piece movement and drops.',
         },
         {
             title: 'Chess960',
@@ -47,6 +48,8 @@ const ChessGameSelector: React.FC = () => {
         // Route to specific game pages based on game title
         if (gameTitle === 'Chinese Chess') {
             window.location.href = '/xiangqi';
+        } else if (gameTitle === 'Japanese Chess (Shogi)') {
+            window.location.href = '/shogi';
         } else {
             // For now, other games redirect to the standard chess page
             // In a real implementation, you'd pass the game type as a parameter
