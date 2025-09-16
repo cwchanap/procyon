@@ -5,7 +5,8 @@ const ChessGameSelector: React.FC = () => {
     const chessGames = [
         {
             title: 'Standard Chess',
-            description: 'Classic chess with standard rules and time controls.',
+            description:
+                'Classic chess with game mode and interactive tutorials.',
         },
         {
             title: 'Chinese Chess',

@@ -7,6 +7,7 @@ interface ChessBoardProps {
     selectedSquare: Position | null;
     possibleMoves: Position[];
     onSquareClick: (position: Position) => void;
+    highlightSquares?: Position[];
 }
 
 const ChessBoard: React.FC<ChessBoardProps> = ({
@@ -14,6 +15,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
     selectedSquare,
     possibleMoves,
     onSquareClick,
+    highlightSquares = [],
 }) => {
     const isSquareSelected = (row: number, col: number): boolean => {
         return selectedSquare?.row === row && selectedSquare?.col === col;
@@ -21,6 +23,12 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 
     const isPossibleMove = (row: number, col: number): boolean => {
         return possibleMoves.some(move => move.row === row && move.col === col);
+    };
+
+    const isHighlightedSquare = (row: number, col: number): boolean => {
+        return highlightSquares.some(
+            square => square.row === row && square.col === col
+        );
     };
 
     const getSquareColor = (row: number, col: number): string => {
@@ -55,6 +63,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
         const piece = board[row]?.[col];
         const isSelected = isSquareSelected(row, col);
         const isPossible = isPossibleMove(row, col);
+        const isHighlighted = isHighlightedSquare(row, col);
         const squareColor = getSquareColor(row, col);
 
         return (
@@ -64,6 +73,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
           w-16 h-16 flex items-center justify-center cursor-pointer relative
           ${squareColor}
           ${isSelected ? 'ring-4 ring-cyan-400 ring-opacity-80 scale-105' : ''}
+          ${isHighlighted ? 'ring-4 ring-yellow-400 ring-opacity-60' : ''}
           ${isPossible ? 'animate-pulse' : ''}
           hover:scale-105 hover:shadow-lg transition-all duration-300
           border border-black border-opacity-10
