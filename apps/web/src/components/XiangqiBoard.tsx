@@ -13,6 +13,7 @@ interface XiangqiBoardProps {
     selectedSquare: XiangqiPosition | null;
     possibleMoves: XiangqiPosition[];
     onSquareClick: (position: XiangqiPosition) => void;
+    highlightSquares?: XiangqiPosition[];
 }
 
 const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
@@ -20,6 +21,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
     selectedSquare,
     possibleMoves,
     onSquareClick,
+    highlightSquares = [],
 }) => {
     const isSquareSelected = (row: number, col: number): boolean => {
         return selectedSquare?.row === row && selectedSquare?.col === col;
@@ -27,6 +29,12 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 
     const isPossibleMove = (row: number, col: number): boolean => {
         return possibleMoves.some(move => move.row === row && move.col === col);
+    };
+
+    const isHighlightedSquare = (row: number, col: number): boolean => {
+        return highlightSquares.some(
+            square => square.row === row && square.col === col
+        );
     };
 
     const isInPalace = (row: number, col: number): boolean => {
@@ -50,6 +58,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
         const piece = board[row]?.[col];
         const isSelected = isSquareSelected(row, col);
         const isPossible = isPossibleMove(row, col);
+        const isHighlighted = isHighlightedSquare(row, col);
         const inPalace = isInPalace(row, col);
         const onRiver = isRiverLine(row);
 
@@ -62,6 +71,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
                     ${inPalace ? 'bg-gradient-to-br from-yellow-100 to-yellow-200' : 'bg-gradient-to-br from-amber-50 to-amber-100'}
                     ${onRiver ? 'bg-gradient-to-r from-blue-100 to-cyan-100' : ''}
                     ${isSelected ? 'ring-4 ring-red-500 ring-opacity-80 scale-105' : ''}
+                    ${isHighlighted ? 'ring-4 ring-yellow-400 ring-opacity-60' : ''}
                     ${isPossible ? 'animate-pulse' : ''}
                     hover:scale-105 hover:shadow-lg transition-all duration-300
                 `}

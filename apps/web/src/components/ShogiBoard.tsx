@@ -7,6 +7,7 @@ interface ShogiBoardProps {
     selectedSquare: ShogiPosition | null;
     possibleMoves: ShogiPosition[];
     onSquareClick: (position: ShogiPosition) => void;
+    highlightSquares?: ShogiPosition[];
 }
 
 const ShogiBoard: React.FC<ShogiBoardProps> = ({
@@ -14,6 +15,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
     selectedSquare,
     possibleMoves,
     onSquareClick,
+    highlightSquares = [],
 }) => {
     const isSquareSelected = (row: number, col: number): boolean => {
         return selectedSquare?.row === row && selectedSquare?.col === col;
@@ -21,6 +23,12 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 
     const isPossibleMove = (row: number, col: number): boolean => {
         return possibleMoves.some(move => move.row === row && move.col === col);
+    };
+
+    const isHighlightedSquare = (row: number, col: number): boolean => {
+        return highlightSquares.some(
+            square => square.row === row && square.col === col
+        );
     };
 
     const getSquareColor = (_row: number, _col: number): string => {
@@ -40,6 +48,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
         const piece = board[row]?.[col];
         const isSelected = isSquareSelected(row, col);
         const isPossible = isPossibleMove(row, col);
+        const isHighlighted = isHighlightedSquare(row, col);
         const squareColor = getSquareColor(row, col);
         const isPromotionZone = renderPromotionZone(row);
 
@@ -50,6 +59,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
           w-12 h-12 flex items-center justify-center cursor-pointer relative text-xs
           ${squareColor}
           ${isSelected ? 'ring-4 ring-red-400 ring-opacity-80 scale-105' : ''}
+          ${isHighlighted ? 'ring-4 ring-yellow-400 ring-opacity-60' : ''}
           ${isPossible ? 'animate-pulse bg-green-200' : ''}
           ${isPromotionZone ? 'bg-gradient-to-br from-orange-50 to-orange-100' : ''}
           hover:scale-105 hover:shadow-md transition-all duration-200
