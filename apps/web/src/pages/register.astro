@@ -1,11 +1,10 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import ChessGameSelector from '../components/ChessGameSelector.tsx';
-import AuthNav from '../components/AuthNav.tsx';
+import RegisterForm from '../components/RegisterForm.tsx';
 ---
 
-<Layout title='Chess Games'>
-    <div class='min-h-screen relative'>
+<Layout title='Sign Up - Procyon Chess'>
+    <div class='min-h-screen relative flex items-center justify-center'>
         <!-- Animated background particles -->
         <div class='absolute inset-0 overflow-hidden pointer-events-none'>
             <div
@@ -30,36 +29,32 @@ import AuthNav from '../components/AuthNav.tsx';
         </div>
 
         <div class='container mx-auto px-4 py-8 relative z-10'>
-            <div class='text-center mb-12'>
-                <div class='inline-block animate-float mb-6'>
+            <div class='text-center mb-8'>
+                <div class='inline-block animate-float mb-4'>
                     <div
-                        class='w-16 h-16 mx-auto bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-2xl shadow-lg'
+                        class='w-12 h-12 mx-auto bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-xl shadow-lg'
                     >
                         ♔
                     </div>
                 </div>
                 <h1
-                    class='text-6xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-6 animate-pulse'
+                    class='text-4xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2'
                 >
                     Procyon Chess
                 </h1>
-                <p
-                    class='text-xl text-purple-100 max-w-2xl mx-auto leading-relaxed'
-                >
-                    Experience chess like never before. Choose from various game
-                    types and immerse yourself in the ultimate chess platform.
-                </p>
-                <div class='mt-8 flex justify-center'>
-                    <div
-                        class='h-1 w-32 bg-gradient-to-r from-transparent via-purple-400 to-transparent rounded-full'
-                    >
-                    </div>
-                </div>
+                <p class='text-purple-100'>Join the ultimate chess platform</p>
             </div>
-            <ChessGameSelector client:load />
-        </div>
 
-        <!-- Authentication Navigation -->
-        <AuthNav client:load />
+            <RegisterForm client:load />
+
+            <div class='text-center mt-8'>
+                <a
+                    href='/'
+                    class='text-purple-300 hover:text-purple-100 transition-colors'
+                >
+                    ← Back to home
+                </a>
+            </div>
+        </div>
     </div>
 </Layout>
