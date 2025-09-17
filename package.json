@@ -16,6 +16,10 @@
         "format:check": "prettier --check .",
         "test": "turbo test",
         "test:watch": "turbo test:watch",
+        "test:e2e": "playwright test",
+        "test:e2e:ui": "playwright test --ui",
+        "test:e2e:headed": "playwright test --headed",
+        "test:e2e:debug": "playwright test --debug",
         "clean": "turbo clean && rm -rf node_modules",
         "web:dev": "turbo dev --filter=web",
         "api:dev": "turbo dev --filter=api",
@@ -32,6 +36,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.35.0",
+        "@playwright/test": "^1.55.0",
         "@types/bun": "latest",
         "eslint": "^9.35.0",
         "husky": "^9.1.7",
