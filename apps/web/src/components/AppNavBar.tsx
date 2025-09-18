@@ -24,22 +24,6 @@ export function AppNavBar() {
                         </a>
                     </div>
 
-                    {/* Navigation Links */}
-                    <div className='hidden md:flex items-center gap-6'>
-                        <a
-                            href='/'
-                            className='text-purple-100 hover:text-white transition-colors duration-200 font-medium'
-                        >
-                            Home
-                        </a>
-                        <a
-                            href='/chess'
-                            className='text-purple-100 hover:text-white transition-colors duration-200 font-medium'
-                        >
-                            Play Chess
-                        </a>
-                    </div>
-
                     {/* Auth Section */}
                     <div className='flex items-center gap-4'>
                         {isAuthenticated ? (
@@ -56,7 +40,7 @@ export function AppNavBar() {
                                     variant='outline'
                                     size='sm'
                                     onClick={logout}
-                                    className='border-purple-400/50 text-purple-200 hover:bg-purple-400/20 hover:text-white'
+                                    className='border-white/20 bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 hover:border-cyan-400/50 hover:text-cyan-100 transition-all duration-200'
                                 >
                                     Logout
                                 </Button>
