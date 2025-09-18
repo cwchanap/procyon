@@ -1,9 +1,12 @@
 ---
+import AppNavBar from '../components/AppNavBar.tsx';
+
 export interface Props {
     title?: string;
+    showNav?: boolean;
 }
 
-const { title = 'Procyon' } = Astro.props;
+const { title = 'Procyon', showNav = true } = Astro.props;
 ---
 
 <!doctype html>
@@ -21,7 +24,10 @@ const { title = 'Procyon' } = Astro.props;
     <body
         class='min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white overflow-x-hidden'
     >
-        <slot />
+        {showNav && <AppNavBar client:load />}
+        <main class={showNav ? 'pt-16' : ''}>
+            <slot />
+        </main>
     </body>
 </html>
 

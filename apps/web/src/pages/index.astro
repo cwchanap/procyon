@@ -1,7 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import ChessGameSelector from '../components/ChessGameSelector.tsx';
-import AuthNav from '../components/AuthNav.tsx';
 ---
 
 <Layout title='Chess Games'>
@@ -58,8 +57,5 @@ import AuthNav from '../components/AuthNav.tsx';
             </div>
             <ChessGameSelector client:load />
         </div>
-
-        <!-- Authentication Navigation -->
-        <AuthNav client:load />
     </div>
 </Layout>
