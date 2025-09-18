@@ -25,7 +25,7 @@ const { title = 'Procyon', showNav = true } = Astro.props;
         class='min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white overflow-x-hidden'
     >
         {showNav && <AppNavBar client:load />}
-        <main class={showNav ? 'pt-16' : ''}>
+        <main class={showNav ? 'pt-20' : ''}>
             <slot />
         </main>
     </body>
