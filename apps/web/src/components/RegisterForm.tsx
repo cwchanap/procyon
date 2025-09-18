@@ -41,17 +41,22 @@ export function RegisterForm() {
 
     return (
         <div className='w-full max-w-md mx-auto'>
-            <div className='bg-card text-card-foreground shadow-lg rounded-lg p-6'>
+            <div className='glass-effect shadow-xl rounded-lg p-6 backdrop-blur-lg border border-white/20'>
                 <div className='space-y-2 text-center mb-6'>
-                    <h1 className='text-2xl font-bold'>Create Account</h1>
-                    <p className='text-muted-foreground'>
+                    <h1 className='text-2xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent'>
+                        Create Account
+                    </h1>
+                    <p className='text-purple-100'>
                         Sign up to start playing chess
                     </p>
                 </div>
 
                 <form onSubmit={handleSubmit} className='space-y-4'>
                     <div className='space-y-2'>
-                        <label htmlFor='email' className='text-sm font-medium'>
+                        <label
+                            htmlFor='email'
+                            className='text-sm font-medium text-purple-100'
+                        >
                             Email
                         </label>
                         <Input
@@ -67,7 +72,7 @@ export function RegisterForm() {
                     <div className='space-y-2'>
                         <label
                             htmlFor='username'
-                            className='text-sm font-medium'
+                            className='text-sm font-medium text-purple-100'
                         >
                             Username
                         </label>
@@ -84,7 +89,7 @@ export function RegisterForm() {
                     <div className='space-y-2'>
                         <label
                             htmlFor='password'
-                            className='text-sm font-medium'
+                            className='text-sm font-medium text-purple-100'
                         >
                             Password
                         </label>
@@ -101,7 +106,7 @@ export function RegisterForm() {
                     <div className='space-y-2'>
                         <label
                             htmlFor='confirmPassword'
-                            className='text-sm font-medium'
+                            className='text-sm font-medium text-purple-100'
                         >
                             Confirm Password
                         </label>
@@ -127,12 +132,12 @@ export function RegisterForm() {
                 </form>
 
                 <div className='mt-4 text-center text-sm'>
-                    <span className='text-muted-foreground'>
+                    <span className='text-purple-200'>
                         Already have an account?{' '}
                     </span>
                     <a
                         href='/login'
-                        className='text-primary hover:underline font-medium'
+                        className='text-cyan-300 hover:text-cyan-200 hover:underline font-medium transition-colors'
                     >
                         Sign in
                     </a>
