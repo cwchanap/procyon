@@ -1,14 +1,21 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { GameState, Position, ChessPiece } from '../lib/chess/types';
 import {
     createInitialGameState,
     selectSquare,
     makeMove,
     getGameStatus,
+    makeAIMove,
+    setAIThinking,
+    isAITurn,
 } from '../lib/chess/game';
 import { getPossibleMoves } from '../lib/chess/moves';
 import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
+import AIConfigPanel from './AIConfigPanel';
+import type { AIConfig } from '../lib/ai/types';
+import { AIService } from '../lib/ai/service';
+import { loadAIConfig, saveAIConfig } from '../lib/ai/storage';
 
 interface LogicDemo {
     id: string;
@@ -20,14 +27,18 @@ interface LogicDemo {
     explanation: string;
 }
 
-type GameMode = 'play' | 'tutorial';
+type UIMode = 'play' | 'tutorial';
 
 const ChessGame: React.FC = () => {
-    const [gameMode, setGameMode] = useState<GameMode>('play');
-    const [gameState, setGameState] = useState<GameState>(
-        createInitialGameState
+    const [uiMode, setUIMode] = useState<UIMode>('play');
+    const [gameState, setGameState] = useState<GameState>(() =>
+        createInitialGameState()
     );
     const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
+    const [aiConfig, setAIConfig] = useState<AIConfig>(() => loadAIConfig());
+    const [aiService] = useState<AIService>(
+        () => new AIService(loadAIConfig())
+    );
 
     const createCustomBoard = useCallback(
         (setup: string): (ChessPiece | null)[][] => {
@@ -181,9 +192,74 @@ const ChessGame: React.FC = () => {
         );
     }, [currentDemo, logicDemos]);
 
+    // AI Configuration handlers
+    const handleAIConfigChange = useCallback(
+        (newConfig: AIConfig) => {
+            setAIConfig(newConfig);
+            saveAIConfig(newConfig);
+            aiService.updateConfig(newConfig);
+        },
+        [aiService]
+    );
+
+    // AI Move handling
+    const makeAIMoveAsync = useCallback(async () => {
+        if (!isAITurn(gameState) || gameState.isAiThinking) {
+            return;
+        }
+
+        setGameState(prev => setAIThinking(prev, true));
+
+        try {
+            const aiResponse = await aiService.makeMove(gameState);
+
+            if (aiResponse && aiResponse.move) {
+                const newGameState = makeAIMove(
+                    gameState,
+                    aiResponse.move.from,
+                    aiResponse.move.to
+                );
+
+                if (newGameState) {
+                    const updatedGameState = {
+                        ...newGameState,
+                        status: getGameStatus(newGameState),
+                        isAiThinking: false,
+                    };
+                    setGameState(updatedGameState);
+                }
+            }
+        } catch (error) {
+            // eslint-disable-next-line no-console
+            console.error('AI move failed:', error);
+        } finally {
+            setGameState(prev => setAIThinking(prev, false));
+        }
+    }, [gameState, aiService]);
+
+    // Effect to trigger AI moves
+    useEffect(() => {
+        if (isAITurn(gameState) && !gameState.isAiThinking) {
+            const timer = setTimeout(() => {
+                makeAIMoveAsync();
+            }, 1000); // 1 second delay for better UX
+
+            return () => clearTimeout(timer);
+        }
+    }, [gameState, makeAIMoveAsync]);
+
+    // Game mode handlers
+    const startHumanVsHuman = useCallback(() => {
+        setGameState(createInitialGameState('human-vs-human'));
+    }, []);
+
+    const startHumanVsAI = useCallback((aiColor: 'white' | 'black') => {
+        setGameState(createInitialGameState('human-vs-ai', aiColor));
+    }, []);
+
     const handleSquareClick = useCallback(
         (position: Position) => {
-            if (gameMode === 'tutorial') {
+            if (uiMode === 'tutorial') {
                 const demo = getCurrentDemo();
                 const piece = getPieceAt(demo.board, position);
 
@@ -209,6 +285,11 @@ const ChessGame: React.FC = () => {
                 }
             } else {
                 // Regular game mode
+                // Prevent moves during AI turn or when AI is thinking
+                if (isAITurn(gameState) || gameState.isAiThinking) {
+                    return;
+                }
+
                 // If a piece is already selected, try to make a move
                 if (gameState.selectedSquare) {
                     const newGameState = makeMove(
@@ -232,7 +313,7 @@ const ChessGame: React.FC = () => {
                 setGameState(newGameState);
             }
         },
-        [gameMode, gameState, getCurrentDemo]
+        [uiMode, gameState, getCurrentDemo]
     );
 
     const resetGame = useCallback(() => {
@@ -240,8 +321,8 @@ const ChessGame: React.FC = () => {
     }, []);
 
     const toggleMode = useCallback(() => {
-        const newMode = gameMode === 'play' ? 'tutorial' : 'play';
-        setGameMode(newMode);
+        const newMode = uiMode === 'play' ? 'tutorial' : 'play';
+        setUIMode(newMode);
 
         if (newMode === 'tutorial') {
             const demo = getCurrentDemo();
@@ -256,7 +337,7 @@ const ChessGame: React.FC = () => {
         } else {
             setGameState(createInitialGameState());
         }
-    }, [gameMode, getCurrentDemo]);
+    }, [uiMode, getCurrentDemo]);
 
     const handleDemoChange = useCallback(
         (demoId: string) => {
@@ -295,20 +376,20 @@ const ChessGame: React.FC = () => {
         gameState.status === 'draw';
 
     const currentBoard =
-        gameMode === 'tutorial' ? getCurrentDemo().board : gameState.board;
+        uiMode === 'tutorial' ? getCurrentDemo().board : gameState.board;
     const currentHighlightSquares =
-        gameMode === 'tutorial' ? getCurrentDemo().highlightSquares : undefined;
+        uiMode === 'tutorial' ? getCurrentDemo().highlightSquares : undefined;
 
     return (
         <div className='flex flex-col items-center gap-6 p-6 max-w-7xl mx-auto'>
             <div className='text-center'>
                 <h1 className='text-4xl font-bold bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 bg-clip-text text-transparent mb-4'>
-                    {gameMode === 'play'
+                    {uiMode === 'play'
                         ? 'Chess Game'
                         : 'Chess Logic & Tutorials'}
                 </h1>
                 <p className='text-xl text-purple-100 font-medium'>
-                    {gameMode === 'play'
+                    {uiMode === 'play'
                         ? getStatusMessage()
                         : getCurrentDemo().description}
                 </p>
@@ -319,7 +400,7 @@ const ChessGame: React.FC = () => {
                 <button
                     onClick={toggleMode}
                     className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                        gameMode === 'play'
+                        uiMode === 'play'
                             ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
                             : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
                     }`}
@@ -329,7 +410,7 @@ const ChessGame: React.FC = () => {
                 <button
                     onClick={toggleMode}
                     className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                        gameMode === 'tutorial'
+                        uiMode === 'tutorial'
                             ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
                             : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
                     }`}
@@ -339,7 +420,7 @@ const ChessGame: React.FC = () => {
             </div>
 
             {/* Tutorial Demo Selector */}
-            {gameMode === 'tutorial' && (
+            {uiMode === 'tutorial' && (
                 <div className='flex flex-wrap gap-3 justify-center max-w-4xl'>
                     {logicDemos.map(demoItem => (
                         <button
@@ -370,9 +451,83 @@ const ChessGame: React.FC = () => {
 
             {/* Content Panel - Below Board */}
             <div className='w-full max-w-4xl mx-auto space-y-6'>
-                {gameMode === 'play' ? (
+                {uiMode === 'play' ? (
                     // Play Mode Controls
                     <>
+                        {/* Game Mode Selection */}
+                        <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
+                            <h3 className='text-xl font-semibold text-white mb-4 text-center'>
+                                Game Mode
+                            </h3>
+                            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                                <button
+                                    onClick={startHumanVsHuman}
+                                    className={`p-4 rounded-xl border-2 transition-all duration-200 ${
+                                        gameState.mode === 'human-vs-human'
+                                            ? 'border-blue-400 bg-blue-500 bg-opacity-20 text-white'
+                                            : 'border-white border-opacity-20 text-purple-200 hover:border-blue-400'
+                                    }`}
+                                >
+                                    <div className='text-2xl mb-2'>👥</div>
+                                    <div className='font-medium'>
+                                        Human vs Human
+                                    </div>
+                                    <div className='text-sm opacity-70'>
+                                        Play against a friend
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => startHumanVsAI('black')}
+                                    className={`p-4 rounded-xl border-2 transition-all duration-200 ${
+                                        gameState.mode === 'human-vs-ai' &&
+                                        gameState.aiPlayer === 'black'
+                                            ? 'border-purple-400 bg-purple-500 bg-opacity-20 text-white'
+                                            : 'border-white border-opacity-20 text-purple-200 hover:border-purple-400'
+                                    }`}
+                                    disabled={
+                                        !aiConfig.enabled || !aiConfig.apiKey
+                                    }
+                                >
+                                    <div className='text-2xl mb-2'>🤖</div>
+                                    <div className='font-medium'>
+                                        Human vs AI
+                                    </div>
+                                    <div className='text-sm opacity-70'>
+                                        You play as White
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => startHumanVsAI('white')}
+                                    className={`p-4 rounded-xl border-2 transition-all duration-200 ${
+                                        gameState.mode === 'human-vs-ai' &&
+                                        gameState.aiPlayer === 'white'
+                                            ? 'border-pink-400 bg-pink-500 bg-opacity-20 text-white'
+                                            : 'border-white border-opacity-20 text-purple-200 hover:border-pink-400'
+                                    }`}
+                                    disabled={
+                                        !aiConfig.enabled || !aiConfig.apiKey
+                                    }
+                                >
+                                    <div className='text-2xl mb-2'>🎯</div>
+                                    <div className='font-medium'>
+                                        AI vs Human
+                                    </div>
+                                    <div className='text-sm opacity-70'>
+                                        You play as Black
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* AI Configuration Panel */}
+                        <AIConfigPanel
+                            config={aiConfig}
+                            onConfigChange={handleAIConfigChange}
+                        />
+
+                        {/* Game Controls */}
                         <div className='flex gap-4 justify-center'>
                             <button
                                 onClick={resetGame}
@@ -391,6 +546,19 @@ const ChessGame: React.FC = () => {
                             )}
                         </div>
 
+                        {/* AI Thinking Indicator */}
+                        {gameState.isAiThinking && (
+                            <div className='glass-effect p-4 rounded-xl border border-purple-400 border-opacity-50'>
+                                <div className='flex items-center justify-center gap-3'>
+                                    <div className='animate-spin w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full'></div>
+                                    <span className='text-purple-200'>
+                                        AI is thinking...
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Game Instructions */}
                         <div className='text-sm text-purple-200 text-center max-w-md mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
                             <p className='flex items-center justify-center gap-2'>
                                 <span>🖱️</span>
@@ -404,6 +572,13 @@ const ChessGame: React.FC = () => {
                                 <span className='w-3 h-3 border-2 border-red-500 rounded inline-block'></span>
                                 Captures
                             </p>
+                            {gameState.mode === 'human-vs-ai' && (
+                                <p className='flex items-center justify-center gap-2 pt-2 border-t border-white border-opacity-10'>
+                                    <span>🤖</span>
+                                    Playing against {aiConfig.provider} (
+                                    {aiConfig.model})
+                                </p>
+                            )}
                         </div>
                     </>
                 ) : (

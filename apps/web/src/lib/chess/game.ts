@@ -4,11 +4,15 @@ import type {
     Move,
     PieceColor,
     ChessPiece,
+    GameMode,
 } from './types';
 import { createInitialBoard, getPieceAt, setPieceAt, copyBoard } from './board';
 import { getPossibleMoves, isMoveValid } from './moves';
 
-export function createInitialGameState(): GameState {
+export function createInitialGameState(
+    mode: GameMode = 'human-vs-human',
+    aiPlayer?: PieceColor
+): GameState {
     return {
         board: createInitialBoard(),
         currentPlayer: 'white',
@@ -16,6 +20,9 @@ export function createInitialGameState(): GameState {
         moveHistory: [],
         selectedSquare: null,
         possibleMoves: [],
+        mode,
+        aiPlayer,
+        isAiThinking: false,
     };
 }
 
@@ -183,4 +190,52 @@ function hasAnyLegalMoves(gameState: GameState): boolean {
         }
     }
     return false;
+}
+
+export function makeAIMove(
+    gameState: GameState,
+    from: string,
+    to: string
+): GameState | null {
+    // Convert algebraic notation to positions
+    const fromPos = algebraicToPosition(from);
+    const toPos = algebraicToPosition(to);
+
+    if (!fromPos || !toPos) {
+        return null;
+    }
+
+    return makeMove(gameState, fromPos, toPos);
+}
+
+export function setAIThinking(
+    gameState: GameState,
+    thinking: boolean
+): GameState {
+    return {
+        ...gameState,
+        isAiThinking: thinking,
+    };
+}
+
+export function isAITurn(gameState: GameState): boolean {
+    return (
+        gameState.mode === 'human-vs-ai' &&
+        gameState.currentPlayer === gameState.aiPlayer &&
+        gameState.status === 'playing'
+    );
+}
+
+function algebraicToPosition(algebraic: string): Position | null {
+    if (algebraic.length !== 2) return null;
+
+    const file = algebraic[0];
+    const rank = algebraic[1];
+
+    const col = file.charCodeAt(0) - 'a'.charCodeAt(0);
+    const row = 8 - parseInt(rank);
+
+    if (col < 0 || col > 7 || row < 0 || row > 7) return null;
+
+    return { row, col };
 }

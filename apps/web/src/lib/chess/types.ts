@@ -35,6 +35,8 @@ export type GameStatus =
     | 'stalemate'
     | 'draw';
 
+export type GameMode = 'human-vs-human' | 'human-vs-ai';
+
 export interface GameState {
     board: (ChessPiece | null)[][];
     currentPlayer: PieceColor;
@@ -42,6 +44,9 @@ export interface GameState {
     moveHistory: Move[];
     selectedSquare: Position | null;
     possibleMoves: Position[];
+    mode: GameMode;
+    aiPlayer?: PieceColor;
+    isAiThinking?: boolean;
 }
 
 export const BOARD_SIZE = 8;
