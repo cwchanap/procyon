@@ -10,6 +10,8 @@ export const defaultAIConfig: AIConfig = {
 };
 
 export function saveAIConfig(config: AIConfig): void {
+    if (typeof window === 'undefined') return;
+
     try {
         localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(config));
     } catch (error) {
@@ -19,6 +21,10 @@ export function saveAIConfig(config: AIConfig): void {
 }
 
 export function loadAIConfig(): AIConfig {
+    if (typeof window === 'undefined') {
+        return defaultAIConfig;
+    }
+
     try {
         const saved = localStorage.getItem(AI_CONFIG_KEY);
         if (saved) {
@@ -34,6 +40,8 @@ export function loadAIConfig(): AIConfig {
 }
 
 export function clearAIConfig(): void {
+    if (typeof window === 'undefined') return;
+
     try {
         localStorage.removeItem(AI_CONFIG_KEY);
     } catch (error) {
