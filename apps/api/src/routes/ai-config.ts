@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { getDB } from '../db/index';
 import { aiConfigurations, type NewAiConfiguration } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ne } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
@@ -110,7 +110,7 @@ app.post('/', authMiddleware, zValidator('json', aiConfigSchema), async c => {
                 .where(
                     and(
                         eq(aiConfigurations.userId, userId),
-                        eq(aiConfigurations.id, result[0].id)
+                        ne(aiConfigurations.id, result[0].id)
                     )
                 );
         }
@@ -187,6 +187,46 @@ app.post(
         }
     }
 );
+
+// Get full API key for editing (security-sensitive endpoint)
+app.get('/:id/full', authMiddleware, async c => {
+    try {
+        const user = getUser(c);
+        const userId = user.userId;
+        const db = getDB();
+        const configId = parseInt(c.req.param('id'));
+
+        if (isNaN(configId)) {
+            return c.json({ error: 'Invalid configuration ID' }, 400);
+        }
+
+        const config = await db
+            .select()
+            .from(aiConfigurations)
+            .where(
+                and(
+                    eq(aiConfigurations.id, configId),
+                    eq(aiConfigurations.userId, userId)
+                )
+            )
+            .limit(1);
+
+        if (config.length === 0) {
+            return c.json({ error: 'Configuration not found' }, 404);
+        }
+
+        return c.json({
+            id: config[0].id,
+            provider: config[0].provider,
+            modelName: config[0].modelName,
+            apiKey: config[0].apiKey,
+            isActive: config[0].isActive,
+        });
+    } catch (error) {
+        console.error('Error fetching full AI configuration:', error);
+        return c.json({ error: 'Failed to fetch configuration' }, 500);
+    }
+});
 
 // Delete AI configuration
 app.delete('/:id', authMiddleware, async c => {

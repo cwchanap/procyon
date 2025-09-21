@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { useAuth } from '../lib/auth';
@@ -70,6 +70,7 @@ export function ProfilePage() {
     const [configStatus, setConfigStatus] = useState<
         'saved' | 'saving' | 'error' | null
     >(null);
+    const [editingConfigId, setEditingConfigId] = useState<number | null>(null);
 
     // Load AI configurations from API
     useEffect(() => {
@@ -78,13 +79,27 @@ export function ProfilePage() {
         }
     }, [isAuthenticated]);
 
-    // Set default model when provider changes
+    // Load saved configuration API key into form when configurations are fetched
+    useEffect(() => {
+        // First try to find active config, then fall back to first available config
+        const configToLoad =
+            configurations.find(config => config.isActive) || configurations[0];
+        if (configToLoad && !editingConfigId) {
+            loadSavedConfigForEditing(configToLoad);
+        }
+    }, [configurations, editingConfigId]);
+
+    // Set default model when provider changes (only if no configurations are loaded)
     useEffect(() => {
         const models = AI_PROVIDERS[selectedProvider].models;
-        if (models.length > 0 && !selectedModel) {
+        if (
+            models.length > 0 &&
+            !selectedModel &&
+            configurations.length === 0
+        ) {
             setSelectedModel(models[0].id);
         }
-    }, [selectedProvider, selectedModel]);
+    }, [selectedProvider, selectedModel, configurations]);
 
     if (!isAuthenticated || !user) {
         return (
@@ -155,14 +170,14 @@ export function ProfilePage() {
                         provider: selectedProvider,
                         modelName: selectedModel,
                         apiKey: apiKey,
-                        isActive: configurations.length === 0, // Set as active if it's the first config
+                        isActive: true, // Always set as active when saving
                     }),
                 }
             );
 
             if (response.ok) {
                 setConfigStatus('saved');
-                setApiKey('');
+                setEditingConfigId(null);
                 await fetchConfigurations();
                 setTimeout(() => setConfigStatus(null), 3000);
             } else {
@@ -175,53 +190,37 @@ export function ProfilePage() {
         }
     };
 
-    const handleSetActive = async (provider: AiProvider, modelName: string) => {
+    const loadSavedConfigForEditing = async (config: AiConfiguration) => {
+        if (!config.id) return;
+
         try {
             const token = localStorage.getItem('auth_token');
-
             const response = await fetch(
-                'http://localhost:3001/api/ai-config/set-active',
+                `http://localhost:3001/api/ai-config/${config.id}/full`,
                 {
-                    method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        provider,
-                        modelName,
-                    }),
                 }
             );
 
             if (response.ok) {
-                await fetchConfigurations();
+                const fullConfig = await response.json();
+                setSelectedProvider(fullConfig.provider);
+                setSelectedModel(fullConfig.modelName);
+                setApiKey(fullConfig.apiKey);
             }
         } catch (_error) {
-            // Error setting active configuration - continue silently
+            // Error loading config - keep the form empty
         }
     };
 
-    const handleDeleteConfig = async (configId: number) => {
-        try {
-            const token = localStorage.getItem('auth_token');
-
-            const response = await fetch(
-                `http://localhost:3001/api/ai-config/${configId}`,
-                {
-                    method: 'DELETE',
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
-
-            if (response.ok) {
-                await fetchConfigurations();
-            }
-        } catch (_error) {
-            // Error deleting configuration - continue silently
-        }
+    const handleConfigCancel = () => {
+        setSelectedProvider('gemini');
+        setSelectedModel('');
+        setApiKey('');
+        setEditingConfigId(null);
     };
 
     const handleCancel = () => {
@@ -253,18 +252,18 @@ export function ProfilePage() {
                     </div>
 
                     {/* Profile Card */}
-                    <div className='bg-card/80 backdrop-blur-sm rounded-lg border border-border/50 shadow-xl p-8'>
+                    <div className='bg-gradient-to-br from-gray-800/90 via-purple-800/80 to-gray-800/90 backdrop-blur-md rounded-xl border border-purple-500/20 shadow-2xl shadow-purple-900/50 p-8'>
                         {/* Avatar Section */}
                         <div className='text-center mb-8'>
                             <div className='w-24 h-24 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-3xl font-bold mx-auto mb-4'>
                                 {user.username.charAt(0).toUpperCase()}
                             </div>
-                            <h2 className='text-2xl font-semibold text-card-foreground mb-1'>
-                                {user.username}
-                            </h2>
-                            <p className='text-muted-foreground'>
-                                {user.email}
-                            </p>
+                            <div className='flex items-center justify-center gap-2 text-gray-300'>
+                                <span className='text-sm'>Member Since</span>
+                                <span className='text-white'>
+                                    {formatDate(user.createdAt)}
+                                </span>
+                            </div>
                         </div>
 
                         {/* Profile Information */}
@@ -272,7 +271,7 @@ export function ProfilePage() {
                             <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
                                 {/* Username Field */}
                                 <div>
-                                    <label className='block text-sm font-medium text-card-foreground mb-2'>
+                                    <label className='block text-sm font-medium text-white mb-2'>
                                         Username
                                     </label>
                                     {isEditing ? (
@@ -286,15 +285,17 @@ export function ProfilePage() {
                                             placeholder='Enter username'
                                         />
                                     ) : (
-                                        <div className='p-3 bg-muted/50 rounded-md text-card-foreground'>
-                                            {user.username}
-                                        </div>
+                                        <Input
+                                            value={user.username}
+                                            disabled
+                                            className='bg-gray-800/90 border-gray-600 text-white'
+                                        />
                                     )}
                                 </div>
 
                                 {/* Email Field */}
                                 <div>
-                                    <label className='block text-sm font-medium text-card-foreground mb-2'>
+                                    <label className='block text-sm font-medium text-white mb-2'>
                                         Email
                                     </label>
                                     {isEditing ? (
@@ -307,49 +308,35 @@ export function ProfilePage() {
                                             placeholder='Enter email'
                                         />
                                     ) : (
-                                        <div className='p-3 bg-muted/50 rounded-md text-card-foreground'>
-                                            {user.email}
-                                        </div>
+                                        <Input
+                                            type='email'
+                                            value={user.email}
+                                            disabled
+                                            className='bg-gray-800/90 border-gray-600 text-white'
+                                        />
                                     )}
-                                </div>
-                            </div>
-
-                            {/* Account Information */}
-                            <div>
-                                <label className='block text-sm font-medium text-card-foreground mb-2'>
-                                    Member Since
-                                </label>
-                                <div className='p-3 bg-muted/50 rounded-md text-card-foreground'>
-                                    {formatDate(user.createdAt)}
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className='block text-sm font-medium text-card-foreground mb-2'>
-                                    User ID
-                                </label>
-                                <div className='p-3 bg-muted/50 rounded-md text-card-foreground font-mono text-sm'>
-                                    {user.id}
                                 </div>
                             </div>
                         </div>
 
                         {/* AI Configuration Section */}
-                        <div className='border-t border-border/50 pt-6 mt-6'>
-                            <h3 className='text-lg font-semibold text-card-foreground mb-4'>
+                        <div className='border-t border-purple-500/30 pt-6 mt-6'>
+                            <h3 className='text-lg font-semibold text-white mb-4'>
                                 AI Configuration
                             </h3>
 
-                            {/* Add New Configuration */}
-                            <div className='mb-6 p-4 bg-muted/30 rounded-lg'>
-                                <h4 className='text-md font-medium text-card-foreground mb-3'>
-                                    Add New Configuration
+                            {/* Add/Edit Configuration */}
+                            <div className='mb-6 p-4 bg-gradient-to-r from-gray-700/50 to-purple-700/30 rounded-lg border border-purple-400/20'>
+                                <h4 className='text-md font-medium text-white mb-3'>
+                                    {editingConfigId
+                                        ? 'Edit Configuration'
+                                        : 'Add New Configuration'}
                                 </h4>
 
                                 <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mb-4'>
                                     {/* Provider Selection */}
                                     <div>
-                                        <label className='block text-sm font-medium text-card-foreground mb-2'>
+                                        <label className='block text-sm font-medium text-white mb-2'>
                                             Provider
                                         </label>
                                         <select
@@ -360,7 +347,7 @@ export function ProfilePage() {
                                                 );
                                                 setSelectedModel('');
                                             }}
-                                            className='w-full p-2 bg-background border border-border rounded-md text-card-foreground'
+                                            className='w-full p-2 bg-gray-800/90 border border-gray-600 rounded-md text-white placeholder-gray-400'
                                         >
                                             {Object.entries(AI_PROVIDERS).map(
                                                 ([key, provider]) => (
@@ -377,7 +364,7 @@ export function ProfilePage() {
 
                                     {/* Model Selection */}
                                     <div>
-                                        <label className='block text-sm font-medium text-card-foreground mb-2'>
+                                        <label className='block text-sm font-medium text-white mb-2'>
                                             Model
                                         </label>
                                         <select
@@ -385,7 +372,7 @@ export function ProfilePage() {
                                             onChange={e =>
                                                 setSelectedModel(e.target.value)
                                             }
-                                            className='w-full p-2 bg-background border border-border rounded-md text-card-foreground'
+                                            className='w-full p-2 bg-gray-800/90 border border-gray-600 rounded-md text-white placeholder-gray-400'
                                         >
                                             <option value=''>
                                                 Select a model
@@ -406,7 +393,7 @@ export function ProfilePage() {
 
                                 {/* API Key Input */}
                                 <div className='mb-4'>
-                                    <label className='block text-sm font-medium text-card-foreground mb-2'>
+                                    <label className='block text-sm font-medium text-white mb-2'>
                                         API Key
                                     </label>
                                     <div className='flex gap-2'>
@@ -453,8 +440,19 @@ export function ProfilePage() {
                                     >
                                         {configStatus === 'saving'
                                             ? 'Saving...'
-                                            : 'Save Configuration'}
+                                            : editingConfigId
+                                              ? 'Update Configuration'
+                                              : 'Save Configuration'}
                                     </Button>
+                                    {editingConfigId && (
+                                        <Button
+                                            onClick={handleConfigCancel}
+                                            variant='outline'
+                                            size='sm'
+                                        >
+                                            Cancel
+                                        </Button>
+                                    )}
                                 </div>
 
                                 {configStatus === 'saved' && (
@@ -468,85 +466,10 @@ export function ProfilePage() {
                                     </p>
                                 )}
                             </div>
-
-                            {/* Existing Configurations */}
-                            {configurations.length > 0 && (
-                                <div>
-                                    <h4 className='text-md font-medium text-card-foreground mb-3'>
-                                        Saved Configurations
-                                    </h4>
-                                    <div className='space-y-3'>
-                                        {configurations.map((config, index) => {
-                                            const provider =
-                                                AI_PROVIDERS[config.provider];
-                                            const model = provider.models.find(
-                                                m => m.id === config.modelName
-                                            );
-
-                                            return (
-                                                <div
-                                                    key={index}
-                                                    className='flex items-center justify-between p-3 bg-muted/20 rounded-lg'
-                                                >
-                                                    <div className='flex-1'>
-                                                        <div className='flex items-center gap-2 mb-1'>
-                                                            <span className='font-medium text-card-foreground'>
-                                                                {provider.name}
-                                                            </span>
-                                                            <span className='text-sm text-muted-foreground'>
-                                                                •{' '}
-                                                                {model?.name ||
-                                                                    config.modelName}
-                                                            </span>
-                                                            {config.isActive && (
-                                                                <span className='px-2 py-1 text-xs bg-green-600 text-white rounded-full'>
-                                                                    Active
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className='text-sm text-muted-foreground font-mono'>
-                                                            API Key:{' '}
-                                                            {config.apiKey}
-                                                        </div>
-                                                    </div>
-                                                    <div className='flex gap-2'>
-                                                        {!config.isActive && (
-                                                            <Button
-                                                                variant='outline'
-                                                                size='sm'
-                                                                onClick={() =>
-                                                                    handleSetActive(
-                                                                        config.provider,
-                                                                        config.modelName
-                                                                    )
-                                                                }
-                                                            >
-                                                                Set Active
-                                                            </Button>
-                                                        )}
-                                                        <Button
-                                                            variant='destructive'
-                                                            size='sm'
-                                                            onClick={() =>
-                                                                config.id &&
-                                                                handleDeleteConfig(
-                                                                    config.id
-                                                                )
-                                                            }
-                                                        >
-                                                            Delete
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
                         </div>
 
                         {/* Action Buttons */}
-                        <div className='flex flex-col sm:flex-row gap-4 mt-8 pt-6 border-t border-border/50'>
+                        <div className='flex flex-col sm:flex-row gap-4 mt-8 pt-6 border-t border-purple-500/30'>
                             {isEditing ? (
                                 <>
                                     <Button
@@ -576,7 +499,7 @@ export function ProfilePage() {
                                         onClick={() =>
                                             (window.location.href = '/')
                                         }
-                                        className='flex-1'
+                                        className='flex-1 bg-transparent border-purple-400 text-white hover:bg-purple-700/30 hover:text-white'
                                     >
                                         Back to Home
                                     </Button>
@@ -585,7 +508,7 @@ export function ProfilePage() {
                         </div>
 
                         {/* Danger Zone */}
-                        <div className='mt-8 pt-6 border-t border-border/50'>
+                        <div className='mt-8 pt-6 border-t border-purple-500/30'>
                             <h3 className='text-lg font-semibold text-red-400 mb-4'>
                                 Danger Zone
                             </h3>
