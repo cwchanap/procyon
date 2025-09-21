@@ -16,6 +16,7 @@
     "dependencies": {
         "@cloudflare/d1": "^1.4.1",
         "@hono/node-server": "^1.12.0",
+        "@hono/zod-validator": "^0.7.3",
         "bcryptjs": "^3.0.2",
         "drizzle-orm": "^0.44.5",
         "hono": "^4.9.7",

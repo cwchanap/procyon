@@ -64,13 +64,19 @@ export default defineConfig({
   /* Run your local dev server before starting the tests */
   webServer: [
     {
-      command: 'bun run dev',
+      command: 'bun run web:dev',
       url: 'http://localhost:3500',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
       env: {
         ASTRO_DISABLE_DEV_TOOLBAR: 'true',
       },
+    },
+    {
+      command: 'bun run api:dev',
+      url: 'http://localhost:3001',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
     },
   ],
 });

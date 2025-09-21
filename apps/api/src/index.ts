@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { initializeDB } from './db';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
+import aiConfigRoutes from './routes/ai-config';
 
 // Initialize database (will use local SQLite for development)
 initializeDB();
@@ -32,6 +33,9 @@ app.route('/api/auth', authRoutes);
 // User routes
 app.route('/api/users', userRoutes);
 
+// AI Configuration routes
+app.route('/api/ai-config', aiConfigRoutes);
+
 // API routes (legacy - can be removed later)
 app.get('/api/hello', c => {
     return c.json({
@@ -51,7 +55,7 @@ app.onError((err, c) => {
 });
 
 // Start server
-const port = parseInt(process.env.PORT || '8000');
+const port = parseInt(process.env.PORT || '3001');
 
 console.log(`🚀 Hono API server is running on http://localhost:${port}`);
 

@@ -1,28 +1,10 @@
 ---
+import Layout from '../layouts/Layout.astro';
+import ProfilePage from '../components/ProfilePage.tsx';
+
 export const prerender = false;
 ---
 
-<html lang='en'>
-    <head>
-        <meta charset='utf-8' />
-        <link rel='icon' type='image/svg+xml' href='/favicon.svg' />
-        <meta name='viewport' content='width=device-width' />
-        <meta name='generator' content={Astro.generator} />
-        <title>Profile - Procyon Chess</title>
-    </head>
-    <body class='font-sans antialiased'>
-        <div id='app'>
-            <div id='profile-root'></div>
-        </div>
-
-        <script>
-            import ProfilePage from '../components/ProfilePage.tsx';
-            import React from 'react';
-            import { createRoot } from 'react-dom/client';
-
-            const container = document.getElementById('profile-root');
-            const root = createRoot(container!);
-            root.render(React.createElement(ProfilePage));
-        </script>
-    </body>
-</html>
+<Layout title='Profile - Procyon Chess'>
+    <ProfilePage client:load />
+</Layout>
