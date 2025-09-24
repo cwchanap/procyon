@@ -5,6 +5,7 @@ export interface AIConfig {
     apiKey: string;
     model: string;
     enabled: boolean;
+    debug?: boolean;
 }
 
 export interface AIProviderInfo {

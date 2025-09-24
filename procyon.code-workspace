@@ -1,0 +1,189 @@
+{
+  "folders": [
+    {
+      "name": "Root",
+      "path": "."
+    },
+    {
+      "name": "Web App",
+      "path": "./apps/web"
+    },
+    {
+      "name": "API Server",
+      "path": "./apps/api"
+    }
+  ],
+  "settings": {
+    "typescript.preferences.importModuleSpecifier": "relative",
+    "typescript.suggest.autoImports": true,
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    },
+    "eslint.workingDirectories": [
+      ".",
+      "./apps/web",
+      "./apps/api"
+    ],
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/.turbo": true,
+      "**/.astro": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/.turbo": true,
+      "**/.astro": true,
+      "**/bun.lockb": true
+    },
+    "emmet.includeLanguages": {
+      "astro": "html"
+    },
+    "emmet.syntaxProfiles": {
+      "astro": "html"
+    },
+    "tailwindCSS.includeLanguages": {
+      "astro": "html",
+      "typescript": "javascript",
+      "typescriptreact": "javascript"
+    },
+    "tailwindCSS.experimental.classRegex": [
+      ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+      ["cx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"]
+    ]
+  },
+  "extensions": {
+    "recommendations": [
+      "esbenp.prettier-vscode",
+      "dbaeumer.vscode-eslint",
+      "bradlc.vscode-tailwindcss",
+      "astro-build.astro-vscode",
+      "ms-vscode.vscode-typescript-next",
+      "oven.bun-vscode",
+      "unifiedjs.vscode-mdx",
+      "ms-vscode.vscode-json"
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "dev",
+        "type": "shell",
+        "command": "bun",
+        "args": ["run", "dev"],
+        "group": "build",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared",
+          "showReuseMessage": true,
+          "clear": false
+        },
+        "problemMatcher": ["$tsc"]
+      },
+      {
+        "label": "dev:web",
+        "type": "shell",
+        "command": "bun",
+        "args": ["run", "web:dev"],
+        "group": "build",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "dev:api",
+        "type": "shell",
+        "command": "bun",
+        "args": ["run", "api:dev"],
+        "group": "build",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "build",
+        "type": "shell",
+        "command": "bun",
+        "args": ["run", "build"],
+        "group": "build",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        },
+        "problemMatcher": ["$tsc"]
+      },
+      {
+        "label": "lint",
+        "type": "shell",
+        "command": "bun",
+        "args": ["run", "lint"],
+        "group": "test",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "lint:fix",
+        "type": "shell",
+        "command": "bun",
+        "args": ["run", "lint:fix"],
+        "group": "test",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "test",
+        "type": "shell",
+        "command": "bun",
+        "args": ["run", "test"],
+        "group": "test",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "focus": false,
+          "panel": "shared"
+        }
+      }
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug API Server",
+        "type": "node",
+        "request": "launch",
+        "program": "${workspaceFolder}/apps/api/src/index.ts",
+        "runtimeExecutable": "bun",
+        "runtimeArgs": ["--inspect"],
+        "cwd": "${workspaceFolder}/apps/api",
+        "env": {
+          "NODE_ENV": "development"
+        },
+        "console": "integratedTerminal",
+        "skipFiles": ["<node_internals>/**"]
+      }
+    ]
+  }
+}

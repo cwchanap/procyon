@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import type {
     GameState,
     Position,
@@ -201,11 +202,30 @@ export function makeAIMove(
     const fromPos = algebraicToPosition(from);
     const toPos = algebraicToPosition(to);
 
+    // Debug logging for move validation
+    console.log('🔍 makeAIMove debug:');
+    console.log(`  Input: ${from} → ${to}`);
+    console.log(`  FromPos:`, fromPos);
+    console.log(`  ToPos:`, toPos);
+
     if (!fromPos || !toPos) {
+        console.error(`❌ Position conversion failed: ${from} → ${to}`);
         return null;
     }
 
-    return makeMove(gameState, fromPos, toPos);
+    const result = makeMove(gameState, fromPos, toPos);
+    console.log(`  makeMove result:`, result ? 'SUCCESS' : 'FAILED');
+
+    if (!result) {
+        console.error(`❌ makeMove failed for ${from} → ${to}`);
+        console.log(
+            `  Board at ${from}:`,
+            gameState.board[fromPos.row]?.[fromPos.col]
+        );
+        console.log(`  Current player:`, gameState.currentPlayer);
+    }
+
+    return result;
 }
 
 export function setAIThinking(
@@ -222,7 +242,7 @@ export function isAITurn(gameState: GameState): boolean {
     return (
         gameState.mode === 'human-vs-ai' &&
         gameState.currentPlayer === gameState.aiPlayer &&
-        gameState.status === 'playing'
+        (gameState.status === 'playing' || gameState.status === 'check')
     );
 }
 
