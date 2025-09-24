@@ -8,6 +8,7 @@ export const defaultAIConfig: AIConfig = {
     apiKey: '',
     model: 'gemini-2.5-flash-lite',
     enabled: false,
+    gameVariant: 'chess',
 };
 
 export function saveAIConfig(config: AIConfig): void {

@@ -1,3 +1,5 @@
+import type { GameVariant } from './game-variant-types';
+
 export type AIProvider = 'gemini' | 'openrouter';
 
 export interface AIConfig {
@@ -6,6 +8,7 @@ export interface AIConfig {
     model: string;
     enabled: boolean;
     debug?: boolean;
+    gameVariant?: GameVariant;
 }
 
 export interface AIProviderInfo {
