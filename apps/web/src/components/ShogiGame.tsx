@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { ShogiGameState, ShogiPosition, ShogiPiece } from '../lib/shogi';
 import {
     createInitialGameState,
@@ -6,7 +6,11 @@ import {
     selectHandPiece,
     clearSelection,
     SHOGI_BOARD_SIZE,
+    SHOGI_FILES,
+    SHOGI_RANKS,
 } from '../lib/shogi';
+import { createShogiAI, defaultAIConfig } from '../lib/ai';
+import type { AIConfig } from '../lib/ai/types';
 import ShogiBoard from './ShogiBoard';
 import ShogiHand from './ShogiHand';
 
@@ -20,7 +24,7 @@ interface ShogiDemo {
     explanation: string;
 }
 
-type ShogiGameMode = 'play' | 'tutorial';
+type ShogiGameMode = 'play' | 'tutorial' | 'ai';
 
 const ShogiGame: React.FC = () => {
     const [gameMode, setGameMode] = useState<ShogiGameMode>('play');
@@ -28,6 +32,15 @@ const ShogiGame: React.FC = () => {
         createInitialGameState
     );
     const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
+    const [aiPlayer, setAIPlayer] = useState<'sente' | 'gote'>('gote');
+    const [aiConfig] = useState<AIConfig>({
+        ...defaultAIConfig,
+        gameVariant: 'shogi',
+        enabled: true,
+    });
+    const [aiService] = useState(() => createShogiAI(aiConfig));
+    const [isAIThinking, setIsAIThinking] = useState(false);
+    const [aiDebugMessages, setAIDebugMessages] = useState<string[]>([]);
 
     const createCustomShogiBoard = useCallback(
         (setup: string): (ShogiPiece | null)[][] => {
@@ -172,6 +185,82 @@ const ShogiGame: React.FC = () => {
         );
     }, [currentDemo, shogiDemos]);
 
+    // AI setup and debug callback
+    useEffect(() => {
+        aiService.setDebugCallback((type, message, _data) => {
+            setAIDebugMessages(prev => [
+                ...prev.slice(-4),
+                `[${type}] ${message}`,
+            ]);
+        });
+        aiService.updateConfig(aiConfig);
+    }, [aiService, aiConfig]);
+
+    // AI move handling
+    useEffect(() => {
+        if (
+            gameMode === 'ai' &&
+            gameState.currentPlayer === aiPlayer &&
+            gameState.status === 'playing' &&
+            !isAIThinking
+        ) {
+            const makeAIMove = async () => {
+                setIsAIThinking(true);
+                try {
+                    const aiResponse = await aiService.makeMove(gameState);
+                    if (aiResponse) {
+                        // Parse AI move from algebraic notation
+                        if (aiResponse.move.from === '*') {
+                            // Drop move
+                            const _toPos = algebraicToPosition(
+                                aiResponse.move.to
+                            );
+                            // TODO: Implement drop move logic
+                            // console.log('AI drop move:', aiResponse.move.to);
+                        } else {
+                            // Regular move
+                            const fromPos = algebraicToPosition(
+                                aiResponse.move.from
+                            );
+                            const toPos = algebraicToPosition(
+                                aiResponse.move.to
+                            );
+
+                            // Apply the move using shogi game logic
+                            const moveResult = selectSquare(gameState, fromPos);
+                            if (moveResult.selectedSquare) {
+                                const finalResult = selectSquare(
+                                    moveResult,
+                                    toPos
+                                );
+                                setGameState(finalResult);
+                            }
+                        }
+                    }
+                } catch (_error) {
+                    // console.error('AI move failed:', error);
+                } finally {
+                    setIsAIThinking(false);
+                }
+            };
+
+            const timer = setTimeout(makeAIMove, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [gameState, gameMode, aiPlayer, aiService, isAIThinking]);
+
+    const algebraicToPosition = useCallback(
+        (algebraic: string): ShogiPosition => {
+            const file = algebraic[0];
+            const rank = algebraic[1];
+            return {
+                col: SHOGI_FILES.indexOf(file),
+                row: SHOGI_RANKS.indexOf(rank),
+            };
+        },
+        []
+    );
+
     const handleSquareClick = useCallback(
         (position: ShogiPosition) => {
             if (gameMode === 'tutorial') {
@@ -208,12 +297,20 @@ const ShogiGame: React.FC = () => {
                         possibleMoves: [],
                     }));
                 }
-            } else {
+            } else if (
+                gameMode === 'ai' &&
+                gameState.currentPlayer !== aiPlayer
+            ) {
+                // Human player move in AI mode
+                const newGameState = selectSquare(gameState, position);
+                setGameState(newGameState);
+            } else if (gameMode === 'play') {
+                // Human vs human mode
                 const newGameState = selectSquare(gameState, position);
                 setGameState(newGameState);
             }
         },
-        [gameMode, gameState, getCurrentDemo]
+        [gameMode, gameState, getCurrentDemo, aiPlayer]
     );
 
     const handleHandPieceClick = useCallback(
@@ -230,27 +327,38 @@ const ShogiGame: React.FC = () => {
         setGameState(createInitialGameState());
     }, []);
 
-    const toggleMode = useCallback(() => {
-        const newMode = gameMode === 'play' ? 'tutorial' : 'play';
-        setGameMode(newMode);
+    const toggleToMode = useCallback(
+        (newMode: ShogiGameMode) => {
+            setGameMode(newMode);
+            setIsAIThinking(false);
+            setAIDebugMessages([]);
 
-        if (newMode === 'tutorial') {
-            const demo = getCurrentDemo();
-            setGameState({
-                board: demo.board,
-                currentPlayer: 'sente',
-                status: 'playing',
-                moveHistory: [],
-                selectedSquare: null,
-                possibleMoves: [],
-                senteHand: [],
-                goteHand: [],
-                selectedHandPiece: null,
-            });
-        } else {
-            setGameState(createInitialGameState());
-        }
-    }, [gameMode, getCurrentDemo]);
+            if (newMode === 'tutorial') {
+                const demo = getCurrentDemo();
+                setGameState({
+                    board: demo.board,
+                    currentPlayer: 'sente',
+                    status: 'playing',
+                    moveHistory: [],
+                    selectedSquare: null,
+                    possibleMoves: [],
+                    senteHand: [],
+                    goteHand: [],
+                    selectedHandPiece: null,
+                });
+            } else {
+                setGameState(createInitialGameState());
+            }
+        },
+        [getCurrentDemo]
+    );
+
+    const _toggleMode = useCallback(() => {
+        const modes: ShogiGameMode[] = ['play', 'tutorial', 'ai'];
+        const currentIndex = modes.indexOf(gameMode);
+        const nextMode = modes[(currentIndex + 1) % modes.length];
+        toggleToMode(nextMode);
+    }, [gameMode, toggleToMode]);
 
     const handleDemoChange = useCallback(
         (demoId: string) => {
@@ -274,15 +382,28 @@ const ShogiGame: React.FC = () => {
     }, [gameState]);
 
     const getStatusMessage = (): string => {
+        const playerName =
+            gameState.currentPlayer === 'sente' ? '先手' : '後手';
+
+        // Add AI/Human indicator in AI mode
+        const playerType =
+            gameMode === 'ai'
+                ? gameState.currentPlayer === aiPlayer
+                    ? '🤖 AI'
+                    : '👤 Human'
+                : '';
+
         switch (gameState.status) {
             case 'check':
-                return `${gameState.currentPlayer === 'sente' ? '先手' : '後手'} is in check!`;
+                return `${playerName} is in check!`;
             case 'checkmate':
                 return `Checkmate! ${gameState.currentPlayer === 'sente' ? '後手' : '先手'} wins!`;
             case 'draw':
                 return 'The game is a draw.';
             default:
-                return `${gameState.currentPlayer === 'sente' ? '先手' : '後手'} to move`;
+                return gameMode === 'ai'
+                    ? `${playerType} ${playerName} to move`
+                    : `${playerName} to move`;
         }
     };
 
@@ -298,21 +419,21 @@ const ShogiGame: React.FC = () => {
         <div className='flex flex-col items-center gap-6 p-6 max-w-7xl mx-auto'>
             <div className='text-center'>
                 <h1 className='text-4xl font-bold bg-gradient-to-r from-red-400 via-orange-400 to-yellow-400 bg-clip-text text-transparent mb-4'>
-                    {gameMode === 'play'
-                        ? '将棋 (Shogi)'
-                        : 'Shogi Logic & Tutorials'}
+                    {gameMode === 'tutorial'
+                        ? 'Shogi Logic & Tutorials'
+                        : '将棋 (Shogi)'}
                 </h1>
                 <p className='text-xl text-orange-100 font-medium'>
-                    {gameMode === 'play'
-                        ? getStatusMessage()
-                        : getCurrentDemo().description}
+                    {gameMode === 'tutorial'
+                        ? getCurrentDemo().description
+                        : getStatusMessage()}
                 </p>
             </div>
 
             {/* Mode Toggle */}
             <div className='flex gap-4'>
                 <button
-                    onClick={toggleMode}
+                    onClick={() => toggleToMode('play')}
                     className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
                         gameMode === 'play'
                             ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
@@ -322,7 +443,7 @@ const ShogiGame: React.FC = () => {
                     🎮 Play Mode
                 </button>
                 <button
-                    onClick={toggleMode}
+                    onClick={() => toggleToMode('tutorial')}
                     className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
                         gameMode === 'tutorial'
                             ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
@@ -331,7 +452,62 @@ const ShogiGame: React.FC = () => {
                 >
                     📚 Tutorial Mode
                 </button>
+                <button
+                    onClick={() => toggleToMode('ai')}
+                    className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+                        gameMode === 'ai'
+                            ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
+                            : 'text-orange-100 hover:bg-white hover:bg-opacity-20'
+                    }`}
+                >
+                    🤖 AI Mode
+                </button>
             </div>
+
+            {/* AI Controls */}
+            {gameMode === 'ai' && (
+                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
+                    <div className='flex gap-4 justify-center'>
+                        <select
+                            value={aiPlayer}
+                            onChange={e =>
+                                setAIPlayer(e.target.value as 'sente' | 'gote')
+                            }
+                            className='glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20'
+                        >
+                            <option value='gote'>AI plays Gote (後手)</option>
+                            <option value='sente'>AI plays Sente (先手)</option>
+                        </select>
+                    </div>
+
+                    {/* AI Status */}
+                    <div className='text-center'>
+                        {isAIThinking && (
+                            <div className='flex items-center justify-center gap-2 text-cyan-200'>
+                                <div className='animate-spin w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full'></div>
+                                AI is thinking...
+                            </div>
+                        )}
+
+                        {/* Debug Messages */}
+                        {aiConfig.debug && aiDebugMessages.length > 0 && (
+                            <div className='mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10'>
+                                <h4 className='text-sm font-semibold text-cyan-200 mb-2'>
+                                    AI Debug:
+                                </h4>
+                                {aiDebugMessages.map((msg, idx) => (
+                                    <div
+                                        key={idx}
+                                        className='text-xs text-gray-300 font-mono'
+                                    >
+                                        {msg}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Tutorial Demo Selector */}
             {gameMode === 'tutorial' && (
@@ -399,8 +575,8 @@ const ShogiGame: React.FC = () => {
 
             {/* Content Panel - Below Board */}
             <div className='w-full max-w-4xl mx-auto space-y-6'>
-                {gameMode === 'play' ? (
-                    // Play Mode Controls
+                {gameMode === 'play' || gameMode === 'ai' ? (
+                    // Play Mode and AI Mode Controls
                     <>
                         <div className='flex gap-4 justify-center'>
                             <button

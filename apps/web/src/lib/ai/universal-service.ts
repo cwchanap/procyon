@@ -8,6 +8,7 @@ import type {
     GamePiece,
     GAME_CONFIGS,
 } from './game-variant-types';
+import { createRuleGuardian, type RuleGuardian } from './rule-guardian';
 
 export interface GameVariantAdapter {
     gameVariant: GameVariant;
@@ -24,6 +25,7 @@ export interface GameVariantAdapter {
 export class UniversalAIService {
     private config: AIConfig;
     private adapter: GameVariantAdapter;
+    private ruleGuardian: RuleGuardian;
     private debugCallback?: (
         type: string,
         message: string,
@@ -33,6 +35,7 @@ export class UniversalAIService {
     constructor(config: AIConfig, adapter: GameVariantAdapter) {
         this.config = config;
         this.adapter = adapter;
+        this.ruleGuardian = createRuleGuardian(adapter.gameVariant);
     }
 
     setDebugCallback(
@@ -89,6 +92,47 @@ export class UniversalAIService {
             if (this.config.debug) {
                 console.log('🎯 PARSED AI RESPONSE:');
                 console.log(parsedResponse);
+            }
+
+            // Validate the AI move using the rule guardian
+            if (parsedResponse) {
+                const validation = this.ruleGuardian.validateAIMove(
+                    gameState,
+                    parsedResponse
+                );
+
+                if (this.config.debug) {
+                    console.log('🛡️ RULE GUARDIAN VALIDATION:');
+                    console.log(`Valid: ${validation.isValid}`);
+                    if (!validation.isValid) {
+                        console.log(`Reason: ${validation.reason}`);
+                        if (validation.suggestedAlternative) {
+                            console.log(
+                                'Suggested alternative:',
+                                validation.suggestedAlternative
+                            );
+                        }
+                    }
+                }
+
+                if (!validation.isValid) {
+                    if (this.config.debug) {
+                        console.groupEnd();
+                        this.debugCallback?.(
+                            'ai-error',
+                            `🚫 Invalid AI move: ${validation.reason}`,
+                            {
+                                move: parsedResponse.move,
+                                reason: validation.reason,
+                                gameVariant: this.adapter.gameVariant,
+                            }
+                        );
+                    }
+                    return null; // Return null for invalid moves
+                }
+            }
+
+            if (this.config.debug) {
                 console.groupEnd();
 
                 if (parsedResponse) {

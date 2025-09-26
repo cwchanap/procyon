@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type {
     XiangqiGameState,
     XiangqiPosition,
@@ -12,6 +12,8 @@ import {
 } from '../lib/xiangqi/game';
 import { getPossibleMoves } from '../lib/xiangqi/moves';
 import { createInitialXiangqiBoard, getPieceAt } from '../lib/xiangqi/board';
+import { createXiangqiAI, defaultAIConfig } from '../lib/ai';
+import type { AIConfig } from '../lib/ai/types';
 import XiangqiBoard from './XiangqiBoard';
 
 interface XiangqiDemo {
@@ -24,7 +26,7 @@ interface XiangqiDemo {
     explanation: string;
 }
 
-type XiangqiGameMode = 'play' | 'tutorial';
+type XiangqiGameMode = 'play' | 'tutorial' | 'ai';
 
 const XiangqiGame: React.FC = () => {
     const [gameMode, setGameMode] = useState<XiangqiGameMode>('play');
@@ -32,6 +34,15 @@ const XiangqiGame: React.FC = () => {
         createInitialXiangqiGameState
     );
     const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
+    const [aiPlayer, setAIPlayer] = useState<'red' | 'black'>('black');
+    const [aiConfig] = useState<AIConfig>({
+        ...defaultAIConfig,
+        gameVariant: 'xiangqi',
+        enabled: true,
+    });
+    const [aiService] = useState(() => createXiangqiAI(aiConfig));
+    const [isAIThinking, setIsAIThinking] = useState(false);
+    const [aiDebugMessages, setAIDebugMessages] = useState<string[]>([]);
 
     const createCustomXiangqiBoard = useCallback(
         (setup: string): (XiangqiPiece | null)[][] => {
@@ -151,6 +162,69 @@ const XiangqiGame: React.FC = () => {
         );
     }, [currentDemo, xiangqiDemos]);
 
+    // AI setup and debug callback
+    useEffect(() => {
+        aiService.setDebugCallback((type, message, _data) => {
+            setAIDebugMessages(prev => [
+                ...prev.slice(-4),
+                `[${type}] ${message}`,
+            ]);
+        });
+        aiService.updateConfig(aiConfig);
+    }, [aiService, aiConfig]);
+
+    // AI move handling
+    useEffect(() => {
+        if (
+            gameMode === 'ai' &&
+            gameState.currentPlayer === aiPlayer &&
+            gameState.status === 'playing' &&
+            !isAIThinking
+        ) {
+            const makeAIMove = async () => {
+                setIsAIThinking(true);
+                try {
+                    const aiResponse = await aiService.makeMove(gameState);
+                    if (aiResponse) {
+                        // Parse AI move from algebraic notation
+                        const fromPos = algebraicToPosition(
+                            aiResponse.move.from
+                        );
+                        const toPos = algebraicToPosition(aiResponse.move.to);
+
+                        // Apply the move using xiangqi game logic
+                        const moveResult = selectSquare(gameState, fromPos);
+                        if (moveResult.selectedSquare) {
+                            const finalResult = selectSquare(moveResult, toPos);
+                            setGameState(finalResult);
+                        }
+                    }
+                } catch (_error) {
+                    // console.error('AI move failed:', error);
+                } finally {
+                    setIsAIThinking(false);
+                }
+            };
+
+            const timer = setTimeout(makeAIMove, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [gameState, gameMode, aiPlayer, aiService, isAIThinking]);
+
+    const algebraicToPosition = useCallback(
+        (algebraic: string): XiangqiPosition => {
+            const file = algebraic[0];
+            const rank = algebraic.slice(1);
+            const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+            const ranks = ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1'];
+            return {
+                col: files.indexOf(file),
+                row: ranks.indexOf(rank),
+            };
+        },
+        []
+    );
+
     const handleSquareClick = useCallback(
         (position: XiangqiPosition) => {
             if (gameMode === 'tutorial') {
@@ -176,36 +250,55 @@ const XiangqiGame: React.FC = () => {
                         possibleMoves: [],
                     }));
                 }
-            } else {
+            } else if (
+                gameMode === 'ai' &&
+                gameState.currentPlayer !== aiPlayer
+            ) {
+                // Human player move in AI mode
+                const newGameState = selectSquare(gameState, position);
+                setGameState(newGameState);
+            } else if (gameMode === 'play') {
+                // Human vs human mode
                 const newGameState = selectSquare(gameState, position);
                 setGameState(newGameState);
             }
         },
-        [gameMode, gameState, getCurrentDemo]
+        [gameMode, gameState, getCurrentDemo, aiPlayer]
     );
 
     const handleResetGame = useCallback(() => {
         setGameState(resetGame());
     }, []);
 
-    const toggleMode = useCallback(() => {
-        const newMode = gameMode === 'play' ? 'tutorial' : 'play';
-        setGameMode(newMode);
+    const toggleToMode = useCallback(
+        (newMode: XiangqiGameMode) => {
+            setGameMode(newMode);
+            setIsAIThinking(false);
+            setAIDebugMessages([]);
 
-        if (newMode === 'tutorial') {
-            const demo = getCurrentDemo();
-            setGameState({
-                board: demo.board,
-                currentPlayer: 'red',
-                status: 'playing',
-                moveHistory: [],
-                selectedSquare: null,
-                possibleMoves: [],
-            });
-        } else {
-            setGameState(resetGame());
-        }
-    }, [gameMode, getCurrentDemo]);
+            if (newMode === 'tutorial') {
+                const demo = getCurrentDemo();
+                setGameState({
+                    board: demo.board,
+                    currentPlayer: 'red',
+                    status: 'playing',
+                    moveHistory: [],
+                    selectedSquare: null,
+                    possibleMoves: [],
+                });
+            } else {
+                setGameState(resetGame());
+            }
+        },
+        [getCurrentDemo]
+    );
+
+    const _toggleMode = useCallback(() => {
+        const modes: XiangqiGameMode[] = ['play', 'tutorial', 'ai'];
+        const currentIndex = modes.indexOf(gameMode);
+        const nextMode = modes[(currentIndex + 1) % modes.length];
+        toggleToMode(nextMode);
+    }, [gameMode, toggleToMode]);
 
     const handleDemoChange = useCallback(
         (demoId: string) => {
@@ -233,6 +326,14 @@ const XiangqiGame: React.FC = () => {
         const playerNameEn =
             gameState.currentPlayer === 'red' ? 'Red' : 'Black';
 
+        // Add AI/Human indicator in AI mode
+        const playerType =
+            gameMode === 'ai'
+                ? gameState.currentPlayer === aiPlayer
+                    ? '🤖 AI'
+                    : '👤 Human'
+                : '';
+
         switch (gameState.status) {
             case 'check':
                 return `${playerName} (${playerNameEn}) is in check! 将军！`;
@@ -248,7 +349,9 @@ const XiangqiGame: React.FC = () => {
             case 'draw':
                 return 'The game is a draw. 和棋！';
             default:
-                return `${playerName} (${playerNameEn}) to move`;
+                return gameMode === 'ai'
+                    ? `${playerType} ${playerName} (${playerNameEn}) to move`
+                    : `${playerName} (${playerNameEn}) to move`;
         }
     };
 
@@ -268,21 +371,21 @@ const XiangqiGame: React.FC = () => {
         <div className='flex flex-col items-center gap-6 p-6 max-w-7xl mx-auto'>
             <div className='text-center'>
                 <h1 className='text-4xl font-bold bg-gradient-to-r from-red-400 via-yellow-400 to-red-600 bg-clip-text text-transparent mb-4'>
-                    {gameMode === 'play'
-                        ? 'Chinese Chess (象棋)'
-                        : 'Xiangqi Logic & Tutorials'}
+                    {gameMode === 'tutorial'
+                        ? 'Xiangqi Logic & Tutorials'
+                        : 'Chinese Chess (象棋)'}
                 </h1>
                 <p className='text-xl text-purple-100 font-medium'>
-                    {gameMode === 'play'
-                        ? getStatusMessage()
-                        : getCurrentDemo().description}
+                    {gameMode === 'tutorial'
+                        ? getCurrentDemo().description
+                        : getStatusMessage()}
                 </p>
             </div>
 
             {/* Mode Toggle */}
             <div className='flex gap-4'>
                 <button
-                    onClick={toggleMode}
+                    onClick={() => toggleToMode('play')}
                     className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
                         gameMode === 'play'
                             ? 'bg-gradient-to-r from-red-500 to-yellow-500 text-white shadow-lg'
@@ -292,7 +395,7 @@ const XiangqiGame: React.FC = () => {
                     🎮 Play Mode
                 </button>
                 <button
-                    onClick={toggleMode}
+                    onClick={() => toggleToMode('tutorial')}
                     className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
                         gameMode === 'tutorial'
                             ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
@@ -301,7 +404,62 @@ const XiangqiGame: React.FC = () => {
                 >
                     📚 Tutorial Mode
                 </button>
+                <button
+                    onClick={() => toggleToMode('ai')}
+                    className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+                        gameMode === 'ai'
+                            ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
+                            : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
+                    }`}
+                >
+                    🤖 AI Mode
+                </button>
             </div>
+
+            {/* AI Controls */}
+            {gameMode === 'ai' && (
+                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
+                    <div className='flex gap-4 justify-center'>
+                        <select
+                            value={aiPlayer}
+                            onChange={e =>
+                                setAIPlayer(e.target.value as 'red' | 'black')
+                            }
+                            className='glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20'
+                        >
+                            <option value='black'>AI plays Black (黑方)</option>
+                            <option value='red'>AI plays Red (红方)</option>
+                        </select>
+                    </div>
+
+                    {/* AI Status */}
+                    <div className='text-center'>
+                        {isAIThinking && (
+                            <div className='flex items-center justify-center gap-2 text-cyan-200'>
+                                <div className='animate-spin w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full'></div>
+                                AI is thinking...
+                            </div>
+                        )}
+
+                        {/* Debug Messages */}
+                        {aiConfig.debug && aiDebugMessages.length > 0 && (
+                            <div className='mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10'>
+                                <h4 className='text-sm font-semibold text-cyan-200 mb-2'>
+                                    AI Debug:
+                                </h4>
+                                {aiDebugMessages.map((msg, idx) => (
+                                    <div
+                                        key={idx}
+                                        className='text-xs text-gray-300 font-mono'
+                                    >
+                                        {msg}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Tutorial Demo Selector */}
             {gameMode === 'tutorial' && (
@@ -335,8 +493,8 @@ const XiangqiGame: React.FC = () => {
 
             {/* Content Panel - Below Board */}
             <div className='w-full max-w-4xl mx-auto space-y-6'>
-                {gameMode === 'play' ? (
-                    // Play Mode Controls
+                {gameMode === 'play' || gameMode === 'ai' ? (
+                    // Play Mode and AI Mode Controls
                     <>
                         <div className='flex gap-4 flex-wrap justify-center'>
                             <button
