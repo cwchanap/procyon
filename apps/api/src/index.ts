@@ -55,7 +55,7 @@ app.onError((err, c) => {
 });
 
 // Start server
-const port = parseInt(process.env.PORT || '3001');
+const port = parseInt(process.env.PORT || '3501');
 
 console.log(`🚀 Hono API server is running on http://localhost:${port}`);
 

@@ -18,7 +18,7 @@ Procyon is a monorepo chess platform built with TypeScript, featuring:
 ```
 apps/
 ├── web/          # Astro + React frontend (port 3500)
-└── api/          # Hono API server (port 3001)
+└── api/          # Hono API server (port 3501)
 packages/         # Shared packages (currently empty)
 ```
 
@@ -68,7 +68,7 @@ bun run api:dev         # Start only API server
 
 ```bash
 cd apps/web && bun run dev      # Web app on port 3500
-cd apps/api && bun run dev      # API server on port 3001
+cd apps/api && bun run dev      # API server on port 3501
 ```
 
 ## Code Standards

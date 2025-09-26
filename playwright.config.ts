@@ -74,7 +74,7 @@ export default defineConfig({
     },
     {
       command: 'bun run api:dev',
-      url: 'http://localhost:3001',
+      url: 'http://localhost:3501',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
     },

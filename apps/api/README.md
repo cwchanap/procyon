@@ -65,7 +65,7 @@ Hono-based API server with JWT authentication and Drizzle ORM + Cloudflare D1 in
 ### Register User
 
 ```bash
-curl -X POST http://localhost:3001/api/auth/register \
+curl -X POST http://localhost:3501/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","username":"user","password":"password123"}'
 ```
@@ -73,7 +73,7 @@ curl -X POST http://localhost:3001/api/auth/register \
 ### Login
 
 ```bash
-curl -X POST http://localhost:3001/api/auth/login \
+curl -X POST http://localhost:3501/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"password123"}'
 ```
@@ -81,7 +81,7 @@ curl -X POST http://localhost:3001/api/auth/login \
 ### Access Protected Endpoint
 
 ```bash
-curl -X GET http://localhost:3001/api/users/me \
+curl -X GET http://localhost:3501/api/users/me \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -98,7 +98,7 @@ For production deployment with Cloudflare D1:
 
 - `JWT_SECRET` - Secret key for JWT token signing
 - `JWT_EXPIRES_IN` - Token expiration time (default: 7d)
-- `PORT` - Server port (default: 3001)
+- `PORT` - Server port (default: 3501)
 - `CLOUDFLARE_ACCOUNT_ID` - Cloudflare account ID (production)
 - `CLOUDFLARE_DATABASE_ID` - D1 database ID (production)
 - `CLOUDFLARE_API_TOKEN` - Cloudflare API token (production)

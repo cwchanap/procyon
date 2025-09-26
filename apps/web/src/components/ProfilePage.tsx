@@ -126,7 +126,7 @@ export function ProfilePage() {
         try {
             const token = localStorage.getItem('auth_token');
             const response = await fetch(
-                'http://localhost:3001/api/ai-config',
+                'http://localhost:3501/api/ai-config',
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -159,7 +159,7 @@ export function ProfilePage() {
             const token = localStorage.getItem('auth_token');
 
             const response = await fetch(
-                'http://localhost:3001/api/ai-config',
+                'http://localhost:3501/api/ai-config',
                 {
                     method: 'POST',
                     headers: {
@@ -196,7 +196,7 @@ export function ProfilePage() {
         try {
             const token = localStorage.getItem('auth_token');
             const response = await fetch(
-                `http://localhost:3001/api/ai-config/${config.id}/full`,
+                `http://localhost:3501/api/ai-config/${config.id}/full`,
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,

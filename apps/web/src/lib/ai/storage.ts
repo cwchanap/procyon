@@ -32,7 +32,7 @@ export async function loadAIConfig(): Promise<AIConfig> {
         const token = localStorage.getItem('auth_token');
         if (token) {
             const response = await fetch(
-                'http://localhost:3001/api/ai-config',
+                'http://localhost:3501/api/ai-config',
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -51,7 +51,7 @@ export async function loadAIConfig(): Promise<AIConfig> {
                 if (activeConfig && activeConfig.hasApiKey) {
                     // Get the full config with API key
                     const fullConfigResponse = await fetch(
-                        `http://localhost:3001/api/ai-config/${activeConfig.id}/full`,
+                        `http://localhost:3501/api/ai-config/${activeConfig.id}/full`,
                         {
                             headers: {
                                 Authorization: `Bearer ${token}`,

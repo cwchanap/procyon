@@ -13,7 +13,7 @@ export interface AuthResponse {
     user: User;
 }
 
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = 'http://localhost:3501/api';
 
 export function useAuth() {
     const [user, setUser] = useState<User | null>(null);
