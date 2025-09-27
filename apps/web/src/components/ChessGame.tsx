@@ -13,7 +13,6 @@ import { getPossibleMoves } from '../lib/chess/moves';
 import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
 import type { AIConfig } from '../lib/ai/types';
-import { AI_PROVIDERS } from '../lib/ai/types';
 import { AIService } from '../lib/ai/service';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
 
@@ -27,19 +26,16 @@ interface LogicDemo {
     explanation: string;
 }
 
-type UIMode = 'play' | 'tutorial';
+type ChessGameMode = 'tutorial' | 'ai';
 
 const ChessGame: React.FC = () => {
-    const [uiMode, setUIMode] = useState<UIMode>('play');
+    const [gameMode, setGameMode] = useState<ChessGameMode>('ai');
+    const [gameStarted, setGameStarted] = useState(false);
     const [gameState, setGameState] = useState<GameState>(() =>
         createInitialGameState()
     );
     const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
-    const [isGameStarted, setIsGameStarted] = useState(false);
-    const [selectedGameMode, setSelectedGameMode] = useState<{
-        mode: 'human-vs-human' | 'human-vs-ai';
-        aiPlayer?: 'white' | 'black';
-    }>({ mode: 'human-vs-human' });
+    const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
     const [aiConfig, setAIConfig] = useState<AIConfig>(defaultAIConfig);
     const [isDebugMode, setIsDebugMode] = useState(false);
     const [aiDebugMessages, setAiDebugMessages] = useState<
@@ -370,41 +366,59 @@ const ChessGame: React.FC = () => {
 
     // Effect to trigger AI moves
     useEffect(() => {
-        if (isAITurn(gameState) && !gameState.isAiThinking && !isAiPaused) {
+        if (
+            gameMode === 'ai' &&
+            gameState.currentPlayer === aiPlayer &&
+            gameState.status === 'playing' &&
+            !gameState.isAiThinking &&
+            !isAiPaused
+        ) {
             const timer = setTimeout(() => {
                 makeAIMoveAsync();
             }, 1000); // 1 second delay for better UX
 
             return () => clearTimeout(timer);
         }
-    }, [gameState, makeAIMoveAsync, isAiPaused]);
+    }, [gameState, gameMode, aiPlayer, makeAIMoveAsync, isAiPaused]);
 
     // Game mode handlers
-    const selectHumanVsHuman = useCallback(() => {
-        setSelectedGameMode({ mode: 'human-vs-human' });
-    }, []);
+    const toggleToMode = useCallback(
+        (newMode: ChessGameMode) => {
+            setGameMode(newMode);
+            setGameStarted(false);
+            setAiRejectionCount(0);
+            setIsAiPaused(false);
+            setAiDebugMessages([]);
 
-    const selectHumanVsAI = useCallback((aiColor: 'white' | 'black') => {
-        setSelectedGameMode({ mode: 'human-vs-ai', aiPlayer: aiColor });
-    }, []);
-
-    const startGame = useCallback(() => {
-        if (selectedGameMode.mode === 'human-vs-human') {
-            setGameState(createInitialGameState('human-vs-human'));
-        } else if (
-            selectedGameMode.mode === 'human-vs-ai' &&
-            selectedGameMode.aiPlayer
-        ) {
-            setGameState(
-                createInitialGameState('human-vs-ai', selectedGameMode.aiPlayer)
-            );
-        }
-        setIsGameStarted(true);
-    }, [selectedGameMode]);
+            if (newMode === 'tutorial') {
+                const demo = getCurrentDemo();
+                setGameState({
+                    board: demo.board,
+                    currentPlayer: 'white',
+                    status: 'playing',
+                    moveHistory: [],
+                    selectedSquare: null,
+                    possibleMoves: [],
+                    mode: 'human-vs-human',
+                    isAiThinking: false,
+                });
+            } else if (newMode === 'ai') {
+                if (aiConfig.enabled && aiConfig.apiKey) {
+                    setGameState(
+                        createInitialGameState('human-vs-ai', aiPlayer)
+                    );
+                } else {
+                    // AI mode without proper config - default to human vs human
+                    setGameState(createInitialGameState('human-vs-human'));
+                }
+            }
+        },
+        [getCurrentDemo, aiPlayer, aiConfig.enabled, aiConfig.apiKey]
+    );
 
     const handleSquareClick = useCallback(
         (position: Position) => {
-            if (uiMode === 'tutorial') {
+            if (gameMode === 'tutorial') {
                 const demo = getCurrentDemo();
                 const piece = getPieceAt(demo.board, position);
 
@@ -429,9 +443,13 @@ const ChessGame: React.FC = () => {
                     }));
                 }
             } else {
-                // Regular game mode
+                // Regular game mode or AI mode
                 // Prevent moves during AI turn or when AI is thinking
-                if (isAITurn(gameState) || gameState.isAiThinking) {
+                if (
+                    (gameMode === 'ai' &&
+                        gameState.currentPlayer === aiPlayer) ||
+                    gameState.isAiThinking
+                ) {
                     return;
                 }
 
@@ -458,35 +476,33 @@ const ChessGame: React.FC = () => {
                 setGameState(newGameState);
             }
         },
-        [uiMode, gameState, getCurrentDemo]
+        [gameMode, gameState, getCurrentDemo, aiPlayer]
     );
 
     const resetGame = useCallback(() => {
-        setGameState(createInitialGameState());
-        setIsGameStarted(false);
+        if (gameMode === 'ai') {
+            setGameState(createInitialGameState('human-vs-ai', aiPlayer));
+        } else {
+            setGameState(createInitialGameState('human-vs-human'));
+        }
+        setGameStarted(false);
         setAiRejectionCount(0);
         setIsAiPaused(false);
         setAiDebugMessages([]);
-    }, []);
+    }, [gameMode, aiPlayer]);
 
-    const _toggleMode = useCallback(() => {
-        const newMode = uiMode === 'play' ? 'tutorial' : 'play';
-        setUIMode(newMode);
+    // Calculate hasGameStarted before using it in callbacks
+    const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
 
-        if (newMode === 'tutorial') {
-            const demo = getCurrentDemo();
-            setGameState({
-                board: demo.board,
-                currentPlayer: 'white',
-                status: 'playing',
-                moveHistory: [],
-                selectedSquare: null,
-                possibleMoves: [],
-            });
+    const handleStartOrReset = useCallback(() => {
+        if (!hasGameStarted) {
+            // Starting the game
+            setGameStarted(true);
         } else {
-            setGameState(createInitialGameState());
+            // Resetting the game
+            resetGame();
         }
-    }, [uiMode, getCurrentDemo]);
+    }, [hasGameStarted, resetGame]);
 
     const handleDemoChange = useCallback(
         (demoId: string) => {
@@ -505,9 +521,20 @@ const ChessGame: React.FC = () => {
     );
 
     const getStatusMessage = (): string => {
+        const playerName =
+            gameState.currentPlayer === 'white' ? 'White' : 'Black';
+
+        // Add AI/Human indicator in AI mode
+        const playerType =
+            gameMode === 'ai'
+                ? gameState.currentPlayer === aiPlayer
+                    ? '🤖 AI'
+                    : '👤 Human'
+                : '';
+
         switch (gameState.status) {
             case 'check':
-                return `${gameState.currentPlayer === 'white' ? 'White' : 'Black'} is in check!`;
+                return `${playerName} is in check!`;
             case 'checkmate':
                 return `Checkmate! ${gameState.currentPlayer === 'white' ? 'Black' : 'White'} wins!`;
             case 'stalemate':
@@ -515,7 +542,9 @@ const ChessGame: React.FC = () => {
             case 'draw':
                 return 'The game is a draw.';
             default:
-                return `${gameState.currentPlayer === 'white' ? 'White' : 'Black'} to move`;
+                return gameMode === 'ai'
+                    ? `${playerType} ${playerName} to move`
+                    : `${playerName} to move`;
         }
     };
 
@@ -525,67 +554,124 @@ const ChessGame: React.FC = () => {
         gameState.status === 'draw';
 
     const currentBoard =
-        uiMode === 'tutorial' ? getCurrentDemo().board : gameState.board;
+        gameMode === 'tutorial' ? getCurrentDemo().board : gameState.board;
     const currentHighlightSquares =
-        uiMode === 'tutorial' ? getCurrentDemo().highlightSquares : undefined;
+        gameMode === 'tutorial' ? getCurrentDemo().highlightSquares : undefined;
 
     return (
         <div className='flex flex-col items-center gap-6 p-6 max-w-7xl mx-auto'>
             <div className='text-center'>
                 <h1 className='text-4xl font-bold bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 bg-clip-text text-transparent mb-4'>
-                    {uiMode === 'play'
-                        ? 'Chess Game'
-                        : 'Chess Logic & Tutorials'}
+                    {gameMode === 'tutorial'
+                        ? 'Chess Logic & Tutorials'
+                        : 'Chess Game'}
                 </h1>
                 <p className='text-xl text-purple-100 font-medium'>
-                    {uiMode === 'play'
-                        ? getStatusMessage()
-                        : getCurrentDemo().description}
+                    {gameMode === 'tutorial'
+                        ? getCurrentDemo().description
+                        : getStatusMessage()}
                 </p>
             </div>
 
-            {/* Mode Toggle */}
-            <div className='flex gap-4'>
-                <button
-                    onClick={() => {
-                        setUIMode('play');
-                        setGameState(createInitialGameState());
-                    }}
-                    className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                        uiMode === 'play'
-                            ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
-                            : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                    }`}
-                >
-                    🎮 Play Mode
-                </button>
-                <button
-                    onClick={() => {
-                        setUIMode('tutorial');
-                        const demo = getCurrentDemo();
-                        setGameState({
-                            board: demo.board,
-                            currentPlayer: 'white',
-                            status: 'playing',
-                            moveHistory: [],
-                            selectedSquare: null,
-                            possibleMoves: [],
-                            mode: 'human-vs-human',
-                            isAiThinking: false,
-                        });
-                    }}
-                    className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                        uiMode === 'tutorial'
-                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                            : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                    }`}
-                >
-                    📚 Tutorial Mode
-                </button>
-            </div>
+            {/* Mode Toggle - Hide after game starts (except in tutorial mode) */}
+            {(gameMode === 'tutorial' || !hasGameStarted) && (
+                <div className='flex gap-4'>
+                    <button
+                        onClick={() => toggleToMode('tutorial')}
+                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+                            gameMode === 'tutorial'
+                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+                                : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
+                        }`}
+                    >
+                        📚 Tutorial Mode
+                    </button>
+                    <button
+                        onClick={() => toggleToMode('ai')}
+                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+                            gameMode === 'ai'
+                                ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
+                                : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
+                        }`}
+                    >
+                        🤖 AI Mode
+                    </button>
+                </div>
+            )}
+
+            {/* AI Controls */}
+            {gameMode === 'ai' && (
+                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
+                    <div className='flex gap-4 justify-center'>
+                        <select
+                            value={aiPlayer}
+                            onChange={e => {
+                                const newAIPlayer = e.target.value as
+                                    | 'white'
+                                    | 'black';
+                                setAIPlayer(newAIPlayer);
+                                // Only update the AI player setting, don't reset the game
+                                setGameState(prev => ({
+                                    ...prev,
+                                    mode: 'human-vs-ai',
+                                    aiPlayer: newAIPlayer,
+                                }));
+                            }}
+                            className='glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20'
+                        >
+                            <option value='black'>AI plays Black</option>
+                            <option value='white'>AI plays White</option>
+                        </select>
+                    </div>
+
+                    {/* AI Status */}
+                    <div className='text-center'>
+                        {!aiConfig.enabled || !aiConfig.apiKey ? (
+                            <div className='text-yellow-400 text-sm'>
+                                ⚠ AI not configured - Configure API key in
+                                Profile to enable AI gameplay
+                            </div>
+                        ) : (
+                            <>
+                                {gameState.isAiThinking && !isAiPaused && (
+                                    <div className='flex items-center justify-center gap-2 text-cyan-200'>
+                                        <div className='animate-spin w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full'></div>
+                                        AI is thinking...
+                                    </div>
+                                )}
+
+                                {isAiPaused && (
+                                    <div className='text-red-300'>
+                                        🛑 AI Paused ({aiRejectionCount}/5)
+                                    </div>
+                                )}
+
+                                {/* Debug Messages */}
+                                {isDebugMode && aiDebugMessages.length > 0 && (
+                                    <div className='mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10'>
+                                        <h4 className='text-sm font-semibold text-cyan-200 mb-2'>
+                                            AI Debug:
+                                        </h4>
+                                        {aiDebugMessages
+                                            .slice(-3)
+                                            .map((msg, idx) => (
+                                                <div
+                                                    key={`${msg.timestamp}-${idx}`}
+                                                    className='text-xs text-gray-300 font-mono'
+                                                >
+                                                    {msg.message}
+                                                </div>
+                                            ))}
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Tutorial Demo Selector */}
-            {uiMode === 'tutorial' && (
+            {gameMode === 'tutorial' && (
                 <div className='flex flex-wrap gap-3 justify-center max-w-4xl'>
                     {logicDemos.map(demoItem => (
                         <button
@@ -603,185 +689,43 @@ const ChessGame: React.FC = () => {
                 </div>
             )}
 
-            {/* Chess Board - Centered */}
+            {/* Chess Board - Centered, Always visible but input blocked before game start */}
             <div className='flex justify-center'>
-                <ChessBoard
-                    board={currentBoard}
-                    selectedSquare={gameState.selectedSquare}
-                    possibleMoves={gameState.possibleMoves}
-                    onSquareClick={handleSquareClick}
-                    highlightSquares={currentHighlightSquares}
-                />
+                <div
+                    className={`relative ${!hasGameStarted && gameMode !== 'tutorial' ? 'opacity-75' : ''}`}
+                >
+                    <ChessBoard
+                        board={currentBoard}
+                        selectedSquare={gameState.selectedSquare}
+                        possibleMoves={gameState.possibleMoves}
+                        onSquareClick={
+                            hasGameStarted || gameMode === 'tutorial'
+                                ? handleSquareClick
+                                : () => {}
+                        }
+                        highlightSquares={currentHighlightSquares}
+                    />
+                    {!hasGameStarted && gameMode !== 'tutorial' && (
+                        <div className='absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center rounded-lg'>
+                            <div className='bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium'>
+                                Click "Start" to begin playing
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Content Panel - Below Board */}
             <div className='w-full max-w-4xl mx-auto space-y-6'>
-                {uiMode === 'play' ? (
-                    // Play Mode Controls
+                {gameMode === 'ai' ? (
+                    // AI Mode Controls
                     <>
-                        {/* Game Mode Selection */}
-                        {!isGameStarted && (
-                            <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-                                <h3 className='text-xl font-semibold text-white mb-4 text-center'>
-                                    Game Mode
-                                </h3>
-                                <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                                    <button
-                                        onClick={selectHumanVsHuman}
-                                        className={`p-4 rounded-xl border-2 transition-all duration-200 ${
-                                            selectedGameMode.mode ===
-                                            'human-vs-human'
-                                                ? 'border-blue-400 bg-blue-500 bg-opacity-20 text-white'
-                                                : 'border-white border-opacity-20 text-purple-200 hover:border-blue-400'
-                                        }`}
-                                    >
-                                        <div className='text-2xl mb-2'>👥</div>
-                                        <div className='font-medium'>
-                                            Human vs Human
-                                        </div>
-                                        <div className='text-sm opacity-70'>
-                                            Play against a friend
-                                        </div>
-                                    </button>
-
-                                    <button
-                                        onClick={() => selectHumanVsAI('black')}
-                                        className={`p-4 rounded-xl border-2 transition-all duration-200 ${
-                                            selectedGameMode.mode ===
-                                                'human-vs-ai' &&
-                                            selectedGameMode.aiPlayer ===
-                                                'black'
-                                                ? 'border-purple-400 bg-purple-500 bg-opacity-20 text-white'
-                                                : 'border-white border-opacity-20 text-purple-200 hover:border-purple-400'
-                                        }`}
-                                        disabled={
-                                            !aiConfig.enabled ||
-                                            !aiConfig.apiKey
-                                        }
-                                    >
-                                        <div className='text-2xl mb-2'>🤖</div>
-                                        <div className='font-medium'>
-                                            Human vs AI
-                                        </div>
-                                        <div className='text-sm opacity-70'>
-                                            You play as White
-                                        </div>
-                                    </button>
-
-                                    <button
-                                        onClick={() => selectHumanVsAI('white')}
-                                        className={`p-4 rounded-xl border-2 transition-all duration-200 ${
-                                            selectedGameMode.mode ===
-                                                'human-vs-ai' &&
-                                            selectedGameMode.aiPlayer ===
-                                                'white'
-                                                ? 'border-pink-400 bg-pink-500 bg-opacity-20 text-white'
-                                                : 'border-white border-opacity-20 text-purple-200 hover:border-pink-400'
-                                        }`}
-                                        disabled={
-                                            !aiConfig.enabled ||
-                                            !aiConfig.apiKey
-                                        }
-                                    >
-                                        <div className='text-2xl mb-2'>🎯</div>
-                                        <div className='font-medium'>
-                                            AI vs Human
-                                        </div>
-                                        <div className='text-sm opacity-70'>
-                                            You play as Black
-                                        </div>
-                                    </button>
-                                </div>
-
-                                {/* Start Game Button */}
-                                <div className='text-center mt-6'>
-                                    <button
-                                        onClick={startGame}
-                                        disabled={
-                                            selectedGameMode.mode ===
-                                                'human-vs-ai' &&
-                                            (!aiConfig.enabled ||
-                                                !aiConfig.apiKey)
-                                        }
-                                        className='bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed px-8 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
-                                    >
-                                        🎮 Start Game
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* AI Status Panel */}
-                        <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-                            <div className='flex items-start justify-between mb-4'>
-                                <div className='flex items-center gap-3'>
-                                    <div className='text-2xl'>🤖</div>
-                                    <div>
-                                        <h3 className='text-xl font-semibold text-white'>
-                                            AI Opponent
-                                        </h3>
-                                        <p className='text-sm text-purple-200'>
-                                            {aiConfig.enabled && aiConfig.apiKey
-                                                ? `${AI_PROVIDERS[aiConfig.provider]?.name || aiConfig.provider} - ${aiConfig.model}`
-                                                : 'Not configured'}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className='flex flex-col items-end gap-2'>
-                                    {aiConfig.enabled && aiConfig.apiKey ? (
-                                        <p className='text-green-400 text-sm'>
-                                            ✓ AI is ready to play
-                                        </p>
-                                    ) : (
-                                        <p className='text-yellow-400 text-sm'>
-                                            ⚠ Configure AI needed
-                                        </p>
-                                    )}
-
-                                    <div className='flex flex-col gap-2'>
-                                        <button
-                                            onClick={() =>
-                                                (window.location.href =
-                                                    '/profile')
-                                            }
-                                            className='glass-effect px-3 py-1 text-white text-sm font-medium rounded-lg hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
-                                        >
-                                            Manage AI Settings
-                                        </button>
-
-                                        {aiConfig.enabled &&
-                                            aiConfig.apiKey && (
-                                                <button
-                                                    onClick={() =>
-                                                        setIsDebugMode(
-                                                            !isDebugMode
-                                                        )
-                                                    }
-                                                    className={`glass-effect px-3 py-1 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
-                                                        isDebugMode
-                                                            ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
-                                                            : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
-                                                    }`}
-                                                >
-                                                    🐛{' '}
-                                                    {isDebugMode
-                                                        ? 'Debug ON'
-                                                        : 'Debug Mode'}
-                                                </button>
-                                            )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Game Controls */}
                         <div className='flex gap-4 justify-center'>
                             <button
-                                onClick={resetGame}
+                                onClick={handleStartOrReset}
                                 className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
                             >
-                                🆕 New Game
+                                {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
                             </button>
 
                             {isGameOver && (
@@ -792,45 +736,39 @@ const ChessGame: React.FC = () => {
                                     🎮 Play Again
                                 </button>
                             )}
+
+                            {gameMode === 'ai' &&
+                                aiConfig.enabled &&
+                                aiConfig.apiKey && (
+                                    <button
+                                        onClick={() =>
+                                            setIsDebugMode(!isDebugMode)
+                                        }
+                                        className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+                                            isDebugMode
+                                                ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
+                                                : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+                                        }`}
+                                    >
+                                        🐛{' '}
+                                        {isDebugMode
+                                            ? 'Debug ON'
+                                            : 'Debug Mode'}
+                                    </button>
+                                )}
+
+                            {gameMode === 'ai' &&
+                                (!aiConfig.enabled || !aiConfig.apiKey) && (
+                                    <button
+                                        onClick={() =>
+                                            (window.location.href = '/profile')
+                                        }
+                                        className='glass-effect px-4 py-2 text-sm font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-white border-opacity-30 text-white hover:bg-white hover:bg-opacity-20'
+                                    >
+                                        ⚙️ Configure AI
+                                    </button>
+                                )}
                         </div>
-
-                        {/* AI Thinking Indicator */}
-                        {gameState.isAiThinking && !isAiPaused && (
-                            <div className='glass-effect p-4 rounded-xl border border-purple-400 border-opacity-50'>
-                                <div className='flex items-center justify-center gap-3'>
-                                    <div className='animate-spin w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full'></div>
-                                    <span className='text-purple-200'>
-                                        AI is thinking...
-                                    </span>
-                                </div>
-                            </div>
-                        )}
-
-                        {isAiPaused && (
-                            <div className='glass-effect p-4 rounded-xl border border-red-400 bg-red-500 bg-opacity-20'>
-                                <div className='flex items-center justify-center gap-3'>
-                                    <span className='text-2xl'>🛑</span>
-                                    <div className='text-center'>
-                                        <div className='text-red-300 font-semibold'>
-                                            AI Paused
-                                        </div>
-                                        <div className='text-red-200 text-sm'>
-                                            Too many invalid moves (
-                                            {aiRejectionCount}/5)
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                setIsAiPaused(false);
-                                                setAiRejectionCount(0);
-                                            }}
-                                            className='mt-2 bg-green-500 bg-opacity-30 text-green-300 hover:text-white px-3 py-1 rounded text-sm hover:bg-green-500 hover:bg-opacity-50 transition-all'
-                                        >
-                                            Resume AI
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
 
                         {/* Game Instructions */}
                         <div className='text-sm text-purple-200 text-center max-w-md mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
@@ -846,20 +784,12 @@ const ChessGame: React.FC = () => {
                                 <span className='w-3 h-3 border-2 border-red-500 rounded inline-block'></span>
                                 Captures
                             </p>
-                            {gameState.mode === 'human-vs-ai' &&
-                                isGameStarted && (
-                                    <p className='flex items-center justify-center gap-2 pt-2 border-t border-white border-opacity-10'>
-                                        <span>🤖</span>
-                                        Playing against {aiConfig.provider} (
-                                        {aiConfig.model})
-                                    </p>
-                                )}
-                            {isGameStarted && (
+                            {gameMode === 'ai' && (
                                 <p className='flex items-center justify-center gap-2 pt-2 border-t border-white border-opacity-10'>
-                                    <span>🎮</span>
-                                    {selectedGameMode.mode === 'human-vs-human'
-                                        ? 'Human vs Human mode'
-                                        : `${selectedGameMode.aiPlayer === 'white' ? 'AI vs Human' : 'Human vs AI'} mode`}
+                                    <span>🤖</span>
+                                    {aiConfig.enabled && aiConfig.apiKey
+                                        ? `Playing against ${aiConfig.provider} (${aiConfig.model})`
+                                        : 'AI Mode - Configure API key to play against AI'}
                                 </p>
                             )}
                         </div>

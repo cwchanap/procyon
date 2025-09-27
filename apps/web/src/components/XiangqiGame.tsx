@@ -26,10 +26,11 @@ interface XiangqiDemo {
     explanation: string;
 }
 
-type XiangqiGameMode = 'play' | 'tutorial' | 'ai';
+type XiangqiGameMode = 'tutorial' | 'ai';
 
 const XiangqiGame: React.FC = () => {
-    const [gameMode, setGameMode] = useState<XiangqiGameMode>('play');
+    const [gameMode, setGameMode] = useState<XiangqiGameMode>('ai');
+    const [gameStarted, setGameStarted] = useState(false);
     const [gameState, setGameState] = useState<XiangqiGameState>(
         createInitialXiangqiGameState
     );
@@ -250,15 +251,8 @@ const XiangqiGame: React.FC = () => {
                         possibleMoves: [],
                     }));
                 }
-            } else if (
-                gameMode === 'ai' &&
-                gameState.currentPlayer !== aiPlayer
-            ) {
-                // Human player move in AI mode
-                const newGameState = selectSquare(gameState, position);
-                setGameState(newGameState);
-            } else if (gameMode === 'play') {
-                // Human vs human mode
+            } else if (gameMode === 'ai') {
+                // AI mode - handle both human and AI moves
                 const newGameState = selectSquare(gameState, position);
                 setGameState(newGameState);
             }
@@ -268,11 +262,26 @@ const XiangqiGame: React.FC = () => {
 
     const handleResetGame = useCallback(() => {
         setGameState(resetGame());
+        setGameStarted(false);
     }, []);
+
+    // Calculate hasGameStarted before using it in callbacks
+    const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
+
+    const handleStartOrReset = useCallback(() => {
+        if (!hasGameStarted) {
+            // Starting the game
+            setGameStarted(true);
+        } else {
+            // Resetting the game
+            handleResetGame();
+        }
+    }, [hasGameStarted, handleResetGame]);
 
     const toggleToMode = useCallback(
         (newMode: XiangqiGameMode) => {
             setGameMode(newMode);
+            setGameStarted(false);
             setIsAIThinking(false);
             setAIDebugMessages([]);
 
@@ -292,13 +301,6 @@ const XiangqiGame: React.FC = () => {
         },
         [getCurrentDemo]
     );
-
-    const _toggleMode = useCallback(() => {
-        const modes: XiangqiGameMode[] = ['play', 'tutorial', 'ai'];
-        const currentIndex = modes.indexOf(gameMode);
-        const nextMode = modes[(currentIndex + 1) % modes.length];
-        toggleToMode(nextMode);
-    }, [gameMode, toggleToMode]);
 
     const handleDemoChange = useCallback(
         (demoId: string) => {
@@ -359,7 +361,6 @@ const XiangqiGame: React.FC = () => {
         gameState.status === 'checkmate' ||
         gameState.status === 'stalemate' ||
         gameState.status === 'draw';
-
     const canUndo = gameState.moveHistory.length > 0;
 
     const currentBoard =
@@ -382,39 +383,31 @@ const XiangqiGame: React.FC = () => {
                 </p>
             </div>
 
-            {/* Mode Toggle */}
-            <div className='flex gap-4'>
-                <button
-                    onClick={() => toggleToMode('play')}
-                    className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                        gameMode === 'play'
-                            ? 'bg-gradient-to-r from-red-500 to-yellow-500 text-white shadow-lg'
-                            : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                    }`}
-                >
-                    🎮 Play Mode
-                </button>
-                <button
-                    onClick={() => toggleToMode('tutorial')}
-                    className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                        gameMode === 'tutorial'
-                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                            : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                    }`}
-                >
-                    📚 Tutorial Mode
-                </button>
-                <button
-                    onClick={() => toggleToMode('ai')}
-                    className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                        gameMode === 'ai'
-                            ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
-                            : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                    }`}
-                >
-                    🤖 AI Mode
-                </button>
-            </div>
+            {/* Mode Toggle - Hide after game starts (except in tutorial mode) */}
+            {(gameMode === 'tutorial' || !hasGameStarted) && (
+                <div className='flex gap-4'>
+                    <button
+                        onClick={() => toggleToMode('tutorial')}
+                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+                            gameMode === 'tutorial'
+                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+                                : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
+                        }`}
+                    >
+                        📚 Tutorial Mode
+                    </button>
+                    <button
+                        onClick={() => toggleToMode('ai')}
+                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+                            gameMode === 'ai'
+                                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
+                                : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
+                        }`}
+                    >
+                        🤖 AI Mode
+                    </button>
+                </div>
+            )}
 
             {/* AI Controls */}
             {gameMode === 'ai' && (
@@ -480,28 +473,43 @@ const XiangqiGame: React.FC = () => {
                 </div>
             )}
 
-            {/* Chess Board - Centered */}
+            {/* Xiangqi Board - Centered, Always visible but input blocked before game start */}
             <div className='flex justify-center'>
-                <XiangqiBoard
-                    board={currentBoard}
-                    selectedSquare={gameState.selectedSquare}
-                    possibleMoves={gameState.possibleMoves}
-                    onSquareClick={handleSquareClick}
-                    highlightSquares={currentHighlightSquares}
-                />
+                <div
+                    className={`relative ${!hasGameStarted && gameMode !== 'tutorial' ? 'opacity-75' : ''}`}
+                >
+                    <XiangqiBoard
+                        board={currentBoard}
+                        selectedSquare={gameState.selectedSquare}
+                        possibleMoves={gameState.possibleMoves}
+                        onSquareClick={
+                            hasGameStarted || gameMode === 'tutorial'
+                                ? handleSquareClick
+                                : () => {}
+                        }
+                        highlightSquares={currentHighlightSquares}
+                    />
+                    {!hasGameStarted && gameMode !== 'tutorial' && (
+                        <div className='absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center rounded-lg'>
+                            <div className='bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium'>
+                                Click "Start" to begin playing
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Content Panel - Below Board */}
             <div className='w-full max-w-4xl mx-auto space-y-6'>
-                {gameMode === 'play' || gameMode === 'ai' ? (
-                    // Play Mode and AI Mode Controls
+                {gameMode === 'ai' ? (
+                    // AI Mode Controls
                     <>
                         <div className='flex gap-4 flex-wrap justify-center'>
                             <button
-                                onClick={handleResetGame}
+                                onClick={handleStartOrReset}
                                 className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
                             >
-                                🆕 New Game
+                                {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
                             </button>
 
                             <button
