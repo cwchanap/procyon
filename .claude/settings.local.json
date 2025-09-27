@@ -12,7 +12,10 @@
             "mcp__playwright__browser_fill_form",
             "mcp__Context7__resolve-library-id",
             "mcp__Context7__get-library-docs",
-            "mcp__playwright__browser_select_option"
+            "mcp__playwright__browser_select_option",
+            "mcp__chrome-devtools__new_page",
+            "mcp__chrome-devtools__take_snapshot",
+            "mcp__chrome-devtools__list_pages"
         ],
         "deny": [],
         "ask": []
