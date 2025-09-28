@@ -8,7 +8,10 @@
         "start": "astro dev",
         "build": "astro build",
         "preview": "astro preview",
-        "astro": "astro"
+        "astro": "astro",
+        "test": "bun test",
+        "test:watch": "bun test --watch",
+        "test:chess": "bun test src/lib/chess/game.test.ts"
     },
     "dependencies": {
         "@astrojs/react": "^3.6.2",

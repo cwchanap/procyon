@@ -15,6 +15,7 @@ import ShogiBoard from './ShogiBoard';
 import ShogiHand from './ShogiHand';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
+import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
 
 interface ShogiDemo {
     id: string;
@@ -43,7 +44,34 @@ const ShogiGame: React.FC = () => {
     });
     const [aiService] = useState(() => createShogiAI(aiConfig));
     const [isAIThinking, setIsAIThinking] = useState(false);
-    const [aiDebugMessages, setAIDebugMessages] = useState<string[]>([]);
+    const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
+
+    // Helper function to convert move history to debug format
+    const createAIMove = useCallback(
+        (
+            move: string,
+            isAI: boolean,
+            thinking?: string,
+            error?: string
+        ): AIMove => {
+            const moveNumber = gameState.moveHistory.length + 1;
+            const player =
+                gameState.currentPlayer === 'sente'
+                    ? 'Sente (先手)'
+                    : 'Gote (後手)';
+
+            return {
+                moveNumber,
+                player: `${isAI ? '🤖 AI ' : '👤 '}${player}`,
+                move,
+                timestamp: Date.now(),
+                isAI,
+                thinking,
+                error,
+            };
+        },
+        [gameState.moveHistory.length, gameState.currentPlayer]
+    );
 
     const createCustomShogiBoard = useCallback(
         (setup: string): (ShogiPiece | null)[][] => {
@@ -191,18 +219,27 @@ const ShogiGame: React.FC = () => {
     // AI setup and debug callback
     useEffect(() => {
         aiService.setDebugCallback((type, message, _data) => {
-            setAIDebugMessages(prev => [
-                ...prev.slice(-4),
-                `[${type}] ${message}`,
+            const thinking = type === 'ai-thinking' ? message : undefined;
+            const error = type === 'ai-error' ? message : undefined;
+
+            setAIDebugMoves(prev => [
+                ...prev,
+                createAIMove(
+                    type === 'ai-move' ? message : `Debug: ${message}`,
+                    true,
+                    thinking,
+                    error
+                ),
             ]);
         });
         aiService.updateConfig(aiConfig);
-    }, [aiService, aiConfig]);
+    }, [aiService, aiConfig, createAIMove]);
 
     // AI move handling
     useEffect(() => {
         if (
             gameMode === 'ai' &&
+            gameStarted &&
             gameState.currentPlayer === aiPlayer &&
             gameState.status === 'playing' &&
             !isAIThinking
@@ -250,7 +287,7 @@ const ShogiGame: React.FC = () => {
             const timer = setTimeout(makeAIMove, 1000);
             return () => clearTimeout(timer);
         }
-    }, [gameState, gameMode, aiPlayer, aiService, isAIThinking]);
+    }, [gameState, gameMode, gameStarted, aiPlayer, aiService, isAIThinking]);
 
     const algebraicToPosition = useCallback(
         (algebraic: string): ShogiPosition => {
@@ -329,7 +366,8 @@ const ShogiGame: React.FC = () => {
 
     const handleStartOrReset = useCallback(() => {
         if (!hasGameStarted) {
-            // Starting the game
+            // Starting the game - ensure game state is properly initialized
+            setGameState(createInitialGameState());
             setGameStarted(true);
         } else {
             // Resetting the game
@@ -342,7 +380,7 @@ const ShogiGame: React.FC = () => {
             setGameMode(newMode);
             setGameStarted(false);
             setIsAIThinking(false);
-            setAIDebugMessages([]);
+            setAIDebugMoves([]);
 
             if (newMode === 'tutorial') {
                 const demo = getCurrentDemo();
@@ -438,7 +476,7 @@ const ShogiGame: React.FC = () => {
             showModeToggle={showModeToggle}
             inactiveModeClassName='text-orange-100 hover:bg-white hover:bg-opacity-20'
         >
-            {gameMode === 'ai' && (
+            {gameMode === 'ai' && !hasGameStarted && (
                 <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='flex gap-4 justify-center'>
                         <select
@@ -452,7 +490,11 @@ const ShogiGame: React.FC = () => {
                             <option value='sente'>AI plays Sente (先手)</option>
                         </select>
                     </div>
+                </div>
+            )}
 
+            {gameMode === 'ai' && (
+                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='text-center'>
                         {isAIThinking && (
                             <div className='flex items-center justify-center gap-2 text-cyan-200'>
@@ -461,21 +503,10 @@ const ShogiGame: React.FC = () => {
                             </div>
                         )}
 
-                        {aiConfig.debug && aiDebugMessages.length > 0 && (
-                            <div className='mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10'>
-                                <h4 className='text-sm font-semibold text-cyan-200 mb-2'>
-                                    AI Debug:
-                                </h4>
-                                {aiDebugMessages.map((msg, idx) => (
-                                    <div
-                                        key={idx}
-                                        className='text-xs text-gray-300 font-mono'
-                                    >
-                                        {msg}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        <AIDebugDialog
+                            moves={aiDebugMoves}
+                            isVisible={aiConfig.debug}
+                        />
                     </div>
                 </div>
             )}

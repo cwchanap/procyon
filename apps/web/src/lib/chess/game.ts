@@ -87,6 +87,11 @@ export function makeMove(
     setPieceAt(newBoard, from, null);
     setPieceAt(newBoard, to, { ...piece, hasMoved: true });
 
+    // Check if this move would leave the king in check
+    if (isKingInCheck(newBoard, gameState.currentPlayer)) {
+        return null; // Invalid move - would leave king in check
+    }
+
     // Create move record
     const move: Move = {
         from,
@@ -246,7 +251,7 @@ export function isAITurn(gameState: GameState): boolean {
     );
 }
 
-function algebraicToPosition(algebraic: string): Position | null {
+export function algebraicToPosition(algebraic: string): Position | null {
     if (algebraic.length !== 2) return null;
 
     const file = algebraic[0];

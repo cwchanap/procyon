@@ -14,6 +14,7 @@ import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
+import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
 import type { AIConfig } from '../lib/ai/types';
 import { AIService } from '../lib/ai/service';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
@@ -40,16 +41,34 @@ const ChessGame: React.FC = () => {
     const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
     const [aiConfig, setAIConfig] = useState<AIConfig>(defaultAIConfig);
     const [isDebugMode, setIsDebugMode] = useState(false);
-    const [aiDebugMessages, setAiDebugMessages] = useState<
-        Array<{
-            type: 'ai-thinking' | 'ai-move' | 'ai-error' | 'ai-debug';
-            message: string;
-            timestamp: number;
-            data?: unknown;
-        }>
-    >([]);
+    const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
     const [aiRejectionCount, setAiRejectionCount] = useState(0);
     const [isAiPaused, setIsAiPaused] = useState(false);
+
+    // Helper function to convert move history to debug format
+    const createAIMove = useCallback(
+        (
+            move: string,
+            isAI: boolean,
+            thinking?: string,
+            error?: string
+        ): AIMove => {
+            const moveNumber = Math.floor(gameState.moveHistory.length / 2) + 1;
+            const player =
+                gameState.currentPlayer === 'white' ? 'White' : 'Black';
+
+            return {
+                moveNumber,
+                player: `${isAI ? '🤖 AI ' : '👤 '}${player}`,
+                move,
+                timestamp: Date.now(),
+                isAI,
+                thinking,
+                error,
+            };
+        },
+        [gameState.moveHistory.length, gameState.currentPlayer]
+    );
     const [aiService] = useState<AIService>(
         () => new AIService(defaultAIConfig)
     );
@@ -70,23 +89,22 @@ const ChessGame: React.FC = () => {
 
         // Set up debug callback
         if (isDebugMode) {
-            aiService.setDebugCallback((type, message, data) => {
-                setAiDebugMessages(prev => [
+            aiService.setDebugCallback((type, message, _data) => {
+                const thinking = type === 'ai-thinking' ? message : undefined;
+                const error = type === 'ai-error' ? message : undefined;
+
+                setAiDebugMoves(prev => [
                     ...prev,
-                    {
-                        type: type as
-                            | 'ai-thinking'
-                            | 'ai-move'
-                            | 'ai-error'
-                            | 'ai-debug',
-                        message,
-                        timestamp: Date.now(),
-                        data,
-                    },
+                    createAIMove(
+                        type === 'ai-move' ? message : `Debug: ${message}`,
+                        true,
+                        thinking,
+                        error
+                    ),
                 ]);
             });
         }
-    }, [isDebugMode, aiConfig, aiService]);
+    }, [isDebugMode, aiConfig, aiService, createAIMove]);
 
     const createCustomBoard = useCallback(
         (setup: string): (ChessPiece | null)[][] => {
@@ -265,14 +283,13 @@ const ChessGame: React.FC = () => {
 
             if (aiResponse && aiResponse.move) {
                 if (isDebugMode) {
-                    setAiDebugMessages(prev => [
+                    setAiDebugMoves(prev => [
                         ...prev,
-                        {
-                            type: 'ai-debug',
-                            message: `🎮 Attempting move: ${aiResponse.move.from} → ${aiResponse.move.to}`,
-                            timestamp: Date.now(),
-                            data: aiResponse,
-                        },
+                        createAIMove(
+                            `${aiResponse.move.from} → ${aiResponse.move.to}`,
+                            true,
+                            `Attempting move: ${aiResponse.move.from} → ${aiResponse.move.to}`
+                        ),
                     ]);
                 }
 
@@ -291,17 +308,13 @@ const ChessGame: React.FC = () => {
                     setGameState(updatedGameState);
 
                     if (isDebugMode) {
-                        setAiDebugMessages(prev => [
-                            ...prev,
-                            {
-                                type: 'ai-move',
-                                message: `✅ Move successful! ${aiResponse.move.from} → ${aiResponse.move.to}`,
-                                timestamp: Date.now(),
-                                data: {
-                                    move: aiResponse.move,
-                                    newStatus: updatedGameState.status,
-                                },
-                            },
+                        setAiDebugMoves(prev => [
+                            ...prev.slice(0, -1), // Remove the "attempting" move
+                            createAIMove(
+                                `${aiResponse.move.from} → ${aiResponse.move.to}`,
+                                true,
+                                `✅ Move successful! Status: ${updatedGameState.status}`
+                            ),
                         ]);
                     }
                 } else {
@@ -310,19 +323,14 @@ const ChessGame: React.FC = () => {
                     setAiRejectionCount(newRejectionCount);
 
                     if (isDebugMode) {
-                        setAiDebugMessages(prev => [
-                            ...prev,
-                            {
-                                type: 'ai-error',
-                                message: `❌ Move REJECTED (${newRejectionCount}/5): ${aiResponse.move.from} → ${aiResponse.move.to}`,
-                                timestamp: Date.now(),
-                                data: {
-                                    suggestedMove: aiResponse.move,
-                                    currentPlayer: gameState.currentPlayer,
-                                    gameStatus: gameState.status,
-                                    rejectionCount: newRejectionCount,
-                                },
-                            },
+                        setAiDebugMoves(prev => [
+                            ...prev.slice(0, -1), // Remove the "attempting" move
+                            createAIMove(
+                                `${aiResponse.move.from} → ${aiResponse.move.to}`,
+                                true,
+                                undefined,
+                                `❌ Move REJECTED (${newRejectionCount}/5)`
+                            ),
                         ]);
                     }
 
@@ -330,30 +338,28 @@ const ChessGame: React.FC = () => {
                     if (newRejectionCount >= 5) {
                         setIsAiPaused(true);
                         if (isDebugMode) {
-                            setAiDebugMessages(prev => [
+                            setAiDebugMoves(prev => [
                                 ...prev,
-                                {
-                                    type: 'ai-error',
-                                    message: `🛑 AI PAUSED - Too many rejections (5/5). Game paused to prevent infinite loop.`,
-                                    timestamp: Date.now(),
-                                    data: {
-                                        finalRejectionCount: newRejectionCount,
-                                    },
-                                },
+                                createAIMove(
+                                    'AI PAUSED',
+                                    true,
+                                    undefined,
+                                    `🛑 AI PAUSED - Too many rejections (5/5). Game paused to prevent infinite loop.`
+                                ),
                             ]);
                         }
                     }
                 }
             } else {
                 if (isDebugMode) {
-                    setAiDebugMessages(prev => [
+                    setAiDebugMoves(prev => [
                         ...prev,
-                        {
-                            type: 'ai-error',
-                            message: `❌ No valid AI response received`,
-                            timestamp: Date.now(),
-                            data: aiResponse,
-                        },
+                        createAIMove(
+                            'No response',
+                            true,
+                            undefined,
+                            `❌ No valid AI response received`
+                        ),
                     ]);
                 }
             }
@@ -369,6 +375,7 @@ const ChessGame: React.FC = () => {
     useEffect(() => {
         if (
             gameMode === 'ai' &&
+            gameStarted &&
             gameState.currentPlayer === aiPlayer &&
             gameState.status === 'playing' &&
             !gameState.isAiThinking &&
@@ -380,7 +387,14 @@ const ChessGame: React.FC = () => {
 
             return () => clearTimeout(timer);
         }
-    }, [gameState, gameMode, aiPlayer, makeAIMoveAsync, isAiPaused]);
+    }, [
+        gameState,
+        gameMode,
+        gameStarted,
+        aiPlayer,
+        makeAIMoveAsync,
+        isAiPaused,
+    ]);
 
     // Game mode handlers
     const toggleToMode = useCallback(
@@ -389,7 +403,7 @@ const ChessGame: React.FC = () => {
             setGameStarted(false);
             setAiRejectionCount(0);
             setIsAiPaused(false);
-            setAiDebugMessages([]);
+            setAiDebugMoves([]);
 
             if (newMode === 'tutorial') {
                 const demo = getCurrentDemo();
@@ -468,6 +482,25 @@ const ChessGame: React.FC = () => {
                             status: getGameStatus(newGameState),
                         };
                         setGameState(updatedGameState);
+
+                        // Track human move in debug
+                        if (isDebugMode && gameMode === 'ai') {
+                            const fromSquare =
+                                String.fromCharCode(
+                                    97 + gameState.selectedSquare.col
+                                ) +
+                                (8 - gameState.selectedSquare.row);
+                            const toSquare =
+                                String.fromCharCode(97 + position.col) +
+                                (8 - position.row);
+                            setAiDebugMoves(prev => [
+                                ...prev,
+                                createAIMove(
+                                    `${fromSquare} → ${toSquare}`,
+                                    false
+                                ),
+                            ]);
+                        }
                         return;
                     }
                 }
@@ -477,7 +510,14 @@ const ChessGame: React.FC = () => {
                 setGameState(newGameState);
             }
         },
-        [gameMode, gameState, getCurrentDemo, aiPlayer]
+        [
+            gameMode,
+            gameState,
+            getCurrentDemo,
+            aiPlayer,
+            isDebugMode,
+            createAIMove,
+        ]
     );
 
     const resetGame = useCallback(() => {
@@ -489,7 +529,7 @@ const ChessGame: React.FC = () => {
         setGameStarted(false);
         setAiRejectionCount(0);
         setIsAiPaused(false);
-        setAiDebugMessages([]);
+        setAiDebugMoves([]);
     }, [gameMode, aiPlayer]);
 
     // Calculate hasGameStarted before using it in callbacks
@@ -497,13 +537,18 @@ const ChessGame: React.FC = () => {
 
     const handleStartOrReset = useCallback(() => {
         if (!hasGameStarted) {
-            // Starting the game
+            // Starting the game - ensure game state is properly initialized
+            if (gameMode === 'ai') {
+                setGameState(createInitialGameState('human-vs-ai', aiPlayer));
+            } else {
+                setGameState(createInitialGameState('human-vs-human'));
+            }
             setGameStarted(true);
         } else {
             // Resetting the game
             resetGame();
         }
-    }, [hasGameStarted, resetGame]);
+    }, [hasGameStarted, resetGame, gameMode, aiPlayer]);
 
     const handleDemoChange = useCallback(
         (demoId: string) => {
@@ -578,7 +623,7 @@ const ChessGame: React.FC = () => {
             showModeToggle={showModeToggle}
             inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
         >
-            {gameMode === 'ai' && (
+            {gameMode === 'ai' && !hasGameStarted && (
                 <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='flex gap-4 justify-center'>
                         <select
@@ -588,11 +633,6 @@ const ChessGame: React.FC = () => {
                                     | 'white'
                                     | 'black';
                                 setAIPlayer(newAIPlayer);
-                                setGameState(prev => ({
-                                    ...prev,
-                                    mode: 'human-vs-ai',
-                                    aiPlayer: newAIPlayer,
-                                }));
                             }}
                             className='glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20'
                         >
@@ -607,6 +647,21 @@ const ChessGame: React.FC = () => {
                                 ⚠ AI not configured - Configure API key in
                                 Profile to enable AI gameplay
                             </div>
+                        ) : null}
+                    </div>
+                </div>
+            )}
+
+            {gameMode === 'ai' && (
+                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
+                    <div className='text-center'>
+                        {!aiConfig.enabled || !aiConfig.apiKey ? (
+                            hasGameStarted && (
+                                <div className='text-yellow-400 text-sm'>
+                                    ⚠ AI not configured - Configure API key in
+                                    Profile to enable AI gameplay
+                                </div>
+                            )
                         ) : (
                             <>
                                 {gameState.isAiThinking && !isAiPaused && (
@@ -622,23 +677,10 @@ const ChessGame: React.FC = () => {
                                     </div>
                                 )}
 
-                                {isDebugMode && aiDebugMessages.length > 0 && (
-                                    <div className='mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10'>
-                                        <h4 className='text-sm font-semibold text-cyan-200 mb-2'>
-                                            AI Debug:
-                                        </h4>
-                                        {aiDebugMessages
-                                            .slice(-3)
-                                            .map((msg, idx) => (
-                                                <div
-                                                    key={`${msg.timestamp}-${idx}`}
-                                                    className='text-xs text-gray-300 font-mono'
-                                                >
-                                                    {msg.message}
-                                                </div>
-                                            ))}
-                                    </div>
-                                )}
+                                <AIDebugDialog
+                                    moves={aiDebugMoves}
+                                    isVisible={isDebugMode}
+                                />
                             </>
                         )}
                     </div>

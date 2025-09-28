@@ -17,6 +17,7 @@ import type { AIConfig } from '../lib/ai/types';
 import XiangqiBoard from './XiangqiBoard';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
+import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
 
 interface XiangqiDemo {
     id: string;
@@ -45,7 +46,34 @@ const XiangqiGame: React.FC = () => {
     });
     const [aiService] = useState(() => createXiangqiAI(aiConfig));
     const [isAIThinking, setIsAIThinking] = useState(false);
-    const [aiDebugMessages, setAIDebugMessages] = useState<string[]>([]);
+    const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
+
+    // Helper function to convert move history to debug format
+    const createAIMove = useCallback(
+        (
+            move: string,
+            isAI: boolean,
+            thinking?: string,
+            error?: string
+        ): AIMove => {
+            const moveNumber = gameState.moveHistory.length + 1;
+            const player =
+                gameState.currentPlayer === 'red'
+                    ? 'Red (红方)'
+                    : 'Black (黑方)';
+
+            return {
+                moveNumber,
+                player: `${isAI ? '🤖 AI ' : '👤 '}${player}`,
+                move,
+                timestamp: Date.now(),
+                isAI,
+                thinking,
+                error,
+            };
+        },
+        [gameState.moveHistory.length, gameState.currentPlayer]
+    );
 
     const createCustomXiangqiBoard = useCallback(
         (setup: string): (XiangqiPiece | null)[][] => {
@@ -168,18 +196,27 @@ const XiangqiGame: React.FC = () => {
     // AI setup and debug callback
     useEffect(() => {
         aiService.setDebugCallback((type, message, _data) => {
-            setAIDebugMessages(prev => [
-                ...prev.slice(-4),
-                `[${type}] ${message}`,
+            const thinking = type === 'ai-thinking' ? message : undefined;
+            const error = type === 'ai-error' ? message : undefined;
+
+            setAIDebugMoves(prev => [
+                ...prev,
+                createAIMove(
+                    type === 'ai-move' ? message : `Debug: ${message}`,
+                    true,
+                    thinking,
+                    error
+                ),
             ]);
         });
         aiService.updateConfig(aiConfig);
-    }, [aiService, aiConfig]);
+    }, [aiService, aiConfig, createAIMove]);
 
     // AI move handling
     useEffect(() => {
         if (
             gameMode === 'ai' &&
+            gameStarted &&
             gameState.currentPlayer === aiPlayer &&
             gameState.status === 'playing' &&
             !isAIThinking
@@ -212,7 +249,7 @@ const XiangqiGame: React.FC = () => {
             const timer = setTimeout(makeAIMove, 1000);
             return () => clearTimeout(timer);
         }
-    }, [gameState, gameMode, aiPlayer, aiService, isAIThinking]);
+    }, [gameState, gameMode, gameStarted, aiPlayer, aiService, isAIThinking]);
 
     const algebraicToPosition = useCallback(
         (algebraic: string): XiangqiPosition => {
@@ -272,7 +309,8 @@ const XiangqiGame: React.FC = () => {
 
     const handleStartOrReset = useCallback(() => {
         if (!hasGameStarted) {
-            // Starting the game
+            // Starting the game - ensure game state is properly initialized
+            setGameState(resetGame());
             setGameStarted(true);
         } else {
             // Resetting the game
@@ -285,7 +323,7 @@ const XiangqiGame: React.FC = () => {
             setGameMode(newMode);
             setGameStarted(false);
             setIsAIThinking(false);
-            setAIDebugMessages([]);
+            setAIDebugMoves([]);
 
             if (newMode === 'tutorial') {
                 const demo = getCurrentDemo();
@@ -391,7 +429,7 @@ const XiangqiGame: React.FC = () => {
             showModeToggle={showModeToggle}
             inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
         >
-            {gameMode === 'ai' && (
+            {gameMode === 'ai' && !hasGameStarted && (
                 <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='flex gap-4 justify-center'>
                         <select
@@ -405,7 +443,11 @@ const XiangqiGame: React.FC = () => {
                             <option value='red'>AI plays Red (红方)</option>
                         </select>
                     </div>
+                </div>
+            )}
 
+            {gameMode === 'ai' && (
+                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='text-center'>
                         {isAIThinking && (
                             <div className='flex items-center justify-center gap-2 text-cyan-200'>
@@ -414,21 +456,10 @@ const XiangqiGame: React.FC = () => {
                             </div>
                         )}
 
-                        {aiConfig.debug && aiDebugMessages.length > 0 && (
-                            <div className='mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10'>
-                                <h4 className='text-sm font-semibold text-cyan-200 mb-2'>
-                                    AI Debug:
-                                </h4>
-                                {aiDebugMessages.map((msg, idx) => (
-                                    <div
-                                        key={idx}
-                                        className='text-xs text-gray-300 font-mono'
-                                    >
-                                        {msg}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        <AIDebugDialog
+                            moves={aiDebugMoves}
+                            isVisible={aiConfig.debug}
+                        />
                     </div>
                 </div>
             )}
