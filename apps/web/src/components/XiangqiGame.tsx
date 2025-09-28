@@ -15,6 +15,8 @@ import { createInitialXiangqiBoard, getPieceAt } from '../lib/xiangqi/board';
 import { createXiangqiAI, defaultAIConfig } from '../lib/ai';
 import type { AIConfig } from '../lib/ai/types';
 import XiangqiBoard from './XiangqiBoard';
+import GameScaffold from './game/GameScaffold';
+import GameStartOverlay from './game/GameStartOverlay';
 
 interface XiangqiDemo {
     id: string;
@@ -368,48 +370,27 @@ const XiangqiGame: React.FC = () => {
     const currentHighlightSquares =
         gameMode === 'tutorial' ? getCurrentDemo().highlightSquares : undefined;
 
+    const title =
+        gameMode === 'tutorial'
+            ? 'Xiangqi Logic & Tutorials'
+            : 'Chinese Chess (象棋)';
+    const subtitle =
+        gameMode === 'tutorial'
+            ? getCurrentDemo().description
+            : getStatusMessage();
+    const showModeToggle = gameMode === 'tutorial' || !hasGameStarted;
+
     return (
-        <div className='flex flex-col items-center gap-6 p-6 max-w-7xl mx-auto'>
-            <div className='text-center'>
-                <h1 className='text-4xl font-bold bg-gradient-to-r from-red-400 via-yellow-400 to-red-600 bg-clip-text text-transparent mb-4'>
-                    {gameMode === 'tutorial'
-                        ? 'Xiangqi Logic & Tutorials'
-                        : 'Chinese Chess (象棋)'}
-                </h1>
-                <p className='text-xl text-purple-100 font-medium'>
-                    {gameMode === 'tutorial'
-                        ? getCurrentDemo().description
-                        : getStatusMessage()}
-                </p>
-            </div>
-
-            {/* Mode Toggle - Hide after game starts (except in tutorial mode) */}
-            {(gameMode === 'tutorial' || !hasGameStarted) && (
-                <div className='flex gap-4'>
-                    <button
-                        onClick={() => toggleToMode('tutorial')}
-                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                            gameMode === 'tutorial'
-                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                                : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                        }`}
-                    >
-                        📚 Tutorial Mode
-                    </button>
-                    <button
-                        onClick={() => toggleToMode('ai')}
-                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                            gameMode === 'ai'
-                                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
-                                : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                        }`}
-                    >
-                        🤖 AI Mode
-                    </button>
-                </div>
-            )}
-
-            {/* AI Controls */}
+        <GameScaffold
+            title={title}
+            subtitle={subtitle}
+            titleGradientClassName='bg-gradient-to-r from-red-400 via-yellow-400 to-red-600'
+            subtitleClassName='text-purple-100'
+            currentMode={gameMode}
+            onModeChange={toggleToMode}
+            showModeToggle={showModeToggle}
+            inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
+        >
             {gameMode === 'ai' && (
                 <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='flex gap-4 justify-center'>
@@ -425,7 +406,6 @@ const XiangqiGame: React.FC = () => {
                         </select>
                     </div>
 
-                    {/* AI Status */}
                     <div className='text-center'>
                         {isAIThinking && (
                             <div className='flex items-center justify-center gap-2 text-cyan-200'>
@@ -434,7 +414,6 @@ const XiangqiGame: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Debug Messages */}
                         {aiConfig.debug && aiDebugMessages.length > 0 && (
                             <div className='mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10'>
                                 <h4 className='text-sm font-semibold text-cyan-200 mb-2'>
@@ -454,7 +433,6 @@ const XiangqiGame: React.FC = () => {
                 </div>
             )}
 
-            {/* Tutorial Demo Selector */}
             {gameMode === 'tutorial' && (
                 <div className='flex flex-wrap gap-3 justify-center max-w-4xl'>
                     {xiangqiDemos.map(demoItem => (
@@ -463,7 +441,7 @@ const XiangqiGame: React.FC = () => {
                             onClick={() => handleDemoChange(demoItem.id)}
                             className={`glass-effect px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
                                 currentDemo === demoItem.id
-                                    ? 'bg-gradient-to-r from-red-500 to-yellow-500 text-white shadow-lg'
+                                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
                                     : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
                             }`}
                         >
@@ -473,36 +451,22 @@ const XiangqiGame: React.FC = () => {
                 </div>
             )}
 
-            {/* Xiangqi Board - Centered, Always visible but input blocked before game start */}
             <div className='flex justify-center'>
-                <div
-                    className={`relative ${!hasGameStarted && gameMode !== 'tutorial' ? 'opacity-75' : ''}`}
+                <GameStartOverlay
+                    active={!hasGameStarted && gameMode !== 'tutorial'}
                 >
                     <XiangqiBoard
                         board={currentBoard}
                         selectedSquare={gameState.selectedSquare}
                         possibleMoves={gameState.possibleMoves}
-                        onSquareClick={
-                            hasGameStarted || gameMode === 'tutorial'
-                                ? handleSquareClick
-                                : () => {}
-                        }
+                        onSquareClick={handleSquareClick}
                         highlightSquares={currentHighlightSquares}
                     />
-                    {!hasGameStarted && gameMode !== 'tutorial' && (
-                        <div className='absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center rounded-lg'>
-                            <div className='bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium'>
-                                Click "Start" to begin playing
-                            </div>
-                        </div>
-                    )}
-                </div>
+                </GameStartOverlay>
             </div>
 
-            {/* Content Panel - Below Board */}
             <div className='w-full max-w-4xl mx-auto space-y-6'>
                 {gameMode === 'ai' ? (
-                    // AI Mode Controls
                     <>
                         <div className='flex gap-4 flex-wrap justify-center'>
                             <button
@@ -563,7 +527,6 @@ const XiangqiGame: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Move history */}
                         {gameState.moveHistory.length > 0 && (
                             <div className='text-sm text-purple-200 text-center max-w-md mx-auto bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
                                 <h3 className='font-semibold mb-2'>
@@ -582,45 +545,11 @@ const XiangqiGame: React.FC = () => {
                                             const piece = move.piece;
                                             const symbol =
                                                 piece.color === 'red'
-                                                    ? piece.type === 'king'
-                                                        ? '帅'
-                                                        : piece.type ===
-                                                            'advisor'
-                                                          ? '仕'
-                                                          : piece.type ===
-                                                              'elephant'
-                                                            ? '相'
-                                                            : piece.type ===
-                                                                'horse'
-                                                              ? '马'
-                                                              : piece.type ===
-                                                                  'chariot'
-                                                                ? '车'
-                                                                : piece.type ===
-                                                                    'cannon'
-                                                                  ? '炮'
-                                                                  : '兵'
-                                                    : piece.type === 'king'
-                                                      ? '将'
-                                                      : piece.type === 'advisor'
-                                                        ? '士'
-                                                        : piece.type ===
-                                                            'elephant'
-                                                          ? '象'
-                                                          : piece.type ===
-                                                              'horse'
-                                                            ? '马'
-                                                            : piece.type ===
-                                                                'chariot'
-                                                              ? '车'
-                                                              : piece.type ===
-                                                                  'cannon'
-                                                                ? '炮'
-                                                                : '卒';
-
+                                                    ? '红'
+                                                    : '黑';
                                             return (
                                                 <div
-                                                    key={index}
+                                                    key={`${moveNum}-${move.from.row}-${move.from.col}`}
                                                     className='flex justify-between text-xs'
                                                 >
                                                     <span>{moveNum}.</span>
@@ -646,7 +575,6 @@ const XiangqiGame: React.FC = () => {
                         )}
                     </>
                 ) : (
-                    // Tutorial Mode Content
                     <>
                         <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
                             <h2 className='text-2xl font-bold text-white mb-3'>
@@ -712,7 +640,7 @@ const XiangqiGame: React.FC = () => {
                     </>
                 )}
             </div>
-        </div>
+        </GameScaffold>
     );
 };
 

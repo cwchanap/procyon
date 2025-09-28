@@ -12,6 +12,8 @@ import {
 import { getPossibleMoves } from '../lib/chess/moves';
 import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
+import GameScaffold from './game/GameScaffold';
+import GameStartOverlay from './game/GameStartOverlay';
 import type { AIConfig } from '../lib/ai/types';
 import { AIService } from '../lib/ai/service';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
@@ -48,7 +50,6 @@ const ChessGame: React.FC = () => {
     >([]);
     const [aiRejectionCount, setAiRejectionCount] = useState(0);
     const [isAiPaused, setIsAiPaused] = useState(false);
-    const [isChatExpanded, setIsChatExpanded] = useState(false);
     const [aiService] = useState<AIService>(
         () => new AIService(defaultAIConfig)
     );
@@ -558,48 +559,25 @@ const ChessGame: React.FC = () => {
     const currentHighlightSquares =
         gameMode === 'tutorial' ? getCurrentDemo().highlightSquares : undefined;
 
+    const title =
+        gameMode === 'tutorial' ? 'Chess Logic & Tutorials' : 'Chess Game';
+    const subtitle =
+        gameMode === 'tutorial'
+            ? getCurrentDemo().description
+            : getStatusMessage();
+    const showModeToggle = gameMode === 'tutorial' || !hasGameStarted;
+
     return (
-        <div className='flex flex-col items-center gap-6 p-6 max-w-7xl mx-auto'>
-            <div className='text-center'>
-                <h1 className='text-4xl font-bold bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300 bg-clip-text text-transparent mb-4'>
-                    {gameMode === 'tutorial'
-                        ? 'Chess Logic & Tutorials'
-                        : 'Chess Game'}
-                </h1>
-                <p className='text-xl text-purple-100 font-medium'>
-                    {gameMode === 'tutorial'
-                        ? getCurrentDemo().description
-                        : getStatusMessage()}
-                </p>
-            </div>
-
-            {/* Mode Toggle - Hide after game starts (except in tutorial mode) */}
-            {(gameMode === 'tutorial' || !hasGameStarted) && (
-                <div className='flex gap-4'>
-                    <button
-                        onClick={() => toggleToMode('tutorial')}
-                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                            gameMode === 'tutorial'
-                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                                : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                        }`}
-                    >
-                        📚 Tutorial Mode
-                    </button>
-                    <button
-                        onClick={() => toggleToMode('ai')}
-                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                            gameMode === 'ai'
-                                ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
-                                : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                        }`}
-                    >
-                        🤖 AI Mode
-                    </button>
-                </div>
-            )}
-
-            {/* AI Controls */}
+        <GameScaffold
+            title={title}
+            subtitle={subtitle}
+            titleGradientClassName='bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300'
+            subtitleClassName='text-purple-100'
+            currentMode={gameMode}
+            onModeChange={toggleToMode}
+            showModeToggle={showModeToggle}
+            inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
+        >
             {gameMode === 'ai' && (
                 <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='flex gap-4 justify-center'>
@@ -610,7 +588,6 @@ const ChessGame: React.FC = () => {
                                     | 'white'
                                     | 'black';
                                 setAIPlayer(newAIPlayer);
-                                // Only update the AI player setting, don't reset the game
                                 setGameState(prev => ({
                                     ...prev,
                                     mode: 'human-vs-ai',
@@ -624,7 +601,6 @@ const ChessGame: React.FC = () => {
                         </select>
                     </div>
 
-                    {/* AI Status */}
                     <div className='text-center'>
                         {!aiConfig.enabled || !aiConfig.apiKey ? (
                             <div className='text-yellow-400 text-sm'>
@@ -646,7 +622,6 @@ const ChessGame: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* Debug Messages */}
                                 {isDebugMode && aiDebugMessages.length > 0 && (
                                     <div className='mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10'>
                                         <h4 className='text-sm font-semibold text-cyan-200 mb-2'>
@@ -670,7 +645,6 @@ const ChessGame: React.FC = () => {
                 </div>
             )}
 
-            {/* Tutorial Demo Selector */}
             {gameMode === 'tutorial' && (
                 <div className='flex flex-wrap gap-3 justify-center max-w-4xl'>
                     {logicDemos.map(demoItem => (
@@ -689,36 +663,22 @@ const ChessGame: React.FC = () => {
                 </div>
             )}
 
-            {/* Chess Board - Centered, Always visible but input blocked before game start */}
             <div className='flex justify-center'>
-                <div
-                    className={`relative ${!hasGameStarted && gameMode !== 'tutorial' ? 'opacity-75' : ''}`}
+                <GameStartOverlay
+                    active={!hasGameStarted && gameMode !== 'tutorial'}
                 >
                     <ChessBoard
                         board={currentBoard}
                         selectedSquare={gameState.selectedSquare}
                         possibleMoves={gameState.possibleMoves}
-                        onSquareClick={
-                            hasGameStarted || gameMode === 'tutorial'
-                                ? handleSquareClick
-                                : () => {}
-                        }
+                        onSquareClick={handleSquareClick}
                         highlightSquares={currentHighlightSquares}
                     />
-                    {!hasGameStarted && gameMode !== 'tutorial' && (
-                        <div className='absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center rounded-lg'>
-                            <div className='bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium'>
-                                Click "Start" to begin playing
-                            </div>
-                        </div>
-                    )}
-                </div>
+                </GameStartOverlay>
             </div>
 
-            {/* Content Panel - Below Board */}
             <div className='w-full max-w-4xl mx-auto space-y-6'>
                 {gameMode === 'ai' ? (
-                    // AI Mode Controls
                     <>
                         <div className='flex gap-4 justify-center'>
                             <button
@@ -770,7 +730,6 @@ const ChessGame: React.FC = () => {
                                 )}
                         </div>
 
-                        {/* Game Instructions */}
                         <div className='text-sm text-purple-200 text-center max-w-md mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
                             <p className='flex items-center justify-center gap-2'>
                                 <span>🖱️</span>
@@ -795,7 +754,6 @@ const ChessGame: React.FC = () => {
                         </div>
                     </>
                 ) : (
-                    // Tutorial Mode Content
                     <>
                         <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
                             <h2 className='text-2xl font-bold text-white mb-3'>
@@ -836,149 +794,31 @@ const ChessGame: React.FC = () => {
                         <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
                             <h3 className='text-xl font-semibold text-white mb-3 flex items-center gap-2'>
                                 <span>💡</span>
-                                Chess Wisdom
+                                Chess Tips
                             </h3>
                             <div className='space-y-2 text-purple-200 text-sm'>
                                 <p>
-                                    "Control the center squares - they're the
-                                    most valuable real estate on the board."
+                                    "Control the center and develop your pieces
+                                    early."
                                 </p>
                                 <p>
-                                    "Develop your pieces before launching
-                                    attacks - teamwork wins games."
+                                    "Castle early to protect your king and
+                                    connect your rooks."
                                 </p>
                                 <p>
-                                    "Always think three moves ahead: your move,
-                                    opponent's response, your follow-up."
+                                    "Look for forks, pins, and skewers to gain
+                                    material advantages."
                                 </p>
                                 <p>
-                                    "King safety is paramount - a exposed king
-                                    is a losing king."
+                                    "Always consider your opponent's best move
+                                    before making yours."
                                 </p>
                             </div>
                         </div>
                     </>
                 )}
             </div>
-
-            {/* AI Debug Chat - Fixed Position with Expandable Option */}
-            {isDebugMode && (aiDebugMessages.length > 0 || isAiPaused) && (
-                <div
-                    className={`fixed bottom-4 right-4 bg-black bg-opacity-90 border border-yellow-400 rounded-lg overflow-hidden z-50 transition-all duration-300 ${
-                        isChatExpanded
-                            ? 'w-[600px] max-h-[500px]'
-                            : 'w-96 max-h-64'
-                    }`}
-                >
-                    <div className='bg-yellow-500 bg-opacity-20 px-3 py-2 border-b border-yellow-400'>
-                        <h4 className='text-yellow-300 text-sm font-semibold flex items-center gap-2'>
-                            🐛 AI Debug Chat
-                            {isAiPaused && (
-                                <span className='bg-red-500 bg-opacity-30 text-red-300 px-2 py-1 rounded text-xs'>
-                                    🛑 PAUSED ({aiRejectionCount}/5)
-                                </span>
-                            )}
-                            <div className='flex items-center gap-1 ml-auto'>
-                                <button
-                                    onClick={() =>
-                                        setIsChatExpanded(!isChatExpanded)
-                                    }
-                                    className='text-xs text-yellow-200 hover:text-white px-2 py-1 rounded hover:bg-yellow-500 hover:bg-opacity-20'
-                                    title={
-                                        isChatExpanded ? 'Collapse' : 'Expand'
-                                    }
-                                >
-                                    {isChatExpanded ? '📉' : '📈'}
-                                </button>
-                                <button
-                                    onClick={() => setAiDebugMessages([])}
-                                    className='text-xs text-yellow-200 hover:text-white px-2 py-1 rounded hover:bg-yellow-500 hover:bg-opacity-20'
-                                >
-                                    Clear
-                                </button>
-                                {isAiPaused && (
-                                    <button
-                                        onClick={() => {
-                                            setIsAiPaused(false);
-                                            setAiRejectionCount(0);
-                                            setAiDebugMessages(prev => [
-                                                ...prev,
-                                                {
-                                                    type: 'ai-debug',
-                                                    message:
-                                                        '▶️ AI RESUMED - Rejection counter reset',
-                                                    timestamp: Date.now(),
-                                                },
-                                            ]);
-                                        }}
-                                        className='text-xs bg-green-500 bg-opacity-30 text-green-300 hover:text-white px-2 py-1 rounded hover:bg-green-500 hover:bg-opacity-50'
-                                    >
-                                        Resume
-                                    </button>
-                                )}
-                            </div>
-                        </h4>
-                    </div>
-                    <div
-                        className={`p-3 space-y-2 overflow-y-auto ${isChatExpanded ? 'max-h-[420px]' : 'max-h-48'}`}
-                    >
-                        {aiDebugMessages
-                            .slice(isChatExpanded ? -30 : -10)
-                            .map((msg, index) => (
-                                <div
-                                    key={`${msg.timestamp}-${index}`}
-                                    className={`text-xs p-2 rounded ${
-                                        msg.type === 'ai-thinking'
-                                            ? 'bg-blue-500 bg-opacity-20 text-blue-200'
-                                            : msg.type === 'ai-move'
-                                              ? 'bg-green-500 bg-opacity-20 text-green-200'
-                                              : msg.type === 'ai-error'
-                                                ? 'bg-red-500 bg-opacity-20 text-red-200'
-                                                : 'bg-gray-500 bg-opacity-20 text-gray-200'
-                                    }`}
-                                >
-                                    <div className='font-mono'>
-                                        {msg.message}
-                                    </div>
-                                    {msg.data && msg.type === 'ai-move' && (
-                                        <div className='mt-1 text-xs opacity-75'>
-                                            Confidence: {msg.data.confidence}% |{' '}
-                                            {msg.data.reasoning?.substring(
-                                                0,
-                                                isChatExpanded ? 200 : 100
-                                            )}
-                                            ...
-                                        </div>
-                                    )}
-                                    {msg.data &&
-                                        msg.type === 'ai-error' &&
-                                        msg.data.rejectionCount && (
-                                            <div className='mt-1 text-xs opacity-75'>
-                                                Player: {msg.data.currentPlayer}{' '}
-                                                | Status: {msg.data.gameStatus}{' '}
-                                                | Rejection #
-                                                {msg.data.rejectionCount}
-                                            </div>
-                                        )}
-                                    <div className='text-xs opacity-50 mt-1'>
-                                        {new Date(
-                                            msg.timestamp
-                                        ).toLocaleTimeString()}
-                                    </div>
-                                </div>
-                            ))}
-                        {aiDebugMessages.length === 0 && isAiPaused && (
-                            <div className='text-center text-red-300 text-sm py-4'>
-                                🛑 AI is paused due to too many move rejections.
-                                <br />
-                                Click "Resume" to try again or "New Game" to
-                                reset.
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
+        </GameScaffold>
     );
 };
 

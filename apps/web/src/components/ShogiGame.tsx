@@ -13,6 +13,8 @@ import { createShogiAI, defaultAIConfig } from '../lib/ai';
 import type { AIConfig } from '../lib/ai/types';
 import ShogiBoard from './ShogiBoard';
 import ShogiHand from './ShogiHand';
+import GameScaffold from './game/GameScaffold';
+import GameStartOverlay from './game/GameStartOverlay';
 
 interface ShogiDemo {
     id: string;
@@ -417,48 +419,25 @@ const ShogiGame: React.FC = () => {
     const currentHighlightSquares =
         gameMode === 'tutorial' ? getCurrentDemo().highlightSquares : undefined;
 
+    const title =
+        gameMode === 'tutorial' ? 'Shogi Logic & Tutorials' : '将棋 (Shogi)';
+    const subtitle =
+        gameMode === 'tutorial'
+            ? getCurrentDemo().description
+            : getStatusMessage();
+    const showModeToggle = gameMode === 'tutorial' || !hasGameStarted;
+
     return (
-        <div className='flex flex-col items-center gap-6 p-6 max-w-7xl mx-auto'>
-            <div className='text-center'>
-                <h1 className='text-4xl font-bold bg-gradient-to-r from-red-400 via-orange-400 to-yellow-400 bg-clip-text text-transparent mb-4'>
-                    {gameMode === 'tutorial'
-                        ? 'Shogi Logic & Tutorials'
-                        : '将棋 (Shogi)'}
-                </h1>
-                <p className='text-xl text-orange-100 font-medium'>
-                    {gameMode === 'tutorial'
-                        ? getCurrentDemo().description
-                        : getStatusMessage()}
-                </p>
-            </div>
-
-            {/* Mode Toggle - Hide after game starts (except in tutorial mode) */}
-            {(gameMode === 'tutorial' || !hasGameStarted) && (
-                <div className='flex gap-4'>
-                    <button
-                        onClick={() => toggleToMode('tutorial')}
-                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                            gameMode === 'tutorial'
-                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                                : 'text-orange-100 hover:bg-white hover:bg-opacity-20'
-                        }`}
-                    >
-                        📚 Tutorial Mode
-                    </button>
-                    <button
-                        onClick={() => toggleToMode('ai')}
-                        className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                            gameMode === 'ai'
-                                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
-                                : 'text-orange-100 hover:bg-white hover:bg-opacity-20'
-                        }`}
-                    >
-                        🤖 AI Mode
-                    </button>
-                </div>
-            )}
-
-            {/* AI Controls */}
+        <GameScaffold
+            title={title}
+            subtitle={subtitle}
+            titleGradientClassName='bg-gradient-to-r from-red-400 via-orange-400 to-yellow-400'
+            subtitleClassName='text-orange-100'
+            currentMode={gameMode}
+            onModeChange={toggleToMode}
+            showModeToggle={showModeToggle}
+            inactiveModeClassName='text-orange-100 hover:bg-white hover:bg-opacity-20'
+        >
             {gameMode === 'ai' && (
                 <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='flex gap-4 justify-center'>
@@ -474,7 +453,6 @@ const ShogiGame: React.FC = () => {
                         </select>
                     </div>
 
-                    {/* AI Status */}
                     <div className='text-center'>
                         {isAIThinking && (
                             <div className='flex items-center justify-center gap-2 text-cyan-200'>
@@ -483,7 +461,6 @@ const ShogiGame: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Debug Messages */}
                         {aiConfig.debug && aiDebugMessages.length > 0 && (
                             <div className='mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10'>
                                 <h4 className='text-sm font-semibold text-cyan-200 mb-2'>
@@ -503,7 +480,6 @@ const ShogiGame: React.FC = () => {
                 </div>
             )}
 
-            {/* Tutorial Demo Selector */}
             {gameMode === 'tutorial' && (
                 <div className='flex flex-wrap gap-3 justify-center max-w-4xl'>
                     {shogiDemos.map(demoItem => (
@@ -522,15 +498,12 @@ const ShogiGame: React.FC = () => {
                 </div>
             )}
 
-            {/* Shogi Board and Game Layout - Always visible but input blocked before game start */}
-            <>
-                {gameMode === 'ai' ? (
-                    // AI Mode Layout
-                    <div
-                        className={`relative ${!hasGameStarted && gameMode !== 'tutorial' ? 'opacity-75' : ''}`}
+            {gameMode === 'ai' ? (
+                <div className='flex justify-center'>
+                    <GameStartOverlay
+                        active={!hasGameStarted && gameMode !== 'tutorial'}
                     >
                         <div className='flex gap-8 items-start'>
-                            {/* Gote Hand */}
                             <div className='flex flex-col gap-4'>
                                 <ShogiHand
                                     pieces={gameState.goteHand}
@@ -545,7 +518,6 @@ const ShogiGame: React.FC = () => {
                                 />
                             </div>
 
-                            {/* Board */}
                             <ShogiBoard
                                 board={currentBoard}
                                 selectedSquare={gameState.selectedSquare}
@@ -558,7 +530,6 @@ const ShogiGame: React.FC = () => {
                                 highlightSquares={currentHighlightSquares}
                             />
 
-                            {/* Sente Hand */}
                             <div className='flex flex-col gap-4'>
                                 <ShogiHand
                                     pieces={gameState.senteHand}
@@ -573,32 +544,22 @@ const ShogiGame: React.FC = () => {
                                 />
                             </div>
                         </div>
-                        {!hasGameStarted && gameMode !== 'tutorial' && (
-                            <div className='absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center rounded-lg'>
-                                <div className='bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium'>
-                                    Click "Start" to begin playing
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    // Tutorial Mode Layout - Centered Board
-                    <div className='flex justify-center'>
-                        <ShogiBoard
-                            board={currentBoard}
-                            selectedSquare={gameState.selectedSquare}
-                            possibleMoves={gameState.possibleMoves}
-                            onSquareClick={handleSquareClick}
-                            highlightSquares={currentHighlightSquares}
-                        />
-                    </div>
-                )}
-            </>
+                    </GameStartOverlay>
+                </div>
+            ) : (
+                <div className='flex justify-center'>
+                    <ShogiBoard
+                        board={currentBoard}
+                        selectedSquare={gameState.selectedSquare}
+                        possibleMoves={gameState.possibleMoves}
+                        onSquareClick={handleSquareClick}
+                        highlightSquares={currentHighlightSquares}
+                    />
+                </div>
+            )}
 
-            {/* Content Panel - Below Board */}
             <div className='w-full max-w-4xl mx-auto space-y-6'>
                 {gameMode === 'ai' ? (
-                    // AI Mode Controls
                     <>
                         <div className='flex gap-4 justify-center'>
                             <button
@@ -651,7 +612,6 @@ const ShogiGame: React.FC = () => {
                         </div>
                     </>
                 ) : (
-                    // Tutorial Mode Content
                     <>
                         <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
                             <h2 className='text-2xl font-bold text-white mb-3'>
@@ -716,7 +676,7 @@ const ShogiGame: React.FC = () => {
                     </>
                 )}
             </div>
-        </div>
+        </GameScaffold>
     );
 };
 

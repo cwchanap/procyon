@@ -1,50 +1,8 @@
 ---
-import Layout from '../layouts/Layout.astro';
+import GamePageLayout from '../components/GamePageLayout.astro';
 import ChessGame from '../components/ChessGame.tsx';
 ---
 
-<Layout title='Chess Game'>
-    <div class='min-h-screen relative'>
-        <!-- Animated background -->
-        <div class='absolute inset-0 overflow-hidden pointer-events-none'>
-            <div
-                class='absolute top-10 left-10 w-32 h-32 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full opacity-10 animate-pulse'
-            >
-            </div>
-            <div
-                class='absolute bottom-10 right-10 w-48 h-48 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full opacity-10 animate-ping'
-                style='animation-delay: 2s;'
-            >
-            </div>
-            <div
-                class='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full opacity-5 animate-spin'
-                style='animation-duration: 20s;'
-            >
-            </div>
-        </div>
-
-        <div class='container mx-auto px-4 py-8 relative z-10'>
-            <div class='mb-8'>
-                <button
-                    onclick="window.location.href='/'"
-                    class='glass-effect inline-flex items-center gap-3 px-6 py-3 rounded-xl text-white font-medium transition-all duration-300 hover:bg-white hover:bg-opacity-20 hover:scale-105 hover:shadow-lg'
-                >
-                    <svg
-                        width='20'
-                        height='20'
-                        viewBox='0 0 24 24'
-                        fill='none'
-                        stroke='currentColor'
-                        stroke-width='2'
-                        stroke-linecap='round'
-                        stroke-linejoin='round'
-                    >
-                        <path d='M19 12H5M12 19l-7-7 7-7'></path>
-                    </svg>
-                    Back to Game Selection
-                </button>
-            </div>
-            <ChessGame client:load />
-        </div>
-    </div>
-</Layout>
+<GamePageLayout title='Chess Game' variant='chess'>
+    <ChessGame client:load />
+</GamePageLayout>
