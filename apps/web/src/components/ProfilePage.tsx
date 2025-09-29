@@ -55,35 +55,8 @@ interface AiConfiguration {
 }
 
 export function ProfilePage() {
-    const { user, logout, isAuthenticated } = useAuth();
+    const { user, isAuthenticated } = useAuth();
 
-    // Debug function to test authentication
-    const testAuth = async () => {
-        const token = localStorage.getItem('auth_token');
-        console.log('Token exists:', !!token);
-        console.log(
-            'Token value:',
-            token ? token.substring(0, 50) + '...' : 'null'
-        );
-        console.log('User object:', user);
-        console.log('Is authenticated:', isAuthenticated);
-
-        if (token) {
-            try {
-                const response = await fetch(
-                    'http://localhost:3501/api/ai-config',
-                    {
-                        headers: { Authorization: `Bearer ${token}` },
-                    }
-                );
-                console.log('Auth test response status:', response.status);
-                const text = await response.text();
-                console.log('Auth test response:', text);
-            } catch (error) {
-                console.error('Auth test failed:', error);
-            }
-        }
-    };
     const [isEditing, setIsEditing] = useState(false);
     const [editedUsername, setEditedUsername] = useState(user?.username || '');
     const [editedEmail, setEditedEmail] = useState(user?.email || '');
@@ -188,16 +161,10 @@ export function ProfilePage() {
 
             // Debug: Check if token exists
             if (!token) {
-                console.error('No auth token found in localStorage');
                 setConfigStatus('error');
                 alert('Authentication token not found. Please log in again.');
                 return;
             }
-
-            console.log(
-                'Sending request with token:',
-                token.substring(0, 20) + '...'
-            );
 
             const response = await fetch(
                 'http://localhost:3501/api/ai-config',
@@ -222,12 +189,7 @@ export function ProfilePage() {
                 await fetchConfigurations();
                 setTimeout(() => setConfigStatus(null), 3000);
             } else {
-                const errorText = await response.text();
-                console.error(
-                    'API Error Response:',
-                    response.status,
-                    errorText
-                );
+                await response.text();
 
                 if (response.status === 401) {
                     alert('Authentication failed. Please log in again.');
@@ -241,8 +203,7 @@ export function ProfilePage() {
                 setConfigStatus('error');
                 setTimeout(() => setConfigStatus(null), 3000);
             }
-        } catch (error) {
-            console.error('Request failed:', error);
+        } catch {
             setConfigStatus('error');
             setTimeout(() => setConfigStatus(null), 3000);
         }
@@ -375,23 +336,6 @@ export function ProfilePage() {
                                     )}
                                 </div>
                             </div>
-                        </div>
-
-                        {/* Debug Section */}
-                        <div className='border-t border-purple-500/30 pt-6 mt-6'>
-                            <details className='mb-4'>
-                                <summary className='text-gray-400 cursor-pointer hover:text-white'>
-                                    Debug Authentication
-                                </summary>
-                                <div className='mt-2'>
-                                    <Button
-                                        onClick={testAuth}
-                                        className='bg-yellow-600 hover:bg-yellow-700 text-white text-sm'
-                                    >
-                                        Test Auth (Check Console)
-                                    </Button>
-                                </div>
-                            </details>
                         </div>
 
                         {/* AI Configuration Section */}
@@ -580,20 +524,6 @@ export function ProfilePage() {
                                     </Button>
                                 </>
                             )}
-                        </div>
-
-                        {/* Danger Zone */}
-                        <div className='mt-8 pt-6 border-t border-purple-500/30'>
-                            <h3 className='text-lg font-semibold text-red-400 mb-4'>
-                                Danger Zone
-                            </h3>
-                            <Button
-                                variant='destructive'
-                                onClick={logout}
-                                className='w-full sm:w-auto'
-                            >
-                                Sign Out
-                            </Button>
                         </div>
                     </div>
                 </div>

@@ -5,7 +5,7 @@
     "scripts": {
         "dev": "tsx watch src/index.ts",
         "start": "tsx src/index.ts",
-        "build": "tsx build src/index.ts",
+        "build": "tsc --build",
         "lint": "eslint src --ext .ts",
         "lint:fix": "eslint src --ext .ts --fix",
         "db:generate": "drizzle-kit generate --config=drizzle.config.dev.ts",
@@ -30,6 +30,7 @@
         "@types/node": "^20.14.10",
         "better-sqlite3": "^12.2.0",
         "drizzle-kit": "^0.31.4",
-        "tsx": "^4.16.2"
+        "tsx": "^4.16.2",
+        "typescript": "^5.9.2"
     }
 }
