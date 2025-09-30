@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable no-console */
 import type {
     GameVariantAdapter,
     BaseGameState,
@@ -14,6 +15,8 @@ import {
     PALACE_COLS,
 } from '../xiangqi/types';
 import { getPossibleMoves } from '../xiangqi/moves';
+import { isKingInCheck } from '../xiangqi/game';
+import { copyBoard, setPieceAt } from '../xiangqi/board';
 import { GAME_CONFIGS } from './game-variant-types';
 
 export class XiangqiAdapter implements GameVariantAdapter {
@@ -69,10 +72,19 @@ export class XiangqiAdapter implements GameVariantAdapter {
                     }
 
                     for (const toPos of possibleMoves) {
-                        const from = this.positionToAlgebraic(fromPos);
-                        const to = this.positionToAlgebraic(toPos);
-                        const pieceSymbol = this.getPieceSymbolForMove(piece);
-                        validMoves.push(`${from}-${to} (${pieceSymbol})`);
+                        // Validate move doesn't leave king in check
+                        const isValidMove = this.wouldMoveBeValid(
+                            gameState,
+                            fromPos,
+                            toPos
+                        );
+                        if (isValidMove) {
+                            const from = this.positionToAlgebraic(fromPos);
+                            const to = this.positionToAlgebraic(toPos);
+                            const pieceSymbol =
+                                this.getPieceSymbolForMove(piece);
+                            validMoves.push(`${from}-${to} (${pieceSymbol})`);
+                        }
                     }
                 }
             }
@@ -464,5 +476,45 @@ Your move:`;
         }
 
         return result.trim();
+    }
+
+    private wouldMoveBeValid(
+        gameState: XiangqiGameState,
+        from: GamePosition,
+        to: GamePosition
+    ): boolean {
+        const { board, currentPlayer } = gameState;
+        const piece = board[from.row]?.[from.col];
+
+        if (!piece || piece.color !== currentPlayer) {
+            if (this.debugMode) {
+                console.log(
+                    `    ❌ Invalid: No ${currentPlayer} piece at ${this.positionToAlgebraic(from)}`
+                );
+            }
+            return false;
+        }
+
+        // Create test board to check if move leaves king in check
+        const testBoard = copyBoard(board);
+        setPieceAt(testBoard, from, null);
+        setPieceAt(testBoard, to, piece);
+
+        const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
+        if (wouldBeInCheck) {
+            if (this.debugMode) {
+                console.log(
+                    `    ❌ Invalid: Move ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} leaves king in check`
+                );
+            }
+            return false;
+        }
+
+        if (this.debugMode) {
+            console.log(
+                `    ✅ Valid: ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)}`
+            );
+        }
+        return true;
     }
 }

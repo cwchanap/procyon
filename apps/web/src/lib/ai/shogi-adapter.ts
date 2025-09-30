@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable no-console */
 import type {
     GameVariantAdapter,
     BaseGameState,
@@ -81,26 +82,38 @@ export class ShogiAdapter implements GameVariantAdapter {
                     }
 
                     for (const toPos of possibleMoves) {
-                        const from = this.positionToAlgebraic(fromPos);
-                        const to = this.positionToAlgebraic(toPos);
-                        const pieceSymbol = this.getPieceSymbol(piece);
-
-                        // Check for promotion possibility
-                        const canPromote = this.canPiecePromote(
-                            piece,
+                        // Validate move doesn't leave king in check
+                        const isValidMove = this.wouldMoveBeValid(
+                            gameState,
                             fromPos,
                             toPos
                         );
-                        if (canPromote) {
-                            validMoves.push(`${from}-${to}+ (${pieceSymbol})`); // Promoted move
-                            // Also allow non-promoted move if legal
-                            if (!this.mustPromote(piece, toPos)) {
+                        if (isValidMove) {
+                            const from = this.positionToAlgebraic(fromPos);
+                            const to = this.positionToAlgebraic(toPos);
+                            const pieceSymbol = this.getPieceSymbol(piece);
+
+                            // Check for promotion possibility
+                            const canPromote = this.canPiecePromote(
+                                piece,
+                                fromPos,
+                                toPos
+                            );
+                            if (canPromote) {
+                                validMoves.push(
+                                    `${from}-${to}+ (${pieceSymbol})`
+                                ); // Promoted move
+                                // Also allow non-promoted move if legal
+                                if (!this.mustPromote(piece, toPos)) {
+                                    validMoves.push(
+                                        `${from}-${to} (${pieceSymbol})`
+                                    );
+                                }
+                            } else {
                                 validMoves.push(
                                     `${from}-${to} (${pieceSymbol})`
                                 );
                             }
-                        } else {
-                            validMoves.push(`${from}-${to} (${pieceSymbol})`);
                         }
                     }
                 }
@@ -361,24 +374,136 @@ Your move:`;
         position: ShogiPosition,
         board: (ShogiPiece | null)[][]
     ): ShogiPosition[] {
-        // Simplified move generation - in a real implementation,
-        // you would import proper move generation from shogi library
         const moves: ShogiPosition[] = [];
+        const { row, col } = position;
+        const direction = piece.color === 'sente' ? -1 : 1;
 
-        // Basic pawn movement as example
-        if (piece.type === 'pawn') {
-            const direction = piece.color === 'sente' ? -1 : 1;
-            const targetRow = position.row + direction;
+        const addMoveIfValid = (targetRow: number, targetCol: number) => {
             if (
                 targetRow >= 0 &&
                 targetRow < SHOGI_BOARD_SIZE &&
-                !board[targetRow][position.col]
+                targetCol >= 0 &&
+                targetCol < SHOGI_BOARD_SIZE
             ) {
-                moves.push({ row: targetRow, col: position.col });
+                const targetPiece = board[targetRow][targetCol];
+                if (!targetPiece || targetPiece.color !== piece.color) {
+                    moves.push({ row: targetRow, col: targetCol });
+                }
             }
+        };
+
+        const addSlidingMoves = (rowDelta: number, colDelta: number) => {
+            for (let i = 1; i < SHOGI_BOARD_SIZE; i++) {
+                const targetRow = row + i * rowDelta;
+                const targetCol = col + i * colDelta;
+                if (
+                    targetRow < 0 ||
+                    targetRow >= SHOGI_BOARD_SIZE ||
+                    targetCol < 0 ||
+                    targetCol >= SHOGI_BOARD_SIZE
+                ) {
+                    break;
+                }
+                const targetPiece = board[targetRow][targetCol];
+                if (!targetPiece) {
+                    moves.push({ row: targetRow, col: targetCol });
+                } else {
+                    if (targetPiece.color !== piece.color) {
+                        moves.push({ row: targetRow, col: targetCol });
+                    }
+                    break;
+                }
+            }
+        };
+
+        switch (piece.type) {
+            case 'pawn':
+                addMoveIfValid(row + direction, col);
+                break;
+
+            case 'lance':
+                addSlidingMoves(direction, 0);
+                break;
+
+            case 'knight':
+                addMoveIfValid(row + 2 * direction, col - 1);
+                addMoveIfValid(row + 2 * direction, col + 1);
+                break;
+
+            case 'silver':
+                addMoveIfValid(row + direction, col - 1);
+                addMoveIfValid(row + direction, col);
+                addMoveIfValid(row + direction, col + 1);
+                addMoveIfValid(row - direction, col - 1);
+                addMoveIfValid(row - direction, col + 1);
+                break;
+
+            case 'gold':
+            case 'promoted_pawn':
+            case 'promoted_lance':
+            case 'promoted_knight':
+            case 'promoted_silver':
+                // Gold general movement
+                addMoveIfValid(row + direction, col - 1);
+                addMoveIfValid(row + direction, col);
+                addMoveIfValid(row + direction, col + 1);
+                addMoveIfValid(row, col - 1);
+                addMoveIfValid(row, col + 1);
+                addMoveIfValid(row - direction, col);
+                break;
+
+            case 'bishop':
+                addSlidingMoves(1, 1);
+                addSlidingMoves(1, -1);
+                addSlidingMoves(-1, 1);
+                addSlidingMoves(-1, -1);
+                break;
+
+            case 'rook':
+                addSlidingMoves(1, 0);
+                addSlidingMoves(-1, 0);
+                addSlidingMoves(0, 1);
+                addSlidingMoves(0, -1);
+                break;
+
+            case 'horse': // Promoted bishop
+                // Bishop moves
+                addSlidingMoves(1, 1);
+                addSlidingMoves(1, -1);
+                addSlidingMoves(-1, 1);
+                addSlidingMoves(-1, -1);
+                // King moves
+                addMoveIfValid(row + 1, col);
+                addMoveIfValid(row - 1, col);
+                addMoveIfValid(row, col + 1);
+                addMoveIfValid(row, col - 1);
+                break;
+
+            case 'dragon': // Promoted rook
+                // Rook moves
+                addSlidingMoves(1, 0);
+                addSlidingMoves(-1, 0);
+                addSlidingMoves(0, 1);
+                addSlidingMoves(0, -1);
+                // King moves
+                addMoveIfValid(row + 1, col + 1);
+                addMoveIfValid(row + 1, col - 1);
+                addMoveIfValid(row - 1, col + 1);
+                addMoveIfValid(row - 1, col - 1);
+                break;
+
+            case 'king':
+                // King moves in all 8 directions
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr !== 0 || dc !== 0) {
+                            addMoveIfValid(row + dr, col + dc);
+                        }
+                    }
+                }
+                break;
         }
 
-        // Add more piece movement logic here...
         return moves;
     }
 
@@ -621,5 +746,81 @@ Your move:`;
         }
 
         return result.trim();
+    }
+
+    private wouldMoveBeValid(
+        gameState: ShogiGameState,
+        from: GamePosition,
+        to: GamePosition
+    ): boolean {
+        const { board, currentPlayer } = gameState;
+        const piece = board[from.row]?.[from.col];
+
+        if (!piece || piece.color !== currentPlayer) {
+            if (this.debugMode) {
+                console.log(
+                    `    ❌ Invalid: No ${currentPlayer} piece at ${this.positionToAlgebraic(from)}`
+                );
+            }
+            return false;
+        }
+
+        // Create test board to check if move leaves king in check
+        const testBoard = board.map(row => [...row]);
+        testBoard[from.row][from.col] = null;
+        testBoard[to.row][to.col] = piece;
+
+        const wouldBeInCheck = this.isKingInCheck(testBoard, currentPlayer);
+        if (wouldBeInCheck) {
+            if (this.debugMode) {
+                console.log(
+                    `    ❌ Invalid: Move ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} leaves king in check`
+                );
+            }
+            return false;
+        }
+
+        if (this.debugMode) {
+            console.log(
+                `    ✅ Valid: ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)}`
+            );
+        }
+        return true;
+    }
+
+    private isKingInCheck(
+        board: (ShogiPiece | null)[][],
+        kingColor: ShogiPieceColor
+    ): boolean {
+        const kingPosition = this.findPiece(board, 'king', kingColor);
+        if (!kingPosition) return false;
+
+        const opponentColor = kingColor === 'sente' ? 'gote' : 'sente';
+
+        // Check if any opponent piece can attack the king
+        for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
+            for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
+                const piece = board[row][col];
+                if (piece && piece.color === opponentColor) {
+                    const from = { row, col };
+                    const possibleMoves = this.getPossibleMovesForPiece(
+                        piece,
+                        from,
+                        board
+                    );
+                    if (
+                        possibleMoves.some(
+                            move =>
+                                move.row === kingPosition.row &&
+                                move.col === kingPosition.col
+                        )
+                    ) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 }

@@ -16,7 +16,7 @@ import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
 import type { AIConfig } from '../lib/ai/types';
-import { AIService } from '../lib/ai/service';
+import { createChessAI } from '../lib/ai';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
 
 interface LogicDemo {
@@ -44,6 +44,7 @@ const ChessGame: React.FC = () => {
     const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
     const [aiRejectionCount, setAiRejectionCount] = useState(0);
     const [isAiPaused, setIsAiPaused] = useState(false);
+    const [isLoadingConfig, setIsLoadingConfig] = useState(true);
 
     // Helper function to convert move history to debug format
     const createAIMove = useCallback(
@@ -69,9 +70,7 @@ const ChessGame: React.FC = () => {
         },
         [gameState.moveHistory.length, gameState.currentPlayer]
     );
-    const [aiService] = useState<AIService>(
-        () => new AIService(defaultAIConfig)
-    );
+    const [aiService] = useState(() => createChessAI(defaultAIConfig));
 
     // Load AI config on client side only to avoid SSR hydration mismatch
     useEffect(() => {
@@ -79,6 +78,7 @@ const ChessGame: React.FC = () => {
             const config = await loadAIConfig();
             setAIConfig(config);
             aiService.updateConfig({ ...config, debug: isDebugMode });
+            setIsLoadingConfig(false);
         };
         loadConfig();
     }, [aiService, isDebugMode]);
@@ -642,12 +642,13 @@ const ChessGame: React.FC = () => {
                     </div>
 
                     <div className='text-center'>
-                        {!aiConfig.enabled || !aiConfig.apiKey ? (
-                            <div className='text-yellow-400 text-sm'>
-                                ⚠ AI not configured - Configure API key in
-                                Profile to enable AI gameplay
-                            </div>
-                        ) : null}
+                        {!isLoadingConfig &&
+                            (!aiConfig.enabled || !aiConfig.apiKey) && (
+                                <div className='text-yellow-400 text-sm'>
+                                    ⚠ AI not configured - Configure API key in
+                                    Profile to enable AI gameplay
+                                </div>
+                            )}
                     </div>
                 </div>
             )}
@@ -756,18 +757,6 @@ const ChessGame: React.FC = () => {
                                         {isDebugMode
                                             ? 'Debug ON'
                                             : 'Debug Mode'}
-                                    </button>
-                                )}
-
-                            {gameMode === 'ai' &&
-                                (!aiConfig.enabled || !aiConfig.apiKey) && (
-                                    <button
-                                        onClick={() =>
-                                            (window.location.href = '/profile')
-                                        }
-                                        className='glass-effect px-4 py-2 text-sm font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-white border-opacity-30 text-white hover:bg-white hover:bg-opacity-20'
-                                    >
-                                        ⚙️ Configure AI
                                     </button>
                                 )}
                         </div>

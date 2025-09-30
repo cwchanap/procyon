@@ -12,7 +12,7 @@ import {
 } from '../lib/xiangqi/game';
 import { getPossibleMoves } from '../lib/xiangqi/moves';
 import { createInitialXiangqiBoard, getPieceAt } from '../lib/xiangqi/board';
-import { createXiangqiAI, defaultAIConfig } from '../lib/ai';
+import { createXiangqiAI, defaultAIConfig, loadAIConfig } from '../lib/ai';
 import type { AIConfig } from '../lib/ai/types';
 import XiangqiBoard from './XiangqiBoard';
 import GameScaffold from './game/GameScaffold';
@@ -39,14 +39,15 @@ const XiangqiGame: React.FC = () => {
     );
     const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
     const [aiPlayer, setAIPlayer] = useState<'red' | 'black'>('black');
-    const [aiConfig] = useState<AIConfig>({
+    const [aiConfig, setAIConfig] = useState<AIConfig>({
         ...defaultAIConfig,
         gameVariant: 'xiangqi',
-        enabled: true,
     });
     const [aiService] = useState(() => createXiangqiAI(aiConfig));
     const [isAIThinking, setIsAIThinking] = useState(false);
     const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
+    const [isDebugMode, setIsDebugMode] = useState(false);
+    const [_isLoadingConfig, setIsLoadingConfig] = useState(true);
 
     // Helper function to convert move history to debug format
     const createAIMove = useCallback(
@@ -74,6 +75,21 @@ const XiangqiGame: React.FC = () => {
         },
         [gameState.moveHistory.length, gameState.currentPlayer]
     );
+
+    // Load AI config on client side only to avoid SSR hydration mismatch
+    useEffect(() => {
+        const loadConfig = async () => {
+            const config = await loadAIConfig();
+            setAIConfig({ ...config, gameVariant: 'xiangqi' });
+            aiService.updateConfig({
+                ...config,
+                gameVariant: 'xiangqi',
+                debug: isDebugMode,
+            });
+            setIsLoadingConfig(false);
+        };
+        loadConfig();
+    }, [aiService, isDebugMode]);
 
     const createCustomXiangqiBoard = useCallback(
         (setup: string): (XiangqiPiece | null)[][] => {
@@ -195,22 +211,26 @@ const XiangqiGame: React.FC = () => {
 
     // AI setup and debug callback
     useEffect(() => {
-        aiService.setDebugCallback((type, message, _data) => {
-            const thinking = type === 'ai-thinking' ? message : undefined;
-            const error = type === 'ai-error' ? message : undefined;
+        aiService.updateConfig({ ...aiConfig, debug: isDebugMode });
 
-            setAIDebugMoves(prev => [
-                ...prev,
-                createAIMove(
-                    type === 'ai-move' ? message : `Debug: ${message}`,
-                    true,
-                    thinking,
-                    error
-                ),
-            ]);
-        });
-        aiService.updateConfig(aiConfig);
-    }, [aiService, aiConfig, createAIMove]);
+        // Set up debug callback
+        if (isDebugMode) {
+            aiService.setDebugCallback((type, message, _data) => {
+                const thinking = type === 'ai-thinking' ? message : undefined;
+                const error = type === 'ai-error' ? message : undefined;
+
+                setAIDebugMoves(prev => [
+                    ...prev,
+                    createAIMove(
+                        type === 'ai-move' ? message : `Debug: ${message}`,
+                        true,
+                        thinking,
+                        error
+                    ),
+                ]);
+            });
+        }
+    }, [aiService, aiConfig, createAIMove, isDebugMode]);
 
     // AI move handling
     useEffect(() => {
@@ -358,7 +378,7 @@ const XiangqiGame: React.FC = () => {
         [xiangqiDemos]
     );
 
-    const handleUndoMove = useCallback(() => {
+    const _handleUndoMove = useCallback(() => {
         const newGameState = undoMove(gameState);
         setGameState(newGameState);
     }, [gameState]);
@@ -401,7 +421,7 @@ const XiangqiGame: React.FC = () => {
         gameState.status === 'checkmate' ||
         gameState.status === 'stalemate' ||
         gameState.status === 'draw';
-    const canUndo = gameState.moveHistory.length > 0;
+    const _canUndo = gameState.moveHistory.length > 0;
 
     const currentBoard =
         gameMode === 'tutorial' ? getCurrentDemo().board : gameState.board;
@@ -458,7 +478,7 @@ const XiangqiGame: React.FC = () => {
 
                         <AIDebugDialog
                             moves={aiDebugMoves}
-                            isVisible={aiConfig.debug}
+                            isVisible={isDebugMode}
                         />
                     </div>
                 </div>
@@ -507,17 +527,18 @@ const XiangqiGame: React.FC = () => {
                                 {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
                             </button>
 
-                            <button
-                                onClick={handleUndoMove}
-                                disabled={!canUndo}
-                                className={`px-6 py-3 text-white font-semibold rounded-xl transition-all duration-300 border border-white border-opacity-30 ${
-                                    canUndo
-                                        ? 'glass-effect hover:bg-white hover:bg-opacity-20 hover:scale-105'
-                                        : 'opacity-50 cursor-not-allowed bg-gray-600'
-                                }`}
-                            >
-                                ↶ Undo Move
-                            </button>
+                            {aiConfig.enabled && aiConfig.apiKey && (
+                                <button
+                                    onClick={() => setIsDebugMode(!isDebugMode)}
+                                    className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+                                        isDebugMode
+                                            ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
+                                            : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+                                    }`}
+                                >
+                                    🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
+                                </button>
+                            )}
 
                             {isGameOver && (
                                 <button

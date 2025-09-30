@@ -139,7 +139,7 @@ function calculateGameStatus(
     }
 }
 
-function isKingInCheck(
+export function isKingInCheck(
     board: XiangqiGameState['board'],
     kingColor: XiangqiPieceColor
 ): boolean {

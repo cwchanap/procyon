@@ -9,7 +9,7 @@ import {
     SHOGI_FILES,
     SHOGI_RANKS,
 } from '../lib/shogi';
-import { createShogiAI, defaultAIConfig } from '../lib/ai';
+import { createShogiAI, defaultAIConfig, loadAIConfig } from '../lib/ai';
 import type { AIConfig } from '../lib/ai/types';
 import ShogiBoard from './ShogiBoard';
 import ShogiHand from './ShogiHand';
@@ -37,14 +37,15 @@ const ShogiGame: React.FC = () => {
     );
     const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
     const [aiPlayer, setAIPlayer] = useState<'sente' | 'gote'>('gote');
-    const [aiConfig] = useState<AIConfig>({
+    const [aiConfig, setAIConfig] = useState<AIConfig>({
         ...defaultAIConfig,
         gameVariant: 'shogi',
-        enabled: true,
     });
     const [aiService] = useState(() => createShogiAI(aiConfig));
     const [isAIThinking, setIsAIThinking] = useState(false);
     const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
+    const [isDebugMode, setIsDebugMode] = useState(false);
+    const [_isLoadingConfig, setIsLoadingConfig] = useState(true);
 
     // Helper function to convert move history to debug format
     const createAIMove = useCallback(
@@ -72,6 +73,21 @@ const ShogiGame: React.FC = () => {
         },
         [gameState.moveHistory.length, gameState.currentPlayer]
     );
+
+    // Load AI config on client side only to avoid SSR hydration mismatch
+    useEffect(() => {
+        const loadConfig = async () => {
+            const config = await loadAIConfig();
+            setAIConfig({ ...config, gameVariant: 'shogi' });
+            aiService.updateConfig({
+                ...config,
+                gameVariant: 'shogi',
+                debug: isDebugMode,
+            });
+            setIsLoadingConfig(false);
+        };
+        loadConfig();
+    }, [aiService, isDebugMode]);
 
     const createCustomShogiBoard = useCallback(
         (setup: string): (ShogiPiece | null)[][] => {
@@ -218,22 +234,26 @@ const ShogiGame: React.FC = () => {
 
     // AI setup and debug callback
     useEffect(() => {
-        aiService.setDebugCallback((type, message, _data) => {
-            const thinking = type === 'ai-thinking' ? message : undefined;
-            const error = type === 'ai-error' ? message : undefined;
+        aiService.updateConfig({ ...aiConfig, debug: isDebugMode });
 
-            setAIDebugMoves(prev => [
-                ...prev,
-                createAIMove(
-                    type === 'ai-move' ? message : `Debug: ${message}`,
-                    true,
-                    thinking,
-                    error
-                ),
-            ]);
-        });
-        aiService.updateConfig(aiConfig);
-    }, [aiService, aiConfig, createAIMove]);
+        // Set up debug callback
+        if (isDebugMode) {
+            aiService.setDebugCallback((type, message, _data) => {
+                const thinking = type === 'ai-thinking' ? message : undefined;
+                const error = type === 'ai-error' ? message : undefined;
+
+                setAIDebugMoves(prev => [
+                    ...prev,
+                    createAIMove(
+                        type === 'ai-move' ? message : `Debug: ${message}`,
+                        true,
+                        thinking,
+                        error
+                    ),
+                ]);
+            });
+        }
+    }, [aiService, aiConfig, createAIMove, isDebugMode]);
 
     // AI move handling
     useEffect(() => {
@@ -418,7 +438,7 @@ const ShogiGame: React.FC = () => {
         [shogiDemos]
     );
 
-    const clearCurrentSelection = useCallback(() => {
+    const _clearCurrentSelection = useCallback(() => {
         const newGameState = clearSelection(gameState);
         setGameState(newGameState);
     }, [gameState]);
@@ -505,7 +525,7 @@ const ShogiGame: React.FC = () => {
 
                         <AIDebugDialog
                             moves={aiDebugMoves}
-                            isVisible={aiConfig.debug}
+                            isVisible={isDebugMode}
                         />
                     </div>
                 </div>
@@ -594,18 +614,24 @@ const ShogiGame: React.FC = () => {
                     <>
                         <div className='flex gap-4 justify-center'>
                             <button
-                                onClick={clearCurrentSelection}
-                                className='glass-effect px-4 py-2 text-white font-semibold rounded-lg hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
-                            >
-                                ❌ Clear Selection
-                            </button>
-
-                            <button
                                 onClick={handleStartOrReset}
                                 className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
                             >
                                 {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
                             </button>
+
+                            {aiConfig.enabled && aiConfig.apiKey && (
+                                <button
+                                    onClick={() => setIsDebugMode(!isDebugMode)}
+                                    className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+                                        isDebugMode
+                                            ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
+                                            : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+                                    }`}
+                                >
+                                    🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
+                                </button>
+                            )}
 
                             {isGameOver && (
                                 <button
