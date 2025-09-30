@@ -114,6 +114,8 @@ export class ChessAdapter implements GameVariantAdapter {
         const validMoves = this.getAllValidMoves(gameState)[0];
         const randomSeed = Math.floor(Math.random() * 1000);
 
+        const exampleMove = this.getExampleMoveFromValidMoves(validMoves);
+
         return `You are a chess AI assistant playing as ${currentPlayer}. Analyze the current chess position and provide your next move.
 
 CURRENT BOARD POSITION:
@@ -130,8 +132,9 @@ ${moveHistory}
 ${validMoves}
 
 ❌ DO NOT suggest moves for pieces that don't exist on those squares!
-❌ DO NOT suggest e7-e5 if there's no pawn on e7!
-❌ Check the board position above to see where pieces actually are!
+❌ DO NOT suggest a move from a square that has no piece!
+❌ Look at the CURRENT BOARD POSITION above - pieces have moved from their starting positions!
+❌ Check the board carefully: if a square shows "." it is EMPTY!
 
 POSITION ANALYSIS:
 ${threatAnalysis}
@@ -147,22 +150,29 @@ TACTICAL AWARENESS:
 - Consider opponent's threats and counter-threats
 - Evaluate piece exchanges carefully
 
+🚨 CRITICAL: Before suggesting a move, CHECK:
+1. Is the destination square under attack? (see DANGER ZONES above)
+2. Is the piece you're moving more valuable than what's attacking that square?
+3. If moving to an attacked square, can you CAPTURE something valuable there?
+4. Example: DON'T move a knight (3 points) to a square attacked by a pawn (1 point)!
+
 RANDOMIZATION SEED: ${randomSeed} (use this to vary your play style slightly)
 
 IMPORTANT: You must respond in exactly this JSON format:
 {
     "move": {
-        "from": "e2",
-        "to": "e4"
+        "from": "${exampleMove.from}",
+        "to": "${exampleMove.to}"
     },
     "reasoning": "Detailed explanation of your strategic thinking",
     "confidence": 85
 }
 
 🚨 ABSOLUTE REQUIREMENT: You MUST choose ONLY from the valid moves listed above.
-   - If you suggest e7-e5 but it's not in the valid moves list, your move will be REJECTED
-   - Look at the visual board to understand current piece positions
-   - Use ONLY the algebraic notations provided in the valid moves list
+   - Parse the valid moves list format: "from-to" means moving piece FROM one square TO another
+   - For example, "e2-e4" means: "from": "e2", "to": "e4"
+   - Your "from" square MUST have a ${currentPlayer} piece on it (look at the board!)
+   - If you suggest an invalid move, I will retry your request with a warning
 
 Your move:`;
     }
@@ -228,6 +238,28 @@ Your move:`;
                 currentPlayer
             );
             analysis += `Your king safety: ${kingSafety}\n`;
+        }
+
+        // Check for hanging pieces (pieces that can be captured)
+        const hangingPieces = this.findHangingPieces(board, currentPlayer);
+        if (hangingPieces.length > 0) {
+            analysis += `\n⚠️  CRITICAL THREATS:\n`;
+            for (const threat of hangingPieces) {
+                analysis += `  - Your ${threat.piece} on ${threat.square} can be captured! Defend or move it!\n`;
+            }
+        }
+
+        // Find squares that are under attack by opponent
+        const opponent = currentPlayer === 'white' ? 'black' : 'white';
+        const dangerousSquares = this.findAttackedSquares(board, opponent);
+        if (dangerousSquares.length > 0) {
+            analysis += `\n🚨 DANGER ZONES (squares under attack by opponent):\n`;
+            const squareList = dangerousSquares
+                .slice(0, 20)
+                .map(pos => this.positionToAlgebraic(pos))
+                .join(', ');
+            analysis += `  Attacked squares: ${squareList}\n`;
+            analysis += `  ⚠️  DO NOT move valuable pieces to these squares - they will be captured!\n`;
         }
 
         return analysis;
@@ -421,5 +453,149 @@ Your move:`;
         }
 
         return result.trim();
+    }
+
+    private getExampleMoveFromValidMoves(validMovesText: string): {
+        from: string;
+        to: string;
+    } {
+        // Extract first move from the valid moves list as an example
+        // Format is like: "♘/♞: b8-a6, b8-c6, ..."
+        const moveMatch = validMovesText.match(/([a-h][1-8])-([a-h][1-8])/);
+        if (moveMatch) {
+            return {
+                from: moveMatch[1],
+                to: moveMatch[2],
+            };
+        }
+        // Fallback to generic example
+        return {
+            from: 'e2',
+            to: 'e4',
+        };
+    }
+
+    private findHangingPieces(
+        board: any[][],
+        color: string
+    ): Array<{ piece: string; square: string }> {
+        const opponent = color === 'white' ? 'black' : 'white';
+        const hangingPieces: Array<{ piece: string; square: string }> = [];
+
+        // Find all pieces of the current player
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = board[row][col];
+                if (piece && piece.color === color) {
+                    const pos = { row, col };
+                    // Check if this piece is attacked by any opponent piece
+                    if (this.isSquareAttackedBy(board, pos, opponent)) {
+                        // Check if the piece is defended
+                        const isDefended = this.isSquareDefendedBy(
+                            board,
+                            pos,
+                            color
+                        );
+                        if (!isDefended) {
+                            hangingPieces.push({
+                                piece: piece.type,
+                                square: this.positionToAlgebraic(pos),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        return hangingPieces;
+    }
+
+    private isSquareAttackedBy(
+        board: any[][],
+        pos: Position,
+        attackerColor: string
+    ): boolean {
+        // Check if any piece of attackerColor can attack this square
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = board[row][col];
+                if (piece && piece.color === attackerColor) {
+                    const possibleMoves = getPossibleMoves(board, piece, {
+                        row,
+                        col,
+                    });
+                    if (
+                        possibleMoves.some(
+                            move => move.row === pos.row && move.col === pos.col
+                        )
+                    ) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private isSquareDefendedBy(
+        board: any[][],
+        pos: Position,
+        defenderColor: string
+    ): boolean {
+        // Check if any piece of defenderColor can defend this square
+        // (i.e., can move to this square, even if occupied by friendly piece)
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = board[row][col];
+                if (
+                    piece &&
+                    piece.color === defenderColor &&
+                    !(row === pos.row && col === pos.col)
+                ) {
+                    // Don't count the piece itself
+                    const possibleMoves = getPossibleMoves(board, piece, {
+                        row,
+                        col,
+                    });
+                    if (
+                        possibleMoves.some(
+                            move => move.row === pos.row && move.col === pos.col
+                        )
+                    ) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private findAttackedSquares(
+        board: any[][],
+        attackerColor: string
+    ): Position[] {
+        const attackedSquares = new Set<string>();
+
+        // Find all squares that can be attacked by the given color
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = board[row][col];
+                if (piece && piece.color === attackerColor) {
+                    const possibleMoves = getPossibleMoves(board, piece, {
+                        row,
+                        col,
+                    });
+                    for (const move of possibleMoves) {
+                        attackedSquares.add(`${move.row},${move.col}`);
+                    }
+                }
+            }
+        }
+
+        // Convert back to Position array
+        return Array.from(attackedSquares).map(key => {
+            const [row, col] = key.split(',').map(Number);
+            return { row, col };
+        });
     }
 }

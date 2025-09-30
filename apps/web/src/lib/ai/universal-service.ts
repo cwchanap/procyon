@@ -6,8 +6,8 @@ import type {
     BaseGameState,
     GamePosition,
     GamePiece,
-    GAME_CONFIGS,
 } from './game-variant-types';
+import { GAME_CONFIGS } from './game-variant-types';
 import { createRuleGuardian, type RuleGuardian } from './rule-guardian';
 
 export interface GameVariantAdapter {
@@ -22,6 +22,12 @@ export interface GameVariantAdapter {
     getPieceSymbol(piece: GamePiece): string;
 }
 
+export interface AIInteractionData {
+    prompt: string;
+    rawResponse: string;
+    parsedResponse: AIResponse | null;
+}
+
 export class UniversalAIService {
     private config: AIConfig;
     private adapter: GameVariantAdapter;
@@ -31,6 +37,7 @@ export class UniversalAIService {
         message: string,
         data?: unknown
     ) => void;
+    private lastInteraction?: AIInteractionData;
 
     constructor(config: AIConfig, adapter: GameVariantAdapter) {
         this.config = config;
@@ -44,10 +51,16 @@ export class UniversalAIService {
         this.debugCallback = callback;
     }
 
-    async makeMove(gameState: any): Promise<AIResponse | null> {
+    getLastInteraction(): AIInteractionData | undefined {
+        return this.lastInteraction;
+    }
+
+    async makeMove(gameState: any, retryCount = 0): Promise<AIResponse | null> {
         if (!this.config.enabled || !this.config.apiKey) {
             return null;
         }
+
+        const MAX_RETRIES = 3;
 
         try {
             const prompt = this.adapter.generatePrompt(gameState);
@@ -55,6 +68,11 @@ export class UniversalAIService {
 
             if (this.config.debug) {
                 console.group('🐛 AI DEBUG MODE');
+                if (retryCount > 0) {
+                    console.log(
+                        `🔄 Retry attempt ${retryCount}/${MAX_RETRIES}`
+                    );
+                }
                 console.log('📋 Current Game State:');
                 console.log(`Player: ${baseGameState.currentPlayer}`);
                 console.log(`Status: ${baseGameState.status}`);
@@ -67,7 +85,7 @@ export class UniversalAIService {
 
                 this.debugCallback?.(
                     'ai-debug',
-                    `🤔 AI is thinking as ${baseGameState.currentPlayer}...`,
+                    `🤔 AI is thinking as ${baseGameState.currentPlayer}...${retryCount > 0 ? ` (Retry ${retryCount}/${MAX_RETRIES})` : ''}`,
                     {
                         player: baseGameState.currentPlayer,
                         status: baseGameState.status,
@@ -75,6 +93,7 @@ export class UniversalAIService {
                             Math.floor(baseGameState.moveHistory.length / 2) +
                             1,
                         gameVariant: this.adapter.gameVariant,
+                        retryCount,
                     }
                 );
             }
@@ -88,6 +107,13 @@ export class UniversalAIService {
             }
 
             const parsedResponse = this.parseAIResponse(response);
+
+            // Store the interaction data for export
+            this.lastInteraction = {
+                prompt,
+                rawResponse: response,
+                parsedResponse,
+            };
 
             if (this.config.debug) {
                 console.log('🎯 PARSED AI RESPONSE:');
@@ -120,15 +146,23 @@ export class UniversalAIService {
                         console.groupEnd();
                         this.debugCallback?.(
                             'ai-error',
-                            `🚫 Invalid AI move: ${validation.reason}`,
+                            `🚫 Invalid AI move: ${validation.reason}${retryCount < MAX_RETRIES ? ' - Retrying...' : ''}`,
                             {
                                 move: parsedResponse.move,
                                 reason: validation.reason,
                                 gameVariant: this.adapter.gameVariant,
+                                retryCount,
                             }
                         );
                     }
-                    return null; // Return null for invalid moves
+
+                    // Retry with a different random seed
+                    if (retryCount < MAX_RETRIES) {
+                        await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay
+                        return this.makeMove(gameState, retryCount + 1);
+                    }
+
+                    return null; // Return null after exhausting retries
                 }
             }
 
@@ -158,6 +192,18 @@ export class UniversalAIService {
             return parsedResponse;
         } catch (error) {
             console.error('AI service error:', error);
+
+            // Retry on error if we haven't exceeded max retries
+            if (retryCount < MAX_RETRIES) {
+                if (this.config.debug) {
+                    console.log(
+                        `🔄 Retrying after error (${retryCount + 1}/${MAX_RETRIES})...`
+                    );
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return this.makeMove(gameState, retryCount + 1);
+            }
+
             return null;
         }
     }

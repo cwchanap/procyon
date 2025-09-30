@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { GameState, Position, ChessPiece } from '../lib/chess/types';
 import {
     createInitialGameState,
@@ -19,6 +19,7 @@ import AISettingsDialog from './ai/AISettingsDialog';
 import type { AIConfig } from '../lib/ai/types';
 import { createChessAI } from '../lib/ai';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
+import { GameExporter } from '../lib/ai/game-export';
 
 interface LogicDemo {
     id: string;
@@ -46,6 +47,7 @@ const ChessGame: React.FC = () => {
     const [aiRejectionCount, setAiRejectionCount] = useState(0);
     const [isAiPaused, setIsAiPaused] = useState(false);
     const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+    const gameExporterRef = useRef<GameExporter | null>(null);
 
     // Helper function to convert move history to debug format
     const createAIMove = useCallback(
@@ -318,6 +320,30 @@ const ChessGame: React.FC = () => {
                             ),
                         ]);
                     }
+
+                    // Record AI move in exporter with AI data
+                    if (gameExporterRef.current) {
+                        const piece = getPieceAt(
+                            gameState.board,
+                            aiService.adapter.algebraicToPosition(
+                                aiResponse.move.from
+                            )
+                        );
+                        const interaction = aiService.getLastInteraction();
+                        gameExporterRef.current.addMove(
+                            Math.floor(gameState.moveHistory.length / 2) + 1,
+                            gameState.currentPlayer,
+                            aiResponse.move.from,
+                            aiResponse.move.to,
+                            piece?.type || 'unknown',
+                            {
+                                prompt: interaction?.prompt,
+                                response: interaction?.rawResponse,
+                                reasoning: aiResponse.thinking,
+                                confidence: aiResponse.confidence,
+                            }
+                        );
+                    }
                 } else {
                     // Handle AI move rejection
                     const newRejectionCount = aiRejectionCount + 1;
@@ -502,6 +528,31 @@ const ChessGame: React.FC = () => {
                                 ),
                             ]);
                         }
+
+                        // Record human move in exporter
+                        if (gameExporterRef.current) {
+                            const fromSquare =
+                                String.fromCharCode(
+                                    97 + gameState.selectedSquare.col
+                                ) +
+                                (8 - gameState.selectedSquare.row);
+                            const toSquare =
+                                String.fromCharCode(97 + position.col) +
+                                (8 - position.row);
+                            const piece = getPieceAt(
+                                gameState.board,
+                                gameState.selectedSquare
+                            );
+                            gameExporterRef.current.addMove(
+                                Math.floor(gameState.moveHistory.length / 2) +
+                                    1,
+                                gameState.currentPlayer,
+                                fromSquare,
+                                toSquare,
+                                piece?.type || 'unknown'
+                            );
+                        }
+
                         return;
                     }
                 }
@@ -545,11 +596,14 @@ const ChessGame: React.FC = () => {
                 setGameState(createInitialGameState('human-vs-human'));
             }
             setGameStarted(true);
+
+            // Initialize game exporter
+            gameExporterRef.current = new GameExporter('chess', aiConfig);
         } else {
             // Resetting the game
             resetGame();
         }
-    }, [hasGameStarted, resetGame, gameMode, aiPlayer]);
+    }, [hasGameStarted, resetGame, gameMode, aiPlayer, aiConfig]);
 
     const handleDemoChange = useCallback(
         (demoId: string) => {
@@ -746,21 +800,38 @@ const ChessGame: React.FC = () => {
                             {gameMode === 'ai' &&
                                 aiConfig.enabled &&
                                 aiConfig.apiKey && (
-                                    <button
-                                        onClick={() =>
-                                            setIsDebugMode(!isDebugMode)
-                                        }
-                                        className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
-                                            isDebugMode
-                                                ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
-                                                : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
-                                        }`}
-                                    >
-                                        🐛{' '}
-                                        {isDebugMode
-                                            ? 'Debug ON'
-                                            : 'Debug Mode'}
-                                    </button>
+                                    <>
+                                        <button
+                                            onClick={() =>
+                                                setIsDebugMode(!isDebugMode)
+                                            }
+                                            className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+                                                isDebugMode
+                                                    ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
+                                                    : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+                                            }`}
+                                        >
+                                            🐛{' '}
+                                            {isDebugMode
+                                                ? 'Debug ON'
+                                                : 'Debug Mode'}
+                                        </button>
+
+                                        {hasGameStarted &&
+                                            gameExporterRef.current && (
+                                                <button
+                                                    onClick={() =>
+                                                        gameExporterRef.current?.exportAndDownload(
+                                                            gameState.status
+                                                        )
+                                                    }
+                                                    className='glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 text-blue-300 border-blue-400 hover:bg-blue-500 hover:bg-opacity-10'
+                                                    title='Export game with AI prompts and responses'
+                                                >
+                                                    📥 Export Game
+                                                </button>
+                                            )}
+                                    </>
                                 )}
                         </div>
 
