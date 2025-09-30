@@ -37,6 +37,7 @@ export class ChessAdapter implements GameVariantAdapter {
         const validMoves: string[] = [];
 
         if (this.debugMode) {
+            // eslint-disable-next-line no-console
             console.log(`🔍 Generating valid moves for ${currentPlayer}:`);
         }
 
@@ -48,6 +49,7 @@ export class ChessAdapter implements GameVariantAdapter {
                     const algebraicFrom = this.positionToAlgebraic(fromPos);
 
                     if (this.debugMode) {
+                        // eslint-disable-next-line no-console
                         console.log(
                             `  Found ${piece.type} at ${algebraicFrom}`
                         );
@@ -60,6 +62,7 @@ export class ChessAdapter implements GameVariantAdapter {
                     );
 
                     if (this.debugMode && possibleMoves.length > 0) {
+                        // eslint-disable-next-line no-console
                         console.log(
                             `    Possible moves for ${piece.type} at ${algebraicFrom}:`,
                             possibleMoves
@@ -87,8 +90,10 @@ export class ChessAdapter implements GameVariantAdapter {
         }
 
         if (this.debugMode) {
+            // eslint-disable-next-line no-console
             console.log(`📋 Total valid moves found: ${validMoves.length}`);
             if (validMoves.length > 0) {
+                // eslint-disable-next-line no-console
                 console.log(`📝 Valid moves:`, validMoves);
             }
         }
@@ -100,6 +105,7 @@ export class ChessAdapter implements GameVariantAdapter {
         const groupedMoves = this.groupMovesByPiece(validMoves);
 
         if (this.debugMode) {
+            // eslint-disable-next-line no-console
             console.log(`📋 Grouped moves sent to AI:\n${groupedMoves}`);
         }
 
@@ -110,71 +116,40 @@ export class ChessAdapter implements GameVariantAdapter {
         const currentPlayer = gameState.currentPlayer;
         const moveHistory = this.formatMoveHistory(gameState.moveHistory);
         const visualBoard = this.createVisualBoard(gameState);
-        const threatAnalysis = this.analyzeThreatsSafety(gameState);
         const validMoves = this.getAllValidMoves(gameState)[0];
-        const randomSeed = Math.floor(Math.random() * 1000);
-
         const exampleMove = this.getExampleMoveFromValidMoves(validMoves);
 
-        return `You are a chess AI assistant playing as ${currentPlayer}. Analyze the current chess position and provide your next move.
+        // Simplified threat analysis for token efficiency
+        const material = this.getSimpleMaterialBalance(gameState);
+        const criticalThreats = this.getCriticalThreats(gameState);
 
-CURRENT BOARD POSITION:
+        return `Chess AI playing ${currentPlayer}. Choose your move.
+
+BOARD:
 ${visualBoard}
 
-Current player to move: ${currentPlayer}
-Game status: ${gameState.status}
-Move number: ${Math.floor(gameState.moveHistory.length / 2) + 1}
+Move #${Math.floor(gameState.moveHistory.length / 2) + 1} | Status: ${gameState.status}
+Recent: ${moveHistory}
 
-RECENT MOVES (last 5):
-${moveHistory}
-
-⚠️  CRITICAL - VALID MOVES AVAILABLE (ONLY CHOOSE FROM THESE):
+VALID MOVES (choose ONLY from these):
 ${validMoves}
 
-❌ DO NOT suggest moves for pieces that don't exist on those squares!
-❌ DO NOT suggest a move from a square that has no piece!
-❌ Look at the CURRENT BOARD POSITION above - pieces have moved from their starting positions!
-❌ Check the board carefully: if a square shows "." it is EMPTY!
+${criticalThreats}Material: ${material}
 
-POSITION ANALYSIS:
-${threatAnalysis}
-
-STRATEGIC CONSIDERATIONS:
-- Opening principles: Control center (e4, e5, d4, d5), develop pieces, castle early
-- Middlegame: Look for tactics, improve piece positions, create weaknesses
-- Endgame: Activate king, promote pawns, use piece coordination
-
-TACTICAL AWARENESS:
-- Check for forks, pins, skewers, and discovered attacks
-- Look for sacrifice opportunities
-- Consider opponent's threats and counter-threats
-- Evaluate piece exchanges carefully
-
-🚨 CRITICAL: Before suggesting a move, CHECK:
-1. Is the destination square under attack? (see DANGER ZONES above)
-2. Is the piece you're moving more valuable than what's attacking that square?
-3. If moving to an attacked square, can you CAPTURE something valuable there?
-4. Example: DON'T move a knight (3 points) to a square attacked by a pawn (1 point)!
-
-RANDOMIZATION SEED: ${randomSeed} (use this to vary your play style slightly)
-
-IMPORTANT: You must respond in exactly this JSON format:
+Respond in JSON:
 {
     "move": {
         "from": "${exampleMove.from}",
         "to": "${exampleMove.to}"
     },
-    "reasoning": "Detailed explanation of your strategic thinking",
+    "reasoning": "Brief tactical/strategic reason",
     "confidence": 85
 }
 
-🚨 ABSOLUTE REQUIREMENT: You MUST choose ONLY from the valid moves listed above.
-   - Parse the valid moves list format: "from-to" means moving piece FROM one square TO another
-   - For example, "e2-e4" means: "from": "e2", "to": "e4"
-   - Your "from" square MUST have a ${currentPlayer} piece on it (look at the board!)
-   - If you suggest an invalid move, I will retry your request with a warning
-
-Your move:`;
+Rules:
+- ONLY use moves from the valid moves list above
+- "from" must have your piece on it (check board!)
+- Parse "a2-a4" as {"from": "a2", "to": "a4"}`;
     }
 
     createVisualBoard(gameState: GameState): string {
@@ -294,6 +269,7 @@ Your move:`;
 
         if (!piece || piece.color !== currentPlayer) {
             if (this.debugMode) {
+                // eslint-disable-next-line no-console
                 console.log(
                     `    ❌ Invalid: No ${currentPlayer} piece at ${this.positionToAlgebraic(from)}`
                 );
@@ -303,6 +279,7 @@ Your move:`;
 
         if (!isMoveValid(board, from, to, piece)) {
             if (this.debugMode) {
+                // eslint-disable-next-line no-console
                 console.log(
                     `    ❌ Invalid: Move ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} not allowed for ${piece.type}`
                 );
@@ -317,6 +294,7 @@ Your move:`;
         const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
         if (wouldBeInCheck) {
             if (this.debugMode) {
+                // eslint-disable-next-line no-console
                 console.log(
                     `    ❌ Invalid: Move ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} leaves king in check`
                 );
@@ -325,6 +303,7 @@ Your move:`;
         }
 
         if (this.debugMode) {
+            // eslint-disable-next-line no-console
             console.log(
                 `    ✅ Valid: ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)}`
             );
@@ -333,27 +312,47 @@ Your move:`;
     }
 
     private formatMoveHistory(moves: Move[]): string {
-        if (moves.length === 0) return 'Game start';
+        if (moves.length === 0) return 'None';
 
-        const recentMoves = moves.slice(-10);
+        const recentMoves = moves.slice(-6);
         return recentMoves
-            .map((move, index) => {
-                const moveNum =
-                    Math.floor(
-                        (moves.length - recentMoves.length + index) / 2
-                    ) + 1;
-                const isWhite =
-                    (moves.length - recentMoves.length + index) % 2 === 0;
+            .map(move => {
                 const from = this.positionToAlgebraic(move.from);
                 const to = this.positionToAlgebraic(move.to);
-
-                if (isWhite) {
-                    return `${moveNum}. ${from}-${to}`;
-                } else {
-                    return `${from}-${to}`;
-                }
+                return `${from}-${to}`;
             })
             .join(' ');
+    }
+
+    private getSimpleMaterialBalance(gameState: GameState): string {
+        const { board, currentPlayer } = gameState;
+        const myMaterial = this.countMaterial(board, currentPlayer);
+        const enemyMaterial = this.countMaterial(
+            board,
+            currentPlayer === 'white' ? 'black' : 'white'
+        );
+        const diff = myMaterial - enemyMaterial;
+        if (diff > 0) return `+${diff}`;
+        if (diff < 0) return `${diff}`;
+        return 'Equal';
+    }
+
+    private getCriticalThreats(gameState: GameState): string {
+        if (gameState.status === 'check') {
+            return '⚠️ IN CHECK! Must escape!\n';
+        }
+        const hangingPieces = this.findHangingPieces(
+            gameState.board,
+            gameState.currentPlayer
+        );
+        if (hangingPieces.length > 0) {
+            const threats = hangingPieces
+                .slice(0, 3)
+                .map(t => `${t.piece} on ${t.square}`)
+                .join(', ');
+            return `⚠️ Hanging: ${threats}\n`;
+        }
+        return '';
     }
 
     private findPiece(

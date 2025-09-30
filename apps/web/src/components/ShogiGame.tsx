@@ -553,100 +553,9 @@ const ShogiGame: React.FC = () => {
                 </div>
             )}
 
-            {gameMode === 'ai' ? (
-                <div className='flex justify-center'>
-                    <GameStartOverlay
-                        active={!hasGameStarted && gameMode !== 'tutorial'}
-                    >
-                        <div className='flex gap-8 items-start'>
-                            <div className='flex flex-col gap-4'>
-                                <ShogiHand
-                                    pieces={gameState.goteHand}
-                                    color='gote'
-                                    selectedPiece={gameState.selectedHandPiece}
-                                    onPieceClick={
-                                        hasGameStarted ||
-                                        gameMode === 'tutorial'
-                                            ? handleHandPieceClick
-                                            : () => {}
-                                    }
-                                />
-                            </div>
-
-                            <ShogiBoard
-                                board={currentBoard}
-                                selectedSquare={gameState.selectedSquare}
-                                possibleMoves={gameState.possibleMoves}
-                                onSquareClick={
-                                    hasGameStarted || gameMode === 'tutorial'
-                                        ? handleSquareClick
-                                        : () => {}
-                                }
-                                highlightSquares={currentHighlightSquares}
-                            />
-
-                            <div className='flex flex-col gap-4'>
-                                <ShogiHand
-                                    pieces={gameState.senteHand}
-                                    color='sente'
-                                    selectedPiece={gameState.selectedHandPiece}
-                                    onPieceClick={
-                                        hasGameStarted ||
-                                        gameMode === 'tutorial'
-                                            ? handleHandPieceClick
-                                            : () => {}
-                                    }
-                                />
-                            </div>
-                        </div>
-                    </GameStartOverlay>
-                </div>
-            ) : (
-                <div className='flex justify-center'>
-                    <ShogiBoard
-                        board={currentBoard}
-                        selectedSquare={gameState.selectedSquare}
-                        possibleMoves={gameState.possibleMoves}
-                        onSquareClick={handleSquareClick}
-                        highlightSquares={currentHighlightSquares}
-                    />
-                </div>
-            )}
-
             <div className='w-full max-w-4xl mx-auto space-y-6'>
                 {gameMode === 'ai' ? (
                     <>
-                        <div className='flex gap-4 justify-center'>
-                            <button
-                                onClick={handleStartOrReset}
-                                className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
-                            >
-                                {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
-                            </button>
-
-                            {aiConfig.enabled && aiConfig.apiKey && (
-                                <button
-                                    onClick={() => setIsDebugMode(!isDebugMode)}
-                                    className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
-                                        isDebugMode
-                                            ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
-                                            : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
-                                    }`}
-                                >
-                                    🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
-                                </button>
-                            )}
-
-                            {isGameOver && (
-                                <button
-                                    onClick={resetGame}
-                                    className='bg-gradient-to-r from-orange-500 to-red-500 hover:from-red-500 hover:to-orange-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
-                                >
-                                    🎮 Play Again
-                                </button>
-                            )}
-                        </div>
-
                         <div className='text-sm text-orange-200 text-center max-w-2xl mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
                             <p className='flex items-center justify-center gap-2'>
                                 <span>🖱️</span>
@@ -735,6 +644,101 @@ const ShogiGame: React.FC = () => {
                             </div>
                         </div>
                     </>
+                )}
+            </div>
+
+            {gameMode === 'ai' ? (
+                <div className='flex justify-center'>
+                    <GameStartOverlay
+                        active={!hasGameStarted && gameMode !== 'tutorial'}
+                    >
+                        <div className='flex gap-8 items-start'>
+                            <div className='flex flex-col gap-4'>
+                                <ShogiHand
+                                    pieces={gameState.goteHand}
+                                    color='gote'
+                                    selectedPiece={gameState.selectedHandPiece}
+                                    onPieceClick={
+                                        hasGameStarted ||
+                                        gameMode === 'tutorial'
+                                            ? handleHandPieceClick
+                                            : () => {}
+                                    }
+                                />
+                            </div>
+
+                            <ShogiBoard
+                                board={currentBoard}
+                                selectedSquare={gameState.selectedSquare}
+                                possibleMoves={gameState.possibleMoves}
+                                onSquareClick={
+                                    hasGameStarted || gameMode === 'tutorial'
+                                        ? handleSquareClick
+                                        : () => {}
+                                }
+                                highlightSquares={currentHighlightSquares}
+                            />
+
+                            <div className='flex flex-col gap-4'>
+                                <ShogiHand
+                                    pieces={gameState.senteHand}
+                                    color='sente'
+                                    selectedPiece={gameState.selectedHandPiece}
+                                    onPieceClick={
+                                        hasGameStarted ||
+                                        gameMode === 'tutorial'
+                                            ? handleHandPieceClick
+                                            : () => {}
+                                    }
+                                />
+                            </div>
+                        </div>
+                    </GameStartOverlay>
+                </div>
+            ) : (
+                <div className='flex justify-center'>
+                    <ShogiBoard
+                        board={currentBoard}
+                        selectedSquare={gameState.selectedSquare}
+                        possibleMoves={gameState.possibleMoves}
+                        onSquareClick={handleSquareClick}
+                        highlightSquares={currentHighlightSquares}
+                    />
+                </div>
+            )}
+
+            <div className='w-full max-w-4xl mx-auto space-y-6'>
+                {gameMode === 'ai' && (
+                    <div className='flex gap-4 justify-center'>
+                        <button
+                            onClick={handleStartOrReset}
+                            className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
+                        >
+                            {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
+                        </button>
+
+                        {aiConfig.enabled && aiConfig.apiKey && (
+                            <button
+                                onClick={() => setIsDebugMode(!isDebugMode)}
+                                className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+                                    isDebugMode
+                                        ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
+                                        : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+                                }`}
+                            >
+                                🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
+                            </button>
+                        )}
+
+                        {isGameOver && (
+                            <button
+                                onClick={resetGame}
+                                className='bg-gradient-to-r from-orange-500 to-red-500 hover:from-red-500 hover:to-orange-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
+                            >
+                                🎮 Play Again
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
         </GameScaffold>

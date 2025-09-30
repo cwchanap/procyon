@@ -506,54 +506,9 @@ const XiangqiGame: React.FC = () => {
                 </div>
             )}
 
-            <div className='flex justify-center'>
-                <GameStartOverlay
-                    active={!hasGameStarted && gameMode !== 'tutorial'}
-                >
-                    <XiangqiBoard
-                        board={currentBoard}
-                        selectedSquare={gameState.selectedSquare}
-                        possibleMoves={gameState.possibleMoves}
-                        onSquareClick={handleSquareClick}
-                        highlightSquares={currentHighlightSquares}
-                    />
-                </GameStartOverlay>
-            </div>
-
             <div className='w-full max-w-4xl mx-auto space-y-6'>
                 {gameMode === 'ai' ? (
                     <>
-                        <div className='flex gap-4 flex-wrap justify-center'>
-                            <button
-                                onClick={handleStartOrReset}
-                                className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
-                            >
-                                {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
-                            </button>
-
-                            {aiConfig.enabled && aiConfig.apiKey && (
-                                <button
-                                    onClick={() => setIsDebugMode(!isDebugMode)}
-                                    className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
-                                        isDebugMode
-                                            ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
-                                            : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
-                                    }`}
-                                >
-                                    🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
-                                </button>
-                            )}
-
-                            {isGameOver && (
-                                <button
-                                    onClick={handleResetGame}
-                                    className='bg-gradient-to-r from-red-500 to-yellow-500 hover:from-yellow-500 hover:to-red-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
-                                >
-                                    🎮 Play Again
-                                </button>
-                            )}
-                        </div>
-
                         <div className='text-sm text-purple-200 text-center max-w-lg mx-auto space-y-3 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
                             <p className='flex items-center justify-center gap-2'>
                                 <span>🖱️</span>
@@ -694,6 +649,55 @@ const XiangqiGame: React.FC = () => {
                             </div>
                         </div>
                     </>
+                )}
+            </div>
+
+            <div className='flex justify-center'>
+                <GameStartOverlay
+                    active={!hasGameStarted && gameMode !== 'tutorial'}
+                >
+                    <XiangqiBoard
+                        board={currentBoard}
+                        selectedSquare={gameState.selectedSquare}
+                        possibleMoves={gameState.possibleMoves}
+                        onSquareClick={handleSquareClick}
+                        highlightSquares={currentHighlightSquares}
+                    />
+                </GameStartOverlay>
+            </div>
+
+            <div className='w-full max-w-4xl mx-auto space-y-6'>
+                {gameMode === 'ai' && (
+                    <div className='flex gap-4 flex-wrap justify-center'>
+                        <button
+                            onClick={handleStartOrReset}
+                            className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
+                        >
+                            {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
+                        </button>
+
+                        {aiConfig.enabled && aiConfig.apiKey && (
+                            <button
+                                onClick={() => setIsDebugMode(!isDebugMode)}
+                                className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+                                    isDebugMode
+                                        ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
+                                        : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+                                }`}
+                            >
+                                🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
+                            </button>
+                        )}
+
+                        {isGameOver && (
+                            <button
+                                onClick={handleResetGame}
+                                className='bg-gradient-to-r from-red-500 to-yellow-500 hover:from-yellow-500 hover:to-red-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
+                            >
+                                🎮 Play Again
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
         </GameScaffold>

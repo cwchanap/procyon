@@ -44,9 +44,10 @@ const ChessGame: React.FC = () => {
     const [aiConfig, setAIConfig] = useState<AIConfig>(defaultAIConfig);
     const [isDebugMode, setIsDebugMode] = useState(false);
     const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
-    const [aiRejectionCount, setAiRejectionCount] = useState(0);
+    const [_aiRejectionCount, setAiRejectionCount] = useState(0);
     const [isAiPaused, setIsAiPaused] = useState(false);
     const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+    const [aiError, setAiError] = useState<string | null>(null);
     const gameExporterRef = useRef<GameExporter | null>(null);
 
     // Helper function to convert move history to debug format
@@ -280,6 +281,7 @@ const ChessGame: React.FC = () => {
         }
 
         setGameState(prev => setAIThinking(prev, true));
+        setAiError(null); // Clear previous errors
 
         try {
             const aiResponse = await aiService.makeMove(gameState);
@@ -345,58 +347,46 @@ const ChessGame: React.FC = () => {
                         );
                     }
                 } else {
-                    // Handle AI move rejection
-                    const newRejectionCount = aiRejectionCount + 1;
-                    setAiRejectionCount(newRejectionCount);
-
-                    if (isDebugMode) {
-                        setAiDebugMoves(prev => [
-                            ...prev.slice(0, -1), // Remove the "attempting" move
-                            createAIMove(
-                                `${aiResponse.move.from} → ${aiResponse.move.to}`,
-                                true,
-                                undefined,
-                                `❌ Move REJECTED (${newRejectionCount}/5)`
-                            ),
-                        ]);
-                    }
-
-                    // Pause AI after 5 rejections
-                    if (newRejectionCount >= 5) {
-                        setIsAiPaused(true);
-                        if (isDebugMode) {
-                            setAiDebugMoves(prev => [
-                                ...prev,
-                                createAIMove(
-                                    'AI PAUSED',
-                                    true,
-                                    undefined,
-                                    `🛑 AI PAUSED - Too many rejections (5/5). Game paused to prevent infinite loop.`
-                                ),
-                            ]);
-                        }
-                    }
+                    setAiError('AI suggested an invalid move');
+                    setIsAiPaused(true);
                 }
             } else {
-                if (isDebugMode) {
-                    setAiDebugMoves(prev => [
-                        ...prev,
-                        createAIMove(
-                            'No response',
-                            true,
-                            undefined,
-                            `❌ No valid AI response received`
-                        ),
-                    ]);
-                }
+                setAiError('AI did not return a valid response');
+                setIsAiPaused(true);
             }
         } catch (error) {
             // eslint-disable-next-line no-console
             console.error('AI move failed:', error);
+            const errorMessage =
+                error instanceof Error
+                    ? error.message
+                    : 'Unknown error occurred';
+            setAiError(errorMessage);
+            setIsAiPaused(true);
+
+            if (isDebugMode) {
+                setAiDebugMoves(prev => [
+                    ...prev,
+                    createAIMove(
+                        'Error',
+                        true,
+                        undefined,
+                        `❌ ${errorMessage}`
+                    ),
+                ]);
+            }
         } finally {
             setGameState(prev => setAIThinking(prev, false));
         }
-    }, [gameState, aiService]);
+    }, [gameState, aiService, isDebugMode, createAIMove]);
+
+    // Retry AI move
+    const retryAIMove = useCallback(() => {
+        setAiError(null);
+        setIsAiPaused(false);
+        setAiRejectionCount(0);
+        // The effect will trigger makeAIMoveAsync automatically
+    }, []);
 
     // Effect to trigger AI moves
     useEffect(() => {
@@ -729,9 +719,22 @@ const ChessGame: React.FC = () => {
                                     </div>
                                 )}
 
-                                {isAiPaused && (
-                                    <div className='text-red-300'>
-                                        🛑 AI Paused ({aiRejectionCount}/5)
+                                {aiError && isAiPaused && (
+                                    <div className='flex flex-col items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg'>
+                                        <div className='text-red-300 text-center'>
+                                            <div className='font-semibold mb-1'>
+                                                ❌ AI Error
+                                            </div>
+                                            <div className='text-sm opacity-90'>
+                                                {aiError}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={retryAIMove}
+                                            className='px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors text-sm font-medium'
+                                        >
+                                            🔄 Retry
+                                        </button>
                                     </div>
                                 )}
 
@@ -763,78 +766,9 @@ const ChessGame: React.FC = () => {
                 </div>
             )}
 
-            <div className='flex justify-center'>
-                <GameStartOverlay
-                    active={!hasGameStarted && gameMode !== 'tutorial'}
-                >
-                    <ChessBoard
-                        board={currentBoard}
-                        selectedSquare={gameState.selectedSquare}
-                        possibleMoves={gameState.possibleMoves}
-                        onSquareClick={handleSquareClick}
-                        highlightSquares={currentHighlightSquares}
-                    />
-                </GameStartOverlay>
-            </div>
-
             <div className='w-full max-w-4xl mx-auto space-y-6'>
                 {gameMode === 'ai' ? (
                     <>
-                        <div className='flex gap-4 justify-center'>
-                            <button
-                                onClick={handleStartOrReset}
-                                className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
-                            >
-                                {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
-                            </button>
-
-                            {isGameOver && (
-                                <button
-                                    onClick={resetGame}
-                                    className='bg-gradient-to-r from-green-500 to-emerald-500 hover:from-emerald-500 hover:to-green-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
-                                >
-                                    🎮 Play Again
-                                </button>
-                            )}
-
-                            {gameMode === 'ai' &&
-                                aiConfig.enabled &&
-                                aiConfig.apiKey && (
-                                    <>
-                                        <button
-                                            onClick={() =>
-                                                setIsDebugMode(!isDebugMode)
-                                            }
-                                            className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
-                                                isDebugMode
-                                                    ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
-                                                    : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
-                                            }`}
-                                        >
-                                            🐛{' '}
-                                            {isDebugMode
-                                                ? 'Debug ON'
-                                                : 'Debug Mode'}
-                                        </button>
-
-                                        {hasGameStarted &&
-                                            gameExporterRef.current && (
-                                                <button
-                                                    onClick={() =>
-                                                        gameExporterRef.current?.exportAndDownload(
-                                                            gameState.status
-                                                        )
-                                                    }
-                                                    className='glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 text-blue-300 border-blue-400 hover:bg-blue-500 hover:bg-opacity-10'
-                                                    title='Export game with AI prompts and responses'
-                                                >
-                                                    📥 Export Game
-                                                </button>
-                                            )}
-                                    </>
-                                )}
-                        </div>
-
                         <div className='text-sm text-purple-200 text-center max-w-md mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
                             <p className='flex items-center justify-center gap-2'>
                                 <span>🖱️</span>
@@ -921,6 +855,79 @@ const ChessGame: React.FC = () => {
                             </div>
                         </div>
                     </>
+                )}
+            </div>
+
+            <div className='flex justify-center'>
+                <GameStartOverlay
+                    active={!hasGameStarted && gameMode !== 'tutorial'}
+                >
+                    <ChessBoard
+                        board={currentBoard}
+                        selectedSquare={gameState.selectedSquare}
+                        possibleMoves={gameState.possibleMoves}
+                        onSquareClick={handleSquareClick}
+                        highlightSquares={currentHighlightSquares}
+                    />
+                </GameStartOverlay>
+            </div>
+
+            <div className='w-full max-w-4xl mx-auto space-y-6'>
+                {gameMode === 'ai' && (
+                    <div className='flex gap-4 justify-center'>
+                        <button
+                            onClick={handleStartOrReset}
+                            className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
+                        >
+                            {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
+                        </button>
+
+                        {isGameOver && (
+                            <button
+                                onClick={resetGame}
+                                className='bg-gradient-to-r from-green-500 to-emerald-500 hover:from-emerald-500 hover:to-green-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
+                            >
+                                🎮 Play Again
+                            </button>
+                        )}
+
+                        {gameMode === 'ai' &&
+                            aiConfig.enabled &&
+                            aiConfig.apiKey && (
+                                <>
+                                    <button
+                                        onClick={() =>
+                                            setIsDebugMode(!isDebugMode)
+                                        }
+                                        className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+                                            isDebugMode
+                                                ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
+                                                : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+                                        }`}
+                                    >
+                                        🐛{' '}
+                                        {isDebugMode
+                                            ? 'Debug ON'
+                                            : 'Debug Mode'}
+                                    </button>
+
+                                    {hasGameStarted &&
+                                        gameExporterRef.current && (
+                                            <button
+                                                onClick={() =>
+                                                    gameExporterRef.current?.exportAndDownload(
+                                                        gameState.status
+                                                    )
+                                                }
+                                                className='glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 text-blue-300 border-blue-400 hover:bg-blue-500 hover:bg-opacity-10'
+                                                title='Export game with AI prompts and responses'
+                                            >
+                                                📥 Export Game
+                                            </button>
+                                        )}
+                                </>
+                            )}
+                    </div>
                 )}
             </div>
         </GameScaffold>
