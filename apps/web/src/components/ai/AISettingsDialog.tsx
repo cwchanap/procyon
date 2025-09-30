@@ -16,6 +16,7 @@ interface AISettingsDialogProps {
 const ALL_PROVIDER_OPTIONS = [
     { value: 'gemini', label: 'Google Gemini' },
     { value: 'openrouter', label: 'OpenRouter' },
+    { value: 'openai', label: 'OpenAI' },
 ];
 
 const MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
@@ -31,6 +32,12 @@ const MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
         { value: 'claude-3-haiku', label: 'Claude 3 Haiku' },
         { value: 'llama-3.1-70b', label: 'Llama 3.1 70B' },
         { value: 'gpt-oss-120b', label: 'GPT OSS 120B' },
+    ],
+    openai: [
+        { value: 'gpt-4o', label: 'GPT-4o' },
+        { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+        { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+        { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
     ],
 };
 

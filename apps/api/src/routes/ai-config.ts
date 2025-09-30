@@ -10,14 +10,14 @@ const app = new Hono();
 
 // Validation schemas
 const aiConfigSchema = z.object({
-    provider: z.enum(['gemini', 'openrouter', 'openai', 'anthropic']),
+    provider: z.enum(['gemini', 'openrouter', 'openai']),
     modelName: z.string().min(1, 'Model name is required'),
     apiKey: z.string().min(1, 'API key is required'),
     isActive: z.boolean().optional().default(false),
 });
 
 const updateActiveConfigSchema = z.object({
-    provider: z.enum(['gemini', 'openrouter', 'openai', 'anthropic']),
+    provider: z.enum(['gemini', 'openrouter', 'openai']),
     modelName: z.string().min(1, 'Model name is required'),
 });
 

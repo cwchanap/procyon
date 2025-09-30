@@ -172,22 +172,22 @@ test.describe('AI Configuration Management', () => {
             // Create second configuration
             const providerDropdown = page.getByRole('combobox').first();
             await providerDropdown.click();
-            await page.getByRole('option', { name: 'Anthropic' }).click();
+            await page.getByRole('option', { name: 'OpenAI' }).click();
 
             const modelDropdown = page.getByRole('combobox').nth(1);
             await modelDropdown.click();
-            await page.getByRole('option', { name: 'Claude 3 Sonnet' }).click();
+            await page.getByRole('option', { name: 'GPT-4o' }).click();
 
             await page
                 .getByRole('textbox', { name: 'Enter your API key' })
-                .fill('claude-key-999');
+                .fill('openai-key-999');
             await page
                 .getByRole('button', { name: 'Save Configuration' })
                 .click();
 
             // Should have two configurations
             await expect(page.getByText('Google Gemini')).toBeVisible();
-            await expect(page.getByText('Anthropic')).toBeVisible();
+            await expect(page.getByText('OpenAI')).toBeVisible();
 
             // Delete first configuration (Google Gemini)
             const geminiDeleteButton = page
@@ -196,10 +196,10 @@ test.describe('AI Configuration Management', () => {
                 .getByRole('button', { name: 'Delete' });
             await geminiDeleteButton.click();
 
-            // Google Gemini should be gone, Anthropic should remain
+            // Google Gemini should be gone, OpenAI should remain
             await expect(page.getByText('Google Gemini')).not.toBeVisible();
-            await expect(page.getByText('Anthropic')).toBeVisible();
-            await expect(page.getByText('Claude 3 Sonnet')).toBeVisible();
+            await expect(page.getByText('OpenAI')).toBeVisible();
+            await expect(page.getByText('GPT-4o')).toBeVisible();
 
             // Saved Configurations section should still be visible
             await expect(

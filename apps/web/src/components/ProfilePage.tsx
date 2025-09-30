@@ -33,14 +33,6 @@ const AI_PROVIDERS = {
             { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
         ],
     },
-    anthropic: {
-        name: 'Anthropic',
-        models: [
-            { id: 'claude-3-sonnet', name: 'Claude 3 Sonnet' },
-            { id: 'claude-3-haiku', name: 'Claude 3 Haiku' },
-            { id: 'claude-3-opus', name: 'Claude 3 Opus' },
-        ],
-    },
 } as const;
 
 type AiProvider = keyof typeof AI_PROVIDERS;
@@ -90,17 +82,13 @@ export function ProfilePage() {
         }
     }, [configurations, editingConfigId]);
 
-    // Set default model when provider changes (only if no configurations are loaded)
+    // Set default model when provider changes
     useEffect(() => {
         const models = AI_PROVIDERS[selectedProvider].models;
-        if (
-            models.length > 0 &&
-            !selectedModel &&
-            configurations.length === 0
-        ) {
+        if (models.length > 0 && !selectedModel) {
             setSelectedModel(models[0].id);
         }
-    }, [selectedProvider, selectedModel, configurations]);
+    }, [selectedProvider, selectedModel]);
 
     // Load API key when provider changes
     useEffect(() => {
@@ -435,9 +423,6 @@ export function ProfilePage() {
                                             }
                                             className='w-full p-2 bg-gray-800/90 border border-gray-600 rounded-md text-white placeholder-gray-400'
                                         >
-                                            <option value=''>
-                                                Select a model
-                                            </option>
                                             {AI_PROVIDERS[
                                                 selectedProvider
                                             ].models.map(model => (

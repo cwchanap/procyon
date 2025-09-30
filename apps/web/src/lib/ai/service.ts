@@ -105,6 +105,8 @@ export class AIService {
                 return this.callGemini(prompt);
             case 'openrouter':
                 return this.callOpenRouter(prompt);
+            case 'openai':
+                return this.callOpenAI(prompt);
             default:
                 throw new Error(
                     `Unsupported AI provider: ${this.config.provider}`
@@ -169,6 +171,37 @@ export class AIService {
 
         if (!response.ok) {
             throw new Error(`OpenRouter API error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || '';
+    }
+
+    private async callOpenAI(prompt: string): Promise<string> {
+        const response = await fetch(
+            'https://api.openai.com/v1/chat/completions',
+            {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${this.config.apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: this.config.model,
+                    messages: [
+                        {
+                            role: 'user',
+                            content: prompt,
+                        },
+                    ],
+                    temperature: 0.3,
+                    max_tokens: 500,
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`OpenAI API error: ${response.statusText}`);
         }
 
         const data = await response.json();

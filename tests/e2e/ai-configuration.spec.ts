@@ -70,9 +70,6 @@ test.describe('AI Configuration Management', () => {
             await expect(
                 page.getByRole('option', { name: 'OpenAI' })
             ).toBeVisible();
-            await expect(
-                page.getByRole('option', { name: 'Anthropic' })
-            ).toBeVisible();
         });
 
         test('should display updated Gemini models including latest versions', async ({

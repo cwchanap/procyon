@@ -1,6 +1,6 @@
 import type { GameVariant } from './game-variant-types';
 
-export type AIProvider = 'gemini' | 'openrouter';
+export type AIProvider = 'gemini' | 'openrouter' | 'openai';
 
 export interface AIConfig {
     provider: AIProvider;
@@ -29,6 +29,12 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderInfo> = {
         name: 'OpenRouter',
         defaultModel: 'gpt-oss-120b',
         models: ['gpt-oss-120b', 'claude-3-haiku', 'llama-3.1-70b'],
+        requiresApiKey: true,
+    },
+    openai: {
+        name: 'OpenAI',
+        defaultModel: 'gpt-4o-mini',
+        models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
         requiresApiKey: true,
     },
 };
