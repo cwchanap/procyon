@@ -15,6 +15,7 @@ import ChessBoard from './ChessBoard';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
+import AISettingsDialog from './ai/AISettingsDialog';
 import type { AIConfig } from '../lib/ai/types';
 import { createChessAI } from '../lib/ai';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
@@ -622,36 +623,38 @@ const ChessGame: React.FC = () => {
             onModeChange={toggleToMode}
             showModeToggle={showModeToggle}
             inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
+            aiSettingsButton={
+                <AISettingsDialog
+                    aiPlayer={aiPlayer}
+                    onAIPlayerChange={player =>
+                        setAIPlayer(player as 'white' | 'black')
+                    }
+                    provider={aiConfig.provider}
+                    model={aiConfig.model}
+                    onProviderChange={provider =>
+                        setAIConfig({ ...aiConfig, provider })
+                    }
+                    onModelChange={model => setAIConfig({ ...aiConfig, model })}
+                    aiPlayerOptions={[
+                        { value: 'black', label: 'AI plays Black' },
+                        { value: 'white', label: 'AI plays White' },
+                    ]}
+                    isActive={gameMode === 'ai'}
+                    onActivate={() => toggleToMode('ai')}
+                />
+            }
         >
-            {gameMode === 'ai' && !hasGameStarted && (
-                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
-                    <div className='flex gap-4 justify-center'>
-                        <select
-                            value={aiPlayer}
-                            onChange={e => {
-                                const newAIPlayer = e.target.value as
-                                    | 'white'
-                                    | 'black';
-                                setAIPlayer(newAIPlayer);
-                            }}
-                            className='glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20'
-                        >
-                            <option value='black'>AI plays Black</option>
-                            <option value='white'>AI plays White</option>
-                        </select>
-                    </div>
-
+            {gameMode === 'ai' &&
+                !hasGameStarted &&
+                !isLoadingConfig &&
+                (!aiConfig.enabled || !aiConfig.apiKey) && (
                     <div className='text-center'>
-                        {!isLoadingConfig &&
-                            (!aiConfig.enabled || !aiConfig.apiKey) && (
-                                <div className='text-yellow-400 text-sm'>
-                                    ⚠ AI not configured - Configure API key in
-                                    Profile to enable AI gameplay
-                                </div>
-                            )}
+                        <div className='text-yellow-400 text-sm'>
+                            ⚠ AI not configured - Configure API key in Profile
+                            to enable AI gameplay
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
 
             {gameMode === 'ai' && (
                 <div className='flex flex-col gap-4 max-w-2xl mx-auto'>

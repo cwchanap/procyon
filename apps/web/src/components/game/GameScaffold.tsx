@@ -12,6 +12,7 @@ interface GameScaffoldProps {
     onModeChange(mode: Mode): void;
     showModeToggle: boolean;
     inactiveModeClassName: string;
+    aiSettingsButton?: React.ReactNode;
     children: React.ReactNode;
 }
 
@@ -24,6 +25,7 @@ const GameScaffold: React.FC<GameScaffoldProps> = ({
     onModeChange,
     showModeToggle,
     inactiveModeClassName,
+    aiSettingsButton,
     children,
 }) => {
     return (
@@ -44,6 +46,7 @@ const GameScaffold: React.FC<GameScaffoldProps> = ({
                     currentMode={currentMode}
                     onChange={onModeChange}
                     inactiveClassName={inactiveModeClassName}
+                    aiSettingsButton={aiSettingsButton}
                 />
             )}
 

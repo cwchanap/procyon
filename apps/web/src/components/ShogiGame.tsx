@@ -16,6 +16,7 @@ import ShogiHand from './ShogiHand';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
+import AISettingsDialog from './ai/AISettingsDialog';
 
 interface ShogiDemo {
     id: string;
@@ -495,24 +496,27 @@ const ShogiGame: React.FC = () => {
             onModeChange={toggleToMode}
             showModeToggle={showModeToggle}
             inactiveModeClassName='text-orange-100 hover:bg-white hover:bg-opacity-20'
+            aiSettingsButton={
+                <AISettingsDialog
+                    aiPlayer={aiPlayer}
+                    onAIPlayerChange={player =>
+                        setAIPlayer(player as 'sente' | 'gote')
+                    }
+                    provider={aiConfig.provider}
+                    model={aiConfig.model}
+                    onProviderChange={provider =>
+                        setAIConfig({ ...aiConfig, provider })
+                    }
+                    onModelChange={model => setAIConfig({ ...aiConfig, model })}
+                    aiPlayerOptions={[
+                        { value: 'gote', label: 'AI plays Gote (後手)' },
+                        { value: 'sente', label: 'AI plays Sente (先手)' },
+                    ]}
+                    isActive={gameMode === 'ai'}
+                    onActivate={() => toggleToMode('ai')}
+                />
+            }
         >
-            {gameMode === 'ai' && !hasGameStarted && (
-                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
-                    <div className='flex gap-4 justify-center'>
-                        <select
-                            value={aiPlayer}
-                            onChange={e =>
-                                setAIPlayer(e.target.value as 'sente' | 'gote')
-                            }
-                            className='glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20'
-                        >
-                            <option value='gote'>AI plays Gote (後手)</option>
-                            <option value='sente'>AI plays Sente (先手)</option>
-                        </select>
-                    </div>
-                </div>
-            )}
-
             {gameMode === 'ai' && (
                 <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='text-center'>

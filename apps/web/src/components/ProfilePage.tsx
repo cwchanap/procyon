@@ -102,6 +102,48 @@ export function ProfilePage() {
         }
     }, [selectedProvider, selectedModel, configurations]);
 
+    // Load API key when provider changes
+    useEffect(() => {
+        const loadApiKeyForProvider = async () => {
+            const configForProvider = configurations.find(
+                config => config.provider === selectedProvider
+            );
+
+            if (configForProvider && configForProvider.id) {
+                // Load the full config with API key
+                try {
+                    const token = localStorage.getItem('auth_token');
+                    const response = await fetch(
+                        `http://localhost:3501/api/ai-config/${configForProvider.id}/full`,
+                        {
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                        }
+                    );
+
+                    if (response.ok) {
+                        const fullConfig = await response.json();
+                        setApiKey(fullConfig.apiKey || '');
+                        setSelectedModel(fullConfig.modelName || '');
+                    } else {
+                        setApiKey('');
+                    }
+                } catch (_error) {
+                    setApiKey('');
+                }
+            } else {
+                // No config for this provider, clear the API key
+                setApiKey('');
+            }
+        };
+
+        if (configurations.length > 0) {
+            loadApiKeyForProvider();
+        }
+    }, [selectedProvider, configurations]);
+
     if (!isAuthenticated || !user) {
         return (
             <div className='min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center'>
@@ -364,7 +406,7 @@ export function ProfilePage() {
                                                 setSelectedProvider(
                                                     e.target.value as AiProvider
                                                 );
-                                                setSelectedModel('');
+                                                // API key and model will be loaded automatically by useEffect
                                             }}
                                             className='w-full p-2 bg-gray-800/90 border border-gray-600 rounded-md text-white placeholder-gray-400'
                                         >

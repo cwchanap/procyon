@@ -7,6 +7,7 @@ interface GameModeToggleProps {
     onChange(mode: Mode): void;
     inactiveClassName: string;
     className?: string;
+    aiSettingsButton?: React.ReactNode;
 }
 
 const baseButtonClass =
@@ -17,6 +18,7 @@ const GameModeToggle: React.FC<GameModeToggleProps> = ({
     onChange,
     inactiveClassName,
     className = 'flex gap-4',
+    aiSettingsButton,
 }) => {
     return (
         <div className={className}>
@@ -31,17 +33,7 @@ const GameModeToggle: React.FC<GameModeToggleProps> = ({
             >
                 📚 Tutorial Mode
             </button>
-            <button
-                onClick={() => onChange('ai')}
-                className={`${baseButtonClass} ${
-                    currentMode === 'ai'
-                        ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
-                        : inactiveClassName
-                }`}
-                type='button'
-            >
-                🤖 AI Mode
-            </button>
+            {aiSettingsButton}
         </div>
     );
 };

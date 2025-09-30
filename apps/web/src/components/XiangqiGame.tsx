@@ -18,6 +18,7 @@ import XiangqiBoard from './XiangqiBoard';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
+import AISettingsDialog from './ai/AISettingsDialog';
 
 interface XiangqiDemo {
     id: string;
@@ -448,24 +449,27 @@ const XiangqiGame: React.FC = () => {
             onModeChange={toggleToMode}
             showModeToggle={showModeToggle}
             inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
+            aiSettingsButton={
+                <AISettingsDialog
+                    aiPlayer={aiPlayer}
+                    onAIPlayerChange={player =>
+                        setAIPlayer(player as 'red' | 'black')
+                    }
+                    provider={aiConfig.provider}
+                    model={aiConfig.model}
+                    onProviderChange={provider =>
+                        setAIConfig({ ...aiConfig, provider })
+                    }
+                    onModelChange={model => setAIConfig({ ...aiConfig, model })}
+                    aiPlayerOptions={[
+                        { value: 'black', label: 'AI plays Black (黑方)' },
+                        { value: 'red', label: 'AI plays Red (红方)' },
+                    ]}
+                    isActive={gameMode === 'ai'}
+                    onActivate={() => toggleToMode('ai')}
+                />
+            }
         >
-            {gameMode === 'ai' && !hasGameStarted && (
-                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
-                    <div className='flex gap-4 justify-center'>
-                        <select
-                            value={aiPlayer}
-                            onChange={e =>
-                                setAIPlayer(e.target.value as 'red' | 'black')
-                            }
-                            className='glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20'
-                        >
-                            <option value='black'>AI plays Black (黑方)</option>
-                            <option value='red'>AI plays Red (红方)</option>
-                        </select>
-                    </div>
-                </div>
-            )}
-
             {gameMode === 'ai' && (
                 <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
                     <div className='text-center'>
