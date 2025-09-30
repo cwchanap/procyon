@@ -17,8 +17,13 @@ import type { AIConfig } from '../lib/ai/types';
 import XiangqiBoard from './XiangqiBoard';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
-import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
+import AIStatusPanel from './game/AIStatusPanel';
+import GameControls from './game/GameControls';
+import DemoSelector from './game/DemoSelector';
+import TutorialInstructions from './game/TutorialInstructions';
+import AIGameInstructions from './game/AIGameInstructions';
 import AISettingsDialog from './ai/AISettingsDialog';
+import type { AIMove } from './ai/AIDebugDialog';
 
 interface XiangqiDemo {
     id: string;
@@ -471,58 +476,35 @@ const XiangqiGame: React.FC = () => {
             }
         >
             {gameMode === 'ai' && (
-                <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
-                    <div className='text-center'>
-                        {isAIThinking && (
-                            <div className='flex items-center justify-center gap-2 text-cyan-200'>
-                                <div className='animate-spin w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full'></div>
-                                AI is thinking...
-                            </div>
-                        )}
-
-                        <AIDebugDialog
-                            moves={aiDebugMoves}
-                            isVisible={isDebugMode}
-                        />
-                    </div>
-                </div>
+                <AIStatusPanel
+                    aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+                    hasGameStarted={hasGameStarted}
+                    isAIThinking={isAIThinking}
+                    isAIPaused={false}
+                    aiError={null}
+                    aiDebugMoves={aiDebugMoves}
+                    isDebugMode={isDebugMode}
+                    onRetry={() => {}}
+                />
             )}
 
             {gameMode === 'tutorial' && (
-                <div className='flex flex-wrap gap-3 justify-center max-w-4xl'>
-                    {xiangqiDemos.map(demoItem => (
-                        <button
-                            key={demoItem.id}
-                            onClick={() => handleDemoChange(demoItem.id)}
-                            className={`glass-effect px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                                currentDemo === demoItem.id
-                                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                                    : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                            }`}
-                        >
-                            {demoItem.title}
-                        </button>
-                    ))}
-                </div>
+                <DemoSelector
+                    demos={xiangqiDemos}
+                    currentDemo={currentDemo}
+                    onDemoChange={handleDemoChange}
+                />
             )}
 
             <div className='w-full max-w-4xl mx-auto space-y-6'>
                 {gameMode === 'ai' ? (
                     <>
-                        <div className='text-sm text-purple-200 text-center max-w-lg mx-auto space-y-3 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
-                            <p className='flex items-center justify-center gap-2'>
-                                <span>🖱️</span>
-                                Click on a piece to select it, then click on a
-                                highlighted point to move.
-                            </p>
-                            <p className='flex items-center justify-center gap-2'>
-                                <span className='w-3 h-3 bg-green-400 rounded-full inline-block'></span>
-                                Possible moves
-                                <span className='mx-2'>•</span>
-                                <span className='w-3 h-3 border-2 border-orange-500 rounded inline-block'></span>
-                                Captures
-                            </p>
-                            <div className='text-xs space-y-1'>
+                        <AIGameInstructions
+                            providerName={aiConfig.provider}
+                            modelName={aiConfig.model}
+                            aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+                        >
+                            <div className='text-xs space-y-1 pt-2'>
                                 <p>
                                     <strong>Pieces:</strong> 帅/将=General,
                                     仕/士=Advisor, 相/象=Elephant
@@ -536,7 +518,7 @@ const XiangqiGame: React.FC = () => {
                                     opponent's General (King)
                                 </p>
                             </div>
-                        </div>
+                        </AIGameInstructions>
 
                         {gameState.moveHistory.length > 0 && (
                             <div className='text-sm text-purple-200 text-center max-w-md mx-auto bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
@@ -586,69 +568,17 @@ const XiangqiGame: React.FC = () => {
                         )}
                     </>
                 ) : (
-                    <>
-                        <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-                            <h2 className='text-2xl font-bold text-white mb-3'>
-                                {getCurrentDemo().title}
-                            </h2>
-                            <div className='bg-black bg-opacity-30 p-4 rounded-xl border border-yellow-500 border-opacity-30'>
-                                <p className='text-yellow-200 leading-relaxed'>
-                                    {getCurrentDemo().explanation}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-                            <h3 className='text-xl font-semibold text-white mb-3 flex items-center gap-2'>
-                                <span>🎯</span>
-                                How to Use This Demo
-                            </h3>
-                            <div className='space-y-3 text-yellow-200'>
-                                <p className='flex items-center gap-3'>
-                                    <span className='text-green-400'>•</span>
-                                    Click on any piece to see its possible moves
-                                </p>
-                                <p className='flex items-center gap-3'>
-                                    <span className='text-blue-400'>•</span>
-                                    Green highlights show legal moves
-                                </p>
-                                <p className='flex items-center gap-3'>
-                                    <span className='text-purple-400'>•</span>
-                                    Orange outlines indicate capture moves
-                                </p>
-                                <p className='flex items-center gap-3'>
-                                    <span className='text-yellow-400'>•</span>
-                                    Yellow rings show tutorial highlights
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-                            <h3 className='text-xl font-semibold text-white mb-3 flex items-center gap-2'>
-                                <span>💡</span>
-                                Xiangqi Wisdom
-                            </h3>
-                            <div className='space-y-2 text-yellow-200 text-sm'>
-                                <p>
-                                    "Control the central files - they are key to
-                                    launching attacks across the river."
-                                </p>
-                                <p>
-                                    "Protect your palace at all costs - an
-                                    exposed general is vulnerable to mating
-                                    attacks."
-                                </p>
-                                <p>
-                                    "Cannons are powerful when they have
-                                    platforms - coordinate with other pieces."
-                                </p>
-                                <p>
-                                    "Advance soldiers across the river to gain
-                                    lateral movement and attack power."
-                                </p>
-                            </div>
-                        </div>
-                    </>
+                    <TutorialInstructions
+                        title={getCurrentDemo().title}
+                        explanation={getCurrentDemo().explanation}
+                        tips={[
+                            '"Control the central files - they are key to launching attacks across the river."',
+                            '"Protect your palace at all costs - an exposed general is vulnerable to mating attacks."',
+                            '"Cannons are powerful when they have platforms - coordinate with other pieces."',
+                            '"Advance soldiers across the river to gain lateral movement and attack power."',
+                        ]}
+                        tipsTitle='Xiangqi Wisdom'
+                    />
                 )}
             </div>
 
@@ -668,36 +598,17 @@ const XiangqiGame: React.FC = () => {
 
             <div className='w-full max-w-4xl mx-auto space-y-6'>
                 {gameMode === 'ai' && (
-                    <div className='flex gap-4 flex-wrap justify-center'>
-                        <button
-                            onClick={handleStartOrReset}
-                            className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
-                        >
-                            {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
-                        </button>
-
-                        {aiConfig.enabled && aiConfig.apiKey && (
-                            <button
-                                onClick={() => setIsDebugMode(!isDebugMode)}
-                                className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
-                                    isDebugMode
-                                        ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
-                                        : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
-                                }`}
-                            >
-                                🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
-                            </button>
-                        )}
-
-                        {isGameOver && (
-                            <button
-                                onClick={handleResetGame}
-                                className='bg-gradient-to-r from-red-500 to-yellow-500 hover:from-yellow-500 hover:to-red-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
-                            >
-                                🎮 Play Again
-                            </button>
-                        )}
-                    </div>
+                    <GameControls
+                        hasGameStarted={hasGameStarted}
+                        isGameOver={isGameOver}
+                        aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+                        isDebugMode={isDebugMode}
+                        canExport={false}
+                        onStartOrReset={handleStartOrReset}
+                        onReset={handleResetGame}
+                        onToggleDebug={() => setIsDebugMode(!isDebugMode)}
+                        onExport={() => {}}
+                    />
                 )}
             </div>
         </GameScaffold>
