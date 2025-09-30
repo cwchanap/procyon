@@ -16,7 +16,6 @@ const AIGameInstructions: React.FC<AIGameInstructionsProps> = ({
     return (
         <div className='text-sm text-purple-200 text-center max-w-md mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
             <p className='flex items-center justify-center gap-2'>
-                <span>🖱️</span>
                 Click on a piece to select it, then click on a highlighted
                 square to move.
             </p>

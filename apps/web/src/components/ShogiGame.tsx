@@ -483,7 +483,9 @@ const ShogiGame: React.FC = () => {
     const subtitle =
         gameMode === 'tutorial'
             ? getCurrentDemo().description
-            : getStatusMessage();
+            : hasGameStarted
+              ? getStatusMessage()
+              : '';
     const showModeToggle = gameMode === 'tutorial' || !hasGameStarted;
 
     return (
@@ -558,7 +560,6 @@ const ShogiGame: React.FC = () => {
                     <>
                         <div className='text-sm text-orange-200 text-center max-w-2xl mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
                             <p className='flex items-center justify-center gap-2'>
-                                <span>🖱️</span>
                                 Click on a piece to select it, then click on a
                                 highlighted square to move.
                             </p>

@@ -441,7 +441,9 @@ const XiangqiGame: React.FC = () => {
     const subtitle =
         gameMode === 'tutorial'
             ? getCurrentDemo().description
-            : getStatusMessage();
+            : hasGameStarted
+              ? getStatusMessage()
+              : '';
     const showModeToggle = gameMode === 'tutorial' || !hasGameStarted;
 
     return (
