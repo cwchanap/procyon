@@ -9,7 +9,6 @@ import {
     setAIThinking,
     isAITurn,
 } from '../lib/chess/game';
-import { getPossibleMoves } from '../lib/chess/moves';
 import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
 import GameScaffold from './game/GameScaffold';
@@ -456,29 +455,28 @@ const ChessGame: React.FC = () => {
     const handleSquareClick = useCallback(
         (position: Position) => {
             if (gameMode === 'tutorial') {
-                const demo = getCurrentDemo();
-                const piece = getPieceAt(demo.board, position);
-
-                if (piece) {
-                    const possibleMoves = getPossibleMoves(
-                        demo.board,
-                        piece,
+                // If a piece is already selected, try to make a move
+                if (gameState.selectedSquare) {
+                    const newGameState = makeMove(
+                        gameState,
+                        gameState.selectedSquare,
                         position
                     );
-                    setGameState(prev => ({
-                        ...prev,
-                        board: demo.board,
-                        selectedSquare: position,
-                        possibleMoves,
-                    }));
-                } else {
-                    setGameState(prev => ({
-                        ...prev,
-                        board: demo.board,
-                        selectedSquare: null,
-                        possibleMoves: [],
-                    }));
+                    if (newGameState) {
+                        // Update game status after the move
+                        const updatedGameState = {
+                            ...newGameState,
+                            status: getGameStatus(newGameState),
+                        };
+                        setGameState(updatedGameState);
+                        return;
+                    }
                 }
+
+                // Otherwise, select the square using selectSquare function
+                // which enforces turn-based play
+                const newGameState = selectSquare(gameState, position);
+                setGameState(newGameState);
             } else {
                 // Regular game mode or AI mode
                 // Prevent moves during AI turn or when AI is thinking
@@ -649,8 +647,7 @@ const ChessGame: React.FC = () => {
         gameState.status === 'stalemate' ||
         gameState.status === 'draw';
 
-    const currentBoard =
-        gameMode === 'tutorial' ? getCurrentDemo().board : gameState.board;
+    const currentBoard = gameState.board;
     const currentHighlightSquares =
         gameMode === 'tutorial' ? getCurrentDemo().highlightSquares : undefined;
 

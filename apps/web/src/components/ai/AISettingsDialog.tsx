@@ -9,7 +9,6 @@ interface AISettingsDialogProps {
     onModelChange: (model: string) => void;
     aiPlayerOptions: Array<{ value: string; label: string }>;
     isActive?: boolean;
-    onActivate?: () => void;
 }
 
 // All available provider options
@@ -50,7 +49,6 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
     onModelChange,
     aiPlayerOptions,
     isActive = false,
-    onActivate,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [availableProviders, setAvailableProviders] = useState<string[]>([]);
@@ -116,9 +114,6 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
         : availableModels[0]?.value || '';
 
     const handleButtonClick = () => {
-        if (!isActive && onActivate) {
-            onActivate();
-        }
         setIsOpen(!isOpen);
     };
 
