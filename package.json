@@ -23,6 +23,8 @@
         "clean": "turbo clean && rm -rf node_modules",
         "web:dev": "turbo dev --filter=web",
         "api:dev": "turbo dev --filter=api",
+        "deploy": "bun run build && cd apps/api && bun run deploy",
+        "deploy:staging": "bun run build && cd apps/api && bun run deploy:staging",
         "prepare": "husky"
     },
     "lint-staged": {

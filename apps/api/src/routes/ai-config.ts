@@ -1,6 +1,10 @@
 import { Hono } from 'hono';
 import { getDB } from '../db/index';
-import { aiConfigurations, type NewAiConfiguration } from '../db/schema';
+import {
+    aiConfigurations,
+    type NewAiConfiguration,
+    type AiConfiguration,
+} from '../db/schema';
 import { eq, and, ne } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { z } from 'zod';
@@ -34,7 +38,7 @@ app.get('/', authMiddleware, async c => {
             .where(eq(aiConfigurations.userId, userId));
 
         // Don't return the actual API keys for security
-        const safeConfigs = configs.map(config => ({
+        const safeConfigs = configs.map((config: AiConfiguration) => ({
             id: config.id,
             provider: config.provider,
             modelName: config.modelName,
@@ -118,11 +122,11 @@ app.post('/', authMiddleware, zValidator('json', aiConfigSchema), async c => {
         return c.json({
             message: 'Configuration saved successfully',
             configuration: {
-                id: result[0].id,
-                provider: result[0].provider,
-                modelName: result[0].modelName,
+                id: result[0]!.id,
+                provider: result[0]!.provider,
+                modelName: result[0]!.modelName,
                 hasApiKey: true,
-                isActive: result[0].isActive,
+                isActive: result[0]!.isActive,
             },
         });
     } catch (error) {
@@ -172,10 +176,10 @@ app.post(
             return c.json({
                 message: 'Active configuration updated',
                 configuration: {
-                    id: result[0].id,
-                    provider: result[0].provider,
-                    modelName: result[0].modelName,
-                    isActive: result[0].isActive,
+                    id: result[0]!.id,
+                    provider: result[0]!.provider,
+                    modelName: result[0]!.modelName,
+                    isActive: result[0]!.isActive,
                 },
             });
         } catch (error) {
@@ -216,11 +220,11 @@ app.get('/:id/full', authMiddleware, async c => {
         }
 
         return c.json({
-            id: config[0].id,
-            provider: config[0].provider,
-            modelName: config[0].modelName,
-            apiKey: config[0].apiKey,
-            isActive: config[0].isActive,
+            id: config[0]!.id,
+            provider: config[0]!.provider,
+            modelName: config[0]!.modelName,
+            apiKey: config[0]!.apiKey,
+            isActive: config[0]!.isActive,
         });
     } catch (error) {
         console.error('Error fetching full AI configuration:', error);

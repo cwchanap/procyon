@@ -1,0 +1,30 @@
+name = "procyon"
+main = "src/worker.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Assets configuration - serve static files from web app build
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+
+# D1 Database bindings
+[[d1_databases]]
+binding = "DB"
+database_name = "procyon"
+database_id = "6b377c9b-75bb-4435-9ebb-6b76eb367fc3"
+migrations_dir = "drizzle"
+
+# Environment variables
+[vars]
+NODE_ENV = "production"
+
+# Production environment
+[env.production]
+name = "procyon"
+vars = { NODE_ENV = "production" }
+
+# Staging environment
+[env.staging]
+name = "procyon-staging"
+vars = { NODE_ENV = "staging" }

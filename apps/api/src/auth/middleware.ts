@@ -1,6 +1,6 @@
-import { Context, Next } from 'hono';
+import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { verifyToken, JWTPayload } from './jwt';
+import { verifyToken, type JWTPayload } from './jwt';
 
 export interface AuthContext {
     user: JWTPayload;

@@ -1,0 +1,8 @@
+# Local development environment variables for wrangler dev
+# Copy this file to .dev.vars and fill in the values
+# .dev.vars is gitignored and will be loaded by wrangler dev
+
+JWT_SECRET=your-secret-key-here-change-in-production
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_DATABASE_ID=your-database-id
+CLOUDFLARE_API_TOKEN=your-api-token
