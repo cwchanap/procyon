@@ -2,24 +2,40 @@
 
 ## Project Structure & Module Organization
 
-Turbo + Bun workspaces drive the repo. Front-end code lives in `apps/web` (Astro shell, React components in `src/components`, domain logic in `src/lib`). The API resides in `apps/api` with Hono routes (`src/routes`), auth utilities (`src/auth`), and Drizzle models (`src/db`, local SQLite in `dev.db`). Shared tooling and future libraries belong under `packages/`. End-to-end Playwright specs sit in `tests/e2e` with helpers in `tests/e2e/utils`. The root `index.ts` is available for quick scripts or smoke checks.
+- Turbo + Bun workspaces orchestrate the repo. The Astro-powered web app lives in `apps/web` with React components under `src/components`, domain logic in `src/lib`, and assets colocated by feature.
+- The Hono API sits in `apps/api`; routes are in `src/routes`, authentication helpers in `src/auth`, and Drizzle ORM setup in `src/db` alongside the local `dev.db` SQLite file.
+- Shared utilities belong in `packages/`. End-to-end Playwright specs reside in `tests/e2e`, with reusable helpers in `tests/e2e/utils`. Use the root `index.ts` for quick scripts or smoke checks.
 
 ## Build, Test, and Development Commands
 
-Install dependencies once via `bun install`. Start both apps with `bun run dev`; target individual services with `bun run web:dev` or `bun run api:dev`. Produce a production bundle through `bun run build`. Execute unit suites with `bun run test`. End-to-end coverage runs through `bun run test:e2e` (headless) or `bun run test:e2e:ui` when debugging. Database chores for the API are exposed as `bun run --filter api db:generate`, `db:migrate`, and `db:studio`.
+- `bun install` — install workspace dependencies once.
+- `bun run dev` — launch web (port 3500) and API (port 3501) together for local development.
+- `bun run web:dev` / `bun run api:dev` — start individual services when iterating on one surface.
+- `bun run build` — generate production bundles.
+- `bun run test` — execute unit and integration suites via Bun’s runner.
+- `bun run test:e2e` or `bun run test:e2e:ui` — run Playwright specs headless or with the UI inspector.
+- API database chores: `bun run --filter api db:generate`, `db:migrate`, and `db:studio`.
 
 ## Coding Style & Naming Conventions
 
-Prettier enforces formatting (`bun run format:check`) with four-space TypeScript blocks, LF endings, and single quotes. `.editorconfig` keeps non-TypeScript files on two-space indentation. ESLint powers linting (`bun run lint`), flagging unused symbols (except `_ignored`) and warning on stray `console` usage outside API logging. Use PascalCase for React/Astro components, camelCase for helpers, and kebab-case for route files and URLs.
+- Prettier governs formatting (`bun run format:check`) with four-space TypeScript blocks, LF endings, and single quotes. `.editorconfig` enforces two-space indentation elsewhere.
+- ESLint (`bun run lint`) flags unused symbols (except `_ignored`) and warns on non-API `console` usage.
+- Use PascalCase for components, camelCase for helpers, and kebab-case for route files and URLs.
 
 ## Testing Guidelines
 
-Unit and integration tests rely on Bun’s native runner; files end with `.test.ts` and live beside the code they verify. Playwright drives end-to-end flows; each UI scenario needs a `*.spec.ts` under `tests/e2e`. Local runs assume web on port 3500 and API on port 3501—Playwright bootstraps both, but you can start them manually for iterative work. Inspect failures by opening `playwright-report/index.html`.
+- Keep test files adjacent to the code they cover, naming them `*.test.ts`.
+- Prefer Bun’s assertions for unit work; use Playwright for flow coverage in `tests/e2e`.
+- When debugging Playwright failures, open `playwright-report/index.html`. Confirm web/API servers are available on ports 3500/3501 before running e2e tests.
 
 ## Commit & Pull Request Guidelines
 
-Follow Conventional Commits (`feat:`, `fix:`, `chore:`) with descriptive scopes (`fix(api): tighten auth`) to aid changelog generation. Before opening a pull request, run `bun run lint`, `bun run test`, and any relevant `db:` scripts; document skipped checks. PRs should summarize the change, link issues, and include screenshots or recordings for UI work plus Playwright report links when available. Call out schema updates or required migrations so reviewers can reproduce them quickly.
+- Follow Conventional Commits (e.g., `feat(web): add pricing card`). Scope commits narrowly and include context-rich bodies when behavior changes.
+- Before raising a PR, run `bun run lint`, `bun run test`, and relevant database scripts; note any skipped checks.
+- PR descriptions should summarize changes, link issues, and include screenshots or recordings for UI updates plus Playwright reports when applicable. Call out schema or migration impacts explicitly.
 
-## Environment & Security Notes
+## Security & Configuration Tips
 
-Store secrets in `.env` files excluded from version control. The API uses Bun’s `bun:sqlite` driver; migrations expect the `dev.db` file to exist—run `bun run --filter api db:migrate` after pulling schema changes. When deploying to Cloudflare Workers, ensure `JWT_SECRET` and D1 bindings are configured in `wrangler.toml`.
+- Keep secrets in `.env` files excluded from version control.
+- For API changes, ensure `dev.db` exists and run `bun run --filter api db:migrate`.
+- When targeting Cloudflare Workers, configure `JWT_SECRET` and D1 bindings in `wrangler.toml`.
