@@ -65,7 +65,7 @@ app.post('/', authMiddleware, zValidator('json', aiConfigSchema), async c => {
         const { provider, modelName, apiKey, isActive } = c.req.valid('json');
 
         // Check if configuration already exists for this user, provider, and model
-        const existingConfig = await db
+        const [existingConfig] = await db
             .select()
             .from(aiConfigurations)
             .where(
@@ -74,22 +74,22 @@ app.post('/', authMiddleware, zValidator('json', aiConfigSchema), async c => {
                     eq(aiConfigurations.provider, provider),
                     eq(aiConfigurations.modelName, modelName)
                 )
-            )
-            .limit(1);
+            );
 
-        let result;
+        let savedConfig: AiConfiguration | undefined;
 
-        if (existingConfig.length > 0) {
+        if (existingConfig) {
             // Update existing configuration
-            result = await db
+            const [updatedConfig] = await db
                 .update(aiConfigurations)
                 .set({
                     apiKey,
                     isActive,
                     updatedAt: new Date().toISOString(),
                 })
-                .where(eq(aiConfigurations.id, existingConfig[0].id))
+                .where(eq(aiConfigurations.id, existingConfig.id))
                 .returning();
+            savedConfig = updatedConfig;
         } else {
             // Create new configuration
             const newConfig: NewAiConfiguration = {
@@ -100,10 +100,15 @@ app.post('/', authMiddleware, zValidator('json', aiConfigSchema), async c => {
                 isActive,
             };
 
-            result = await db
+            const [insertedConfig] = await db
                 .insert(aiConfigurations)
                 .values(newConfig)
                 .returning();
+            savedConfig = insertedConfig;
+        }
+
+        if (!savedConfig) {
+            throw new Error('Failed to persist AI configuration');
         }
 
         // If this config is set as active, deactivate others for this user
@@ -114,7 +119,7 @@ app.post('/', authMiddleware, zValidator('json', aiConfigSchema), async c => {
                 .where(
                     and(
                         eq(aiConfigurations.userId, userId),
-                        ne(aiConfigurations.id, result[0].id)
+                        ne(aiConfigurations.id, savedConfig.id)
                     )
                 );
         }
@@ -122,11 +127,11 @@ app.post('/', authMiddleware, zValidator('json', aiConfigSchema), async c => {
         return c.json({
             message: 'Configuration saved successfully',
             configuration: {
-                id: result[0]!.id,
-                provider: result[0]!.provider,
-                modelName: result[0]!.modelName,
+                id: savedConfig.id,
+                provider: savedConfig.provider,
+                modelName: savedConfig.modelName,
                 hasApiKey: true,
-                isActive: result[0]!.isActive,
+                isActive: savedConfig.isActive,
             },
         });
     } catch (error) {
@@ -154,7 +159,7 @@ app.post(
                 .where(eq(aiConfigurations.userId, userId));
 
             // Then activate the specified configuration
-            const result = await db
+            const updatedConfigs = await db
                 .update(aiConfigurations)
                 .set({
                     isActive: true,
@@ -169,17 +174,19 @@ app.post(
                 )
                 .returning();
 
-            if (result.length === 0) {
+            const [updatedConfig] = updatedConfigs;
+
+            if (!updatedConfig) {
                 return c.json({ error: 'Configuration not found' }, 404);
             }
 
             return c.json({
                 message: 'Active configuration updated',
                 configuration: {
-                    id: result[0]!.id,
-                    provider: result[0]!.provider,
-                    modelName: result[0]!.modelName,
-                    isActive: result[0]!.isActive,
+                    id: updatedConfig.id,
+                    provider: updatedConfig.provider,
+                    modelName: updatedConfig.modelName,
+                    isActive: updatedConfig.isActive,
                 },
             });
         } catch (error) {

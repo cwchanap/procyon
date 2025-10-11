@@ -3,13 +3,13 @@
     "version": "0.0.1",
     "private": true,
     "scripts": {
-        "dev": "tsx watch src/index.ts",
-        "start": "tsx src/index.ts",
+        "dev": "NODE_ENV=development /opt/homebrew/bin/bun --watch src/index.ts",
+        "start": "/opt/homebrew/bin/bun src/index.ts",
         "build": "tsc --build",
         "lint": "eslint src --ext .ts",
         "lint:fix": "eslint src --ext .ts --fix",
         "db:generate": "drizzle-kit generate --config=drizzle.config.dev.ts",
-        "db:migrate": "tsx src/migrate.ts",
+        "db:migrate": "/opt/homebrew/bin/bun src/migrate.ts",
         "db:push": "drizzle-kit push --config=drizzle.config.dev.ts",
         "db:studio": "drizzle-kit studio --config=drizzle.config.dev.ts",
         "deploy": "wrangler deploy",
@@ -33,12 +33,9 @@
     "devDependencies": {
         "@cloudflare/workers-types": "^4.20250927.0",
         "@types/bcryptjs": "^3.0.0",
-        "@types/better-sqlite3": "^7.6.13",
         "@types/jsonwebtoken": "^9.0.10",
         "@types/node": "^20.14.10",
-        "better-sqlite3": "^12.2.0",
         "drizzle-kit": "^0.31.4",
-        "tsx": "^4.16.2",
         "typescript": "^5.9.2",
         "wrangler": "^4.40.3"
     }

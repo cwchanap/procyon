@@ -64,19 +64,23 @@ export default defineConfig({
   /* Run your local dev server before starting the tests */
   webServer: [
     {
-      command: 'bun run web:dev',
+      command: 'cd apps/web && /opt/homebrew/bin/bun run dev',
       url: 'http://localhost:3500',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
       env: {
         ASTRO_DISABLE_DEV_TOOLBAR: 'true',
+        PATH: '/opt/homebrew/bin:' + process.env.PATH,
       },
     },
     {
-      command: 'bun run api:dev',
+      command: 'cd apps/api && NODE_ENV=development /opt/homebrew/bin/bun --watch src/index.ts',
       url: 'http://localhost:3501',
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
+      env: {
+        PATH: '/opt/homebrew/bin:' + process.env.PATH,
+      },
     },
   ],
 });

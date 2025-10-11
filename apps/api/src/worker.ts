@@ -68,10 +68,11 @@ app.get('/*', async c => {
 
         // If asset not found and it's a page route (not a file), serve index.html
         if (asset.status === 404 && !c.req.path.includes('.')) {
-            const indexRequest = new Request(
-                new URL('/', c.req.url),
-                c.req.raw
-            );
+            const indexUrl = new URL('/', c.req.url);
+            const indexRequest = new Request(indexUrl.toString(), {
+                method: c.req.raw.method,
+                headers: c.req.raw.headers,
+            });
             return await c.env.ASSETS.fetch(indexRequest);
         }
 

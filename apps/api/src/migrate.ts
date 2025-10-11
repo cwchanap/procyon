@@ -1,5 +1,5 @@
 import { initializeLocalDB } from './db/local';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { migrate } from 'drizzle-orm/bun-sqlite/migrator';
 
 async function runMigrations() {
     console.log('Running migrations...');

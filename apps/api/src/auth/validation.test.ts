@@ -51,7 +51,8 @@ describe('Authentication Validation Schemas', () => {
                     });
                     expect(result.success).toBe(false);
                     if (!result.success) {
-                        expect(result.error.issues[0].message).toBe(
+                        expect(result.error.issues.length).toBeGreaterThan(0);
+                        expect(result.error.issues[0]?.message).toBe(
                             'Invalid email format'
                         );
                     }
@@ -94,7 +95,8 @@ describe('Authentication Validation Schemas', () => {
                 });
                 expect(result.success).toBe(false);
                 if (!result.success) {
-                    expect(result.error.issues[0].message).toBe(
+                    expect(result.error.issues.length).toBeGreaterThan(0);
+                    expect(result.error.issues[0]?.message).toBe(
                         'Username must be at least 3 characters'
                     );
                 }
@@ -108,7 +110,8 @@ describe('Authentication Validation Schemas', () => {
                 });
                 expect(result.success).toBe(false);
                 if (!result.success) {
-                    expect(result.error.issues[0].message).toBe(
+                    expect(result.error.issues.length).toBeGreaterThan(0);
+                    expect(result.error.issues[0]?.message).toBe(
                         'Username must be at most 50 characters'
                     );
                 }
@@ -163,7 +166,8 @@ describe('Authentication Validation Schemas', () => {
                 });
                 expect(result.success).toBe(false);
                 if (!result.success) {
-                    expect(result.error.issues[0].message).toBe(
+                    expect(result.error.issues.length).toBeGreaterThan(0);
+                    expect(result.error.issues[0]?.message).toBe(
                         'Password must be at least 6 characters'
                     );
                 }
@@ -238,7 +242,8 @@ describe('Authentication Validation Schemas', () => {
                 });
                 expect(result.success).toBe(false);
                 if (!result.success) {
-                    expect(result.error.issues[0].message).toBe(
+                    expect(result.error.issues.length).toBeGreaterThan(0);
+                    expect(result.error.issues[0]?.message).toBe(
                         'Invalid email format'
                     );
                 }
@@ -272,7 +277,8 @@ describe('Authentication Validation Schemas', () => {
                 });
                 expect(result.success).toBe(false);
                 if (!result.success) {
-                    expect(result.error.issues[0].message).toBe(
+                    expect(result.error.issues.length).toBeGreaterThan(0);
+                    expect(result.error.issues[0]?.message).toBe(
                         'Password is required'
                     );
                 }
@@ -291,7 +297,6 @@ describe('Authentication Validation Schemas', () => {
             const result = loginSchema.safeParse({
                 email: 'user@example.com',
                 password: 'password',
-                // @ts-expect-error - testing extra field
                 username: 'shouldbeignored',
             });
             expect(result.success).toBe(true);
