@@ -6,6 +6,7 @@ import { initializeDB } from './db';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import aiConfigRoutes from './routes/ai-config';
+import playHistoryRoutes from './routes/play-history';
 
 // Initialize database (will use local SQLite for development)
 initializeDB();
@@ -35,6 +36,9 @@ app.route('/api/users', userRoutes);
 
 // AI Configuration routes
 app.route('/api/ai-config', aiConfigRoutes);
+
+// Play history routes
+app.route('/api/play-history', playHistoryRoutes);
 
 // API routes (legacy - can be removed later)
 app.get('/api/hello', c => {
