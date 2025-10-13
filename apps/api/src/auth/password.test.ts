@@ -1,4 +1,5 @@
-import { test, expect, describe } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
+import '../test.setup';
 import { hashPassword, comparePassword } from './password';
 
 describe('Password Utilities', () => {
