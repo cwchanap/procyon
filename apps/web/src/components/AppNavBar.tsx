@@ -35,6 +35,11 @@ export function AppNavBar() {
         window.location.href = '/profile';
     };
 
+    const handlePlayHistoryClick = () => {
+        setIsDropdownOpen(false);
+        window.location.href = '/play-history';
+    };
+
     const handleLogoutClick = () => {
         setIsDropdownOpen(false);
         logout();
@@ -109,6 +114,26 @@ export function AppNavBar() {
                                                 {user?.email}
                                             </div>
                                         </div>
+
+                                        <button
+                                            onClick={handlePlayHistoryClick}
+                                            className='w-full px-4 py-2 text-left text-sm text-white hover:bg-white/10 transition-colors flex items-center gap-2'
+                                        >
+                                            <svg
+                                                className='w-4 h-4'
+                                                fill='none'
+                                                stroke='currentColor'
+                                                viewBox='0 0 24 24'
+                                            >
+                                                <path
+                                                    strokeLinecap='round'
+                                                    strokeLinejoin='round'
+                                                    strokeWidth={2}
+                                                    d='M8 7h12M8 11h12M8 15h12M4 7h.01M4 11h.01M4 15h.01'
+                                                />
+                                            </svg>
+                                            Play History
+                                        </button>
 
                                         <button
                                             onClick={handleProfileClick}

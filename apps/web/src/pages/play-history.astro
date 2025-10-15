@@ -1,0 +1,10 @@
+---
+import Layout from '../layouts/Layout.astro';
+import PlayHistoryPage from '../components/PlayHistoryPage.tsx';
+
+export const prerender = false;
+---
+
+<Layout title='Play History - Procyon Chess'>
+    <PlayHistoryPage client:load />
+</Layout>

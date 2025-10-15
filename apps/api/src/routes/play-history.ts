@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import { desc, eq } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
 import {
@@ -44,6 +45,24 @@ const createPlayHistorySchema = z
             });
         }
     });
+
+app.get('/', authMiddleware, async c => {
+    const db = getDB();
+    const user = getUser(c);
+
+    try {
+        const history = await db
+            .select()
+            .from(playHistory)
+            .where(eq(playHistory.userId, user.userId))
+            .orderBy(desc(playHistory.date));
+
+        return c.json({ playHistory: history as PlayHistory[] });
+    } catch (error) {
+        console.error('Error fetching play history:', error);
+        return c.json({ error: 'Failed to fetch play history' }, 500);
+    }
+});
 
 app.post(
     '/',
