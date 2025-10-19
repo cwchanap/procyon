@@ -1,4 +1,4 @@
-export type GameVariant = 'chess' | 'xiangqi' | 'shogi';
+export type GameVariant = 'chess' | 'xiangqi' | 'shogi' | 'jungle';
 
 export interface GamePosition {
     row: number;
@@ -138,5 +138,34 @@ export const GAME_CONFIGS: Record<GameVariant, GameVariantConfig> = {
         },
         players: ['sente', 'gote'],
         initialPlayer: 'sente',
+    },
+    jungle: {
+        boardSize: { rows: 9, cols: 7 },
+        files: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+        ranks: ['9', '8', '7', '6', '5', '4', '3', '2', '1'],
+        pieceSymbols: {
+            red: {
+                elephant: '象',
+                lion: '獅',
+                tiger: '虎',
+                leopard: '豹',
+                dog: '狗',
+                wolf: '狼',
+                cat: '貓',
+                rat: '鼠',
+            },
+            blue: {
+                elephant: '象',
+                lion: '獅',
+                tiger: '虎',
+                leopard: '豹',
+                dog: '狗',
+                wolf: '狼',
+                cat: '貓',
+                rat: '鼠',
+            },
+        },
+        players: ['red', 'blue'],
+        initialPlayer: 'red',
     },
 };

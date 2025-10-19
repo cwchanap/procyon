@@ -19,6 +19,11 @@ const ChessGameSelector: React.FC = () => {
                 'Traditional Japanese chess with unique piece movement and drops.',
         },
         {
+            title: 'Jungle Chess (鬥獸棋)',
+            description:
+                'Animal-themed strategy game with unique terrain and piece hierarchy.',
+        },
+        {
             title: 'Chess960',
             description: 'Chess with randomized starting positions for pieces.',
         },
@@ -51,6 +56,8 @@ const ChessGameSelector: React.FC = () => {
             window.location.href = '/xiangqi';
         } else if (gameTitle === 'Japanese Chess (Shogi)') {
             window.location.href = '/shogi';
+        } else if (gameTitle === 'Jungle Chess (鬥獸棋)') {
+            window.location.href = '/jungle';
         } else {
             // For now, other games redirect to the standard chess page
             // In a real implementation, you'd pass the game type as a parameter

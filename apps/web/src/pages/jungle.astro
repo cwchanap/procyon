@@ -1,0 +1,14 @@
+---
+import Layout from '../layouts/Layout.astro';
+import JungleGame from '../components/JungleGame';
+---
+
+<Layout title='Jungle Chess (鬥獸棋) - Procyon'>
+    <main
+        class='min-h-screen bg-gradient-to-br from-green-900 via-blue-900 to-purple-900'
+    >
+        <div class='container mx-auto px-4 py-8'>
+            <JungleGame client:load />
+        </div>
+    </main>
+</Layout>

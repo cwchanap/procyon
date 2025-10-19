@@ -1,8 +1,10 @@
-import type { AIConfig, GameVariant } from './types';
+import type { AIConfig } from './types';
+import type { GameVariant } from './game-variant-types';
 import { UniversalAIService } from './universal-service';
 import { ChessAdapter } from './chess-adapter';
 import { XiangqiAdapter } from './xiangqi-adapter';
 import { ShogiAdapter } from './shogi-adapter';
+import { JungleAdapter } from './jungle-adapter';
 
 /**
  * Factory function to create AI service for a specific game variant
@@ -29,6 +31,11 @@ export function createAIService(
                 configWithVariant,
                 new ShogiAdapter(config.debug)
             );
+        case 'jungle':
+            return new UniversalAIService(
+                configWithVariant,
+                new JungleAdapter(config.debug)
+            );
         default:
             throw new Error(`Unsupported game variant: ${gameVariant}`);
     }
@@ -53,4 +60,11 @@ export function createXiangqiAI(config: AIConfig): UniversalAIService {
  */
 export function createShogiAI(config: AIConfig): UniversalAIService {
     return createAIService(config, 'shogi');
+}
+
+/**
+ * Create jungle AI service
+ */
+export function createJungleAI(config: AIConfig): UniversalAIService {
+    return createAIService(config, 'jungle');
 }

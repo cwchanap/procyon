@@ -3,14 +3,17 @@ import {
     ChessRuleGuardian,
     XiangqiRuleGuardian,
     ShogiRuleGuardian,
+    JungleRuleGuardian,
     createRuleGuardian,
 } from './rule-guardian';
 import { createInitialBoard as createChessBoard } from '../chess/board';
 import { createInitialXiangqiBoard } from '../xiangqi/board';
+import { createInitialGameState } from '../jungle/game';
 import type { AIResponse } from './types';
 import type { ChessPiece } from '../chess/types';
 import type { XiangqiPiece } from '../xiangqi/types';
 import type { ShogiPiece } from '../shogi';
+import type { JunglePiece } from '../jungle/types';
 
 describe('Rule Guardian System', () => {
     describe('createRuleGuardian', () => {
@@ -30,6 +33,12 @@ describe('Rule Guardian System', () => {
             const guardian = createRuleGuardian('shogi');
             expect(guardian.gameVariant).toBe('shogi');
             expect(guardian).toBeInstanceOf(ShogiRuleGuardian);
+        });
+
+        test('should create jungle rule guardian', () => {
+            const guardian = createRuleGuardian('jungle');
+            expect(guardian.gameVariant).toBe('jungle');
+            expect(guardian).toBeInstanceOf(JungleRuleGuardian);
         });
 
         test('should throw for unsupported game variant', () => {
@@ -324,6 +333,80 @@ describe('Rule Guardian System', () => {
             const result = guardian.validateAIMove(gameState, response);
             expect(result.isValid).toBe(false);
             expect(result.reason).toContain('out of bounds');
+        });
+    });
+
+    describe('JungleRuleGuardian', () => {
+        let guardian: JungleRuleGuardian;
+        let gameState: {
+            board: (JunglePiece | null)[][];
+            terrain: any[][];
+            currentPlayer: 'red' | 'blue';
+        };
+
+        beforeEach(() => {
+            guardian = new JungleRuleGuardian();
+            const initialState = createInitialGameState();
+            gameState = initialState;
+        });
+
+        test('should validate move with correct piece', () => {
+            const response: AIResponse = {
+                move: { from: 'a1', to: 'a2' }, // Red piece (current player)
+                confidence: 0.8,
+                thinking: 'Lion advance',
+            };
+
+            const result = guardian.validateAIMove(gameState, response);
+            expect(result.isValid).toBe(true);
+        });
+
+        test('should reject move from empty square', () => {
+            const response: AIResponse = {
+                move: { from: 'd5', to: 'd4' },
+                confidence: 0.5,
+                thinking: 'Invalid move from empty square',
+            };
+
+            const result = guardian.validateAIMove(gameState, response);
+            expect(result.isValid).toBe(false);
+            expect(result.reason).toContain('No piece');
+        });
+
+        test('should reject move of opponent piece', () => {
+            const response: AIResponse = {
+                move: { from: 'a9', to: 'a8' }, // Blue piece (opponent)
+                confidence: 0.6,
+                thinking: 'Moving opponent piece',
+            };
+
+            const result = guardian.validateAIMove(gameState, response);
+            expect(result.isValid).toBe(false);
+            expect(result.reason).toContain('Not your piece');
+        });
+
+        test('should reject out of bounds moves', () => {
+            const response: AIResponse = {
+                move: { from: 'a9', to: 'h9' }, // h is out of bounds for jungle
+                confidence: 0.3,
+                thinking: 'Invalid target',
+            };
+
+            const result = guardian.validateAIMove(gameState, response);
+            expect(result.isValid).toBe(false);
+            expect(result.reason).toContain('out of bounds');
+        });
+
+        test('should parse jungle notation correctly', () => {
+            const parsed = guardian.parseMove({ from: 'a9', to: 'a8' });
+            expect(parsed.fromPos).toEqual({ row: 0, col: 0 });
+            expect(parsed.toPos).toEqual({ row: 1, col: 0 });
+        });
+
+        test('should handle corner positions', () => {
+            const parsed = guardian.parseMove({ from: 'a1', to: 'g9' });
+            expect(parsed.fromPos).toEqual({ row: 8, col: 0 });
+            expect(parsed.toPos).toEqual({ row: 0, col: 6 });
         });
     });
 

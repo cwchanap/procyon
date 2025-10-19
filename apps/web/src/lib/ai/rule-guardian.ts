@@ -81,10 +81,15 @@ export class ChessRuleGuardian implements RuleGuardian {
         const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
         const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
 
-        return {
-            col: files.indexOf(file),
-            row: ranks.indexOf(rank),
-        };
+        if (!file || !rank) {
+            throw new Error(`Invalid algebraic notation: ${algebraic}`);
+        }
+
+        const col = files.indexOf(file);
+        const row = ranks.indexOf(rank);
+
+        // Return position even if invalid - let isValidPosition handle it
+        return { col, row };
     }
 
     private isValidPosition(pos: GamePosition): boolean {
@@ -171,10 +176,15 @@ export class XiangqiRuleGuardian implements RuleGuardian {
         const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
         const ranks = ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1'];
 
-        return {
-            col: files.indexOf(file),
-            row: ranks.indexOf(rank),
-        };
+        if (!file || !rank) {
+            throw new Error(`Invalid algebraic notation: ${algebraic}`);
+        }
+
+        const col = files.indexOf(file);
+        const row = ranks.indexOf(rank);
+
+        // Return position even if invalid - let isValidPosition handle it
+        return { col, row };
     }
 
     private isValidPosition(pos: GamePosition): boolean {
@@ -284,14 +294,95 @@ export class ShogiRuleGuardian implements RuleGuardian {
         const files = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
         const ranks = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
 
-        return {
-            col: files.indexOf(file),
-            row: ranks.indexOf(rank),
-        };
+        if (!file || !rank) {
+            throw new Error(`Invalid algebraic notation: ${algebraic}`);
+        }
+
+        const col = files.indexOf(file);
+        const row = ranks.indexOf(rank);
+
+        // Return position even if invalid - let isValidPosition handle it
+        return { col, row };
     }
 
     private isValidPosition(pos: GamePosition): boolean {
         return pos.row >= 0 && pos.row < 9 && pos.col >= 0 && pos.col < 9;
+    }
+}
+
+export class JungleRuleGuardian implements RuleGuardian {
+    gameVariant = 'jungle' as const;
+
+    validateAIMove(
+        gameState: any,
+        aiResponse: AIResponse
+    ): MoveValidationResult {
+        try {
+            const { fromPos, toPos } = this.parseMove(aiResponse.move);
+
+            // Check bounds for Jungle chess (9x7 board)
+            if (
+                !this.isValidPosition(fromPos) ||
+                !this.isValidPosition(toPos)
+            ) {
+                return {
+                    isValid: false,
+                    reason: 'Move coordinates out of bounds for jungle board',
+                };
+            }
+
+            // Check if piece exists at from position
+            const piece = gameState.board[fromPos.row]?.[fromPos.col];
+            if (!piece) {
+                return {
+                    isValid: false,
+                    reason: `No piece at ${aiResponse.move.from}`,
+                };
+            }
+
+            // Check if it's the right player's piece
+            if (piece.color !== gameState.currentPlayer) {
+                return {
+                    isValid: false,
+                    reason: `Not your piece at ${aiResponse.move.from}`,
+                };
+            }
+
+            return { isValid: true };
+        } catch (error) {
+            return { isValid: false, reason: `Invalid move format: ${error}` };
+        }
+    }
+
+    parseMove(move: { from: string; to: string }): {
+        fromPos: GamePosition;
+        toPos: GamePosition;
+    } {
+        return {
+            fromPos: this.algebraicToPosition(move.from),
+            toPos: this.algebraicToPosition(move.to),
+        };
+    }
+
+    private algebraicToPosition(algebraic: string): GamePosition {
+        const file = algebraic[0];
+        const rank = algebraic[1];
+        const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+        const ranks = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
+
+        if (!file || !rank) {
+            throw new Error(`Invalid algebraic notation: ${algebraic}`);
+        }
+
+        const col = files.indexOf(file);
+        const row = ranks.indexOf(rank);
+
+        // Return position even if invalid - let isValidPosition handle it
+        return { col, row };
+    }
+
+    private isValidPosition(pos: GamePosition): boolean {
+        return pos.row >= 0 && pos.row < 9 && pos.col >= 0 && pos.col < 7;
     }
 }
 
@@ -303,6 +394,8 @@ export function createRuleGuardian(gameVariant: GameVariant): RuleGuardian {
             return new XiangqiRuleGuardian();
         case 'shogi':
             return new ShogiRuleGuardian();
+        case 'jungle':
+            return new JungleRuleGuardian();
         default:
             throw new Error(`Unsupported game variant: ${gameVariant}`);
     }

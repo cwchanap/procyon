@@ -30,7 +30,7 @@ export interface AIInteractionData {
 
 export class UniversalAIService {
     private config: AIConfig;
-    private adapter: GameVariantAdapter;
+    public adapter: GameVariantAdapter;
     private ruleGuardian: RuleGuardian;
     private debugCallback?: (
         type: string,
