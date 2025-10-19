@@ -9,52 +9,45 @@
 ```tsx
 // ChessGame.tsx - Lines 703-748
 {
-    gameMode === 'ai' && (
-        <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
-            <div className='text-center'>
-                {!aiConfig.enabled || !aiConfig.apiKey ? (
-                    hasGameStarted && (
-                        <div className='text-yellow-400 text-sm'>
-                            ⚠ AI not configured - Configure API key in Profile
-                        </div>
-                    )
-                ) : (
-                    <>
-                        {gameState.isAiThinking && !isAiPaused && (
-                            <div className='flex items-center justify-center gap-2 text-cyan-200'>
-                                <div className='animate-spin w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full'></div>
-                                AI is thinking...
-                            </div>
-                        )}
-
-                        {aiError && isAiPaused && (
-                            <div className='flex flex-col items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg'>
-                                <div className='text-red-300 text-center'>
-                                    <div className='font-semibold mb-1'>
-                                        ❌ AI Error
-                                    </div>
-                                    <div className='text-sm opacity-90'>
-                                        {aiError}
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={retryAIMove}
-                                    className='px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors text-sm font-medium'
-                                >
-                                    🔄 Retry
-                                </button>
-                            </div>
-                        )}
-
-                        <AIDebugDialog
-                            moves={aiDebugMoves}
-                            isVisible={isDebugMode}
-                        />
-                    </>
-                )}
+  gameMode === 'ai' && (
+    <div className='flex flex-col gap-4 max-w-2xl mx-auto'>
+      <div className='text-center'>
+        {!aiConfig.enabled || !aiConfig.apiKey ? (
+          hasGameStarted && (
+            <div className='text-yellow-400 text-sm'>
+              ⚠ AI not configured - Configure API key in Profile
             </div>
-        </div>
-    );
+          )
+        ) : (
+          <>
+            {gameState.isAiThinking && !isAiPaused && (
+              <div className='flex items-center justify-center gap-2 text-cyan-200'>
+                <div className='animate-spin w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full'></div>
+                AI is thinking...
+              </div>
+            )}
+
+            {aiError && isAiPaused && (
+              <div className='flex flex-col items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg'>
+                <div className='text-red-300 text-center'>
+                  <div className='font-semibold mb-1'>❌ AI Error</div>
+                  <div className='text-sm opacity-90'>{aiError}</div>
+                </div>
+                <button
+                  onClick={retryAIMove}
+                  className='px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors text-sm font-medium'
+                >
+                  🔄 Retry
+                </button>
+              </div>
+            )}
+
+            <AIDebugDialog moves={aiDebugMoves} isVisible={isDebugMode} />
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Same 40+ lines duplicated in XiangqiGame.tsx
@@ -65,18 +58,18 @@
 ```tsx
 // ChessGame.tsx - Lines 708-719 (11 lines)
 {
-    gameMode === 'ai' && (
-        <AIStatusPanel
-            aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-            hasGameStarted={hasGameStarted}
-            isAIThinking={gameState.isAiThinking}
-            isAIPaused={isAiPaused}
-            aiError={aiError}
-            aiDebugMoves={aiDebugMoves}
-            isDebugMode={isDebugMode}
-            onRetry={retryAIMove}
-        />
-    );
+  gameMode === 'ai' && (
+    <AIStatusPanel
+      aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+      hasGameStarted={hasGameStarted}
+      isAIThinking={gameState.isAiThinking}
+      isAIPaused={isAiPaused}
+      aiError={aiError}
+      aiDebugMoves={aiDebugMoves}
+      isDebugMode={isDebugMode}
+      onRetry={retryAIMove}
+    />
+  );
 }
 
 // Same in XiangqiGame.tsx, ShogiGame.tsx, etc.
@@ -93,23 +86,23 @@
 ```tsx
 // ChessGame.tsx - Lines 751-767
 {
-    gameMode === 'tutorial' && (
-        <div className='flex flex-wrap gap-3 justify-center max-w-4xl'>
-            {logicDemos.map(demoItem => (
-                <button
-                    key={demoItem.id}
-                    onClick={() => handleDemoChange(demoItem.id)}
-                    className={`glass-effect px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
-                        currentDemo === demoItem.id
-                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                            : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
-                    }`}
-                >
-                    {demoItem.title}
-                </button>
-            ))}
-        </div>
-    );
+  gameMode === 'tutorial' && (
+    <div className='flex flex-wrap gap-3 justify-center max-w-4xl'>
+      {logicDemos.map(demoItem => (
+        <button
+          key={demoItem.id}
+          onClick={() => handleDemoChange(demoItem.id)}
+          className={`glass-effect px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+            currentDemo === demoItem.id
+              ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+              : 'text-purple-100 hover:bg-white hover:bg-opacity-20'
+          }`}
+        >
+          {demoItem.title}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // Same pattern duplicated in XiangqiGame.tsx
@@ -120,13 +113,13 @@
 ```tsx
 // ChessGame.tsx - Lines 721-727 (7 lines)
 {
-    gameMode === 'tutorial' && (
-        <DemoSelector
-            demos={logicDemos}
-            currentDemo={currentDemo}
-            onDemoChange={handleDemoChange}
-        />
-    );
+  gameMode === 'tutorial' && (
+    <DemoSelector
+      demos={logicDemos}
+      currentDemo={currentDemo}
+      onDemoChange={handleDemoChange}
+    />
+  );
 }
 
 // Same in XiangqiGame.tsx, ShogiGame.tsx, etc.
@@ -143,26 +136,25 @@
 ```tsx
 // ChessGame.tsx - Lines 772-794 (22 lines)
 <div className='text-sm text-purple-200 text-center max-w-md mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
-    <p className='flex items-center justify-center gap-2'>
-        <span>🖱️</span>
-        Click on a piece to select it, then click on a highlighted square to
-        move.
+  <p className='flex items-center justify-center gap-2'>
+    <span>🖱️</span>
+    Click on a piece to select it, then click on a highlighted square to move.
+  </p>
+  <p className='flex items-center justify-center gap-2'>
+    <span className='w-3 h-3 bg-green-400 rounded-full inline-block'></span>
+    Possible moves
+    <span className='mx-2'>•</span>
+    <span className='w-3 h-3 border-2 border-red-500 rounded inline-block'></span>
+    Captures
+  </p>
+  {gameMode === 'ai' && (
+    <p className='flex items-center justify-center gap-2 pt-2 border-t border-white border-opacity-10'>
+      <span>🤖</span>
+      {aiConfig.enabled && aiConfig.apiKey
+        ? `Playing against ${aiConfig.provider} (${aiConfig.model})`
+        : 'AI Mode - Configure API key to play against AI'}
     </p>
-    <p className='flex items-center justify-center gap-2'>
-        <span className='w-3 h-3 bg-green-400 rounded-full inline-block'></span>
-        Possible moves
-        <span className='mx-2'>•</span>
-        <span className='w-3 h-3 border-2 border-red-500 rounded inline-block'></span>
-        Captures
-    </p>
-    {gameMode === 'ai' && (
-        <p className='flex items-center justify-center gap-2 pt-2 border-t border-white border-opacity-10'>
-            <span>🤖</span>
-            {aiConfig.enabled && aiConfig.apiKey
-                ? `Playing against ${aiConfig.provider} (${aiConfig.model})`
-                : 'AI Mode - Configure API key to play against AI'}
-        </p>
-    )}
+  )}
 </div>
 
 // Similar duplicated in XiangqiGame.tsx with slight variations
@@ -173,9 +165,9 @@
 ```tsx
 // ChessGame.tsx - Lines 731-735 (5 lines)
 <AIGameInstructions
-    providerName={aiConfig.provider}
-    modelName={aiConfig.model}
-    aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+  providerName={aiConfig.provider}
+  modelName={aiConfig.model}
+  aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
 />
 
 // Same in XiangqiGame.tsx, plus optional children for game-specific content
@@ -192,42 +184,42 @@
 ```tsx
 // ChessGame.tsx - Lines 797-857 (60 lines)
 <>
-    <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-        <h2 className='text-2xl font-bold text-white mb-3'>
-            {getCurrentDemo().title}
-        </h2>
-        <div className='bg-black bg-opacity-30 p-4 rounded-xl border border-purple-500 border-opacity-30'>
-            <p className='text-purple-200 leading-relaxed'>
-                {getCurrentDemo().explanation}
-            </p>
-        </div>
+  <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
+    <h2 className='text-2xl font-bold text-white mb-3'>
+      {getCurrentDemo().title}
+    </h2>
+    <div className='bg-black bg-opacity-30 p-4 rounded-xl border border-purple-500 border-opacity-30'>
+      <p className='text-purple-200 leading-relaxed'>
+        {getCurrentDemo().explanation}
+      </p>
     </div>
+  </div>
 
-    <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-        <h3 className='text-xl font-semibold text-white mb-3 flex items-center gap-2'>
-            <span>🎯</span>
-            How to Use This Demo
-        </h3>
-        <div className='space-y-3 text-purple-200'>
-            <p className='flex items-center gap-3'>
-                <span className='text-green-400'>•</span>
-                Click on any piece to see its possible moves
-            </p>
-            {/* ... more instructions ... */}
-        </div>
+  <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
+    <h3 className='text-xl font-semibold text-white mb-3 flex items-center gap-2'>
+      <span>🎯</span>
+      How to Use This Demo
+    </h3>
+    <div className='space-y-3 text-purple-200'>
+      <p className='flex items-center gap-3'>
+        <span className='text-green-400'>•</span>
+        Click on any piece to see its possible moves
+      </p>
+      {/* ... more instructions ... */}
     </div>
+  </div>
 
-    <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-        <h3 className='text-xl font-semibold text-white mb-3 flex items-center gap-2'>
-            <span>💡</span>
-            Chess Tips
-        </h3>
-        <div className='space-y-2 text-purple-200 text-sm'>
-            <p>"Control the center and develop your pieces early."</p>
-            <p>"Castle early to protect your king and connect your rooks."</p>
-            {/* ... more tips ... */}
-        </div>
+  <div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
+    <h3 className='text-xl font-semibold text-white mb-3 flex items-center gap-2'>
+      <span>💡</span>
+      Chess Tips
+    </h3>
+    <div className='space-y-2 text-purple-200 text-sm'>
+      <p>"Control the center and develop your pieces early."</p>
+      <p>"Castle early to protect your king and connect your rooks."</p>
+      {/* ... more tips ... */}
     </div>
+  </div>
 </>
 
 // Similar 60 line block duplicated in XiangqiGame.tsx
@@ -238,15 +230,15 @@
 ```tsx
 // ChessGame.tsx - Lines 737-748 (12 lines)
 <TutorialInstructions
-    title={getCurrentDemo().title}
-    explanation={getCurrentDemo().explanation}
-    tips={[
-        '"Control the center and develop your pieces early."',
-        '"Castle early to protect your king and connect your rooks."',
-        '"Look for forks, pins, and skewers to gain material advantages."',
-        '"Always consider your opponent\'s best move before making yours."',
-    ]}
-    tipsTitle='Chess Tips'
+  title={getCurrentDemo().title}
+  explanation={getCurrentDemo().explanation}
+  tips={[
+    '"Control the center and develop your pieces early."',
+    '"Castle early to protect your king and connect your rooks."',
+    '"Look for forks, pins, and skewers to gain material advantages."',
+    '"Always consider your opponent\'s best move before making yours."',
+  ]}
+  tipsTitle='Chess Tips'
 />
 
 // Same pattern in XiangqiGame.tsx with different tips
@@ -263,54 +255,52 @@
 ```tsx
 // ChessGame.tsx - Lines 876-930 (54 lines)
 {
-    gameMode === 'ai' && (
-        <div className='flex gap-4 justify-center'>
+  gameMode === 'ai' && (
+    <div className='flex gap-4 justify-center'>
+      <button
+        onClick={handleStartOrReset}
+        className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
+      >
+        {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
+      </button>
+
+      {isGameOver && (
+        <button
+          onClick={resetGame}
+          className='bg-gradient-to-r from-green-500 to-emerald-500 hover:from-emerald-500 hover:to-green-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
+        >
+          🎮 Play Again
+        </button>
+      )}
+
+      {gameMode === 'ai' && aiConfig.enabled && aiConfig.apiKey && (
+        <>
+          <button
+            onClick={() => setIsDebugMode(!isDebugMode)}
+            className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+              isDebugMode
+                ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
+                : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+            }`}
+          >
+            🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
+          </button>
+
+          {hasGameStarted && gameExporterRef.current && (
             <button
-                onClick={handleStartOrReset}
-                className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
+              onClick={() =>
+                gameExporterRef.current?.exportAndDownload(gameState.status)
+              }
+              className='glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 text-blue-300 border-blue-400 hover:bg-blue-500 hover:bg-opacity-10'
+              title='Export game with AI prompts and responses'
             >
-                {hasGameStarted ? '🆕 New Game' : '▶️ Start'}
+              📥 Export Game
             </button>
-
-            {isGameOver && (
-                <button
-                    onClick={resetGame}
-                    className='bg-gradient-to-r from-green-500 to-emerald-500 hover:from-emerald-500 hover:to-green-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
-                >
-                    🎮 Play Again
-                </button>
-            )}
-
-            {gameMode === 'ai' && aiConfig.enabled && aiConfig.apiKey && (
-                <>
-                    <button
-                        onClick={() => setIsDebugMode(!isDebugMode)}
-                        className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
-                            isDebugMode
-                                ? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
-                                : 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
-                        }`}
-                    >
-                        🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
-                    </button>
-
-                    {hasGameStarted && gameExporterRef.current && (
-                        <button
-                            onClick={() =>
-                                gameExporterRef.current?.exportAndDownload(
-                                    gameState.status
-                                )
-                            }
-                            className='glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 text-blue-300 border-blue-400 hover:bg-blue-500 hover:bg-opacity-10'
-                            title='Export game with AI prompts and responses'
-                        >
-                            📥 Export Game
-                        </button>
-                    )}
-                </>
-            )}
-        </div>
-    );
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 // Similar 50+ line block duplicated in XiangqiGame.tsx
@@ -321,21 +311,21 @@
 ```tsx
 // ChessGame.tsx - Lines 767-781 (15 lines)
 {
-    gameMode === 'ai' && (
-        <GameControls
-            hasGameStarted={hasGameStarted}
-            isGameOver={isGameOver}
-            aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-            isDebugMode={isDebugMode}
-            canExport={hasGameStarted && !!gameExporterRef.current}
-            onStartOrReset={handleStartOrReset}
-            onReset={resetGame}
-            onToggleDebug={() => setIsDebugMode(!isDebugMode)}
-            onExport={() =>
-                gameExporterRef.current?.exportAndDownload(gameState.status)
-            }
-        />
-    );
+  gameMode === 'ai' && (
+    <GameControls
+      hasGameStarted={hasGameStarted}
+      isGameOver={isGameOver}
+      aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+      isDebugMode={isDebugMode}
+      canExport={hasGameStarted && !!gameExporterRef.current}
+      onStartOrReset={handleStartOrReset}
+      onReset={resetGame}
+      onToggleDebug={() => setIsDebugMode(!isDebugMode)}
+      onExport={() =>
+        gameExporterRef.current?.exportAndDownload(gameState.status)
+      }
+    />
+  );
 }
 
 // Same in XiangqiGame.tsx, ShogiGame.tsx, etc.

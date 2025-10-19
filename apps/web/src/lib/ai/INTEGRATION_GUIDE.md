@@ -24,12 +24,12 @@ The AI system has been refactored to support multiple game variants:
 import { createChessAI, AIConfig } from '@/lib/ai';
 
 const aiConfig: AIConfig = {
-    provider: 'gemini',
-    apiKey: 'your-api-key',
-    model: 'gemini-2.5-flash-lite',
-    enabled: true,
-    debug: false,
-    gameVariant: 'chess',
+  provider: 'gemini',
+  apiKey: 'your-api-key',
+  model: 'gemini-2.5-flash-lite',
+  enabled: true,
+  debug: false,
+  gameVariant: 'chess',
 };
 
 const chessAI = createChessAI(aiConfig);
@@ -44,38 +44,34 @@ import type { XiangqiGameState } from '@/lib/xiangqi/types';
 
 // In XiangqiGame.tsx
 const [aiConfig, setAIConfig] = useState<AIConfig>({
-    ...defaultAIConfig,
-    gameVariant: 'xiangqi',
+  ...defaultAIConfig,
+  gameVariant: 'xiangqi',
 });
 
 const [xiangqiAI] = useState(() => createXiangqiAI(aiConfig));
 
 // Set up debug callback
 useEffect(() => {
-    xiangqiAI.setDebugCallback((type, message, data) => {
-        console.log(`[Xiangqi AI ${type}]:`, message, data);
-        // Update debug UI as needed
-    });
+  xiangqiAI.setDebugCallback((type, message, data) => {
+    console.log(`[Xiangqi AI ${type}]:`, message, data);
+    // Update debug UI as needed
+  });
 }, [xiangqiAI]);
 
 // Make AI move
 const handleAIMove = async () => {
-    if (gameState.currentPlayer === aiPlayer) {
-        const aiResponse = await xiangqiAI.makeMove(gameState);
-        if (aiResponse) {
-            // Parse the move and apply it to the game
-            const fromPos = xiangqiAdapter.algebraicToPosition(
-                aiResponse.move.from
-            );
-            const toPos = xiangqiAdapter.algebraicToPosition(
-                aiResponse.move.to
-            );
+  if (gameState.currentPlayer === aiPlayer) {
+    const aiResponse = await xiangqiAI.makeMove(gameState);
+    if (aiResponse) {
+      // Parse the move and apply it to the game
+      const fromPos = xiangqiAdapter.algebraicToPosition(aiResponse.move.from);
+      const toPos = xiangqiAdapter.algebraicToPosition(aiResponse.move.to);
 
-            // Apply move using xiangqi game logic
-            const newGameState = makeMove(gameState, fromPos, toPos);
-            setGameState(newGameState);
-        }
+      // Apply move using xiangqi game logic
+      const newGameState = makeMove(gameState, fromPos, toPos);
+      setGameState(newGameState);
     }
+  }
 };
 ```
 
@@ -87,35 +83,29 @@ import type { ShogiGameState } from '@/lib/shogi';
 
 // In ShogiGame.tsx
 const [aiConfig, setAIConfig] = useState<AIConfig>({
-    ...defaultAIConfig,
-    gameVariant: 'shogi',
+  ...defaultAIConfig,
+  gameVariant: 'shogi',
 });
 
 const [shogiAI] = useState(() => createShogiAI(aiConfig));
 
 // Handle both regular moves and drop moves
 const handleAIMove = async () => {
-    if (gameState.currentPlayer === aiPlayer) {
-        const aiResponse = await shogiAI.makeMove(gameState);
-        if (aiResponse) {
-            if (aiResponse.move.from === '*') {
-                // Handle drop move
-                const toPos = shogiAdapter.algebraicToPosition(
-                    aiResponse.move.to
-                );
-                // Apply drop logic
-            } else {
-                // Handle regular move
-                const fromPos = shogiAdapter.algebraicToPosition(
-                    aiResponse.move.from
-                );
-                const toPos = shogiAdapter.algebraicToPosition(
-                    aiResponse.move.to
-                );
-                // Apply move logic
-            }
-        }
+  if (gameState.currentPlayer === aiPlayer) {
+    const aiResponse = await shogiAI.makeMove(gameState);
+    if (aiResponse) {
+      if (aiResponse.move.from === '*') {
+        // Handle drop move
+        const toPos = shogiAdapter.algebraicToPosition(aiResponse.move.to);
+        // Apply drop logic
+      } else {
+        // Handle regular move
+        const fromPos = shogiAdapter.algebraicToPosition(aiResponse.move.from);
+        const toPos = shogiAdapter.algebraicToPosition(aiResponse.move.to);
+        // Apply move logic
+      }
     }
+  }
 };
 ```
 
@@ -126,10 +116,10 @@ const handleAIMove = async () => {
 ```typescript
 // Replace old AI imports
 import {
-    createXiangqiAI,
-    createShogiAI,
-    AIConfig,
-    defaultAIConfig,
+  createXiangqiAI,
+  createShogiAI,
+  AIConfig,
+  defaultAIConfig,
 } from '@/lib/ai';
 ```
 
@@ -138,11 +128,11 @@ import {
 ```typescript
 const [gameMode, setGameMode] = useState<'play' | 'tutorial' | 'ai'>('play');
 const [aiPlayer, setAIPlayer] = useState<'red' | 'black' | 'sente' | 'gote'>(
-    'black'
+  'black'
 );
 const [aiConfig, setAIConfig] = useState<AIConfig>({
-    ...defaultAIConfig,
-    gameVariant: 'xiangqi', // or 'shogi'
+  ...defaultAIConfig,
+  gameVariant: 'xiangqi', // or 'shogi'
 });
 ```
 
@@ -150,9 +140,9 @@ const [aiConfig, setAIConfig] = useState<AIConfig>({
 
 ```typescript
 const [aiService] = useState(() => {
-    return gameVariant === 'xiangqi'
-        ? createXiangqiAI(aiConfig)
-        : createShogiAI(aiConfig);
+  return gameVariant === 'xiangqi'
+    ? createXiangqiAI(aiConfig)
+    : createShogiAI(aiConfig);
 });
 ```
 
@@ -160,22 +150,22 @@ const [aiService] = useState(() => {
 
 ```typescript
 useEffect(() => {
-    if (
-        gameMode === 'ai' &&
-        gameState.currentPlayer === aiPlayer &&
-        gameState.status === 'playing'
-    ) {
-        const makeAIMove = async () => {
-            const response = await aiService.makeMove(gameState);
-            if (response) {
-                // Apply the AI's move to the game state
-                // Implementation depends on your game logic
-            }
-        };
+  if (
+    gameMode === 'ai' &&
+    gameState.currentPlayer === aiPlayer &&
+    gameState.status === 'playing'
+  ) {
+    const makeAIMove = async () => {
+      const response = await aiService.makeMove(gameState);
+      if (response) {
+        // Apply the AI's move to the game state
+        // Implementation depends on your game logic
+      }
+    };
 
-        const timer = setTimeout(makeAIMove, 1000); // Small delay for UX
-        return () => clearTimeout(timer);
-    }
+    const timer = setTimeout(makeAIMove, 1000); // Small delay for UX
+    return () => clearTimeout(timer);
+  }
 }, [gameState, gameMode, aiPlayer, aiService]);
 ```
 
@@ -224,12 +214,12 @@ The AI config now supports `gameVariant` field:
 
 ```typescript
 interface AIConfig {
-    provider: AIProvider;
-    apiKey: string;
-    model: string;
-    enabled: boolean;
-    debug?: boolean;
-    gameVariant?: GameVariant; // 'chess' | 'xiangqi' | 'shogi'
+  provider: AIProvider;
+  apiKey: string;
+  model: string;
+  enabled: boolean;
+  debug?: boolean;
+  gameVariant?: GameVariant; // 'chess' | 'xiangqi' | 'shogi'
 }
 ```
 
@@ -239,14 +229,14 @@ Enable debug mode to see detailed AI thinking:
 
 ```typescript
 const aiConfig = {
-    ...config,
-    debug: true,
+  ...config,
+  debug: true,
 };
 
 // Set up debug callback to display AI reasoning
 aiService.setDebugCallback((type, message, data) => {
-    console.log(`[AI ${type}]:`, message, data);
-    // Update debug UI
+  console.log(`[AI ${type}]:`, message, data);
+  // Update debug UI
 });
 ```
 

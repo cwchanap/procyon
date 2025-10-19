@@ -27,34 +27,34 @@ packages/         # Shared packages (currently empty)
 
 - **Framework**: Astro SSR with React integration and Tailwind CSS
 - **Game Engines**: Each variant follows the same modular pattern in `src/lib/{chess,xiangqi,shogi}/`:
-    - `types.ts` - Core types (pieces, moves, game state)
-    - `board.ts` - Board representation and piece management
-    - `moves.ts` - Move validation and legal move generation
-    - `game.ts` - Game state and turn management
+  - `types.ts` - Core types (pieces, moves, game state)
+  - `board.ts` - Board representation and piece management
+  - `moves.ts` - Move validation and legal move generation
+  - `game.ts` - Game state and turn management
 - **AI System**: `src/lib/ai/`
-    - `universal-service.ts` - Core AI orchestration
-    - `{chess,xiangqi,shogi}-adapter.ts` - Game-specific AI adapters
-    - `factory.ts` - Creates AI instances per game variant
-    - `rule-guardian.ts` - Validates AI moves against game rules
-    - `storage.ts` - Persists AI configurations
+  - `universal-service.ts` - Core AI orchestration
+  - `{chess,xiangqi,shogi}-adapter.ts` - Game-specific AI adapters
+  - `factory.ts` - Creates AI instances per game variant
+  - `rule-guardian.ts` - Validates AI moves against game rules
+  - `storage.ts` - Persists AI configurations
 - **Components**: React components in `src/components/`
-    - Game components: `ChessGame.tsx`, `XiangqiGame.tsx`, `ShogiGame.tsx`
-    - UI components in `src/components/ui/`
+  - Game components: `ChessGame.tsx`, `XiangqiGame.tsx`, `ShogiGame.tsx`
+  - UI components in `src/components/ui/`
 
 ### API Server (`apps/api`)
 
 - **Framework**: Hono with Node.js adapter
 - **Database**: Drizzle ORM with dual setup:
-    - **Development**: Local SQLite via better-sqlite3 (`dev.db`)
-    - **Production**: Cloudflare D1 via bindings
+  - **Development**: Local SQLite via better-sqlite3 (`dev.db`)
+  - **Production**: Cloudflare D1 via bindings
 - **Authentication**: JWT-based with bcrypt password hashing
-    - Middleware: `src/auth/middleware.ts` (authMiddleware for protected routes)
-    - Routes: `src/routes/auth.ts` (registration/login)
+  - Middleware: `src/auth/middleware.ts` (authMiddleware for protected routes)
+  - Routes: `src/routes/auth.ts` (registration/login)
 - **Schema**: `src/db/schema.ts` defines users and ai_configurations tables
 - **Routes**:
-    - `/api/auth` - Registration and login
-    - `/api/users` - User management
-    - `/api/ai-config` - AI provider settings per user
+  - `/api/auth` - Registration and login
+  - `/api/users` - User management
+  - `/api/ai-config` - AI provider settings per user
 
 ## Development Commands
 
@@ -189,11 +189,11 @@ AI responses must follow strict JSON format with move notation and reasoning. Th
 Dual database configuration using Drizzle ORM:
 
 - **Development**: Local SQLite database (`apps/api/dev.db`)
-    - Use `drizzle.config.dev.ts` for local operations
-    - Accessed via `better-sqlite3`
+  - Use `drizzle.config.dev.ts` for local operations
+  - Accessed via `better-sqlite3`
 - **Production**: Cloudflare D1
-    - Use `drizzle.config.ts` for production migrations
-    - Accessed via Cloudflare bindings
+  - Use `drizzle.config.ts` for production migrations
+  - Accessed via Cloudflare bindings
 
 Database initialization checks `NODE_ENV` to determine which database to use. Schema defined in `apps/api/src/db/schema.ts` with tables for users and ai_configurations.
 
@@ -202,8 +202,8 @@ Database initialization checks `NODE_ENV` to determine which database to use. Sc
 JWT-based authentication with secure password handling:
 
 1. **Registration/Login**: Routes in `apps/api/src/routes/auth.ts`
-    - Passwords hashed with bcrypt
-    - JWT tokens issued on successful auth
+   - Passwords hashed with bcrypt
+   - JWT tokens issued on successful auth
 2. **Protected Routes**: Use `authMiddleware` from `apps/api/src/auth/middleware.ts`
 3. **Frontend Context**: `apps/web/src/lib/auth.ts` manages auth state with localStorage persistence
 
@@ -217,17 +217,17 @@ Tests located in `tests/e2e/` with configuration in `playwright.config.ts`:
 
 - **Auto-start servers**: Playwright automatically starts both web (3500) and API (3501) servers
 - **Helper utilities**: `tests/e2e/utils/auth-helpers.ts` provides `AuthHelper` class
-    - `generateTestUser()` creates unique test users with timestamps
-    - Reusable auth flows for login/registration
+  - `generateTestUser()` creates unique test users with timestamps
+  - Reusable auth flows for login/registration
 - **AI testing pattern**: Use route interception to mock external API calls
 
 ```typescript
 // Mock AI API responses in tests
 await page.route('**/generativelanguage.googleapis.com/**', async route => {
-    await route.fulfill({
-        status: 200,
-        body: JSON.stringify(mockResponse),
-    });
+  await route.fulfill({
+    status: 200,
+    body: JSON.stringify(mockResponse),
+  });
 });
 ```
 
@@ -243,10 +243,10 @@ Web app uses Bun's built-in test runner:
 ### Adding a New Game Variant
 
 1. Create game modules in `apps/web/src/lib/{game}/`:
-    - `types.ts` - Define piece types, move types, game state
-    - `board.ts` - Implement board representation
-    - `moves.ts` - Implement move validation and generation
-    - `game.ts` - Implement game state management
+   - `types.ts` - Define piece types, move types, game state
+   - `board.ts` - Implement board representation
+   - `moves.ts` - Implement move validation and generation
+   - `game.ts` - Implement game state management
 2. Create AI adapter in `apps/web/src/lib/ai/{game}-adapter.ts`
 3. Add factory function in `apps/web/src/lib/ai/factory.ts`
 4. Create React component in `apps/web/src/components/{Game}Game.tsx`

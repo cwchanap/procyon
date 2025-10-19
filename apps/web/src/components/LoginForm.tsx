@@ -4,106 +4,104 @@ import { Input } from './ui/Input';
 import { useAuth } from '../lib/auth';
 
 export function LoginForm() {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
-    const { login } = useAuth();
+	const [email, setEmail] = useState('');
+	const [password, setPassword] = useState('');
+	const [error, setError] = useState('');
+	const [loading, setLoading] = useState(false);
+	const { login } = useAuth();
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-        setLoading(true);
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		setError('');
+		setLoading(true);
 
-        const result = await login(email, password);
+		const result = await login(email, password);
 
-        if (result.success) {
-            window.location.href = '/';
-        } else {
-            setError(result.error || 'Login failed');
-        }
+		if (result.success) {
+			window.location.href = '/';
+		} else {
+			setError(result.error || 'Login failed');
+		}
 
-        setLoading(false);
-    };
+		setLoading(false);
+	};
 
-    return (
-        <div className='w-full max-w-md mx-auto'>
-            <div className='bg-gradient-to-br from-purple-900/20 to-pink-900/20 backdrop-blur-lg border border-purple-500/30 shadow-2xl rounded-2xl p-8'>
-                <div className='space-y-2 text-center mb-8'>
-                    <h1 className='text-3xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent'>
-                        Sign In
-                    </h1>
-                    <p className='text-purple-200'>
-                        Enter your credentials to access your account
-                    </p>
-                </div>
+	return (
+		<div className='w-full max-w-md mx-auto'>
+			<div className='bg-gradient-to-br from-purple-900/20 to-pink-900/20 backdrop-blur-lg border border-purple-500/30 shadow-2xl rounded-2xl p-8'>
+				<div className='space-y-2 text-center mb-8'>
+					<h1 className='text-3xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent'>
+						Sign In
+					</h1>
+					<p className='text-purple-200'>
+						Enter your credentials to access your account
+					</p>
+				</div>
 
-                <form onSubmit={handleSubmit} className='space-y-6'>
-                    <div className='space-y-2'>
-                        <label
-                            htmlFor='email'
-                            className='text-sm font-medium text-purple-200'
-                        >
-                            Email
-                        </label>
-                        <Input
-                            id='email'
-                            type='email'
-                            placeholder='Enter your email'
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            required
-                            className='bg-purple-900/30 border-purple-400/50 text-white placeholder-purple-300 focus:border-purple-400 focus:ring-purple-400/50'
-                        />
-                    </div>
+				<form onSubmit={handleSubmit} className='space-y-6'>
+					<div className='space-y-2'>
+						<label
+							htmlFor='email'
+							className='text-sm font-medium text-purple-200'
+						>
+							Email
+						</label>
+						<Input
+							id='email'
+							type='email'
+							placeholder='Enter your email'
+							value={email}
+							onChange={e => setEmail(e.target.value)}
+							required
+							className='bg-purple-900/30 border-purple-400/50 text-white placeholder-purple-300 focus:border-purple-400 focus:ring-purple-400/50'
+						/>
+					</div>
 
-                    <div className='space-y-2'>
-                        <label
-                            htmlFor='password'
-                            className='text-sm font-medium text-purple-200'
-                        >
-                            Password
-                        </label>
-                        <Input
-                            id='password'
-                            type='password'
-                            placeholder='Enter your password'
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                            required
-                            className='bg-purple-900/30 border-purple-400/50 text-white placeholder-purple-300 focus:border-purple-400 focus:ring-purple-400/50'
-                        />
-                    </div>
+					<div className='space-y-2'>
+						<label
+							htmlFor='password'
+							className='text-sm font-medium text-purple-200'
+						>
+							Password
+						</label>
+						<Input
+							id='password'
+							type='password'
+							placeholder='Enter your password'
+							value={password}
+							onChange={e => setPassword(e.target.value)}
+							required
+							className='bg-purple-900/30 border-purple-400/50 text-white placeholder-purple-300 focus:border-purple-400 focus:ring-purple-400/50'
+						/>
+					</div>
 
-                    {error && (
-                        <div className='text-red-400 text-sm text-center bg-red-900/20 border border-red-500/30 rounded-lg p-3'>
-                            {error}
-                        </div>
-                    )}
+					{error && (
+						<div className='text-red-400 text-sm text-center bg-red-900/20 border border-red-500/30 rounded-lg p-3'>
+							{error}
+						</div>
+					)}
 
-                    <Button
-                        type='submit'
-                        className='w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-3 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200'
-                        disabled={loading}
-                    >
-                        {loading ? 'Signing In...' : 'Sign In'}
-                    </Button>
-                </form>
+					<Button
+						type='submit'
+						className='w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-3 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200'
+						disabled={loading}
+					>
+						{loading ? 'Signing In...' : 'Sign In'}
+					</Button>
+				</form>
 
-                <div className='mt-6 text-center text-sm'>
-                    <span className='text-purple-300'>
-                        Don't have an account?{' '}
-                    </span>
-                    <a
-                        href='/register'
-                        className='text-pink-400 hover:text-pink-300 font-medium transition-colors duration-200 hover:underline'
-                    >
-                        Sign up
-                    </a>
-                </div>
-            </div>
-        </div>
-    );
+				<div className='mt-6 text-center text-sm'>
+					<span className='text-purple-300'>Don't have an account? </span>
+					<a
+						href='/register'
+						className='text-pink-400 hover:text-pink-300 font-medium transition-colors duration-200 hover:underline'
+					>
+						Sign up
+					</a>
+				</div>
+			</div>
+		</div>
+	);
 }
 
 export default LoginForm;

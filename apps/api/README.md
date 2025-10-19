@@ -31,27 +31,27 @@ Hono-based API server with JWT authentication and Drizzle ORM + Cloudflare D1 in
 
 1. **Install dependencies**:
 
-    ```bash
-    bun install
-    ```
+   ```bash
+   bun install
+   ```
 
 2. **Set up environment**:
 
-    ```bash
-    cp .env.example .env
-    # Edit .env with your configuration
-    ```
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
 
 3. **Run database migrations**:
 
-    ```bash
-    bun run db:migrate
-    ```
+   ```bash
+   bun run db:migrate
+   ```
 
 4. **Start development server**:
-    ```bash
-    bun run dev
-    ```
+   ```bash
+   bun run dev
+   ```
 
 ## Database Management
 

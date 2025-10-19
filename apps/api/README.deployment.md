@@ -186,5 +186,5 @@ For automated deployments, add Cloudflare API token to your CI/CD:
 - name: Deploy to Cloudflare Workers
   run: bunx wrangler deploy
   env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 ```

@@ -89,10 +89,10 @@ const testUser = AuthHelper.generateTestUser();
 
 // Mock AI API responses
 await page.route('**/generativelanguage.googleapis.com/**', async route => {
-    await route.fulfill({
-        status: 200,
-        body: JSON.stringify(mockResponse),
-    });
+  await route.fulfill({
+    status: 200,
+    body: JSON.stringify(mockResponse),
+  });
 });
 ```
 

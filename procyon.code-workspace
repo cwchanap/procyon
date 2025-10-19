@@ -2,16 +2,16 @@
   "folders": [
     {
       "name": "Root",
-      "path": "."
+      "path": ".",
     },
     {
       "name": "Web App",
-      "path": "./apps/web"
+      "path": "./apps/web",
     },
     {
       "name": "API Server",
-      "path": "./apps/api"
-    }
+      "path": "./apps/api",
+    },
   ],
   "settings": {
     "typescript.preferences.importModuleSpecifier": "relative",
@@ -19,41 +19,37 @@
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     "editor.codeActionsOnSave": {
-      "source.fixAll.eslint": "explicit"
+      "source.fixAll.eslint": "explicit",
     },
-    "eslint.workingDirectories": [
-      ".",
-      "./apps/web",
-      "./apps/api"
-    ],
+    "eslint.workingDirectories": [".", "./apps/web", "./apps/api"],
     "files.exclude": {
       "**/node_modules": true,
       "**/dist": true,
       "**/.turbo": true,
-      "**/.astro": true
+      "**/.astro": true,
     },
     "search.exclude": {
       "**/node_modules": true,
       "**/dist": true,
       "**/.turbo": true,
       "**/.astro": true,
-      "**/bun.lockb": true
+      "**/bun.lockb": true,
     },
     "emmet.includeLanguages": {
-      "astro": "html"
+      "astro": "html",
     },
     "emmet.syntaxProfiles": {
-      "astro": "html"
+      "astro": "html",
     },
     "tailwindCSS.includeLanguages": {
       "astro": "html",
       "typescript": "javascript",
-      "typescriptreact": "javascript"
+      "typescriptreact": "javascript",
     },
     "tailwindCSS.experimental.classRegex": [
       ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
-      ["cx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"]
-    ]
+      ["cx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"],
+    ],
   },
   "extensions": {
     "recommendations": [
@@ -64,8 +60,8 @@
       "ms-vscode.vscode-typescript-next",
       "oven.bun-vscode",
       "unifiedjs.vscode-mdx",
-      "ms-vscode.vscode-json"
-    ]
+      "ms-vscode.vscode-json",
+    ],
   },
   "tasks": {
     "version": "2.0.0",
@@ -82,9 +78,9 @@
           "focus": false,
           "panel": "shared",
           "showReuseMessage": true,
-          "clear": false
+          "clear": false,
         },
-        "problemMatcher": ["$tsc"]
+        "problemMatcher": ["$tsc"],
       },
       {
         "label": "dev:web",
@@ -96,8 +92,8 @@
           "echo": true,
           "reveal": "always",
           "focus": false,
-          "panel": "shared"
-        }
+          "panel": "shared",
+        },
       },
       {
         "label": "dev:api",
@@ -109,8 +105,8 @@
           "echo": true,
           "reveal": "always",
           "focus": false,
-          "panel": "shared"
-        }
+          "panel": "shared",
+        },
       },
       {
         "label": "build",
@@ -122,9 +118,9 @@
           "echo": true,
           "reveal": "always",
           "focus": false,
-          "panel": "shared"
+          "panel": "shared",
         },
-        "problemMatcher": ["$tsc"]
+        "problemMatcher": ["$tsc"],
       },
       {
         "label": "lint",
@@ -136,8 +132,8 @@
           "echo": true,
           "reveal": "always",
           "focus": false,
-          "panel": "shared"
-        }
+          "panel": "shared",
+        },
       },
       {
         "label": "lint:fix",
@@ -149,8 +145,8 @@
           "echo": true,
           "reveal": "always",
           "focus": false,
-          "panel": "shared"
-        }
+          "panel": "shared",
+        },
       },
       {
         "label": "test",
@@ -162,10 +158,10 @@
           "echo": true,
           "reveal": "always",
           "focus": false,
-          "panel": "shared"
-        }
-      }
-    ]
+          "panel": "shared",
+        },
+      },
+    ],
   },
   "launch": {
     "version": "0.2.0",
@@ -179,11 +175,11 @@
         "runtimeArgs": ["--inspect"],
         "cwd": "${workspaceFolder}/apps/api",
         "env": {
-          "NODE_ENV": "development"
+          "NODE_ENV": "development",
         },
         "console": "integratedTerminal",
-        "skipFiles": ["<node_internals>/**"]
-      }
-    ]
-  }
+        "skipFiles": ["<node_internals>/**"],
+      },
+    ],
+  },
 }
