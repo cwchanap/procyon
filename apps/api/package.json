@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "NODE_ENV=development bun --watch src/index.ts",
+    "dev:api": "NODE_ENV=development bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "build": "bun build ./src/index.ts --outdir ./dist --target bun",
     "lint": "eslint src --ext .ts",

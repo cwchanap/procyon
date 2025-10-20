@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
+    "dev": "turbo dev --filter=web --filter=api --ui=tui",
     "lint": "turbo lint",
     "lint:fix": "turbo lint:fix",
     "lint:all": "eslint . --ext .ts,.tsx,.js,.jsx,.mjs",
@@ -21,8 +21,8 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
     "clean": "turbo clean && rm -rf node_modules",
-    "web:dev": "turbo dev --filter=web",
-    "api:dev": "turbo dev --filter=api",
+    "web:dev": "turbo dev --filter=web --ui=tui",
+    "api:dev": "turbo dev --filter=api --ui=tui",
     "deploy": "bun run build && cd apps/api && bun run deploy",
     "deploy:staging": "bun run build && cd apps/api && bun run deploy:staging",
     "prepare": "husky"
