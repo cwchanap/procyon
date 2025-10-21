@@ -16,6 +16,7 @@ const ALL_PROVIDER_OPTIONS = [
 	{ value: 'gemini', label: 'Google Gemini' },
 	{ value: 'openrouter', label: 'OpenRouter' },
 	{ value: 'openai', label: 'OpenAI' },
+	{ value: 'chutes', label: 'Chutes.ai' },
 ];
 
 const MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
@@ -37,6 +38,15 @@ const MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
 		{ value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
 		{ value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
 		{ value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+	],
+	chutes: [
+		{ value: 'deepseek-ai/DeepSeek-R1', label: 'DeepSeek-R1' },
+		{ value: 'zai-org/GLM-4.6-FP8', label: 'GLM 4.6 FP8' },
+		{ value: 'deepseek-ai/DeepSeek-V3', label: 'DeepSeek-V3' },
+		{
+			value: 'meta-llama/Llama-3.3-70B-Instruct',
+			label: 'Llama 3.3 70B Instruct',
+		},
 	],
 };
 

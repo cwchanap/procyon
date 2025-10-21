@@ -1,5 +1,5 @@
 import type { AIResponse } from './types';
-import type { GameVariantAdapter } from './universal-service';
+import type { GameVariantAdapter } from './service';
 import type {
 	JungleGameState,
 	JunglePosition,

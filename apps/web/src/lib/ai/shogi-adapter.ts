@@ -5,7 +5,7 @@ import type {
 	BaseGameState,
 	GamePosition,
 	GamePiece,
-} from './universal-service';
+} from './service';
 import type {
 	ShogiGameState,
 	ShogiPosition,

@@ -1,6 +1,6 @@
 import type { AIConfig } from './types';
 import type { GameVariant } from './game-variant-types';
-import { UniversalAIService } from './universal-service';
+import { UniversalAIService } from './service';
 import { ChessAdapter } from './chess-adapter';
 import { XiangqiAdapter } from './xiangqi-adapter';
 import { ShogiAdapter } from './shogi-adapter';

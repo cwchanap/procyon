@@ -1,22 +1,55 @@
 /* eslint-disable no-console */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { AIConfig, AIResponse } from './types';
-import type { GameState, Position, Move } from '../chess/types';
-import { RANKS, FILES } from '../chess/types';
-import { getPossibleMoves, isMoveValid } from '../chess/moves';
-import { isKingInCheck } from '../chess/game';
-import { copyBoard, setPieceAt } from '../chess/board';
+import type {
+	GameVariant,
+	BaseGameState,
+	GamePosition,
+	GamePiece,
+} from './game-variant-types';
+import { GAME_CONFIGS } from './game-variant-types';
+import { createRuleGuardian, type RuleGuardian } from './rule-guardian';
 
-export class AIService {
+// Re-export types needed by adapters
+export type {
+	BaseGameState,
+	GamePosition,
+	GamePiece,
+} from './game-variant-types';
+
+export interface GameVariantAdapter {
+	gameVariant: GameVariant;
+	convertGameState(gameState: any): BaseGameState;
+	getAllValidMoves(gameState: any): string[];
+	generatePrompt(gameState: any): string;
+	createVisualBoard(gameState: any): string;
+	analyzeThreatsSafety(gameState: any): string;
+	positionToAlgebraic(position: GamePosition): string;
+	algebraicToPosition(algebraic: string): GamePosition;
+	getPieceSymbol(piece: GamePiece): string;
+}
+
+export interface AIInteractionData {
+	prompt: string;
+	rawResponse: string;
+	parsedResponse: AIResponse | null;
+}
+
+export class UniversalAIService {
 	private config: AIConfig;
+	public adapter: GameVariantAdapter;
+	private ruleGuardian: RuleGuardian;
 	private debugCallback?: (
 		type: string,
 		message: string,
 		data?: unknown
 	) => void;
+	private lastInteraction?: AIInteractionData;
 
-	constructor(config: AIConfig) {
+	constructor(config: AIConfig, adapter: GameVariantAdapter) {
 		this.config = config;
+		this.adapter = adapter;
+		this.ruleGuardian = createRuleGuardian(adapter.gameVariant);
 	}
 
 	setDebugCallback(
@@ -25,22 +58,26 @@ export class AIService {
 		this.debugCallback = callback;
 	}
 
-	async makeMove(gameState: GameState): Promise<AIResponse | null> {
+	getLastInteraction(): AIInteractionData | undefined {
+		return this.lastInteraction;
+	}
+
+	async makeMove(gameState: any): Promise<AIResponse | null> {
 		if (!this.config.enabled || !this.config.apiKey) {
 			return null;
 		}
 
 		try {
-			const boardFEN = this.generateFEN(gameState);
-			const prompt = this.createChessPrompt(gameState, boardFEN);
+			const prompt = this.adapter.generatePrompt(gameState);
+			const baseGameState = this.adapter.convertGameState(gameState);
 
 			if (this.config.debug) {
 				console.group('🐛 AI DEBUG MODE');
 				console.log('📋 Current Game State:');
-				console.log(`Player: ${gameState.currentPlayer}`);
-				console.log(`Status: ${gameState.status}`);
+				console.log(`Player: ${baseGameState.currentPlayer}`);
+				console.log(`Status: ${baseGameState.status}`);
 				console.log(
-					`Move #: ${Math.floor(gameState.moveHistory.length / 2) + 1}`
+					`Move #: ${Math.floor(baseGameState.moveHistory.length / 2) + 1}`
 				);
 				console.log('\n📤 PROMPT SENT TO AI:');
 				console.log(prompt);
@@ -48,11 +85,12 @@ export class AIService {
 
 				this.debugCallback?.(
 					'ai-debug',
-					`🤔 AI is thinking as ${gameState.currentPlayer}...`,
+					`🤔 AI is thinking as ${baseGameState.currentPlayer}...`,
 					{
-						player: gameState.currentPlayer,
-						status: gameState.status,
-						moveNumber: Math.floor(gameState.moveHistory.length / 2) + 1,
+						player: baseGameState.currentPlayer,
+						status: baseGameState.status,
+						moveNumber: Math.floor(baseGameState.moveHistory.length / 2) + 1,
+						gameVariant: this.adapter.gameVariant,
 					}
 				);
 			}
@@ -67,9 +105,58 @@ export class AIService {
 
 			const parsedResponse = this.parseAIResponse(response);
 
+			// Store the interaction data for export
+			this.lastInteraction = {
+				prompt,
+				rawResponse: response,
+				parsedResponse,
+			};
+
 			if (this.config.debug) {
 				console.log('🎯 PARSED AI RESPONSE:');
 				console.log(parsedResponse);
+			}
+
+			// Validate the AI move using the rule guardian
+			if (parsedResponse) {
+				const validation = this.ruleGuardian.validateAIMove(
+					gameState,
+					parsedResponse
+				);
+
+				if (this.config.debug) {
+					console.log('🛡️ RULE GUARDIAN VALIDATION:');
+					console.log(`Valid: ${validation.isValid}`);
+					if (!validation.isValid) {
+						console.log(`Reason: ${validation.reason}`);
+						if (validation.suggestedAlternative) {
+							console.log(
+								'Suggested alternative:',
+								validation.suggestedAlternative
+							);
+						}
+					}
+				}
+
+				if (!validation.isValid) {
+					if (this.config.debug) {
+						console.groupEnd();
+						this.debugCallback?.(
+							'ai-error',
+							`🚫 Invalid AI move: ${validation.reason}`,
+							{
+								move: parsedResponse.move,
+								reason: validation.reason,
+								gameVariant: this.adapter.gameVariant,
+							}
+						);
+					}
+
+					throw new Error(`Invalid move: ${validation.reason}`);
+				}
+			}
+
+			if (this.config.debug) {
 				console.groupEnd();
 
 				if (parsedResponse) {
@@ -80,6 +167,7 @@ export class AIService {
 							move: parsedResponse.move,
 							reasoning: parsedResponse.thinking,
 							confidence: parsedResponse.confidence,
+							gameVariant: this.adapter.gameVariant,
 						}
 					);
 				} else {
@@ -92,7 +180,7 @@ export class AIService {
 			return parsedResponse;
 		} catch (error) {
 			console.error('AI service error:', error);
-			return null;
+			throw error; // Propagate error to UI
 		}
 	}
 
@@ -104,6 +192,8 @@ export class AIService {
 				return this.callOpenRouter(prompt);
 			case 'openai':
 				return this.callOpenAI(prompt);
+			case 'chutes':
+				return this.callChutes(prompt);
 			default:
 				throw new Error(`Unsupported AI provider: ${this.config.provider}`);
 		}
@@ -125,18 +215,71 @@ export class AIService {
 					],
 					generationConfig: {
 						temperature: 0.3,
-						maxOutputTokens: 500,
+						maxOutputTokens: 2048,
 					},
 				}),
 			}
 		);
 
 		if (!response.ok) {
-			throw new Error(`Gemini API error: ${response.statusText}`);
+			const errorText = await response.text();
+			throw new Error(
+				`Gemini API error: ${response.statusText} - ${errorText}`
+			);
 		}
 
 		const data = await response.json();
-		return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+		// Debug log the full response structure
+		if (this.config.debug) {
+			console.log(
+				'🔍 Full Gemini API response:',
+				JSON.stringify(data, null, 2)
+			);
+		}
+
+		// Check for safety ratings that might have blocked the response
+		if (data.promptFeedback?.blockReason) {
+			throw new Error(`Gemini blocked: ${data.promptFeedback.blockReason}`);
+		}
+
+		// Check if candidates were filtered
+		if (!data.candidates || data.candidates.length === 0) {
+			throw new Error('Gemini returned no candidates');
+		}
+
+		const candidate = data.candidates[0];
+
+		// Check finish reason
+		if (candidate.finishReason === 'SAFETY') {
+			throw new Error('Gemini response blocked by safety filters');
+		}
+
+		if (candidate.finishReason === 'MAX_TOKENS') {
+			// If we hit max tokens, try to extract partial response if available
+			const text = candidate?.content?.parts?.[0]?.text || '';
+			if (text) {
+				console.warn('⚠️ Gemini hit MAX_TOKENS but partial response available');
+				return text;
+			}
+			throw new Error(
+				'Gemini response truncated - no content generated before hitting token limit'
+			);
+		}
+
+		// Check if parts array exists
+		if (!candidate?.content?.parts || candidate.content.parts.length === 0) {
+			throw new Error(
+				`Gemini returned no content parts (finishReason: ${candidate.finishReason})`
+			);
+		}
+
+		const text = candidate.content.parts[0]?.text || '';
+		if (!text) {
+			throw new Error('Gemini returned empty text content');
+		}
+
+		return text;
 	}
 
 	private async callOpenRouter(prompt: string): Promise<string> {
@@ -200,326 +343,37 @@ export class AIService {
 		return data.choices?.[0]?.message?.content || '';
 	}
 
-	private createChessPrompt(gameState: GameState, _boardFEN: string): string {
-		const currentPlayer = gameState.currentPlayer;
-		const moveHistory = this.formatMoveHistory(gameState.moveHistory);
-		const visualBoard = this.createVisualBoard(gameState);
-		const threatAnalysis = this.analyzeThreatsSafety(gameState);
-		const validMoves = this.getAllValidMoves(gameState);
-		const randomSeed = Math.floor(Math.random() * 1000);
-
-		return `You are a chess AI assistant playing as ${currentPlayer}. Analyze the current chess position and provide your next move.
-
-CURRENT BOARD POSITION:
-${visualBoard}
-
-Current player to move: ${currentPlayer}
-Game status: ${gameState.status}
-Move number: ${Math.floor(gameState.moveHistory.length / 2) + 1}
-
-RECENT MOVES (last 5):
-${moveHistory}
-
-⚠️  CRITICAL - VALID MOVES AVAILABLE (ONLY CHOOSE FROM THESE):
-${validMoves}
-
-❌ DO NOT suggest moves for pieces that don't exist on those squares!
-❌ DO NOT suggest e7-e5 if there's no pawn on e7!
-❌ Check the board position above to see where pieces actually are!
-
-POSITION ANALYSIS:
-${threatAnalysis}
-
-STRATEGIC CONSIDERATIONS:
-- Opening principles: Control center (e4, e5, d4, d5), develop pieces, castle early
-- Middlegame: Look for tactics, improve piece positions, create weaknesses
-- Endgame: Activate king, promote pawns, use piece coordination
-
-TACTICAL AWARENESS:
-- Check for forks, pins, skewers, and discovered attacks
-- Look for sacrifice opportunities
-- Consider opponent's threats and counter-threats
-- Evaluate piece exchanges carefully
-
-RANDOMIZATION SEED: ${randomSeed} (use this to vary your play style slightly)
-
-IMPORTANT: You must respond in exactly this JSON format:
-{
-    "move": {
-        "from": "e2",
-        "to": "e4"
-    },
-    "reasoning": "Detailed explanation of your strategic thinking",
-    "confidence": 85
-}
-
-🚨 ABSOLUTE REQUIREMENT: You MUST choose ONLY from the valid moves listed above.
-   - If you suggest e7-e5 but it's not in the valid moves list, your move will be REJECTED
-   - Look at the visual board to understand current piece positions
-   - Use ONLY the algebraic notations provided in the valid moves list
-
-Your move:`;
-	}
-
-	private createVisualBoard(gameState: GameState): string {
-		const { board } = gameState;
-		let visual = '    a  b  c  d  e  f  g  h\n';
-		visual += '  ┌──────────────────────┐\n';
-
-		for (let rank = 0; rank < 8; rank++) {
-			visual += `${8 - rank} │ `;
-			for (let file = 0; file < 8; file++) {
-				const piece = board[rank][file];
-				if (piece) {
-					const symbol = this.getPieceSymbol(piece);
-					visual += `${symbol} `;
-				} else {
-					visual += '. ';
-				}
-			}
-			visual += `│ ${8 - rank}\n`;
-		}
-
-		visual += '  └──────────────────────┘\n';
-		visual += '    a  b  c  d  e  f  g  h\n';
-
-		return visual;
-	}
-
-	private getPieceSymbol(piece: any): string {
-		const symbols = {
-			white: {
-				king: '♔',
-				queen: '♕',
-				rook: '♖',
-				bishop: '♗',
-				knight: '♘',
-				pawn: '♙',
+	private async callChutes(prompt: string): Promise<string> {
+		const response = await fetch('https://llm.chutes.ai/v1/chat/completions', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${this.config.apiKey}`,
+				'Content-Type': 'application/json',
 			},
-			black: {
-				king: '♚',
-				queen: '♛',
-				rook: '♜',
-				bishop: '♝',
-				knight: '♞',
-				pawn: '♟',
-			},
-		};
-		return symbols[piece.color][piece.type] || '?';
-	}
+			body: JSON.stringify({
+				model: this.config.model,
+				messages: [
+					{
+						role: 'user',
+						content: prompt,
+					},
+				],
+				temperature: 0.3,
+				max_tokens: 500,
+				stream: false,
+			}),
+		});
 
-	private analyzeThreatsSafety(gameState: GameState): string {
-		const { board, currentPlayer } = gameState;
-		let analysis = '';
-
-		// Find kings
-		const myKing = this.findPiece(board, 'king', currentPlayer);
-		const _enemyKing = this.findPiece(
-			board,
-			'king',
-			currentPlayer === 'white' ? 'black' : 'white'
-		);
-
-		// Basic analysis
-		if (gameState.status === 'check') {
-			analysis += `⚠️  Your king is in CHECK! Priority: Get out of check immediately.\n`;
+		if (!response.ok) {
+			throw new Error(`Chutes API error: ${response.statusText}`);
 		}
 
-		// Count material
-		const myMaterial = this.countMaterial(board, currentPlayer);
-		const enemyMaterial = this.countMaterial(
-			board,
-			currentPlayer === 'white' ? 'black' : 'white'
-		);
-
-		analysis += `Material balance: You ${myMaterial}, Opponent ${enemyMaterial}\n`;
-
-		if (myMaterial > enemyMaterial) {
-			analysis += `You have material advantage - consider trading pieces\n`;
-		} else if (myMaterial < enemyMaterial) {
-			analysis += `You are behind in material - avoid trades, look for tactics\n`;
-		}
-
-		// King safety
-		if (myKing) {
-			const kingSafety = this.evaluateKingSafety(board, myKing, currentPlayer);
-			analysis += `Your king safety: ${kingSafety}\n`;
-		}
-
-		return analysis;
-	}
-
-	private findPiece(
-		board: any[][],
-		type: string,
-		color: string
-	): { row: number; col: number } | null {
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
-				const piece = board[row][col];
-				if (piece && piece.type === type && piece.color === color) {
-					return { row, col };
-				}
-			}
-		}
-		return null;
-	}
-
-	private countMaterial(board: any[][], color: string): number {
-		const values = {
-			pawn: 1,
-			knight: 3,
-			bishop: 3,
-			rook: 5,
-			queen: 9,
-			king: 0,
-		};
-		let total = 0;
-
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
-				const piece = board[row][col];
-				if (piece && piece.color === color) {
-					total += values[piece.type] || 0;
-				}
-			}
-		}
-
-		return total;
-	}
-
-	private evaluateKingSafety(
-		board: any[][],
-		kingPos: { row: number; col: number },
-		color: string
-	): string {
-		const { row, col } = kingPos;
-
-		// Check if king is in center (unsafe)
-		if (row >= 2 && row <= 5 && col >= 2 && col <= 5) {
-			return 'UNSAFE - King exposed in center';
-		}
-
-		// Check if castled
-		if (color === 'white' && row === 7 && (col === 2 || col === 6)) {
-			return 'GOOD - King castled';
-		}
-		if (color === 'black' && row === 0 && (col === 2 || col === 6)) {
-			return 'GOOD - King castled';
-		}
-
-		// Check if on back rank
-		if ((color === 'white' && row === 7) || (color === 'black' && row === 0)) {
-			return 'OK - King on back rank';
-		}
-
-		return 'CAUTION - King position needs attention';
-	}
-
-	private generateFEN(gameState: GameState): string {
-		let fen = '';
-
-		// Board position
-		for (let rank = 0; rank < 8; rank++) {
-			let emptyCount = 0;
-			let rankStr = '';
-
-			for (let file = 0; file < 8; file++) {
-				const piece = gameState.board[rank][file];
-
-				if (piece) {
-					if (emptyCount > 0) {
-						rankStr += emptyCount.toString();
-						emptyCount = 0;
-					}
-
-					let pieceChar = '';
-					switch (piece.type) {
-						case 'king':
-							pieceChar = 'k';
-							break;
-						case 'queen':
-							pieceChar = 'q';
-							break;
-						case 'rook':
-							pieceChar = 'r';
-							break;
-						case 'bishop':
-							pieceChar = 'b';
-							break;
-						case 'knight':
-							pieceChar = 'n';
-							break;
-						case 'pawn':
-							pieceChar = 'p';
-							break;
-					}
-
-					if (piece.color === 'white') {
-						pieceChar = pieceChar.toUpperCase();
-					}
-
-					rankStr += pieceChar;
-				} else {
-					emptyCount++;
-				}
-			}
-
-			if (emptyCount > 0) {
-				rankStr += emptyCount.toString();
-			}
-
-			fen += rankStr;
-			if (rank < 7) fen += '/';
-		}
-
-		// Add current player
-		fen += ` ${gameState.currentPlayer === 'white' ? 'w' : 'b'}`;
-
-		// Simplified FEN (without castling, en passant, halfmove, fullmove)
-		fen += ' - - 0 1';
-
-		return fen;
-	}
-
-	private formatMoveHistory(moves: Move[]): string {
-		if (moves.length === 0) return 'Game start';
-
-		const recentMoves = moves.slice(-10); // Last 10 moves
-		return recentMoves
-			.map((move, index) => {
-				const moveNum =
-					Math.floor((moves.length - recentMoves.length + index) / 2) + 1;
-				const isWhite = (moves.length - recentMoves.length + index) % 2 === 0;
-				const from = this.positionToAlgebraic(move.from);
-				const to = this.positionToAlgebraic(move.to);
-
-				if (isWhite) {
-					return `${moveNum}. ${from}-${to}`;
-				} else {
-					return `${from}-${to}`;
-				}
-			})
-			.join(' ');
-	}
-
-	private positionToAlgebraic(position: Position): string {
-		return FILES[position.col] + RANKS[position.row];
-	}
-
-	private algebraicToPosition(algebraic: string): Position {
-		const file = algebraic[0];
-		const rank = algebraic[1];
-
-		return {
-			col: FILES.indexOf(file),
-			row: RANKS.indexOf(rank),
-		};
+		const data = await response.json();
+		return data.choices?.[0]?.message?.content || '';
 	}
 
 	private parseAIResponse(response: string): AIResponse | null {
 		try {
-			// Try to extract JSON from the response
 			const jsonMatch = response.match(/\{[\s\S]*\}/);
 			if (!jsonMatch) {
 				if (this.config.debug) {
@@ -540,7 +394,6 @@ Your move:`;
 				throw new Error('Invalid move format in response');
 			}
 
-			// Validate move format
 			const moveFrom = parsed.move.from;
 			const moveTo = parsed.move.to;
 
@@ -550,7 +403,12 @@ Your move:`;
 				console.log(`  To: "${moveTo}" (type: ${typeof moveTo})`);
 
 				// Check if moves are in correct algebraic format
-				const algebraicPattern = /^[a-h][1-8]$/;
+				const config = GAME_CONFIGS[this.adapter.gameVariant];
+				const filePattern = config.files.join('|');
+				const rankPattern = config.ranks.join('|');
+				const algebraicPattern = new RegExp(
+					`^(${filePattern})(${rankPattern})$`
+				);
 				const fromValid = algebraicPattern.test(moveFrom);
 				const toValid = algebraicPattern.test(moveTo);
 
@@ -573,161 +431,9 @@ Your move:`;
 			};
 		} catch (error) {
 			console.error('Failed to parse AI response:', error);
-
 			console.error('Raw response:', response);
 			return null;
 		}
-	}
-
-	private getAllValidMoves(gameState: GameState): string {
-		const { board, currentPlayer } = gameState;
-		const validMoves: string[] = [];
-
-		if (this.config.debug) {
-			console.log(`🔍 Generating valid moves for ${currentPlayer}:`);
-		}
-
-		// Iterate through all squares to find pieces belonging to current player
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
-				const piece = board[row][col];
-				if (piece && piece.color === currentPlayer) {
-					const fromPos = { row, col };
-					const algebraicFrom = this.positionToAlgebraic(fromPos);
-
-					if (this.config.debug) {
-						console.log(`  Found ${piece.type} at ${algebraicFrom}`);
-					}
-
-					const possibleMoves = getPossibleMoves(board, piece, fromPos);
-
-					if (this.config.debug && possibleMoves.length > 0) {
-						console.log(
-							`    Possible moves for ${piece.type} at ${algebraicFrom}:`,
-							possibleMoves.map(pos => this.positionToAlgebraic(pos)).join(', ')
-						);
-					}
-
-					// Convert each possible move to algebraic notation
-					for (const toPos of possibleMoves) {
-						// Check if move would leave king in check (basic validation)
-						const isValidMove = this.wouldMoveBeValid(
-							gameState,
-							fromPos,
-							toPos
-						);
-						if (isValidMove) {
-							const from = this.positionToAlgebraic(fromPos);
-							const to = this.positionToAlgebraic(toPos);
-							const pieceSymbol = this.getPieceSymbolForMove(piece);
-							validMoves.push(`${from}-${to} (${pieceSymbol})`);
-						}
-					}
-				}
-			}
-		}
-
-		if (this.config.debug) {
-			console.log(`📋 Total valid moves found: ${validMoves.length}`);
-			if (validMoves.length > 0) {
-				console.log(`📝 Valid moves:`, validMoves);
-			}
-		}
-
-		if (validMoves.length === 0) {
-			return 'No valid moves available (checkmate or stalemate)';
-		}
-
-		// Group moves by piece type for better readability
-		const groupedMoves = this.groupMovesByPiece(validMoves);
-
-		if (this.config.debug) {
-			console.log(`📋 Grouped moves sent to AI:\n${groupedMoves}`);
-		}
-
-		return groupedMoves;
-	}
-
-	private wouldMoveBeValid(
-		gameState: GameState,
-		from: Position,
-		to: Position
-	): boolean {
-		const { board, currentPlayer } = gameState;
-		const piece = board[from.row]?.[from.col];
-
-		if (!piece || piece.color !== currentPlayer) {
-			if (this.config.debug) {
-				console.log(
-					`    ❌ Invalid: No ${currentPlayer} piece at ${this.positionToAlgebraic(from)}`
-				);
-			}
-			return false;
-		}
-
-		// First check if the move is possible according to piece movement rules
-		if (!isMoveValid(board, from, to, piece)) {
-			if (this.config.debug) {
-				console.log(
-					`    ❌ Invalid: Move ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} not allowed for ${piece.type}`
-				);
-			}
-			return false;
-		}
-
-		// Then check if this move would leave our king in check
-		const testBoard = copyBoard(board);
-		setPieceAt(testBoard, from, null);
-		setPieceAt(testBoard, to, piece);
-
-		const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
-		if (wouldBeInCheck) {
-			if (this.config.debug) {
-				console.log(
-					`    ❌ Invalid: Move ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} leaves king in check`
-				);
-			}
-			return false;
-		}
-
-		if (this.config.debug) {
-			console.log(
-				`    ✅ Valid: ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)}`
-			);
-		}
-		return true;
-	}
-
-	private getPieceSymbolForMove(piece: any): string {
-		const symbols = {
-			king: '♔/♚',
-			queen: '♕/♛',
-			rook: '♖/♜',
-			bishop: '♗/♝',
-			knight: '♘/♞',
-			pawn: '♙/♟',
-		};
-		return symbols[piece.type] || piece.type;
-	}
-
-	private groupMovesByPiece(moves: string[]): string {
-		const groups: { [key: string]: string[] } = {};
-
-		for (const move of moves) {
-			const pieceMatch = move.match(/\(([^)]+)\)/);
-			const pieceType = pieceMatch ? pieceMatch[1] : 'Unknown';
-			if (!groups[pieceType]) {
-				groups[pieceType] = [];
-			}
-			groups[pieceType].push(move.replace(/\s*\([^)]+\)/, ''));
-		}
-
-		let result = '';
-		for (const [pieceType, movesArray] of Object.entries(groups)) {
-			result += `${pieceType}: ${movesArray.join(', ')}\n`;
-		}
-
-		return result.trim();
 	}
 
 	updateConfig(newConfig: Partial<AIConfig>): void {

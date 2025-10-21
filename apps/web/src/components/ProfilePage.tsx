@@ -33,6 +33,18 @@ const AI_PROVIDERS = {
 			{ id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
 		],
 	},
+	chutes: {
+		name: 'Chutes.ai',
+		models: [
+			{ id: 'deepseek-ai/DeepSeek-R1', name: 'DeepSeek-R1' },
+			{ id: 'zai-org/GLM-4.6-FP8', name: 'GLM 4.6 FP8' },
+			{ id: 'deepseek-ai/DeepSeek-V3', name: 'DeepSeek-V3' },
+			{
+				id: 'meta-llama/Llama-3.3-70B-Instruct',
+				name: 'Llama 3.3 70B Instruct',
+			},
+		],
+	},
 } as const;
 
 type AiProvider = keyof typeof AI_PROVIDERS;

@@ -1,6 +1,6 @@
 import type { GameVariant } from './game-variant-types';
 
-export type AIProvider = 'gemini' | 'openrouter' | 'openai';
+export type AIProvider = 'gemini' | 'openrouter' | 'openai' | 'chutes';
 
 export interface AIConfig {
 	provider: AIProvider;
@@ -35,6 +35,17 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderInfo> = {
 		name: 'OpenAI',
 		defaultModel: 'gpt-4o-mini',
 		models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+		requiresApiKey: true,
+	},
+	chutes: {
+		name: 'Chutes.ai',
+		defaultModel: 'deepseek-ai/DeepSeek-R1',
+		models: [
+			'deepseek-ai/DeepSeek-R1',
+			'zai-org/GLM-4.6-FP8',
+			'deepseek-ai/DeepSeek-V3',
+			'meta-llama/Llama-3.3-70B-Instruct',
+		],
 		requiresApiKey: true,
 	},
 };

@@ -4,7 +4,7 @@ import type {
 	BaseGameState,
 	GamePosition,
 	GamePiece,
-} from './universal-service';
+} from './service';
 import type { GameState, Position, Move } from '../chess/types';
 import { RANKS, FILES } from '../chess/types';
 import { getPossibleMoves, isMoveValid } from '../chess/moves';
