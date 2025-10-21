@@ -4,7 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: './e2e',
 
   /* Run tests in files in parallel */
   fullyParallel: true,
@@ -62,11 +62,11 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: [
+  webServer: process.env.CI ? [
     {
-      command: 'cd apps/web && /opt/homebrew/bin/bun run dev',
+      command: 'sh -c "cd .. && cd web && /opt/homebrew/bin/bun run dev"',
       url: 'http://localhost:3500',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120 * 1000,
       env: {
         ASTRO_DISABLE_DEV_TOOLBAR: 'true',
@@ -74,13 +74,13 @@ export default defineConfig({
       },
     },
     {
-      command: 'cd apps/api && NODE_ENV=development /opt/homebrew/bin/bun --watch src/index.ts',
+      command: 'sh -c "cd ../api && NODE_ENV=development /opt/homebrew/bin/bun --watch src/index.ts"',
       url: 'http://localhost:3501',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120 * 1000,
       env: {
         PATH: '/opt/homebrew/bin:' + process.env.PATH,
       },
     },
-  ],
+  ] : undefined,
 });
