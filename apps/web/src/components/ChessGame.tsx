@@ -24,6 +24,7 @@ import type { AIConfig } from '../lib/ai/types';
 import { createChessAI } from '../lib/ai';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
 import { GameExporter } from '../lib/ai/game-export';
+import { useAuth } from '../lib/auth';
 
 interface LogicDemo {
 	id: string;
@@ -53,6 +54,8 @@ const ChessGame: React.FC = () => {
 	const [isLoadingConfig, setIsLoadingConfig] = useState(true);
 	const [aiError, setAiError] = useState<string | null>(null);
 	const gameExporterRef = useRef<GameExporter | null>(null);
+	const [hasGameEnded, setHasGameEnded] = useState(false);
+	const { token } = useAuth();
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -89,6 +92,73 @@ const ChessGame: React.FC = () => {
 		};
 		loadConfig();
 	}, [aiService, isDebugMode]);
+
+	// Save play history when game ends
+	useEffect(() => {
+		const isGameOver =
+			gameState.status === 'checkmate' ||
+			gameState.status === 'stalemate' ||
+			gameState.status === 'draw';
+
+		if (
+			isGameOver &&
+			gameStarted &&
+			gameMode === 'ai' &&
+			!hasGameEnded &&
+			token
+		) {
+			setHasGameEnded(true);
+
+			const savePlayHistory = async () => {
+				try {
+					// Determine game result from current player's perspective
+					let status: 'win' | 'loss' | 'draw';
+					if (gameState.status === 'checkmate') {
+						// Current player lost (they're in checkmate)
+						// If AI player is current player, human won
+						// If human is current player, AI won
+						status = gameState.currentPlayer === aiPlayer ? 'loss' : 'win';
+					} else {
+						// Stalemate or draw
+						status = 'draw';
+					}
+
+					const API_BASE_URL =
+						import.meta.env.PUBLIC_API_URL || 'http://localhost:3501/api';
+
+					await fetch(`${API_BASE_URL}/play-history`, {
+						method: 'POST',
+						headers: {
+							Authorization: `Bearer ${token}`,
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({
+							chessId: 'chess',
+							status,
+							date: new Date().toISOString(),
+							opponentLlmId: `${aiConfig.provider}/${aiConfig.model}` as any,
+						}),
+					});
+
+					console.log('✅ Play history saved successfully');
+				} catch (error) {
+					console.error('Failed to save play history:', error);
+				}
+			};
+
+			void savePlayHistory();
+		}
+	}, [
+		gameState.status,
+		gameState.currentPlayer,
+		gameStarted,
+		gameMode,
+		hasGameEnded,
+		token,
+		aiPlayer,
+		aiConfig.provider,
+		aiConfig.model,
+	]);
 
 	// Update AI service when debug mode changes
 	useEffect(() => {
@@ -384,7 +454,7 @@ const ChessGame: React.FC = () => {
 			gameMode === 'ai' &&
 			gameStarted &&
 			gameState.currentPlayer === aiPlayer &&
-			gameState.status === 'playing' &&
+			(gameState.status === 'playing' || gameState.status === 'check') &&
 			!gameState.isAiThinking &&
 			!isAiPaused
 		) {
@@ -531,16 +601,15 @@ const ChessGame: React.FC = () => {
 			setGameState(createInitialGameState('human-vs-human'));
 		}
 		setGameStarted(false);
-		setAiRejectionCount(0);
-		setIsAiPaused(false);
 		setAiDebugMoves([]);
+		setIsAiPaused(false);
+		setAiError(null);
+		setAiRejectionCount(0);
+		setHasGameEnded(false);
 	}, [gameMode, aiPlayer]);
 
-	// Calculate hasGameStarted before using it in callbacks
-	const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
-
 	const handleStartOrReset = useCallback(() => {
-		if (!hasGameStarted) {
+		if (!gameStarted) {
 			// Starting the game - ensure game state is properly initialized
 			if (gameMode === 'ai') {
 				setGameState(createInitialGameState('human-vs-ai', aiPlayer));
@@ -555,7 +624,7 @@ const ChessGame: React.FC = () => {
 			// Resetting the game
 			resetGame();
 		}
-	}, [hasGameStarted, resetGame, gameMode, aiPlayer, aiConfig]);
+	}, [gameStarted, resetGame, gameMode, aiPlayer, aiConfig]);
 
 	const handleDemoChange = useCallback(
 		(demoId: string) => {
@@ -614,10 +683,10 @@ const ChessGame: React.FC = () => {
 	const subtitle =
 		gameMode === 'tutorial'
 			? getCurrentDemo().description
-			: hasGameStarted
+			: gameStarted
 				? getStatusMessage()
 				: '';
-	const showModeToggle = gameMode === 'tutorial' || !hasGameStarted;
+	const showModeToggle = gameMode === 'tutorial' || !gameStarted;
 
 	return (
 		<GameScaffold
@@ -647,7 +716,7 @@ const ChessGame: React.FC = () => {
 			}
 		>
 			{gameMode === 'ai' &&
-				!hasGameStarted &&
+				!gameStarted &&
 				!isLoadingConfig &&
 				(!aiConfig.enabled || !aiConfig.apiKey) && (
 					<div className='text-center'>
@@ -661,7 +730,7 @@ const ChessGame: React.FC = () => {
 			{gameMode === 'ai' && (
 				<AIStatusPanel
 					aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-					hasGameStarted={hasGameStarted}
+					hasGameStarted={gameStarted}
 					isAIThinking={gameState.isAiThinking}
 					isAIPaused={isAiPaused}
 					aiError={aiError}
@@ -716,11 +785,11 @@ const ChessGame: React.FC = () => {
 			<div className='w-full max-w-4xl mx-auto space-y-6'>
 				{gameMode === 'ai' && (
 					<GameControls
-						hasGameStarted={hasGameStarted}
+						hasGameStarted={gameStarted}
 						isGameOver={isGameOver}
 						aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
 						isDebugMode={isDebugMode}
-						canExport={hasGameStarted && !!gameExporterRef.current}
+						canExport={gameStarted && !!gameExporterRef.current}
 						onStartOrReset={handleStartOrReset}
 						onReset={resetGame}
 						onToggleDebug={() => setIsDebugMode(!isDebugMode)}

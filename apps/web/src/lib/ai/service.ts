@@ -359,7 +359,7 @@ export class UniversalAIService {
 					},
 				],
 				temperature: 0.3,
-				max_tokens: 500,
+				max_tokens: 5000,
 				stream: false,
 			}),
 		});
@@ -369,7 +369,11 @@ export class UniversalAIService {
 		}
 
 		const data = await response.json();
-		return data.choices?.[0]?.message?.content || '';
+		const message = data.choices?.[0]?.message;
+
+		// DeepSeek-R1 uses reasoning_content field for reasoning tokens
+		// Try content first, then reasoning_content as fallback
+		return message?.content || message?.reasoning_content || '';
 	}
 
 	private parseAIResponse(response: string): AIResponse | null {
