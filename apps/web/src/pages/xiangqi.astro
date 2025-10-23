@@ -1,8 +1,11 @@
 ---
-import GamePageLayout from '../components/GamePageLayout.astro';
+import Layout from '../layouts/Layout.astro';
+import GamePageLayout from '../components/GamePageLayout.tsx';
 import XiangqiGame from '../components/XiangqiGame.tsx';
 ---
 
-<GamePageLayout title='Chinese Chess (象棋)' variant='xiangqi'>
-  <XiangqiGame client:load />
-</GamePageLayout>
+<Layout title='Chinese Chess (象棋)'>
+  <GamePageLayout title='Chinese Chess (象棋)' variant='xiangqi' client:load>
+    <XiangqiGame client:load />
+  </GamePageLayout>
+</Layout>

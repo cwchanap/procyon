@@ -1,8 +1,16 @@
 ---
-import GamePageLayout from '../components/GamePageLayout.astro';
+import Layout from '../layouts/Layout.astro';
+import GamePageLayout from '../components/GamePageLayout.tsx';
 import ShogiGame from '../components/ShogiGame.tsx';
 ---
 
-<GamePageLayout title='Shogi Game' variant='shogi' showBackButton={false}>
-  <ShogiGame client:load />
-</GamePageLayout>
+<Layout title='Shogi Game'>
+  <GamePageLayout
+    title='Shogi Game'
+    variant='shogi'
+    showBackButton={false}
+    client:load
+  >
+    <ShogiGame client:load />
+  </GamePageLayout>
+</Layout>

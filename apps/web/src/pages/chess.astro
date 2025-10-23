@@ -1,8 +1,11 @@
 ---
-import GamePageLayout from '../components/GamePageLayout.astro';
+import Layout from '../layouts/Layout.astro';
+import GamePageLayout from '../components/GamePageLayout.tsx';
 import ChessGame from '../components/ChessGame.tsx';
 ---
 
-<GamePageLayout title='Chess Game' variant='chess'>
-  <ChessGame client:load />
-</GamePageLayout>
+<Layout title='Chess Game'>
+  <GamePageLayout title='Chess Game' variant='chess' client:load>
+    <ChessGame client:load />
+  </GamePageLayout>
+</Layout>
