@@ -771,7 +771,7 @@ const ChessGame: React.FC = () => {
 			</div>
 
 			<div className='flex justify-center'>
-				<GameStartOverlay active={!hasGameStarted && gameMode !== 'tutorial'}>
+				<GameStartOverlay active={!gameStarted && gameMode !== 'tutorial'}>
 					<ChessBoard
 						board={currentBoard}
 						selectedSquare={gameState.selectedSquare}

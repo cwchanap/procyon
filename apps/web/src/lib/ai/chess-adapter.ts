@@ -114,7 +114,7 @@ export class ChessAdapter implements GameVariantAdapter {
 		const material = this.getSimpleMaterialBalance(gameState);
 		const criticalThreats = this.getCriticalThreats(gameState);
 
-		return `Chess AI playing ${currentPlayer}. Choose your move.
+		return `You are the chess-playing AI for ${currentPlayer}. It is your turn to play this ongoing game—choose and execute the next move.
 
 BOARD:
 ${visualBoard}
