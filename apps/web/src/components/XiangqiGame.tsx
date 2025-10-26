@@ -13,7 +13,8 @@ import {
 import { getPossibleMoves } from '../lib/xiangqi/moves';
 import { createInitialXiangqiBoard, getPieceAt } from '../lib/xiangqi/board';
 import { createXiangqiAI, defaultAIConfig, loadAIConfig } from '../lib/ai';
-import type { AIConfig } from '../lib/ai/types';
+import type { AIConfig, AIProvider } from '../lib/ai/types';
+import { AI_PROVIDERS } from '../lib/ai/types';
 import XiangqiBoard from './XiangqiBoard';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
@@ -54,6 +55,7 @@ const XiangqiGame: React.FC = () => {
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [_isLoadingConfig, setIsLoadingConfig] = useState(true);
+	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -358,6 +360,110 @@ const XiangqiGame: React.FC = () => {
 		[getCurrentDemo]
 	);
 
+	const handleProviderChange = useCallback(async (newProvider: AIProvider) => {
+		const providerInfo = AI_PROVIDERS[newProvider];
+		const fallbackModel =
+			providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
+
+		setAIConfig(prev => ({
+			...prev,
+			provider: newProvider,
+			model: fallbackModel,
+			apiKey: '',
+		}));
+		setErrorMsg(null);
+
+		try {
+			const token = localStorage.getItem('auth_token');
+			if (!token) {
+				setErrorMsg('Please sign in to manage your AI settings.');
+				// eslint-disable-next-line no-console
+				console.warn(
+					'Missing auth token when loading AI configuration for provider',
+					newProvider
+				);
+				return;
+			}
+
+			const response = await fetch('http://localhost:3501/api/ai-config', {
+				headers: {
+					Authorization: `Bearer ${token}`,
+					'Content-Type': 'application/json',
+				},
+			});
+
+			if (!response.ok) {
+				// eslint-disable-next-line no-console
+				console.error(
+					`Failed to fetch AI configurations for provider ${newProvider}:`,
+					response.status,
+					response.statusText
+				);
+				setErrorMsg(
+					"We couldn't load your saved AI settings. Please try again from AI Settings."
+				);
+				return;
+			}
+
+			const data = await response.json();
+			const configurations = data.configurations || [];
+			const providerConfig = configurations.find(
+				(config: any) => config.provider === newProvider && config.hasApiKey
+			);
+
+			if (!providerConfig?.id) {
+				// eslint-disable-next-line no-console
+				console.warn(
+					'No stored API key found for provider; prompt user to add one:',
+					newProvider
+				);
+				setErrorMsg(
+					'Add an API key for this provider in AI Settings to reuse it here.'
+				);
+				return;
+			}
+
+			const fullConfigResponse = await fetch(
+				`http://localhost:3501/api/ai-config/${providerConfig.id}/full`,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						'Content-Type': 'application/json',
+					},
+				}
+			);
+
+			if (!fullConfigResponse.ok) {
+				// eslint-disable-next-line no-console
+				console.error(
+					`Failed to fetch full AI configuration for provider ${newProvider}:`,
+					fullConfigResponse.status,
+					fullConfigResponse.statusText
+				);
+				setErrorMsg(
+					"We couldn't load your saved API key details. Please try again."
+				);
+				return;
+			}
+
+			const fullConfig = await fullConfigResponse.json();
+			const resolvedModel = fullConfig.modelName || fallbackModel;
+
+			setAIConfig(prev => ({
+				...prev,
+				provider: newProvider,
+				model: resolvedModel,
+				apiKey: fullConfig.apiKey || '',
+			}));
+		} catch (_error) {
+			// eslint-disable-next-line no-console
+			console.error('Failed to load AI provider configuration', _error);
+			setErrorMsg(
+				'Something went wrong loading AI settings. Please try again.'
+			);
+		}
+	}, []);
+
 	const handleDemoChange = useCallback(
 		(demoId: string) => {
 			setCurrentDemo(demoId);
@@ -449,8 +555,15 @@ const XiangqiGame: React.FC = () => {
 					onAIPlayerChange={player => setAIPlayer(player as 'red' | 'black')}
 					provider={aiConfig.provider}
 					model={aiConfig.model}
-					onProviderChange={provider => setAIConfig({ ...aiConfig, provider })}
-					onModelChange={model => setAIConfig({ ...aiConfig, model })}
+					onProviderChange={provider =>
+						handleProviderChange(provider as AIProvider)
+					}
+					onModelChange={model =>
+						setAIConfig(prev => ({
+							...prev,
+							model,
+						}))
+					}
 					aiPlayerOptions={[
 						{ value: 'black', label: 'AI plays Black (黑方)' },
 						{ value: 'red', label: 'AI plays Red (红方)' },
@@ -460,6 +573,23 @@ const XiangqiGame: React.FC = () => {
 				/>
 			}
 		>
+			{errorMsg && (
+				<div className='w-full max-w-4xl mx-auto mb-6'>
+					<div
+						className='flex items-start justify-between gap-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100'
+						role='alert'
+					>
+						<p className='text-sm'>{errorMsg}</p>
+						<button
+							type='button'
+							className='text-xs font-semibold uppercase tracking-wide text-red-200 hover:text-red-100'
+							onClick={() => setErrorMsg(null)}
+						>
+							Dismiss
+						</button>
+					</div>
+				</div>
+			)}
 			{gameMode === 'ai' && (
 				<AIStatusPanel
 					aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}

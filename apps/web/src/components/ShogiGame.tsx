@@ -10,7 +10,7 @@ import {
 	SHOGI_RANKS,
 } from '../lib/shogi';
 import { createShogiAI, defaultAIConfig, loadAIConfig } from '../lib/ai';
-import type { AIConfig } from '../lib/ai/types';
+import type { AIConfig, AIProvider } from '../lib/ai/types';
 import ShogiBoard from './ShogiBoard';
 import ShogiHand from './ShogiHand';
 import GameScaffold from './game/GameScaffold';
@@ -487,8 +487,18 @@ const ShogiGame: React.FC = () => {
 					onAIPlayerChange={player => setAIPlayer(player as 'sente' | 'gote')}
 					provider={aiConfig.provider}
 					model={aiConfig.model}
-					onProviderChange={provider => setAIConfig({ ...aiConfig, provider })}
-					onModelChange={model => setAIConfig({ ...aiConfig, model })}
+					onProviderChange={provider =>
+						setAIConfig(prev => ({
+							...prev,
+							provider: provider as AIProvider,
+						}))
+					}
+					onModelChange={model =>
+						setAIConfig(prev => ({
+							...prev,
+							model,
+						}))
+					}
 					aiPlayerOptions={[
 						{ value: 'gote', label: 'AI plays Gote (後手)' },
 						{ value: 'sente', label: 'AI plays Sente (先手)' },

@@ -20,7 +20,7 @@ import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
 import AISettingsDialog from './ai/AISettingsDialog';
 import type { AIMove } from './ai/AIDebugDialog';
-import type { AIConfig } from '../lib/ai/types';
+import type { AIConfig, AIProvider } from '../lib/ai/types';
 import { createChessAI } from '../lib/ai';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
 import { GameExporter } from '../lib/ai/game-export';
@@ -704,8 +704,10 @@ const ChessGame: React.FC = () => {
 					onAIPlayerChange={player => setAIPlayer(player as 'white' | 'black')}
 					provider={aiConfig.provider}
 					model={aiConfig.model}
-					onProviderChange={provider => setAIConfig({ ...aiConfig, provider })}
-					onModelChange={model => setAIConfig({ ...aiConfig, model })}
+					onProviderChange={provider =>
+						setAIConfig(prev => ({ ...prev, provider: provider as AIProvider }))
+					}
+					onModelChange={model => setAIConfig(prev => ({ ...prev, model }))}
 					aiPlayerOptions={[
 						{ value: 'black', label: 'AI plays Black' },
 						{ value: 'white', label: 'AI plays White' },
