@@ -56,6 +56,8 @@ const XiangqiGame: React.FC = () => {
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [_isLoadingConfig, setIsLoadingConfig] = useState(true);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
+	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
+	const [hasGameEnded, setHasGameEnded] = useState(false);
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -96,6 +98,85 @@ const XiangqiGame: React.FC = () => {
 		};
 		loadConfig();
 	}, [aiService, isDebugMode]);
+
+	// Trigger debug button with Shift+D
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.shiftKey && e.key === 'D') {
+				setShowDebugWinButton(prev => !prev);
+			}
+		};
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, []);
+
+	// Save play history when game ends
+	useEffect(() => {
+		const isGameOver =
+			gameState.status === 'checkmate' ||
+			gameState.status === 'stalemate' ||
+			gameState.status === 'draw';
+
+		if (isGameOver && gameStarted && gameMode === 'ai' && !hasGameEnded) {
+			setHasGameEnded(true);
+
+			const savePlayHistory = async () => {
+				const token = localStorage.getItem('auth_token');
+				if (!token) return;
+
+				try {
+					let status: 'win' | 'loss' | 'draw';
+					if (gameState.status === 'checkmate') {
+						status = gameState.currentPlayer === aiPlayer ? 'win' : 'loss';
+					} else {
+						status = 'draw';
+					}
+
+					const API_BASE_URL =
+						import.meta.env.PUBLIC_API_URL || 'http://localhost:3501/api';
+
+					// Map provider/model to valid OpponentLlmId enum values
+					let opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' = 'gemini-2.5-flash';
+					const providerModel =
+						`${aiConfig.provider}/${aiConfig.model}`.toLowerCase();
+					if (providerModel.includes('gpt-4o')) {
+						opponentLlmId = 'gpt-4o';
+					} else if (providerModel.includes('gemini')) {
+						opponentLlmId = 'gemini-2.5-flash';
+					}
+
+					await fetch(`${API_BASE_URL}/play-history`, {
+						method: 'POST',
+						headers: {
+							Authorization: `Bearer ${token}`,
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({
+							chessId: 'xiangqi',
+							status,
+							date: new Date().toISOString(),
+							opponentLlmId,
+						}),
+					});
+
+					console.log('✅ Xiangqi play history saved successfully');
+				} catch (error) {
+					console.error('Failed to save Xiangqi play history:', error);
+				}
+			};
+
+			void savePlayHistory();
+		}
+	}, [
+		gameState.status,
+		gameState.currentPlayer,
+		gameStarted,
+		gameMode,
+		hasGameEnded,
+		aiPlayer,
+		aiConfig.provider,
+		aiConfig.model,
+	]);
 
 	const createCustomXiangqiBoard = useCallback(
 		(setup: string): (XiangqiPiece | null)[][] => {
@@ -320,6 +401,34 @@ const XiangqiGame: React.FC = () => {
 	const handleResetGame = useCallback(() => {
 		setGameState(resetGame());
 		setGameStarted(false);
+		setHasGameEnded(false);
+	}, []);
+
+	const triggerDebugWin = useCallback(() => {
+		console.log('🎯 Debug: Triggering win for human player (Xiangqi)');
+		setGameState(prev => ({
+			...prev,
+			status: 'checkmate',
+			currentPlayer: aiPlayer,
+		}));
+	}, [aiPlayer]);
+
+	const triggerDebugLoss = useCallback(() => {
+		console.log('🎯 Debug: Triggering loss for human player (Xiangqi)');
+		const humanPlayer = aiPlayer === 'red' ? 'black' : 'red';
+		setGameState(prev => ({
+			...prev,
+			status: 'checkmate',
+			currentPlayer: humanPlayer,
+		}));
+	}, [aiPlayer]);
+
+	const triggerDebugDraw = useCallback(() => {
+		console.log('🎯 Debug: Triggering draw (Xiangqi)');
+		setGameState(prev => ({
+			...prev,
+			status: 'stalemate',
+		}));
 	}, []);
 
 	// Calculate hasGameStarted before using it in callbacks
@@ -330,6 +439,7 @@ const XiangqiGame: React.FC = () => {
 			// Starting the game - ensure game state is properly initialized
 			setGameState(resetGame());
 			setGameStarted(true);
+			setHasGameEnded(false);
 		} else {
 			// Resetting the game
 			handleResetGame();
@@ -342,6 +452,7 @@ const XiangqiGame: React.FC = () => {
 			setGameStarted(false);
 			setIsAIThinking(false);
 			setAIDebugMoves([]);
+			setHasGameEnded(false);
 
 			if (newMode === 'tutorial') {
 				const demo = getCurrentDemo();
@@ -691,17 +802,47 @@ const XiangqiGame: React.FC = () => {
 
 			<div className='w-full max-w-4xl mx-auto space-y-6'>
 				{gameMode === 'ai' && (
-					<GameControls
-						hasGameStarted={hasGameStarted}
-						isGameOver={isGameOver}
-						aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-						isDebugMode={isDebugMode}
-						canExport={false}
-						onStartOrReset={handleStartOrReset}
-						onReset={handleResetGame}
-						onToggleDebug={() => setIsDebugMode(!isDebugMode)}
-						onExport={() => {}}
-					/>
+					<>
+						<GameControls
+							hasGameStarted={hasGameStarted}
+							isGameOver={isGameOver}
+							aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+							isDebugMode={isDebugMode}
+							canExport={false}
+							onStartOrReset={handleStartOrReset}
+							onReset={handleResetGame}
+							onToggleDebug={() => setIsDebugMode(!isDebugMode)}
+							onExport={() => {}}
+						/>
+						{showDebugWinButton && hasGameStarted && !isGameOver && (
+							<div className='flex gap-2 justify-center text-xs'>
+								<button
+									onClick={triggerDebugWin}
+									className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
+									title='Debug: Win'
+								>
+									🏆 Win
+								</button>
+								<button
+									onClick={triggerDebugLoss}
+									className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
+									title='Debug: Loss'
+								>
+									💀 Loss
+								</button>
+								<button
+									onClick={triggerDebugDraw}
+									className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
+									title='Debug: Draw'
+								>
+									🤝 Draw
+								</button>
+								<span className='text-gray-400 self-center'>
+									(Shift+D to toggle)
+								</span>
+							</div>
+						)}
+					</>
 				)}
 			</div>
 		</GameScaffold>

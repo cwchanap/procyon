@@ -2,6 +2,7 @@ export enum ChessVariantId {
 	Shogi = 'shogi',
 	Xiangqi = 'xiangqi',
 	Chess = 'chess',
+	Jungle = 'jungle',
 }
 
 export enum GameResultStatus {

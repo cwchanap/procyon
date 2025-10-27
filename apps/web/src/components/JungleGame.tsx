@@ -56,6 +56,8 @@ const JungleGame: React.FC = () => {
 	const [_isLoadingConfig, setIsLoadingConfig] = useState(true);
 	const [_aiRejectionCount, setAiRejectionCount] = useState(0);
 	const [_isAiPaused, setIsAiPaused] = useState(false);
+	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
+	const [hasGameEnded, setHasGameEnded] = useState(false);
 
 	// Load AI config on client side only to avoid SSR hydration mismatch
 	useEffect(() => {
@@ -71,6 +73,85 @@ const JungleGame: React.FC = () => {
 		};
 		loadConfig();
 	}, [aiService, isDebugMode]);
+
+	// Trigger debug button with Shift+D
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.shiftKey && e.key === 'D') {
+				setShowDebugWinButton(prev => !prev);
+			}
+		};
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, []);
+
+	// Save play history when game ends
+	useEffect(() => {
+		const isGameOver =
+			gameState.status === 'checkmate' ||
+			gameState.status === 'stalemate' ||
+			gameState.status === 'draw';
+
+		if (isGameOver && gameStarted && gameMode === 'ai' && !hasGameEnded) {
+			setHasGameEnded(true);
+
+			const savePlayHistory = async () => {
+				const token = localStorage.getItem('auth_token');
+				if (!token) return;
+
+				try {
+					let status: 'win' | 'loss' | 'draw';
+					if (gameState.status === 'checkmate') {
+						status = gameState.currentPlayer === aiPlayer ? 'win' : 'loss';
+					} else {
+						status = 'draw';
+					}
+
+					const API_BASE_URL =
+						import.meta.env.PUBLIC_API_URL || 'http://localhost:3501/api';
+
+					// Map provider/model to valid OpponentLlmId enum values
+					let opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' = 'gemini-2.5-flash';
+					const providerModel =
+						`${aiConfig.provider}/${aiConfig.model}`.toLowerCase();
+					if (providerModel.includes('gpt-4o')) {
+						opponentLlmId = 'gpt-4o';
+					} else if (providerModel.includes('gemini')) {
+						opponentLlmId = 'gemini-2.5-flash';
+					}
+
+					await fetch(`${API_BASE_URL}/play-history`, {
+						method: 'POST',
+						headers: {
+							Authorization: `Bearer ${token}`,
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({
+							chessId: 'jungle',
+							status,
+							date: new Date().toISOString(),
+							opponentLlmId,
+						}),
+					});
+
+					console.log('✅ Jungle play history saved successfully');
+				} catch (error) {
+					console.error('Failed to save Jungle play history:', error);
+				}
+			};
+
+			void savePlayHistory();
+		}
+	}, [
+		gameState.status,
+		gameState.currentPlayer,
+		gameStarted,
+		gameMode,
+		hasGameEnded,
+		aiPlayer,
+		aiConfig.provider,
+		aiConfig.model,
+	]);
 
 	// AI setup and debug callback
 	useEffect(() => {
@@ -301,6 +382,34 @@ const JungleGame: React.FC = () => {
 		setAiRejectionCount(0);
 		setIsAiPaused(false);
 		setAIDebugMoves([]);
+		setHasGameEnded(false);
+	}, []);
+
+	const triggerDebugWin = useCallback(() => {
+		console.log('🎯 Debug: Triggering win for human player (Jungle)');
+		setGameState(prev => ({
+			...prev,
+			status: 'checkmate',
+			currentPlayer: aiPlayer,
+		}));
+	}, [aiPlayer]);
+
+	const triggerDebugLoss = useCallback(() => {
+		console.log('🎯 Debug: Triggering loss for human player (Jungle)');
+		const humanPlayer = aiPlayer === 'red' ? 'blue' : 'red';
+		setGameState(prev => ({
+			...prev,
+			status: 'checkmate',
+			currentPlayer: humanPlayer,
+		}));
+	}, [aiPlayer]);
+
+	const triggerDebugDraw = useCallback(() => {
+		console.log('🎯 Debug: Triggering draw (Jungle)');
+		setGameState(prev => ({
+			...prev,
+			status: 'stalemate',
+		}));
 	}, []);
 
 	const handleStartOrReset = useCallback(() => {
@@ -308,6 +417,7 @@ const JungleGame: React.FC = () => {
 			// Starting game - ensure game state is properly initialized
 			setGameState(createInitialGameState());
 			setGameStarted(true);
+			setHasGameEnded(false);
 		} else {
 			// Resetting the game
 			handleResetGame();
@@ -337,6 +447,7 @@ const JungleGame: React.FC = () => {
 			setAiRejectionCount(0);
 			setIsAiPaused(false);
 			setAIDebugMoves([]);
+			setHasGameEnded(false);
 
 			if (newMode === 'tutorial') {
 				const demo = getCurrentDemo();
@@ -513,17 +624,47 @@ const JungleGame: React.FC = () => {
 
 			<div className='w-full max-w-4xl mx-auto space-y-6'>
 				{gameMode === 'ai' && (
-					<GameControls
-						hasGameStarted={gameStarted}
-						isGameOver={isGameOver}
-						aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-						isDebugMode={isDebugMode}
-						canExport={false}
-						onStartOrReset={handleStartOrReset}
-						onReset={handleResetGame}
-						onToggleDebug={() => setIsDebugMode(!isDebugMode)}
-						onExport={() => {}}
-					/>
+					<>
+						<GameControls
+							hasGameStarted={gameStarted}
+							isGameOver={isGameOver}
+							aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+							isDebugMode={isDebugMode}
+							canExport={false}
+							onStartOrReset={handleStartOrReset}
+							onReset={handleResetGame}
+							onToggleDebug={() => setIsDebugMode(!isDebugMode)}
+							onExport={() => {}}
+						/>
+						{showDebugWinButton && gameStarted && !isGameOver && (
+							<div className='flex gap-2 justify-center text-xs'>
+								<button
+									onClick={triggerDebugWin}
+									className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
+									title='Debug: Win'
+								>
+									🏆 Win
+								</button>
+								<button
+									onClick={triggerDebugLoss}
+									className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
+									title='Debug: Loss'
+								>
+									💀 Loss
+								</button>
+								<button
+									onClick={triggerDebugDraw}
+									className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
+									title='Debug: Draw'
+								>
+									🤝 Draw
+								</button>
+								<span className='text-gray-400 self-center'>
+									(Shift+D to toggle)
+								</span>
+							</div>
+						)}
+					</>
 				)}
 			</div>
 		</GameScaffold>

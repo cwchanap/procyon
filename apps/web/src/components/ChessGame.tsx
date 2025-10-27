@@ -56,6 +56,7 @@ const ChessGame: React.FC = () => {
 	const gameExporterRef = useRef<GameExporter | null>(null);
 	const [hasGameEnded, setHasGameEnded] = useState(false);
 	const { token } = useAuth();
+	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -114,10 +115,10 @@ const ChessGame: React.FC = () => {
 					// Determine game result from current player's perspective
 					let status: 'win' | 'loss' | 'draw';
 					if (gameState.status === 'checkmate') {
-						// Current player lost (they're in checkmate)
-						// If AI player is current player, human won
-						// If human is current player, AI won
-						status = gameState.currentPlayer === aiPlayer ? 'loss' : 'win';
+						// Current player is in checkmate (they lost)
+						// If AI player is in checkmate, human won
+						// If human player is in checkmate, AI won
+						status = gameState.currentPlayer === aiPlayer ? 'win' : 'loss';
 					} else {
 						// Stalemate or draw
 						status = 'draw';
@@ -125,6 +126,16 @@ const ChessGame: React.FC = () => {
 
 					const API_BASE_URL =
 						import.meta.env.PUBLIC_API_URL || 'http://localhost:3501/api';
+
+					// Map provider/model to valid OpponentLlmId enum values
+					let opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' = 'gemini-2.5-flash';
+					const providerModel =
+						`${aiConfig.provider}/${aiConfig.model}`.toLowerCase();
+					if (providerModel.includes('gpt-4o')) {
+						opponentLlmId = 'gpt-4o';
+					} else if (providerModel.includes('gemini')) {
+						opponentLlmId = 'gemini-2.5-flash';
+					}
 
 					await fetch(`${API_BASE_URL}/play-history`, {
 						method: 'POST',
@@ -136,7 +147,7 @@ const ChessGame: React.FC = () => {
 							chessId: 'chess',
 							status,
 							date: new Date().toISOString(),
-							opponentLlmId: `${aiConfig.provider}/${aiConfig.model}` as any,
+							opponentLlmId,
 						}),
 					});
 
@@ -159,6 +170,17 @@ const ChessGame: React.FC = () => {
 		aiConfig.provider,
 		aiConfig.model,
 	]);
+
+	// Trigger debug button with Shift+D
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.shiftKey && e.key === 'D') {
+				setShowDebugWinButton(prev => !prev);
+			}
+		};
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, []);
 
 	// Update AI service when debug mode changes
 	useEffect(() => {
@@ -474,6 +496,7 @@ const ChessGame: React.FC = () => {
 			setAiRejectionCount(0);
 			setIsAiPaused(false);
 			setAiDebugMoves([]);
+			setHasGameEnded(false);
 
 			if (newMode === 'tutorial') {
 				const demo = getCurrentDemo();
@@ -608,6 +631,33 @@ const ChessGame: React.FC = () => {
 		setHasGameEnded(false);
 	}, [gameMode, aiPlayer]);
 
+	const triggerDebugWin = useCallback(() => {
+		console.log('🎯 Debug: Triggering win for human player');
+		setGameState(prev => ({
+			...prev,
+			status: 'checkmate',
+			currentPlayer: aiPlayer, // AI player in checkmate = human won
+		}));
+	}, [aiPlayer]);
+
+	const triggerDebugLoss = useCallback(() => {
+		console.log('🎯 Debug: Triggering loss for human player');
+		const humanPlayer = aiPlayer === 'white' ? 'black' : 'white';
+		setGameState(prev => ({
+			...prev,
+			status: 'checkmate',
+			currentPlayer: humanPlayer, // Human player in checkmate = AI won
+		}));
+	}, [aiPlayer]);
+
+	const triggerDebugDraw = useCallback(() => {
+		console.log('🎯 Debug: Triggering draw');
+		setGameState(prev => ({
+			...prev,
+			status: 'stalemate',
+		}));
+	}, []);
+
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {
 			// Starting the game - ensure game state is properly initialized
@@ -617,6 +667,7 @@ const ChessGame: React.FC = () => {
 				setGameState(createInitialGameState('human-vs-human'));
 			}
 			setGameStarted(true);
+			setHasGameEnded(false);
 
 			// Initialize game exporter
 			gameExporterRef.current = new GameExporter('chess', aiConfig);
@@ -786,19 +837,49 @@ const ChessGame: React.FC = () => {
 
 			<div className='w-full max-w-4xl mx-auto space-y-6'>
 				{gameMode === 'ai' && (
-					<GameControls
-						hasGameStarted={gameStarted}
-						isGameOver={isGameOver}
-						aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-						isDebugMode={isDebugMode}
-						canExport={gameStarted && !!gameExporterRef.current}
-						onStartOrReset={handleStartOrReset}
-						onReset={resetGame}
-						onToggleDebug={() => setIsDebugMode(!isDebugMode)}
-						onExport={() =>
-							gameExporterRef.current?.exportAndDownload(gameState.status)
-						}
-					/>
+					<>
+						<GameControls
+							hasGameStarted={gameStarted}
+							isGameOver={isGameOver}
+							aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+							isDebugMode={isDebugMode}
+							canExport={gameStarted && !!gameExporterRef.current}
+							onStartOrReset={handleStartOrReset}
+							onReset={resetGame}
+							onToggleDebug={() => setIsDebugMode(!isDebugMode)}
+							onExport={() =>
+								gameExporterRef.current?.exportAndDownload(gameState.status)
+							}
+						/>
+						{showDebugWinButton && gameStarted && !isGameOver && token && (
+							<div className='flex gap-2 justify-center text-xs'>
+								<button
+									onClick={triggerDebugWin}
+									className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
+									title='Debug: Win'
+								>
+									🏆 Win
+								</button>
+								<button
+									onClick={triggerDebugLoss}
+									className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
+									title='Debug: Loss'
+								>
+									💀 Loss
+								</button>
+								<button
+									onClick={triggerDebugDraw}
+									className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
+									title='Debug: Draw'
+								>
+									🤝 Draw
+								</button>
+								<span className='text-gray-400 self-center'>
+									(Shift+D to toggle)
+								</span>
+							</div>
+						)}
+					</>
 				)}
 			</div>
 		</GameScaffold>
