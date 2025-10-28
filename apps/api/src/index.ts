@@ -14,10 +14,15 @@ initializeDB();
 const app = new Hono();
 
 // CORS middleware
+const allowedOrigins =
+	process.env.NODE_ENV === 'production'
+		? [process.env.FRONTEND_URL || ''].filter(Boolean)
+		: ['http://localhost:3500', 'http://localhost:3000'];
+
 app.use(
 	'/api/*',
 	cors({
-		origin: ['http://localhost:3500', 'http://localhost:3000'], // Allow your web app
+		origin: allowedOrigins,
 		allowHeaders: ['Content-Type', 'Authorization'],
 		allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 	})
