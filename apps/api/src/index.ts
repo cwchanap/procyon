@@ -7,6 +7,7 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import aiConfigRoutes from './routes/ai-config';
 import playHistoryRoutes from './routes/play-history';
+import { env, isProduction } from './env';
 
 // Initialize database (will use local SQLite for development)
 initializeDB();
@@ -14,10 +15,9 @@ initializeDB();
 const app = new Hono();
 
 // CORS middleware
-const allowedOrigins =
-	process.env.NODE_ENV === 'production'
-		? [process.env.FRONTEND_URL || ''].filter(Boolean)
-		: ['http://localhost:3500', 'http://localhost:3000'];
+const allowedOrigins = isProduction
+	? [env.FRONTEND_URL].filter(Boolean)
+	: ['http://localhost:3500', 'http://localhost:3000'];
 
 app.use(
 	'/api/*',
@@ -64,11 +64,9 @@ app.onError((err, c) => {
 });
 
 // Start server
-const port = parseInt(process.env.PORT || '3501');
-
-console.log(`🚀 Hono API server is running on http://localhost:${port}`);
+console.log(`🚀 Hono API server is running on http://localhost:${env.PORT}`);
 
 serve({
 	fetch: app.fetch,
-	port,
+	port: env.PORT,
 });

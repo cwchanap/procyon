@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-for-dev';
+import { env } from '../env';
 
 export interface JWTPayload {
 	userId: number;
@@ -9,9 +8,9 @@ export interface JWTPayload {
 }
 
 export function generateToken(payload: JWTPayload): string {
-	return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+	return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN });
 }
 
 export function verifyToken(token: string): JWTPayload {
-	return jwt.verify(token, JWT_SECRET) as JWTPayload;
+	return jwt.verify(token, env.JWT_SECRET) as JWTPayload;
 }

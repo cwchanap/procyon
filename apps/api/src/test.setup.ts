@@ -5,10 +5,9 @@ const previousSaltRounds = process.env.BCRYPT_SALT_ROUNDS;
 process.env.BCRYPT_SALT_ROUNDS = '4';
 
 afterAll(() => {
-	if (previousSaltRounds === undefined) {
+	if (previousSaltRounds !== undefined) {
+		process.env.BCRYPT_SALT_ROUNDS = previousSaltRounds;
+	} else {
 		delete process.env.BCRYPT_SALT_ROUNDS;
-		return;
 	}
-
-	process.env.BCRYPT_SALT_ROUNDS = previousSaltRounds;
 });
