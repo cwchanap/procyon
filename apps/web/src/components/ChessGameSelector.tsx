@@ -21,31 +21,6 @@ const ChessGameSelector: React.FC = () => {
 			description:
 				'Animal-themed strategy game with unique terrain and piece hierarchy.',
 		},
-		{
-			title: 'Chess960',
-			description: 'Chess with randomized starting positions for pieces.',
-		},
-		{
-			title: 'King of the Hill',
-			description: 'Win by getting your king to the center of the board.',
-		},
-		{
-			title: 'Three-check Chess',
-			description: "Win by checking the opponent's king three times.",
-		},
-		{
-			title: 'Atomic Chess',
-			description:
-				'Capturing pieces destroys surrounding pieces in an explosion.',
-		},
-		{
-			title: 'Horde Chess',
-			description: 'One player controls 36 pawns against normal pieces.',
-		},
-		{
-			title: 'Giveaway Chess',
-			description: 'Lose all your pieces to win the game.',
-		},
 	];
 
 	const handlePlayGame = (gameTitle: string) => {
