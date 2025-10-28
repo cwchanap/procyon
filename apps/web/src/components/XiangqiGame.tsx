@@ -13,6 +13,7 @@ import {
 import { getPossibleMoves } from '../lib/xiangqi/moves';
 import { createInitialXiangqiBoard, getPieceAt } from '../lib/xiangqi/board';
 import { createXiangqiAI, defaultAIConfig, loadAIConfig } from '../lib/ai';
+import { env } from '../lib/env';
 import type { AIConfig, AIProvider } from '../lib/ai/types';
 import { AI_PROVIDERS } from '../lib/ai/types';
 import XiangqiBoard from './XiangqiBoard';
@@ -132,9 +133,6 @@ const XiangqiGame: React.FC = () => {
 						status = 'draw';
 					}
 
-					const API_BASE_URL =
-						import.meta.env.PUBLIC_API_URL || 'http://localhost:3501/api';
-
 					// Map provider/model to valid OpponentLlmId enum values
 					let opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' = 'gemini-2.5-flash';
 					const providerModel =
@@ -145,7 +143,7 @@ const XiangqiGame: React.FC = () => {
 						opponentLlmId = 'gemini-2.5-flash';
 					}
 
-					await fetch(`${API_BASE_URL}/play-history`, {
+					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 						method: 'POST',
 						headers: {
 							Authorization: `Bearer ${token}`,

@@ -13,6 +13,7 @@ import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
+import { env } from '../lib/env';
 import AIStatusPanel from './game/AIStatusPanel';
 import GameControls from './game/GameControls';
 import DemoSelector from './game/DemoSelector';
@@ -124,9 +125,6 @@ const ChessGame: React.FC = () => {
 						status = 'draw';
 					}
 
-					const API_BASE_URL =
-						import.meta.env.PUBLIC_API_URL || 'http://localhost:3501/api';
-
 					// Map provider/model to valid OpponentLlmId enum values
 					let opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' = 'gemini-2.5-flash';
 					const providerModel =
@@ -137,7 +135,7 @@ const ChessGame: React.FC = () => {
 						opponentLlmId = 'gemini-2.5-flash';
 					}
 
-					await fetch(`${API_BASE_URL}/play-history`, {
+					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 						method: 'POST',
 						headers: {
 							Authorization: `Bearer ${token}`,

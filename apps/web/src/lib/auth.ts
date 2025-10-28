@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { env } from './env';
 
 export interface User {
 	id: string;
@@ -12,8 +13,6 @@ export interface AuthResponse {
 	token: string;
 	user: User;
 }
-
-const API_BASE_URL = import.meta.env.PUBLIC_API_URL || '/api';
 
 export function useAuth() {
 	const [user, setUser] = useState<User | null>(null);
@@ -36,7 +35,7 @@ export function useAuth() {
 		password: string
 	): Promise<{ success: boolean; error?: string }> => {
 		try {
-			const response = await fetch(`${API_BASE_URL}/auth/login`, {
+			const response = await fetch(`${env.PUBLIC_API_URL}/auth/login`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -75,7 +74,7 @@ export function useAuth() {
 		password: string
 	): Promise<{ success: boolean; error?: string }> => {
 		try {
-			const response = await fetch(`${API_BASE_URL}/auth/register`, {
+			const response = await fetch(`${env.PUBLIC_API_URL}/auth/register`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',

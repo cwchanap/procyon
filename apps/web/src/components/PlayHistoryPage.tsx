@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/auth';
-
-const API_BASE_URL =
-	import.meta.env.PUBLIC_API_URL || 'http://localhost:3501/api';
+import { env } from '../lib/env';
 
 type ServerPlayHistory = {
 	id: number;
@@ -89,7 +87,7 @@ export default function PlayHistoryPage() {
 				setIsLoading(true);
 				setError(null);
 
-				const response = await fetch(`${API_BASE_URL}/play-history`, {
+				const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 					method: 'GET',
 					headers: {
 						Authorization: `Bearer ${token}`,
