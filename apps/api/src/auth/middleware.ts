@@ -1,31 +1,36 @@
 import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { verifyToken, type JWTPayload } from './jwt';
+import { getAuth } from './better-auth';
+import type { BetterAuthUser } from '../db/schema';
 
 export interface AuthContext {
-	user: JWTPayload;
+	user: BetterAuthUser;
 }
 
 export async function authMiddleware(c: Context, next: Next) {
-	const authHeader = c.req.header('Authorization');
-
-	if (!authHeader || !authHeader.startsWith('Bearer ')) {
-		throw new HTTPException(401, {
-			message: 'Missing or invalid authorization header',
-		});
-	}
-
-	const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-
 	try {
-		const payload = verifyToken(token);
-		c.set('user', payload);
+		const session = await getAuth().api.getSession({
+			headers: c.req.raw.headers,
+		});
+
+		if (!session || !session.user) {
+			throw new HTTPException(401, {
+				message: 'Unauthorized: No valid session',
+			});
+		}
+
+		c.set('user', session.user);
 		await next();
-	} catch (_error) {
-		throw new HTTPException(401, { message: 'Invalid or expired token' });
+	} catch (error) {
+		if (error instanceof HTTPException) {
+			throw error;
+		}
+		throw new HTTPException(401, {
+			message: 'Invalid or expired session',
+		});
 	}
 }
 
-export function getUser(c: Context): JWTPayload {
-	return c.get('user') as JWTPayload;
+export function getUser(c: Context): BetterAuthUser {
+	return c.get('user') as BetterAuthUser;
 }

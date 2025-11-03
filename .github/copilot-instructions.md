@@ -56,11 +56,14 @@ AI responses follow strict JSON format validation and include move reasoning.
 
 ### Auth Flow
 
-JWT-based authentication with middleware pattern:
+Session-based authentication with better-auth and HTTP-only cookies:
 
-- Registration/login via `apps/api/src/routes/auth.ts`
-- Protected routes use `authMiddleware` from `apps/api/src/auth/middleware.ts`
-- Frontend auth context in `apps/web/src/lib/auth.ts` with localStorage persistence
+- Registration/login via `apps/api/src/routes/auth.ts` using better-auth handlers
+- Custom `/register` endpoint handles username field (wraps better-auth signUpEmail)
+- Protected routes use `authMiddleware` from `apps/api/src/auth/middleware.ts` (session validation)
+- Frontend auth context in `apps/web/src/lib/auth.ts` uses session cookies (credentials: 'include')
+- No localStorage token management - sessions handled via HTTP-only cookies
+- Auth endpoints: `/auth/register`, `/auth/sign-in/email`, `/auth/logout`, `/auth/session`
 
 ### Database Commands
 
@@ -86,6 +89,15 @@ bun run db:push       # Development schema push (no migrations)
 ```typescript
 // Generate unique test user
 const testUser = AuthHelper.generateTestUser();
+
+// Session-based authentication in tests
+await AuthHelper.register(
+  page,
+  testUser.email,
+  testUser.username,
+  testUser.password
+);
+// Session cookie automatically set in page context
 
 // Mock AI API responses
 await page.route('**/generativelanguage.googleapis.com/**', async route => {
@@ -148,3 +160,16 @@ When adding API endpoints:
 2. Add validation schemas with Zod
 3. Register route in `apps/api/src/index.ts`
 4. Test with E2E scenarios including auth flows
+
+### bun not found
+
+Restart the shell : `zsh -il -c 'bun --version'`. Then you can run bun directly
+
+## Active Technologies
+
+- TypeScript 5.x (strict mode enabled) + better-auth, @better-auth/drizzle-adapter, drizzle-orm, Hono 4.x (001-migrate-better-auth)
+- SQLite (development via better-sqlite3) / Cloudflare D1 (production) (001-migrate-better-auth)
+
+## Recent Changes
+
+- 001-migrate-better-auth: Added TypeScript 5.x (strict mode enabled) + better-auth, @better-auth/drizzle-adapter, drizzle-orm, Hono 4.x

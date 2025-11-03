@@ -18,6 +18,8 @@ migrations_dir = "drizzle"
 # Environment variables
 [vars]
 NODE_ENV = "production"
+BETTER_AUTH_URL = "https://api.procyon-chess.com"
+BETTER_AUTH_TRUSTED_ORIGINS = "https://procyon-chess.com,https://www.procyon-chess.com"
 
 # Production environment
 [env.production]
