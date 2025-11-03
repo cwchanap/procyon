@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, unique } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import {
 	ChessVariantId,
@@ -17,6 +17,87 @@ export const users = sqliteTable('users', {
 	updatedAt: text('updated_at')
 		.default(sql`CURRENT_TIMESTAMP`)
 		.notNull(),
+});
+
+// Better-auth tables
+export const user = sqliteTable('user', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	email: text('email').notNull().unique(),
+	emailVerified: integer('email_verified', { mode: 'boolean' })
+		.notNull()
+		.default(false),
+	name: text('name'),
+	username: text('username').unique(), // Make nullable and unique
+	password: text('password'),
+	image: text('image'),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+	updatedAt: integer('updated_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+});
+
+export const session = sqliteTable('session', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+	token: text('token').notNull().unique(),
+	ipAddress: text('ip_address'),
+	userAgent: text('user_agent'),
+	userId: text('user_id')
+		.notNull()
+		.references(() => user.id, { onDelete: 'cascade' }),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+	updatedAt: integer('updated_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+});
+
+export const account = sqliteTable(
+	'account',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		accountId: text('account_id').notNull(),
+		providerId: text('provider_id').notNull(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		accessToken: text('access_token'),
+		refreshToken: text('refresh_token'),
+		expiresAt: integer('expires_at', { mode: 'timestamp' }),
+		createdAt: integer('created_at', { mode: 'timestamp' })
+			.notNull()
+			.$defaultFn(() => new Date()),
+		updatedAt: integer('updated_at', { mode: 'timestamp' })
+			.notNull()
+			.$defaultFn(() => new Date()),
+	},
+	table => ({
+		accountProviderIdx: unique().on(table.accountId, table.providerId),
+	})
+);
+
+export const verification = sqliteTable('verification', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	identifier: text('identifier').notNull(),
+	value: text('value').notNull(),
+	expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+	updatedAt: integer('updated_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
 });
 
 export const aiConfigurations = sqliteTable('ai_configurations', {
@@ -52,6 +133,14 @@ export const playHistory = sqliteTable('play_history', {
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type BetterAuthUser = typeof user.$inferSelect;
+export type NewBetterAuthUser = typeof user.$inferInsert;
+export type Session = typeof session.$inferSelect;
+export type NewSession = typeof session.$inferInsert;
+export type Account = typeof account.$inferSelect;
+export type NewAccount = typeof account.$inferInsert;
+export type Verification = typeof verification.$inferSelect;
+export type NewVerification = typeof verification.$inferInsert;
 export type AiConfiguration = typeof aiConfigurations.$inferSelect;
 export type NewAiConfiguration = typeof aiConfigurations.$inferInsert;
 export type PlayHistory = typeof playHistory.$inferSelect;

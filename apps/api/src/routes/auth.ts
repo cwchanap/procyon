@@ -1,150 +1,79 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
-import { eq } from 'drizzle-orm';
+import { getAuth } from '../auth/better-auth';
+import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB, schema } from '../db';
-import { hashPassword, comparePassword } from '../auth/password';
-import { generateToken } from '../auth/jwt';
-import { registerSchema, loginSchema } from '../auth/validation';
+import { eq } from 'drizzle-orm';
 
 const app = new Hono();
 
-app.post('/register', async c => {
+// Custom registration endpoint that handles username field
+app.post('/sign-up/email', async c => {
 	try {
 		const body = await c.req.json();
-		const { email, username, password } = registerSchema.parse(body);
+		const { email, password, name } = body;
 
-		const db = getDB();
-
-		// Check if user already exists
-		const existingUser = await db
-			.select()
-			.from(schema.users)
-			.where(eq(schema.users.email, email))
-			.get();
-
-		if (existingUser) {
-			throw new HTTPException(409, {
-				message: 'User with this email already exists',
-			});
+		if (!email || !password || !name) {
+			return c.json({ error: 'Missing required fields' }, 400);
 		}
 
 		// Check if username already exists
-		const existingUsername = await db
+		const db = getDB();
+		const existingUser = await db
 			.select()
-			.from(schema.users)
-			.where(eq(schema.users.username, username))
+			.from(schema.user)
+			.where(eq(schema.user.email, email))
 			.get();
 
-		if (existingUsername) {
-			throw new HTTPException(409, { message: 'Username already taken' });
+		if (existingUser) {
+			return c.json({ error: 'User already exists' }, 400);
 		}
 
-		// Hash password and create user
-		const passwordHash = await hashPassword(password);
-
-		const newUser = await db
-			.insert(schema.users)
-			.values({
-				email,
-				username,
-				passwordHash,
-			})
-			.returning()
-			.get();
-
-		// Generate JWT token
-		const token = generateToken({
-			userId: newUser.id,
-			email: newUser.email,
-			username: newUser.username,
+		// Use better-auth to create the user
+		const auth = getAuth();
+		const result = await auth.api.signUpEmail({
+			body: { email, password, name },
 		});
 
-		return c.json(
-			{
-				message: 'User registered successfully',
-				token,
-				user: {
-					id: newUser.id,
-					email: newUser.email,
-					username: newUser.username,
-					createdAt: newUser.createdAt,
-				},
+		if (!result.user) {
+			return c.json({ error: 'Failed to create user' }, 500);
+		}
+
+		// Update username field to match name
+		await db
+			.update(schema.user)
+			.set({ username: name })
+			.where(eq(schema.user.id, result.user.id))
+			.execute();
+
+		return c.json({
+			user: {
+				...result.user,
+				username: name,
 			},
-			201
-		);
+		});
 	} catch (error) {
-		if (error instanceof HTTPException) {
-			throw error;
-		}
-
-		// Handle validation errors
-		if (error instanceof Error && error.name === 'ZodError') {
-			throw new HTTPException(400, { message: 'Invalid input data' });
-		}
-
 		console.error('Registration error:', error);
-		throw new HTTPException(500, { message: 'Internal server error' });
+		return c.json({ error: 'Registration failed' }, 500);
 	}
 });
 
-app.post('/login', async c => {
-	try {
-		const body = await c.req.json();
-		const { email, password } = loginSchema.parse(body);
+// Mount better-auth handlers for other endpoints
+app.on(['POST', 'GET'], '*', async c => {
+	return getAuth().handler(c.req.raw);
+});
 
-		const db = getDB();
-
-		// Find user by email
-		const user = await db
-			.select()
-			.from(schema.users)
-			.where(eq(schema.users.email, email))
-			.get();
-
-		if (!user) {
-			throw new HTTPException(401, {
-				message: 'Invalid email or password',
-			});
-		}
-
-		// Verify password
-		const isPasswordValid = await comparePassword(password, user.passwordHash);
-		if (!isPasswordValid) {
-			throw new HTTPException(401, {
-				message: 'Invalid email or password',
-			});
-		}
-
-		// Generate JWT token
-		const token = generateToken({
-			userId: user.id,
+// Custom session endpoint that matches our existing API pattern
+app.get('/session', authMiddleware, async c => {
+	const user = getUser(c);
+	return c.json({
+		user: {
+			id: user.id,
 			email: user.email,
-			username: user.username,
-		});
-
-		return c.json({
-			message: 'Login successful',
-			token,
-			user: {
-				id: user.id,
-				email: user.email,
-				username: user.username,
-				createdAt: user.createdAt,
-			},
-		});
-	} catch (error) {
-		if (error instanceof HTTPException) {
-			throw error;
-		}
-
-		// Handle validation errors
-		if (error instanceof Error && error.name === 'ZodError') {
-			throw new HTTPException(400, { message: 'Invalid input data' });
-		}
-
-		console.error('Login error:', error);
-		throw new HTTPException(500, { message: 'Internal server error' });
-	}
+			username: user.username || user.name,
+			name: user.name,
+			emailVerified: user.emailVerified,
+		},
+	});
 });
 
 export default app;
