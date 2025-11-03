@@ -29,4 +29,4 @@ export function getDB() {
 	return db;
 }
 
-export { schema, db };
+export { schema };
