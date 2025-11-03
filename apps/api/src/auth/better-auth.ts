@@ -4,6 +4,13 @@ import { getDB } from '../db';
 import * as schema from '../db/schema';
 
 export function initializeBetterAuth() {
+	const secret = process.env.BETTER_AUTH_SECRET;
+	if (!secret || secret.trim() === '') {
+		throw new Error(
+			'BETTER_AUTH_SECRET environment variable is required and cannot be empty'
+		);
+	}
+
 	return betterAuth({
 		database: drizzleAdapter(getDB(), {
 			provider: 'sqlite',
@@ -18,7 +25,7 @@ export function initializeBetterAuth() {
 			enabled: true,
 			requireEmailVerification: false, // Disable for MVP
 		},
-		secret: process.env.BETTER_AUTH_SECRET,
+		secret: secret,
 		baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3501',
 		trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS?.split(',') || [
 			'http://localhost:3500',
@@ -30,6 +37,9 @@ export function initializeBetterAuth() {
 				enabled: true,
 				maxAge: 60 * 5, // 5 minutes
 			},
+		},
+		onAPIError: {
+			throw: true,
 		},
 	});
 }

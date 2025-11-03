@@ -111,14 +111,25 @@ export function useAuth() {
 		}
 	};
 
-	const logout = async () => {
+	const logout = async (force = false) => {
 		try {
-			await fetch(`${env.PUBLIC_API_URL}/auth/sign-out`, {
+			const response = await fetch(`${env.PUBLIC_API_URL}/auth/sign-out`, {
 				method: 'POST',
 				credentials: 'include',
 			});
-		} catch (_error) {
-			// Ignore errors, clear local state anyway
+			if (!response.ok) {
+				throw new Error(
+					`Logout failed: ${response.status} ${response.statusText}`
+				);
+			}
+		} catch (error) {
+			if (force) {
+				// Allow forced local logout despite server failure
+				console.warn('Server logout failed, but forcing local logout:', error);
+			} else {
+				// Re-throw error to prevent clearing local state on server failure
+				throw error;
+			}
 		}
 		setUser(null);
 	};

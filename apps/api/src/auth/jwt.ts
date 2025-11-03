@@ -12,5 +12,10 @@ export function generateToken(payload: JWTPayload): string {
 }
 
 export function verifyToken(token: string): JWTPayload {
-	return jwt.verify(token, env.JWT_SECRET) as JWTPayload;
+	try {
+		return jwt.verify(token, env.JWT_SECRET) as JWTPayload;
+	} catch (error) {
+		console.debug('JWT verification failed:', error);
+		throw new Error('Invalid or expired token');
+	}
 }
