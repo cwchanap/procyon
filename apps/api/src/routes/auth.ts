@@ -1,75 +1,132 @@
 import { Hono } from 'hono';
-import { getAuth } from '../auth/better-auth';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB, schema } from '../db';
 import { eq } from 'drizzle-orm';
+import { hashPassword, comparePassword } from '../auth/password';
+import jwt from 'jsonwebtoken';
+import { env } from '../env';
 
 const app = new Hono();
 
-// Custom registration endpoint that handles username field
-app.post('/sign-up/email', async c => {
+// Login endpoint
+app.post('/login', async c => {
 	try {
 		const body = await c.req.json();
-		const { email, password, name } = body;
+		const { email, password } = body;
 
-		if (!email || !password || !name) {
-			return c.json({ error: 'Missing required fields' }, 400);
+		if (!email || !password) {
+			return c.json({ error: 'Email and password are required' }, 400);
 		}
 
-		// Use better-auth to create the user
-		const auth = getAuth();
-		let result;
-		try {
-			result = await auth.api.signUpEmail({
-				body: { email, password, name },
-			});
-		} catch (error: any) {
-			console.error('SignUpEmail API error:', error);
-			// Handle duplicate email or other validation errors
-			if (
-				error.message?.includes('email') ||
-				error.message?.includes('unique') ||
-				error.message?.includes('already exists') ||
-				error.message?.includes('duplicate')
-			) {
-				return c.json({ error: 'User already exists' }, 400);
-			}
-			// Handle other validation errors
-			if (
-				error.message?.includes('password') ||
-				error.message?.includes('validation')
-			) {
-				return c.json({ error: 'Invalid input data' }, 400);
-			}
-			// For other API errors, return 500
-			return c.json({ error: 'Registration failed due to server error' }, 500);
-		}
-
-		// Fallback check - should not happen if onAPIError: { throw: true } is working
-		if (!result.user) {
-			console.error('SignUpEmail succeeded but no user returned');
-			return c.json({ error: 'Failed to create user' }, 500);
-		}
-
-		// Update username field to match name
 		const db = getDB();
-		try {
-			await db
-				.update(schema.user)
-				.set({ username: name })
-				.where(eq(schema.user.id, result.user.id))
-				.execute();
-		} catch (updateError) {
-			console.error('Failed to update username:', updateError);
-			// User was created but username update failed - could delete user or handle gracefully
-			// For now, return success but log the issue
+		const users = await db
+			.select()
+			.from(schema.users)
+			.where(eq(schema.users.email, email))
+			.limit(1);
+
+		if (users.length === 0) {
+			return c.json({ error: 'Invalid credentials' }, 401);
 		}
+
+		const user = users[0];
+		const isValidPassword = await comparePassword(password, user.passwordHash);
+
+		if (!isValidPassword) {
+			return c.json({ error: 'Invalid credentials' }, 401);
+		}
+
+		// Generate JWT token
+		const token = jwt.sign(
+			{
+				userId: user.id,
+				email: user.email,
+				username: user.username,
+			},
+			env.JWT_SECRET,
+			{ expiresIn: env.JWT_EXPIRES_IN }
+		);
 
 		return c.json({
 			user: {
-				...result.user,
-				username: name,
+				id: user.id,
+				email: user.email,
+				username: user.username,
 			},
+			token,
+		});
+	} catch (error) {
+		console.error('Login error:', error);
+		return c.json({ error: 'Login failed' }, 500);
+	}
+});
+
+// Register endpoint
+app.post('/register', async c => {
+	try {
+		const body = await c.req.json();
+		const { email, password, username } = body;
+
+		if (!email || !password || !username) {
+			return c.json({ error: 'Email, password, and username are required' }, 400);
+		}
+
+		const db = getDB();
+
+		// Check if user already exists
+		const existingUsers = await db
+			.select()
+			.from(schema.users)
+			.where(eq(schema.users.email, email))
+			.limit(1);
+
+		if (existingUsers.length > 0) {
+			return c.json({ error: 'User already exists' }, 400);
+		}
+
+		// Check if username is taken
+		const existingUsernames = await db
+			.select()
+			.from(schema.users)
+			.where(eq(schema.users.username, username))
+			.limit(1);
+
+		if (existingUsernames.length > 0) {
+			return c.json({ error: 'Username already taken' }, 400);
+		}
+
+		// Hash password and create user
+		const passwordHash = await hashPassword(password);
+
+		const newUser = await db
+			.insert(schema.users)
+			.values({
+				email,
+				username,
+				passwordHash,
+			})
+			.returning();
+
+		const user = newUser[0];
+
+		// Generate JWT token
+		const token = jwt.sign(
+			{
+				userId: user.id,
+				email: user.email,
+				username: user.username,
+			},
+			env.JWT_SECRET,
+			{ expiresIn: env.JWT_EXPIRES_IN }
+		);
+
+		return c.json({
+			user: {
+				id: user.id,
+				email: user.email,
+				username: user.username,
+			},
+			token,
 		});
 	} catch (error) {
 		console.error('Registration error:', error);
@@ -77,23 +134,16 @@ app.post('/sign-up/email', async c => {
 	}
 });
 
-// Custom session endpoint that matches our existing API pattern
+// Session endpoint
 app.get('/session', authMiddleware, async c => {
 	const user = getUser(c);
 	return c.json({
 		user: {
 			id: user.id,
 			email: user.email,
-			username: user.username || user.name,
-			name: user.name,
-			emailVerified: user.emailVerified,
+			username: user.username,
 		},
 	});
-});
-
-// Mount better-auth handlers for other endpoints
-app.on(['POST', 'GET'], '*', async c => {
-	return getAuth().handler(c.req.raw);
 });
 
 export default app;

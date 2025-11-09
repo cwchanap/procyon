@@ -2,20 +2,20 @@ import { useState, useEffect } from 'react';
 import { env } from './env';
 
 export interface User {
-	id: string;
+	id: number;
 	email: string;
 	username: string;
-	name?: string | null;
-	emailVerified?: boolean;
 }
 
-export interface SessionResponse {
+export interface LoginResponse {
 	user: User;
+	token: string;
 }
 
 export function useAuth() {
 	const [user, setUser] = useState<User | null>(null);
 	const [loading, setLoading] = useState(true);
+	const [token, setToken] = useState<string | null>(null);
 
 	useEffect(() => {
 		// Check for existing session on mount
@@ -24,19 +24,35 @@ export function useAuth() {
 
 	const checkSession = async () => {
 		try {
+			const storedToken = localStorage.getItem('auth_token');
+			if (!storedToken) {
+				setUser(null);
+				setToken(null);
+				setLoading(false);
+				return;
+			}
+
 			const response = await fetch(`${env.PUBLIC_API_URL}/auth/session`, {
 				method: 'GET',
-				credentials: 'include', // Send cookies
+				headers: {
+					'Authorization': `Bearer ${storedToken}`,
+				},
 			});
 
 			if (response.ok) {
-				const data: SessionResponse = await response.json();
+				const data = await response.json();
 				setUser(data.user);
+				setToken(storedToken);
 			} else {
+				// Token might be expired, clear it
+				localStorage.removeItem('auth_token');
 				setUser(null);
+				setToken(null);
 			}
 		} catch (_error) {
+			localStorage.removeItem('auth_token');
 			setUser(null);
+			setToken(null);
 		} finally {
 			setLoading(false);
 		}
@@ -47,9 +63,8 @@ export function useAuth() {
 		password: string
 	): Promise<{ success: boolean; error?: string }> => {
 		try {
-			const response = await fetch(`${env.PUBLIC_API_URL}/auth/sign-in/email`, {
+			const response = await fetch(`${env.PUBLIC_API_URL}/auth/login`, {
 				method: 'POST',
-				credentials: 'include', // Send/receive cookies
 				headers: {
 					'Content-Type': 'application/json',
 				},
@@ -60,12 +75,14 @@ export function useAuth() {
 				const errorData = await response.json();
 				return {
 					success: false,
-					error: errorData.message || 'Login failed',
+					error: errorData.error || 'Login failed',
 				};
 			}
 
-			const data = await response.json();
+			const data: LoginResponse = await response.json();
 			setUser(data.user);
+			setToken(data.token);
+			localStorage.setItem('auth_token', data.token);
 
 			return { success: true };
 		} catch (_error) {
@@ -82,25 +99,26 @@ export function useAuth() {
 		password: string
 	): Promise<{ success: boolean; error?: string }> => {
 		try {
-			const response = await fetch(`${env.PUBLIC_API_URL}/auth/sign-up/email`, {
+			const response = await fetch(`${env.PUBLIC_API_URL}/auth/register`, {
 				method: 'POST',
-				credentials: 'include', // Send/receive cookies
 				headers: {
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({ email, name: username, password }),
+				body: JSON.stringify({ email, username, password }),
 			});
 
 			if (!response.ok) {
 				const errorData = await response.json();
 				return {
 					success: false,
-					error: errorData.message || 'Registration failed',
+					error: errorData.error || 'Registration failed',
 				};
 			}
 
-			const data = await response.json();
+			const data: LoginResponse = await response.json();
 			setUser(data.user);
+			setToken(data.token);
+			localStorage.setItem('auth_token', data.token);
 
 			return { success: true };
 		} catch (_error) {
@@ -113,29 +131,28 @@ export function useAuth() {
 
 	const logout = async (force = false) => {
 		try {
-			const response = await fetch(`${env.PUBLIC_API_URL}/auth/sign-out`, {
-				method: 'POST',
-				credentials: 'include',
-			});
-			if (!response.ok) {
-				throw new Error(
-					`Logout failed: ${response.status} ${response.statusText}`
-				);
-			}
+			// Since we're using JWT, logout is just clearing local storage
+			// No server request needed
+			localStorage.removeItem('auth_token');
+			setUser(null);
+			setToken(null);
 		} catch (error) {
 			if (force) {
-				// Allow forced local logout despite server failure
-				console.warn('Server logout failed, but forcing local logout:', error);
+				// Allow forced local logout despite any errors
+				console.warn('Logout failed, but forcing local logout:', error);
+				localStorage.removeItem('auth_token');
+				setUser(null);
+				setToken(null);
 			} else {
-				// Re-throw error to prevent clearing local state on server failure
+				// Re-throw error to prevent clearing local state
 				throw error;
 			}
 		}
-		setUser(null);
 	};
 
 	return {
 		user,
+		token,
 		loading,
 		login,
 		register,
