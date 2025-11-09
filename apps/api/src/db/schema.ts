@@ -19,7 +19,7 @@ export const users = sqliteTable('users', {
 		.notNull(),
 });
 
-// Better-auth tables
+// Better-auth tables (temporary for migration)
 export const user = sqliteTable('user', {
 	id: text('id')
 		.primaryKey()
