@@ -112,12 +112,11 @@ export function ProfilePage() {
 			if (configForProvider && configForProvider.id) {
 				// Load the full config with API key
 				try {
-					const token = localStorage.getItem('auth_token');
 					const response = await fetch(
 						`http://localhost:3501/api/ai-config/${configForProvider.id}/full`,
 						{
+							credentials: 'include',
 							headers: {
-								Authorization: `Bearer ${token}`,
 								'Content-Type': 'application/json',
 							},
 						}
@@ -165,10 +164,9 @@ export function ProfilePage() {
 
 	const fetchConfigurations = async () => {
 		try {
-			const token = localStorage.getItem('auth_token');
 			const response = await fetch('http://localhost:3501/api/ai-config', {
+				credentials: 'include',
 				headers: {
-					Authorization: `Bearer ${token}`,
 					'Content-Type': 'application/json',
 				},
 			});
@@ -194,19 +192,11 @@ export function ProfilePage() {
 
 		try {
 			setConfigStatus('saving');
-			const token = localStorage.getItem('auth_token');
-
-			// Debug: Check if token exists
-			if (!token) {
-				setConfigStatus('error');
-				alert('Authentication token not found. Please log in again.');
-				return;
-			}
 
 			const response = await fetch('http://localhost:3501/api/ai-config', {
 				method: 'POST',
+				credentials: 'include',
 				headers: {
-					Authorization: `Bearer ${token}`,
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify({
@@ -227,9 +217,6 @@ export function ProfilePage() {
 
 				if (response.status === 401) {
 					alert('Authentication failed. Please log in again.');
-					// Clear invalid token
-					localStorage.removeItem('auth_token');
-					localStorage.removeItem('auth_user');
 					window.location.href = '/login';
 					return;
 				}
@@ -247,12 +234,11 @@ export function ProfilePage() {
 		if (!config.id) return;
 
 		try {
-			const token = localStorage.getItem('auth_token');
 			const response = await fetch(
 				`http://localhost:3501/api/ai-config/${config.id}/full`,
 				{
+					credentials: 'include',
 					headers: {
-						Authorization: `Bearer ${token}`,
 						'Content-Type': 'application/json',
 					},
 				}

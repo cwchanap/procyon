@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { AIConfig } from './types';
+import { env } from '../env';
 
 const AI_CONFIG_KEY = 'procyon_ai_config';
 
@@ -28,44 +29,42 @@ export async function loadAIConfig(): Promise<AIConfig> {
 	}
 
 	try {
-		// First try to load from backend API
-		const token = localStorage.getItem('auth_token');
-		if (token) {
-			const response = await fetch('http://localhost:3501/api/ai-config', {
-				headers: {
-					Authorization: `Bearer ${token}`,
-					'Content-Type': 'application/json',
-				},
-			});
+		// Try to load from backend API using session cookies
+		const response = await fetch(`${env.NEXT_PUBLIC_API_URL}/api/ai-config`, {
+			credentials: 'include',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+		});
 
-			if (response.ok) {
-				const data = await response.json();
-				const configurations = data.configurations || [];
-				const activeConfig = configurations.find(
-					(config: any) => config.isActive
+		if (response.ok) {
+			const data = await response.json();
+			const configurations = data.configurations || [];
+			const activeConfig = configurations.find(
+				(config: any) => config.isActive
+			);
+
+			if (activeConfig && activeConfig.hasApiKey) {
+				// Get the full config with API key
+				const fullConfigResponse = await fetch(
+					`${env.NEXT_PUBLIC_API_URL}/api/ai-config/${activeConfig.id}/full`,
+					{
+						credentials: 'include',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+					}
 				);
 
-				if (activeConfig && activeConfig.hasApiKey) {
-					// Get the full config with API key
-					const fullConfigResponse = await fetch(
-						`http://localhost:3501/api/ai-config/${activeConfig.id}/full`,
-						{
-							headers: {
-								Authorization: `Bearer ${token}`,
-								'Content-Type': 'application/json',
-							},
-						}
-					);
-
-					if (fullConfigResponse.ok) {
-						const fullConfig = await fullConfigResponse.json();
-						return {
-							provider: fullConfig.provider,
-							apiKey: fullConfig.apiKey,
-							model: fullConfig.modelName,
-							enabled: true,
-						};
-					}
+				if (fullConfigResponse.ok) {
+					const fullConfig = await fullConfigResponse.json();
+					return {
+						provider: fullConfig.provider,
+						apiKey: fullConfig.apiKey,
+						model: fullConfig.modelName,
+						enabled: true,
+						gameVariant: fullConfig.gameVariant,
+					};
 				}
 			}
 		}

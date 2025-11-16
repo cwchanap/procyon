@@ -3,9 +3,24 @@
  */
 
 interface EnvConfig {
+	NEXT_PUBLIC_API_URL: string;
 	PUBLIC_API_URL: string;
 }
 
+const API_BASE_URL =
+	import.meta.env.NEXT_PUBLIC_API_URL ||
+	import.meta.env.PUBLIC_API_URL ||
+	'/api';
+
 export const env: EnvConfig = {
-	PUBLIC_API_URL: import.meta.env.PUBLIC_API_URL || '/api',
+	NEXT_PUBLIC_API_URL: API_BASE_URL,
+	PUBLIC_API_URL: API_BASE_URL,
 };
+
+// Validate API URL in production to prevent insecure localhost usage
+if (import.meta.env.PROD && API_BASE_URL.includes('localhost')) {
+	// eslint-disable-next-line no-console
+	console.error(
+		'API base URL is configured to use localhost in production. This is insecure and will not work in production environments.'
+	);
+}

@@ -1,132 +1,97 @@
 import { Hono } from 'hono';
-import { authMiddleware, getUser } from '../auth/middleware';
+import { auth } from '../auth/better-auth';
 import { getDB, schema } from '../db';
 import { eq } from 'drizzle-orm';
-import { hashPassword, comparePassword } from '../auth/password';
-import jwt from 'jsonwebtoken';
-import { env } from '../env';
 
 const app = new Hono();
 
-// Login endpoint
-app.post('/login', async c => {
-	try {
-		const body = await c.req.json();
-		const { email, password } = body;
-
-		if (!email || !password) {
-			return c.json({ error: 'Email and password are required' }, 400);
-		}
-
-		const db = getDB();
-		const users = await db
-			.select()
-			.from(schema.users)
-			.where(eq(schema.users.email, email))
-			.limit(1);
-
-		if (users.length === 0) {
-			return c.json({ error: 'Invalid credentials' }, 401);
-		}
-
-		const user = users[0];
-		const isValidPassword = await comparePassword(password, user.passwordHash);
-
-		if (!isValidPassword) {
-			return c.json({ error: 'Invalid credentials' }, 401);
-		}
-
-		// Generate JWT token
-		const token = jwt.sign(
-			{
-				userId: user.id,
-				email: user.email,
-				username: user.username,
-			},
-			env.JWT_SECRET,
-			{ expiresIn: env.JWT_EXPIRES_IN }
-		);
-
-		return c.json({
-			user: {
-				id: user.id,
-				email: user.email,
-				username: user.username,
-			},
-			token,
-		});
-	} catch (error) {
-		console.error('Login error:', error);
-		return c.json({ error: 'Login failed' }, 500);
-	}
-});
-
-// Register endpoint
+// Custom registration endpoint to handle username
+// MUST come before wildcard route
 app.post('/register', async c => {
 	try {
 		const body = await c.req.json();
 		const { email, password, username } = body;
 
 		if (!email || !password || !username) {
-			return c.json({ error: 'Email, password, and username are required' }, 400);
+			return c.json(
+				{ error: 'Email, password, and username are required' },
+				400
+			);
 		}
 
 		const db = getDB();
 
-		// Check if user already exists
-		const existingUsers = await db
-			.select()
-			.from(schema.users)
-			.where(eq(schema.users.email, email))
-			.limit(1);
-
-		if (existingUsers.length > 0) {
-			return c.json({ error: 'User already exists' }, 400);
-		}
-
-		// Check if username is taken
-		const existingUsernames = await db
-			.select()
-			.from(schema.users)
-			.where(eq(schema.users.username, username))
-			.limit(1);
-
-		if (existingUsernames.length > 0) {
-			return c.json({ error: 'Username already taken' }, 400);
-		}
-
-		// Hash password and create user
-		const passwordHash = await hashPassword(password);
-
-		const newUser = await db
-			.insert(schema.users)
-			.values({
-				email,
-				username,
-				passwordHash,
-			})
-			.returning();
-
-		const user = newUser[0];
-
-		// Generate JWT token
-		const token = jwt.sign(
-			{
-				userId: user.id,
-				email: user.email,
-				username: user.username,
-			},
-			env.JWT_SECRET,
-			{ expiresIn: env.JWT_EXPIRES_IN }
+		// Forward to better-auth sign-up endpoint with username as name
+		const signUpUrl = new URL(c.req.raw.url);
+		signUpUrl.pathname = signUpUrl.pathname.replace(
+			/\/register$/,
+			'/sign-up/email'
 		);
+		const signUpRequest = new Request(signUpUrl.toString(), {
+			method: 'POST',
+			headers: c.req.raw.headers,
+			body: JSON.stringify({
+				email,
+				password,
+				name: username,
+			}),
+		});
 
-		return c.json({
-			user: {
-				id: user.id,
-				email: user.email,
-				username: user.username,
-			},
-			token,
+		const response = await auth.handler(signUpRequest);
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			return new Response(errorText, {
+				status: response.status,
+				headers: {
+					'Content-Type': 'application/json',
+				},
+			});
+		}
+
+		try {
+			const updatedUsers = await db
+				.update(schema.user)
+				.set({ username })
+				.where(eq(schema.user.email, email))
+				.returning({ id: schema.user.id });
+
+			if (updatedUsers.length !== 1) {
+				try {
+					await db.delete(schema.user).where(eq(schema.user.email, email));
+				} catch (cleanupErr) {
+					void cleanupErr;
+				}
+				return c.json({ error: 'Registration failed' }, 500);
+			}
+		} catch (e: unknown) {
+			const msg = (() => {
+				if (e && typeof e === 'object' && 'message' in e) {
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					return String((e as { message?: any }).message ?? '');
+				}
+				return '';
+			})();
+			if (msg.includes('UNIQUE') && msg.includes('username')) {
+				try {
+					await db.delete(schema.user).where(eq(schema.user.email, email));
+				} catch (cleanupErr) {
+					void cleanupErr;
+				}
+				return c.json({ error: 'Username already taken' }, 400);
+			}
+			try {
+				await db.delete(schema.user).where(eq(schema.user.email, email));
+			} catch (cleanupErr) {
+				void cleanupErr;
+			}
+			return c.json({ error: 'Registration failed' }, 500);
+		}
+
+		// Return the response with cookies
+		return new Response(await response.text(), {
+			status: response.status,
+			headers: response.headers,
 		});
 	} catch (error) {
 		console.error('Registration error:', error);
@@ -134,16 +99,10 @@ app.post('/register', async c => {
 	}
 });
 
-// Session endpoint
-app.get('/session', authMiddleware, async c => {
-	const user = getUser(c);
-	return c.json({
-		user: {
-			id: user.id,
-			email: user.email,
-			username: user.username,
-		},
-	});
+// Mount better-auth handlers for all remaining auth endpoints
+// This provides: /sign-in/email, /sign-up/email, /sign-out, /session, etc.
+app.all('/*', async c => {
+	return auth.handler(c.req.raw);
 });
 
 export default app;

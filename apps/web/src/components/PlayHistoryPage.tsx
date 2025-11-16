@@ -68,13 +68,13 @@ function formatDate(date: string): string {
 }
 
 export default function PlayHistoryPage() {
-	const { isAuthenticated, token, user } = useAuth();
+	const { isAuthenticated, user } = useAuth();
 	const [history, setHistory] = useState<ServerPlayHistory[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (!isAuthenticated || !token) {
+		if (!isAuthenticated) {
 			setIsLoading(false);
 			setHistory([]);
 			return;
@@ -89,8 +89,8 @@ export default function PlayHistoryPage() {
 
 				const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 					method: 'GET',
+					credentials: 'include',
 					headers: {
-						Authorization: `Bearer ${token}`,
 						'Content-Type': 'application/json',
 					},
 					signal: controller.signal,
@@ -130,7 +130,7 @@ export default function PlayHistoryPage() {
 		return () => {
 			controller.abort();
 		};
-	}, [isAuthenticated, token]);
+	}, [isAuthenticated]);
 
 	const summary = useMemo(() => {
 		if (!history.length) {

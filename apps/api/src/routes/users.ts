@@ -12,14 +12,15 @@ app.get('/me', authMiddleware, async c => {
 
 	const userProfile = await db
 		.select({
-			id: schema.users.id,
-			email: schema.users.email,
-			username: schema.users.username,
-			createdAt: schema.users.createdAt,
-			updatedAt: schema.users.updatedAt,
+			id: schema.user.id,
+			email: schema.user.email,
+			username: schema.user.username,
+			name: schema.user.name,
+			createdAt: schema.user.createdAt,
+			updatedAt: schema.user.updatedAt,
 		})
-		.from(schema.users)
-		.where(eq(schema.users.id, user.userId))
+		.from(schema.user)
+		.where(eq(schema.user.id, user.userId))
 		.get();
 
 	if (!userProfile) {
@@ -39,33 +40,37 @@ app.put('/me', authMiddleware, async c => {
 	const { username } = body;
 
 	if (username) {
-		// Check if username is already taken by another user
-		const existingUser = await db
-			.select()
-			.from(schema.users)
-			.where(eq(schema.users.username, username))
-			.get();
-
-		if (existingUser && existingUser.id !== user.userId) {
-			return c.json({ error: 'Username already taken' }, 409);
+		try {
+			await db
+				.update(schema.user)
+				.set({ username, updatedAt: new Date() })
+				.where(eq(schema.user.id, user.userId));
+		} catch (e: unknown) {
+			const msg = (() => {
+				if (e && typeof e === 'object' && 'message' in e) {
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					return String((e as { message?: any }).message ?? '');
+				}
+				return '';
+			})();
+			if (msg.includes('UNIQUE') && msg.includes('username')) {
+				return c.json({ error: 'Username already taken' }, 409);
+			}
+			throw e;
 		}
-
-		await db
-			.update(schema.users)
-			.set({ username, updatedAt: new Date().toISOString() })
-			.where(eq(schema.users.id, user.userId));
 	}
 
 	const updatedUser = await db
 		.select({
-			id: schema.users.id,
-			email: schema.users.email,
-			username: schema.users.username,
-			createdAt: schema.users.createdAt,
-			updatedAt: schema.users.updatedAt,
+			id: schema.user.id,
+			email: schema.user.email,
+			username: schema.user.username,
+			name: schema.user.name,
+			createdAt: schema.user.createdAt,
+			updatedAt: schema.user.updatedAt,
 		})
-		.from(schema.users)
-		.where(eq(schema.users.id, user.userId))
+		.from(schema.user)
+		.where(eq(schema.user.id, user.userId))
 		.get();
 
 	return c.json({

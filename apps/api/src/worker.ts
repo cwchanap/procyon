@@ -10,7 +10,7 @@ import aiConfigRoutes from './routes/ai-config';
 type Bindings = {
 	DB: D1Database;
 	ASSETS: Fetcher;
-	JWT_SECRET: string;
+	BETTER_AUTH_SECRET: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();

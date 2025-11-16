@@ -72,6 +72,14 @@ export const account = sqliteTable(
 			.references(() => user.id, { onDelete: 'cascade' }),
 		accessToken: text('access_token'),
 		refreshToken: text('refresh_token'),
+		idToken: text('id_token'),
+		accessTokenExpiresAt: integer('access_token_expires_at', {
+			mode: 'timestamp',
+		}),
+		refreshTokenExpiresAt: integer('refresh_token_expires_at', {
+			mode: 'timestamp',
+		}),
+		scope: text('scope'),
 		expiresAt: integer('expires_at', { mode: 'timestamp' }),
 		createdAt: integer('created_at', { mode: 'timestamp' })
 			.notNull()

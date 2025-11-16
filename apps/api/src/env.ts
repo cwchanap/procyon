@@ -7,12 +7,10 @@ interface EnvConfig {
 	NODE_ENV: string;
 	PORT: number;
 
-	// JWT
-	JWT_SECRET: string;
-	JWT_EXPIRES_IN: string;
-
-	// Bcrypt
-	BCRYPT_SALT_ROUNDS: number;
+	// Better Auth
+	BETTER_AUTH_SECRET: string;
+	BETTER_AUTH_URL: string;
+	BETTER_AUTH_TRUSTED_ORIGINS: string;
 
 	// Frontend
 	FRONTEND_URL: string;
@@ -46,10 +44,12 @@ export const env: EnvConfig = {
 	NODE_ENV: getEnv('NODE_ENV'),
 	PORT: getEnvNumber('PORT', 3501),
 
-	JWT_SECRET: getEnv('JWT_SECRET', 'fallback-secret-for-dev'),
-	JWT_EXPIRES_IN: getEnv('JWT_EXPIRES_IN', '7d'),
-
-	BCRYPT_SALT_ROUNDS: getEnvNumber('BCRYPT_SALT_ROUNDS', 12),
+	BETTER_AUTH_SECRET: getEnv('BETTER_AUTH_SECRET'),
+	BETTER_AUTH_URL: getEnv('BETTER_AUTH_URL', 'http://localhost:3501'),
+	BETTER_AUTH_TRUSTED_ORIGINS: getEnv(
+		'BETTER_AUTH_TRUSTED_ORIGINS',
+		'http://localhost:3500'
+	),
 
 	FRONTEND_URL: getEnv('FRONTEND_URL', 'http://localhost:3500'),
 
@@ -59,6 +59,13 @@ export const env: EnvConfig = {
 
 	CI: getEnvBoolean('CI'),
 };
+
+// Validate critical environment variables
+if (process.env.NODE_ENV === 'production' && !env.BETTER_AUTH_SECRET) {
+	throw new Error(
+		'BETTER_AUTH_SECRET is required in production. Set the BETTER_AUTH_SECRET environment variable.'
+	);
+}
 
 export const isDevelopment = env.NODE_ENV === 'development';
 export const isProduction = env.NODE_ENV === 'production';
