@@ -26,6 +26,7 @@ import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
 import AISettingsDialog from './ai/AISettingsDialog';
 import type { AIMove } from './ai/AIDebugDialog';
+import { useAuth } from '../lib/auth';
 
 interface XiangqiDemo {
 	id: string;
@@ -59,6 +60,7 @@ const XiangqiGame: React.FC = () => {
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [hasGameEnded, setHasGameEnded] = useState(false);
+	const { isAuthenticated } = useAuth();
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -118,13 +120,16 @@ const XiangqiGame: React.FC = () => {
 			gameState.status === 'stalemate' ||
 			gameState.status === 'draw';
 
-		if (isGameOver && gameStarted && gameMode === 'ai' && !hasGameEnded) {
+		if (
+			isGameOver &&
+			gameStarted &&
+			gameMode === 'ai' &&
+			!hasGameEnded &&
+			isAuthenticated
+		) {
 			setHasGameEnded(true);
 
 			const savePlayHistory = async () => {
-				const token = localStorage.getItem('auth_token');
-				if (!token) return;
-
 				try {
 					let status: 'win' | 'loss' | 'draw';
 					if (gameState.status === 'checkmate') {
@@ -145,8 +150,8 @@ const XiangqiGame: React.FC = () => {
 
 					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 						method: 'POST',
+						credentials: 'include',
 						headers: {
-							Authorization: `Bearer ${token}`,
 							'Content-Type': 'application/json',
 						},
 						body: JSON.stringify({
@@ -176,6 +181,7 @@ const XiangqiGame: React.FC = () => {
 		aiPlayer,
 		aiConfig.provider,
 		aiConfig.model,
+		isAuthenticated,
 	]);
 
 	const createCustomXiangqiBoard = useCallback(
@@ -474,113 +480,110 @@ const XiangqiGame: React.FC = () => {
 		[getCurrentDemo]
 	);
 
-	const handleProviderChange = useCallback(async (newProvider: AIProvider) => {
-		const providerInfo = AI_PROVIDERS[newProvider];
-		const fallbackModel =
-			providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
-
-		setAIConfig(prev => ({
-			...prev,
-			provider: newProvider,
-			model: fallbackModel,
-			apiKey: '',
-		}));
-		setErrorMsg(null);
-
-		try {
-			const token = localStorage.getItem('auth_token');
-			if (!token) {
-				setErrorMsg('Please sign in to manage your AI settings.');
-				// eslint-disable-next-line no-console
-				console.warn(
-					'Missing auth token when loading AI configuration for provider',
-					newProvider
-				);
-				return;
-			}
-
-			const response = await fetch('http://localhost:3501/api/ai-config', {
-				headers: {
-					Authorization: `Bearer ${token}`,
-					'Content-Type': 'application/json',
-				},
-			});
-
-			if (!response.ok) {
-				// eslint-disable-next-line no-console
-				console.error(
-					`Failed to fetch AI configurations for provider ${newProvider}:`,
-					response.status,
-					response.statusText
-				);
-				setErrorMsg(
-					"We couldn't load your saved AI settings. Please try again from AI Settings."
-				);
-				return;
-			}
-
-			const data = await response.json();
-			const configurations = (data.configurations || []) as Array<{
-				id?: string;
-				provider?: AIProvider;
-				hasApiKey?: boolean;
-			}>;
-			const providerConfig = configurations.find(
-				config => config.provider === newProvider && config.hasApiKey
-			);
-
-			if (!providerConfig?.id) {
-				// eslint-disable-next-line no-console
-				console.warn(
-					'No stored API key found for provider; prompt user to add one:',
-					newProvider
-				);
-				setErrorMsg(
-					'Add an API key for this provider in AI Settings to reuse it here.'
-				);
-				return;
-			}
-
-			const fullConfigResponse = await fetch(
-				`http://localhost:3501/api/ai-config/${providerConfig.id}/full`,
-				{
-					headers: {
-						Authorization: `Bearer ${token}`,
-						'Content-Type': 'application/json',
-					},
-				}
-			);
-
-			if (!fullConfigResponse.ok) {
-				// eslint-disable-next-line no-console
-				console.error(
-					`Failed to fetch full AI configuration for provider ${newProvider}:`,
-					fullConfigResponse.status,
-					fullConfigResponse.statusText
-				);
-				setErrorMsg(
-					"We couldn't load your saved API key details. Please try again."
-				);
-				return;
-			}
-
-			const fullConfig = await fullConfigResponse.json();
-			const resolvedModel = fullConfig.modelName || fallbackModel;
+	const handleProviderChange = useCallback(
+		async (newProvider: AIProvider) => {
+			const providerInfo = AI_PROVIDERS[newProvider];
+			const fallbackModel =
+				providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
 
 			setAIConfig(prev => ({
 				...prev,
 				provider: newProvider,
-				model: resolvedModel,
-				apiKey: fullConfig.apiKey || '',
+				model: fallbackModel,
+				apiKey: '',
 			}));
-		} catch (_error) {
-			// eslint-disable-next-line no-console
-			console.error('Failed to load AI provider configuration', _error);
-			setErrorMsg(
-				'Something went wrong loading AI settings. Please try again.'
-			);
-		}
-	}, []);
+			setErrorMsg(null);
+
+			try {
+				if (!isAuthenticated) {
+					setErrorMsg('Please sign in to manage your AI settings.');
+					return;
+				}
+
+				const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
+					credentials: 'include',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+				});
+
+				if (!response.ok) {
+					// eslint-disable-next-line no-console
+					console.error(
+						`Failed to fetch AI configurations for provider ${newProvider}:`,
+						response.status,
+						response.statusText
+					);
+					setErrorMsg(
+						"We couldn't load your saved AI settings. Please try again from AI Settings."
+					);
+					return;
+				}
+
+				const data = await response.json();
+				const configurations = (data.configurations || []) as Array<{
+					id?: string;
+					provider?: AIProvider;
+					hasApiKey?: boolean;
+				}>;
+				const providerConfig = configurations.find(
+					config => config.provider === newProvider && config.hasApiKey
+				);
+
+				if (!providerConfig?.id) {
+					// eslint-disable-next-line no-console
+					console.warn(
+						'No stored API key found for provider; prompt user to add one:',
+						newProvider
+					);
+					setErrorMsg(
+						'Add an API key for this provider in AI Settings to reuse it here.'
+					);
+					return;
+				}
+
+				const fullConfigResponse = await fetch(
+					`${env.PUBLIC_API_URL}/ai-config/${providerConfig.id}/full`,
+					{
+						credentials: 'include',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+					}
+				);
+
+				if (!fullConfigResponse.ok) {
+					// eslint-disable-next-line no-console
+					console.error(
+						`Failed to fetch full AI configuration for provider ${newProvider}:`,
+						fullConfigResponse.status,
+						fullConfigResponse.statusText
+					);
+					setErrorMsg(
+						"We couldn't load your saved API key details. Please try again."
+					);
+					return;
+				}
+
+				const fullConfig = await fullConfigResponse.json();
+				const resolvedModel = fullConfig.modelName || fallbackModel;
+
+				setAIConfig(prev => ({
+					...prev,
+					provider: newProvider,
+					model: resolvedModel,
+					apiKey: fullConfig.apiKey || '',
+				}));
+			} catch (_error) {
+				// eslint-disable-next-line no-console
+				console.error('Failed to load AI provider configuration', _error);
+				setErrorMsg(
+					'Something went wrong loading AI settings. Please try again.'
+				);
+			}
+		},
+		[aiConfig.model, isAuthenticated]
+	);
 
 	const handleDemoChange = useCallback(
 		(demoId: string) => {
@@ -821,34 +824,37 @@ const XiangqiGame: React.FC = () => {
 							onToggleDebug={() => setIsDebugMode(!isDebugMode)}
 							onExport={() => {}}
 						/>
-						{showDebugWinButton && hasGameStarted && !isGameOver && (
-							<div className='flex gap-2 justify-center text-xs'>
-								<button
-									onClick={triggerDebugWin}
-									className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
-									title='Debug: Win'
-								>
-									🏆 Win
-								</button>
-								<button
-									onClick={triggerDebugLoss}
-									className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
-									title='Debug: Loss'
-								>
-									💀 Loss
-								</button>
-								<button
-									onClick={triggerDebugDraw}
-									className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
-									title='Debug: Draw'
-								>
-									🤝 Draw
-								</button>
-								<span className='text-gray-400 self-center'>
-									(Shift+D to toggle)
-								</span>
-							</div>
-						)}
+						{showDebugWinButton &&
+							hasGameStarted &&
+							!isGameOver &&
+							isAuthenticated && (
+								<div className='flex gap-2 justify-center text-xs'>
+									<button
+										onClick={triggerDebugWin}
+										className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
+										title='Debug: Win'
+									>
+										🏆 Win
+									</button>
+									<button
+										onClick={triggerDebugLoss}
+										className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
+										title='Debug: Loss'
+									>
+										💀 Loss
+									</button>
+									<button
+										onClick={triggerDebugDraw}
+										className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
+										title='Debug: Draw'
+									>
+										🤝 Draw
+									</button>
+									<span className='text-gray-400 self-center'>
+										(Shift+D to toggle)
+									</span>
+								</div>
+							)}
 					</>
 				)}
 			</div>
