@@ -97,9 +97,6 @@ const JungleGame: React.FC = () => {
 			setHasGameEnded(true);
 
 			const savePlayHistory = async () => {
-				const token = localStorage.getItem('auth_token');
-				if (!token) return;
-
 				try {
 					let status: 'win' | 'loss' | 'draw';
 					if (gameState.status === 'checkmate') {
@@ -120,8 +117,8 @@ const JungleGame: React.FC = () => {
 
 					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 						method: 'POST',
+						credentials: 'include',
 						headers: {
-							Authorization: `Bearer ${token}`,
 							'Content-Type': 'application/json',
 						},
 						body: JSON.stringify({
@@ -132,8 +129,10 @@ const JungleGame: React.FC = () => {
 						}),
 					});
 
+					// eslint-disable-next-line no-console
 					console.log('✅ Jungle play history saved successfully');
 				} catch (error) {
+					// eslint-disable-next-line no-console
 					console.error('Failed to save Jungle play history:', error);
 				}
 			};
@@ -384,6 +383,7 @@ const JungleGame: React.FC = () => {
 	}, []);
 
 	const triggerDebugWin = useCallback(() => {
+		// eslint-disable-next-line no-console
 		console.log('🎯 Debug: Triggering win for human player (Jungle)');
 		setGameState(prev => ({
 			...prev,
@@ -393,6 +393,7 @@ const JungleGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugLoss = useCallback(() => {
+		// eslint-disable-next-line no-console
 		console.log('🎯 Debug: Triggering loss for human player (Jungle)');
 		const humanPlayer = aiPlayer === 'red' ? 'blue' : 'red';
 		setGameState(prev => ({
@@ -403,6 +404,7 @@ const JungleGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugDraw = useCallback(() => {
+		// eslint-disable-next-line no-console
 		console.log('🎯 Debug: Triggering draw (Jungle)');
 		setGameState(prev => ({
 			...prev,
@@ -535,7 +537,10 @@ const JungleGame: React.FC = () => {
 					provider={aiConfig.provider}
 					model={aiConfig.model}
 					onProviderChange={provider =>
-						setAIConfig({ ...aiConfig, provider: provider as any })
+						setAIConfig({
+							...aiConfig,
+							provider: provider as AIConfig['provider'],
+						})
 					}
 					onModelChange={model => setAIConfig({ ...aiConfig, model })}
 					aiPlayerOptions={[

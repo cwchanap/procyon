@@ -111,9 +111,6 @@ const ShogiGame: React.FC = () => {
 			setHasGameEnded(true);
 
 			const savePlayHistory = async () => {
-				const token = localStorage.getItem('auth_token');
-				if (!token) return;
-
 				try {
 					let status: 'win' | 'loss' | 'draw';
 					if (gameState.status === 'checkmate') {
@@ -134,8 +131,8 @@ const ShogiGame: React.FC = () => {
 
 					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 						method: 'POST',
+						credentials: 'include',
 						headers: {
-							Authorization: `Bearer ${token}`,
 							'Content-Type': 'application/json',
 						},
 						body: JSON.stringify({
@@ -146,8 +143,10 @@ const ShogiGame: React.FC = () => {
 						}),
 					});
 
+					// eslint-disable-next-line no-console
 					console.log('✅ Shogi play history saved successfully');
 				} catch (error) {
+					// eslint-disable-next-line no-console
 					console.error('Failed to save Shogi play history:', error);
 				}
 			};
@@ -445,6 +444,7 @@ const ShogiGame: React.FC = () => {
 	}, []);
 
 	const triggerDebugWin = useCallback(() => {
+		// eslint-disable-next-line no-console
 		console.log('🎯 Debug: Triggering win for human player (Shogi)');
 		setGameState(prev => ({
 			...prev,
@@ -454,6 +454,7 @@ const ShogiGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugLoss = useCallback(() => {
+		// eslint-disable-next-line no-console
 		console.log('🎯 Debug: Triggering loss for human player (Shogi)');
 		const humanPlayer = aiPlayer === 'sente' ? 'gote' : 'sente';
 		setGameState(prev => ({
@@ -464,6 +465,7 @@ const ShogiGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugDraw = useCallback(() => {
+		// eslint-disable-next-line no-console
 		console.log('🎯 Debug: Triggering draw (Shogi)');
 		setGameState(prev => ({
 			...prev,

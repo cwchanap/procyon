@@ -157,8 +157,10 @@ const XiangqiGame: React.FC = () => {
 						}),
 					});
 
+					// eslint-disable-next-line no-console
 					console.log('✅ Xiangqi play history saved successfully');
 				} catch (error) {
+					// eslint-disable-next-line no-console
 					console.error('Failed to save Xiangqi play history:', error);
 				}
 			};
@@ -403,6 +405,7 @@ const XiangqiGame: React.FC = () => {
 	}, []);
 
 	const triggerDebugWin = useCallback(() => {
+		// eslint-disable-next-line no-console
 		console.log('🎯 Debug: Triggering win for human player (Xiangqi)');
 		setGameState(prev => ({
 			...prev,
@@ -412,6 +415,7 @@ const XiangqiGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugLoss = useCallback(() => {
+		// eslint-disable-next-line no-console
 		console.log('🎯 Debug: Triggering loss for human player (Xiangqi)');
 		const humanPlayer = aiPlayer === 'red' ? 'black' : 'red';
 		setGameState(prev => ({
@@ -422,6 +426,7 @@ const XiangqiGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugDraw = useCallback(() => {
+		// eslint-disable-next-line no-console
 		console.log('🎯 Debug: Triggering draw (Xiangqi)');
 		setGameState(prev => ({
 			...prev,
@@ -515,9 +520,13 @@ const XiangqiGame: React.FC = () => {
 			}
 
 			const data = await response.json();
-			const configurations = data.configurations || [];
+			const configurations = (data.configurations || []) as Array<{
+				id?: string;
+				provider?: AIProvider;
+				hasApiKey?: boolean;
+			}>;
 			const providerConfig = configurations.find(
-				(config: any) => config.provider === newProvider && config.hasApiKey
+				config => config.provider === newProvider && config.hasApiKey
 			);
 
 			if (!providerConfig?.id) {
