@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { env } from '../../lib/env';
 
 interface AISettingsDialogProps {
 	aiPlayer: string;
@@ -51,17 +52,7 @@ const MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
 	],
 };
 
-const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-
-if (!rawApiBaseUrl && process.env.NODE_ENV === 'production') {
-	throw new Error(
-		'NEXT_PUBLIC_API_URL is required in production. Set the NEXT_PUBLIC_API_URL environment variable.'
-	);
-}
-
-const API_BASE_URL =
-	rawApiBaseUrl ||
-	(process.env.NODE_ENV === 'development' ? 'http://localhost:3501' : '');
+const API_BASE_URL = env.PUBLIC_API_URL;
 
 const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 	aiPlayer,
@@ -81,7 +72,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 	useEffect(() => {
 		const fetchProviders = async () => {
 			try {
-				const response = await fetch(`${API_BASE_URL}/api/ai-config`, {
+				const response = await fetch(`${API_BASE_URL}/ai-config`, {
 					credentials: 'include',
 					headers: {
 						'Content-Type': 'application/json',

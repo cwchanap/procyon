@@ -30,7 +30,7 @@ export async function loadAIConfig(): Promise<AIConfig> {
 
 	try {
 		// Try to load from backend API using session cookies
-		const response = await fetch(`${env.NEXT_PUBLIC_API_URL}/api/ai-config`, {
+		const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 			credentials: 'include',
 			headers: {
 				'Content-Type': 'application/json',
@@ -47,7 +47,7 @@ export async function loadAIConfig(): Promise<AIConfig> {
 			if (activeConfig && activeConfig.hasApiKey) {
 				// Get the full config with API key
 				const fullConfigResponse = await fetch(
-					`${env.NEXT_PUBLIC_API_URL}/api/ai-config/${activeConfig.id}/full`,
+					`${env.PUBLIC_API_URL}/ai-config/${activeConfig.id}/full`,
 					{
 						credentials: 'include',
 						headers: {
