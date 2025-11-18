@@ -1,8 +1,23 @@
 import { createAuthClient } from 'better-auth/react';
 import { env } from './env';
 
+function resolveApiBaseUrl(): string {
+	const baseUrl = env.NEXT_PUBLIC_API_URL;
+	if (/^https?:\/\//i.test(baseUrl)) {
+		return baseUrl.replace(/\/$/, '');
+	}
+	if (typeof window !== 'undefined' && window.location) {
+		return new URL(baseUrl, window.location.origin)
+			.toString()
+			.replace(/\/$/, '');
+	}
+	return 'http://localhost:3501/api';
+}
+
+const AUTH_BASE_URL = `${resolveApiBaseUrl()}/auth`;
+
 export const authClient = createAuthClient({
-	baseURL: `${env.NEXT_PUBLIC_API_URL}/auth`,
+	baseURL: AUTH_BASE_URL,
 	fetchOptions: {
 		credentials: 'include',
 	},
