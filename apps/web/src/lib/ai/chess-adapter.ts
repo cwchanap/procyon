@@ -232,13 +232,22 @@ Rules:
 	}
 
 	algebraicToPosition(algebraic: string): GamePosition {
-		const file = algebraic[0];
-		const rank = algebraic[1];
+		const normalized = algebraic?.trim().toLowerCase();
+		const file = normalized?.[0];
+		const rank = normalized?.[1];
 
-		return {
-			col: FILES.indexOf(file),
-			row: RANKS.indexOf(rank),
-		};
+		if (!file || !rank) {
+			throw new Error(`Invalid algebraic notation: ${algebraic}`);
+		}
+
+		const col = FILES.indexOf(file);
+		const row = RANKS.indexOf(rank);
+
+		if (col === -1 || row === -1) {
+			throw new Error(`Invalid algebraic notation: ${algebraic}`);
+		}
+
+		return { col, row };
 	}
 
 	getPieceSymbol(piece: GamePiece): string {
