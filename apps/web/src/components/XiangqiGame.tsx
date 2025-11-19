@@ -333,22 +333,57 @@ const XiangqiGame: React.FC = () => {
 		) {
 			const makeAIMove = async () => {
 				setIsAIThinking(true);
+				setErrorMsg(null);
 				try {
 					const aiResponse = await aiService.makeMove(gameState);
 					if (aiResponse) {
+						const fromMove = aiResponse.move?.from;
+						const toMove = aiResponse.move?.to;
+
+						if (!fromMove || !toMove) {
+							throw new Error('AI response missing move coordinates');
+						}
+
 						// Parse AI move from algebraic notation
-						const fromPos = algebraicToPosition(aiResponse.move.from);
-						const toPos = algebraicToPosition(aiResponse.move.to);
+						const fromPos = algebraicToPosition(fromMove);
+						const toPos = algebraicToPosition(toMove);
 
 						// Apply the move using xiangqi game logic
 						const moveResult = selectSquare(gameState, fromPos);
-						if (moveResult.selectedSquare) {
-							const finalResult = selectSquare(moveResult, toPos);
-							setGameState(finalResult);
+						const hasSelectedPiece = Boolean(moveResult.selectedSquare);
+
+						if (!hasSelectedPiece) {
+							throw new Error(
+								`AI move invalid: no selectable piece at ${fromMove}`
+							);
 						}
+
+						const finalResult = selectSquare(moveResult, toPos);
+						const moveApplied =
+							finalResult !== moveResult &&
+							finalResult.selectedSquare === null &&
+							finalResult.possibleMoves.length === 0;
+
+						if (!moveApplied) {
+							throw new Error(
+								`AI move invalid: unable to apply ${fromMove} -> ${toMove}`
+							);
+						}
+
+						setGameState(finalResult);
 					}
-				} catch (_error) {
-					// console.error('AI move failed:', error);
+				} catch (error) {
+					const message =
+						error instanceof Error
+							? `${error.message}${error.stack ? `\n${error.stack}` : ''}`
+							: 'Unknown AI error occurred';
+					// eslint-disable-next-line no-console
+					console.error('AI move failed:', error);
+					setErrorMsg(
+						`AI move failed. ${
+							message || 'Please try again or change providers.'
+						}`
+					);
 				} finally {
 					setIsAIThinking(false);
 				}
@@ -361,14 +396,24 @@ const XiangqiGame: React.FC = () => {
 
 	const algebraicToPosition = useCallback(
 		(algebraic: string): XiangqiPosition => {
-			const file = algebraic[0];
-			const rank = algebraic.slice(1);
+			const normalized = algebraic?.trim().toLowerCase();
+			const file = normalized?.[0];
+			const rank = normalized?.slice(1);
 			const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
 			const ranks = ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1'];
-			return {
-				col: files.indexOf(file),
-				row: ranks.indexOf(rank),
-			};
+
+			if (!file || !rank) {
+				throw new Error(`Invalid algebraic notation: ${algebraic}`);
+			}
+
+			const col = files.indexOf(file);
+			const row = ranks.indexOf(rank);
+
+			if (col === -1 || row === -1) {
+				throw new Error(`Invalid algebraic notation: ${algebraic}`);
+			}
+
+			return { col, row };
 		},
 		[]
 	);
@@ -485,13 +530,6 @@ const XiangqiGame: React.FC = () => {
 			const providerInfo = AI_PROVIDERS[newProvider];
 			const fallbackModel =
 				providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
-
-			setAIConfig(prev => ({
-				...prev,
-				provider: newProvider,
-				model: fallbackModel,
-				apiKey: '',
-			}));
 			setErrorMsg(null);
 
 			try {

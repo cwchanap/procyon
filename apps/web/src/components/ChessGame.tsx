@@ -13,7 +13,6 @@ import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
-import { env } from '../lib/env';
 import AIStatusPanel from './game/AIStatusPanel';
 import GameControls from './game/GameControls';
 import DemoSelector from './game/DemoSelector';
@@ -26,6 +25,8 @@ import { createChessAI } from '../lib/ai';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
 import { GameExporter } from '../lib/ai/game-export';
 import { useAuth } from '../lib/auth';
+import { AI_PROVIDERS } from '../lib/ai/types';
+import { env } from '../lib/env';
 
 interface LogicDemo {
 	id: string;
@@ -58,6 +59,106 @@ const ChessGame: React.FC = () => {
 	const [hasGameEnded, setHasGameEnded] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const { isAuthenticated } = useAuth();
+	const [providerError, setProviderError] = useState<string | null>(null);
+
+	const handleProviderChange = useCallback(
+		async (newProvider: AIProvider) => {
+			const providerInfo = AI_PROVIDERS[newProvider];
+			const fallbackModel =
+				providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
+
+			setProviderError(null);
+
+			try {
+				if (!isAuthenticated) {
+					setProviderError('Please sign in to manage your AI settings.');
+					return;
+				}
+
+				const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
+					credentials: 'include',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+				});
+
+				if (!response.ok) {
+					// eslint-disable-next-line no-console
+					console.error(
+						`Failed to fetch AI configurations for provider ${newProvider}:`,
+						response.status,
+						response.statusText
+					);
+					setProviderError(
+						"We couldn't load your saved AI settings. Please try again from AI Settings."
+					);
+					return;
+				}
+
+				const data = await response.json();
+				const configurations = (data.configurations || []) as Array<{
+					id?: string;
+					provider?: AIProvider;
+					hasApiKey?: boolean;
+				}>;
+				const providerConfig = configurations.find(
+					config => config.provider === newProvider && config.hasApiKey
+				);
+
+				if (!providerConfig?.id) {
+					// eslint-disable-next-line no-console
+					console.warn(
+						'No stored API key found for provider; prompt user to add one:',
+						newProvider
+					);
+					setProviderError(
+						'Add an API key for this provider in AI Settings to reuse it here.'
+					);
+					return;
+				}
+
+				const fullConfigResponse = await fetch(
+					`${env.PUBLIC_API_URL}/ai-config/${providerConfig.id}/full`,
+					{
+						credentials: 'include',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+					}
+				);
+
+				if (!fullConfigResponse.ok) {
+					// eslint-disable-next-line no-console
+					console.error(
+						`Failed to fetch full AI configuration for provider ${newProvider}:`,
+						fullConfigResponse.status,
+						fullConfigResponse.statusText
+					);
+					setProviderError(
+						"We couldn't load your saved API key details. Please try again."
+					);
+					return;
+				}
+
+				const fullConfig = await fullConfigResponse.json();
+				const resolvedModel = fullConfig.modelName || fallbackModel;
+
+				setAIConfig(prev => ({
+					...prev,
+					provider: newProvider,
+					model: resolvedModel,
+					apiKey: fullConfig.apiKey || '',
+				}));
+			} catch (_error) {
+				// eslint-disable-next-line no-console
+				console.error('Failed to load AI provider configuration', _error);
+				setProviderError(
+					'Something went wrong loading AI settings. Please try again.'
+				);
+			}
+		},
+		[aiConfig.model, isAuthenticated]
+	);
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -759,7 +860,7 @@ const ChessGame: React.FC = () => {
 					provider={aiConfig.provider}
 					model={aiConfig.model}
 					onProviderChange={provider =>
-						setAIConfig(prev => ({ ...prev, provider: provider as AIProvider }))
+						handleProviderChange(provider as AIProvider)
 					}
 					onModelChange={model => setAIConfig(prev => ({ ...prev, model }))}
 					aiPlayerOptions={[
@@ -771,6 +872,23 @@ const ChessGame: React.FC = () => {
 				/>
 			}
 		>
+			{providerError && (
+				<div className='w-full max-w-4xl mx-auto mb-4'>
+					<div
+						className='flex items-start justify-between gap-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100'
+						role='alert'
+					>
+						<p className='text-sm'>{providerError}</p>
+						<button
+							type='button'
+							className='text-xs font-semibold uppercase tracking-wide text-red-200 hover:text-red-100'
+							onClick={() => setProviderError(null)}
+						>
+							Dismiss
+						</button>
+					</div>
+				</div>
+			)}
 			{gameMode === 'ai' &&
 				!gameStarted &&
 				!isLoadingConfig &&

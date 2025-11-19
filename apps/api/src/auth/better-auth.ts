@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth';
+import { username } from 'better-auth/plugins';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { getDB } from '../db';
 import { env } from '../env';
@@ -38,6 +39,7 @@ export function getAuth() {
 					maxAge: 5 * 60, // 5 minutes
 				},
 			},
+			plugins: [username()],
 		});
 	}
 	return authInstance;
