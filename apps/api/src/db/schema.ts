@@ -110,9 +110,9 @@ export const verification = sqliteTable('verification', {
 
 export const aiConfigurations = sqliteTable('ai_configurations', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
-	userId: integer('user_id')
+	userId: text('user_id')
 		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
+		.references(() => user.id, { onDelete: 'cascade' }),
 	provider: text('provider').notNull(), // 'gemini', 'openrouter', 'openai', etc.
 	modelName: text('model_name').notNull(), // 'gemini-2.0-flash', 'gpt-4o-mini', etc.
 	apiKey: text('api_key').notNull(),
@@ -127,9 +127,9 @@ export const aiConfigurations = sqliteTable('ai_configurations', {
 
 export const playHistory = sqliteTable('play_history', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
-	userId: integer('user_id')
+	userId: text('user_id')
 		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
+		.references(() => user.id, { onDelete: 'cascade' }),
 	chessId: text('chess_id').$type<ChessVariantId>().notNull(),
 	date: text('date').notNull(),
 	status: text('status').$type<GameResultStatus>().notNull(),

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { useAuth } from '../lib/auth';
+import { env } from '../lib/env';
 
 // AI Provider and Model configurations
 const AI_PROVIDERS = {
@@ -113,7 +114,7 @@ export function ProfilePage() {
 				// Load the full config with API key
 				try {
 					const response = await fetch(
-						`http://localhost:3501/api/ai-config/${configForProvider.id}/full`,
+						`${env.PUBLIC_API_URL}/ai-config/${configForProvider.id}/full`,
 						{
 							credentials: 'include',
 							headers: {
@@ -164,7 +165,7 @@ export function ProfilePage() {
 
 	const fetchConfigurations = async () => {
 		try {
-			const response = await fetch('http://localhost:3501/api/ai-config', {
+			const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 				credentials: 'include',
 				headers: {
 					'Content-Type': 'application/json',
@@ -193,7 +194,7 @@ export function ProfilePage() {
 		try {
 			setConfigStatus('saving');
 
-			const response = await fetch('http://localhost:3501/api/ai-config', {
+			const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -235,7 +236,7 @@ export function ProfilePage() {
 
 		try {
 			const response = await fetch(
-				`http://localhost:3501/api/ai-config/${config.id}/full`,
+				`${env.PUBLIC_API_URL}/ai-config/${config.id}/full`,
 				{
 					credentials: 'include',
 					headers: {
