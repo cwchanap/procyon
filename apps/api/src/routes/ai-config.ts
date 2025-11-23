@@ -1,10 +1,6 @@
 import { Hono } from 'hono';
 import { getDB } from '../db/index';
-import {
-	aiConfigurations,
-	type NewAiConfiguration,
-	type AiConfiguration,
-} from '../db/schema';
+import { aiConfigurations, type AiConfiguration } from '../db/schema';
 import { eq, and, ne } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { z } from 'zod';
@@ -92,7 +88,7 @@ app.post('/', authMiddleware, zValidator('json', aiConfigSchema), async c => {
 			savedConfig = updatedConfig;
 		} else {
 			// Create new configuration
-			const newConfig: NewAiConfiguration = {
+			const newConfig: typeof aiConfigurations.$inferInsert = {
 				userId,
 				provider,
 				modelName,

@@ -6,20 +6,6 @@ import {
 	OpponentLlmId,
 } from '../constants/game';
 
-export const users = sqliteTable('users', {
-	id: integer('id').primaryKey({ autoIncrement: true }),
-	email: text('email').notNull().unique(),
-	username: text('username').notNull().unique(),
-	passwordHash: text('password_hash').notNull(),
-	createdAt: text('created_at')
-		.default(sql`CURRENT_TIMESTAMP`)
-		.notNull(),
-	updatedAt: text('updated_at')
-		.default(sql`CURRENT_TIMESTAMP`)
-		.notNull(),
-});
-
-// Better-auth tables (temporary for migration)
 export const user = sqliteTable('user', {
 	id: text('id')
 		.primaryKey()
@@ -133,23 +119,13 @@ export const playHistory = sqliteTable('play_history', {
 	chessId: text('chess_id').$type<ChessVariantId>().notNull(),
 	date: text('date').notNull(),
 	status: text('status').$type<GameResultStatus>().notNull(),
-	opponentUserId: integer('opponent_user_id').references(() => users.id, {
-		onDelete: 'set null',
-	}),
+	opponentUserId: integer('opponent_user_id'),
 	opponentLlmId: text('opponent_llm_id').$type<OpponentLlmId | null>(),
 });
 
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
-export type BetterAuthUser = typeof user.$inferSelect;
-export type NewBetterAuthUser = typeof user.$inferInsert;
+export type User = typeof user.$inferSelect;
 export type Session = typeof session.$inferSelect;
-export type NewSession = typeof session.$inferInsert;
 export type Account = typeof account.$inferSelect;
-export type NewAccount = typeof account.$inferInsert;
 export type Verification = typeof verification.$inferSelect;
-export type NewVerification = typeof verification.$inferInsert;
 export type AiConfiguration = typeof aiConfigurations.$inferSelect;
-export type NewAiConfiguration = typeof aiConfigurations.$inferInsert;
 export type PlayHistory = typeof playHistory.$inferSelect;
-export type NewPlayHistory = typeof playHistory.$inferInsert;

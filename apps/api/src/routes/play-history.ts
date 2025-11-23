@@ -4,11 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { desc, eq } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
-import {
-	playHistory,
-	type NewPlayHistory,
-	type PlayHistory,
-} from '../db/schema';
+import { playHistory, type PlayHistory } from '../db/schema';
 import {
 	ChessVariantId,
 	GameResultStatus,
@@ -73,7 +69,7 @@ app.post(
 		const user = getUser(c);
 		const body = c.req.valid('json');
 
-		const newPlayHistory: NewPlayHistory = {
+		const newPlayHistory: typeof playHistory.$inferInsert = {
 			userId: user.userId,
 			chessId: body.chessId,
 			status: body.status,
