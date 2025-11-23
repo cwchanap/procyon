@@ -3,10 +3,10 @@ import { HTTPException } from 'hono/http-exception';
 import { getDB, schema } from '../db';
 import { eq } from 'drizzle-orm';
 import { auth } from './better-auth';
-import type { BetterAuthUser } from '../db/schema';
+import type { User } from '../db/schema';
 
 export interface AuthContext {
-	user: BetterAuthUser & { userId: string };
+	user: User & { userId: string };
 }
 
 export async function authMiddleware(c: Context, next: Next) {
@@ -50,6 +50,6 @@ export async function authMiddleware(c: Context, next: Next) {
 	}
 }
 
-export function getUser(c: Context): BetterAuthUser & { userId: string } {
-	return c.get('user') as BetterAuthUser & { userId: string };
+export function getUser(c: Context): User & { userId: string } {
+	return c.get('user') as User & { userId: string };
 }
