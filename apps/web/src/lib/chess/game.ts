@@ -206,27 +206,15 @@ export function makeAIMove(
 	const fromPos = algebraicToPosition(from);
 	const toPos = algebraicToPosition(to);
 
-	// Debug logging for move validation
-	console.log('🔍 makeAIMove debug:');
-	console.log(`  Input: ${from} → ${to}`);
-	console.log(`  FromPos:`, fromPos);
-	console.log(`  ToPos:`, toPos);
-
 	if (!fromPos || !toPos) {
 		console.error(`❌ Position conversion failed: ${from} → ${to}`);
 		return null;
 	}
 
 	const result = makeMove(gameState, fromPos, toPos);
-	console.log(`  makeMove result:`, result ? 'SUCCESS' : 'FAILED');
 
 	if (!result) {
 		console.error(`❌ makeMove failed for ${from} → ${to}`);
-		console.log(
-			`  Board at ${from}:`,
-			gameState.board[fromPos.row]?.[fromPos.col]
-		);
-		console.log(`  Current player:`, gameState.currentPlayer);
 	}
 
 	return result;
@@ -253,8 +241,8 @@ export function isAITurn(gameState: GameState): boolean {
 export function algebraicToPosition(algebraic: string): Position | null {
 	if (algebraic.length !== 2) return null;
 
-	const file = algebraic[0];
-	const rank = algebraic[1];
+	const file = algebraic.charAt(0);
+	const rank = algebraic.charAt(1);
 
 	const col = file.charCodeAt(0) - 'a'.charCodeAt(0);
 	const row = 8 - parseInt(rank);

@@ -78,7 +78,7 @@ const JungleGame: React.FC = () => {
 	// Trigger debug button with Shift+D
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.shiftKey && e.key === 'D') {
+			if (e.shiftKey && e.key.toLowerCase() === 'd') {
 				setShowDebugWinButton(prev => !prev);
 			}
 		};
@@ -128,9 +128,6 @@ const JungleGame: React.FC = () => {
 							opponentLlmId,
 						}),
 					});
-
-					// eslint-disable-next-line no-console
-					console.log('✅ Jungle play history saved successfully');
 				} catch (error) {
 					// eslint-disable-next-line no-console
 					console.error('Failed to save Jungle play history:', error);
@@ -383,8 +380,6 @@ const JungleGame: React.FC = () => {
 	}, []);
 
 	const triggerDebugWin = useCallback(() => {
-		// eslint-disable-next-line no-console
-		console.log('🎯 Debug: Triggering win for human player (Jungle)');
 		setGameState(prev => ({
 			...prev,
 			status: 'checkmate',
@@ -393,8 +388,6 @@ const JungleGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugLoss = useCallback(() => {
-		// eslint-disable-next-line no-console
-		console.log('🎯 Debug: Triggering loss for human player (Jungle)');
 		const humanPlayer = aiPlayer === 'red' ? 'blue' : 'red';
 		setGameState(prev => ({
 			...prev,
@@ -404,13 +397,26 @@ const JungleGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugDraw = useCallback(() => {
-		// eslint-disable-next-line no-console
-		console.log('🎯 Debug: Triggering draw (Jungle)');
 		setGameState(prev => ({
 			...prev,
 			status: 'stalemate',
 		}));
 	}, []);
+
+	useEffect(() => {
+		if (typeof window !== 'undefined') {
+			const global = window as unknown as {
+				__PROCYON_DEBUG_JUNGLE_TRIGGER_WIN__?: () => void;
+			};
+			// Helper for tests and manual debugging to force a human win
+			global.__PROCYON_DEBUG_JUNGLE_TRIGGER_WIN__ = () => {
+				setGameStarted(true);
+				setHasGameEnded(false);
+				setShowDebugWinButton(true);
+				triggerDebugWin();
+			};
+		}
+	}, [triggerDebugWin]);
 
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {

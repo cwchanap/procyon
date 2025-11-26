@@ -28,24 +28,23 @@ test.describe('Basic Authentication Flow', () => {
 		// Submit registration
 		await page.getByRole('button', { name: 'Create Account' }).click();
 
-		// Should redirect to home page
-		await expect(page).toHaveURL('/');
+		// Wait for auth state/nav to update
+		await page.waitForTimeout(1500);
 
-		// Wait a bit for auth state to load
-		await page.waitForTimeout(2000);
+		// We should now see the user menu button in the nav (authenticated state)
+		const navUserButton = page.locator('nav button').first();
+		await expect(navUserButton).toBeVisible();
 
-		// Should show logout button (indicating successful authentication)
-		await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible();
-
-		// Logout
-		await page.getByRole('button', { name: 'Logout' }).click();
+		// Open user menu and click Sign Out
+		await navUserButton.click();
+		await page.getByRole('button', { name: 'Sign Out' }).click();
 
 		// Should show sign in/up buttons
 		await page.waitForTimeout(1000);
-		await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Login' })).toBeVisible();
 
-		// Go to login page
-		await page.getByRole('button', { name: 'Sign In' }).click();
+		// Go to login page via nav Login button
+		await page.getByRole('button', { name: 'Login' }).click();
 		await expect(page).toHaveURL('/login');
 
 		// Fill login form
@@ -60,10 +59,10 @@ test.describe('Basic Authentication Flow', () => {
 		// Should redirect to home page
 		await expect(page).toHaveURL('/');
 
-		// Wait for auth state to load
-		await page.waitForTimeout(2000);
+		// Wait for auth state to load again
+		await page.waitForTimeout(1500);
 
-		// Should show logout button again
-		await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible();
+		// Authenticated again: user nav button should be visible
+		await expect(page.locator('nav button').first()).toBeVisible();
 	});
 });

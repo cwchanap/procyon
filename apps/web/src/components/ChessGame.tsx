@@ -208,7 +208,7 @@ const ChessGame: React.FC = () => {
 			gameStarted &&
 			gameMode === 'ai' &&
 			!hasGameEnded &&
-			isAuthenticated
+			(isAuthenticated || import.meta.env.DEV)
 		) {
 			setHasGameEnded(true);
 
@@ -249,9 +249,6 @@ const ChessGame: React.FC = () => {
 							opponentLlmId,
 						}),
 					});
-
-					// eslint-disable-next-line no-console
-					console.log('✅ Play history saved successfully');
 				} catch (error) {
 					// eslint-disable-next-line no-console
 					console.error('Failed to save play history:', error);
@@ -275,7 +272,7 @@ const ChessGame: React.FC = () => {
 	// Trigger debug button with Shift+D
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.shiftKey && e.key === 'D') {
+			if (e.shiftKey && e.key.toLowerCase() === 'd') {
 				setShowDebugWinButton(prev => !prev);
 			}
 		};
@@ -733,8 +730,6 @@ const ChessGame: React.FC = () => {
 	}, [gameMode, aiPlayer]);
 
 	const triggerDebugWin = useCallback(() => {
-		// eslint-disable-next-line no-console
-		console.log('🎯 Debug: Triggering win for human player');
 		setGameState(prev => ({
 			...prev,
 			status: 'checkmate',
@@ -743,8 +738,6 @@ const ChessGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugLoss = useCallback(() => {
-		// eslint-disable-next-line no-console
-		console.log('🎯 Debug: Triggering loss for human player');
 		const humanPlayer = aiPlayer === 'white' ? 'black' : 'white';
 		setGameState(prev => ({
 			...prev,
@@ -754,13 +747,26 @@ const ChessGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugDraw = useCallback(() => {
-		// eslint-disable-next-line no-console
-		console.log('🎯 Debug: Triggering draw');
 		setGameState(prev => ({
 			...prev,
 			status: 'stalemate',
 		}));
 	}, []);
+
+	useEffect(() => {
+		if (typeof window !== 'undefined') {
+			const global = window as unknown as {
+				__PROCYON_DEBUG_CHESS_TRIGGER_WIN__?: () => void;
+			};
+			// Helper for tests and manual debugging to force a human win
+			global.__PROCYON_DEBUG_CHESS_TRIGGER_WIN__ = () => {
+				setGameStarted(true);
+				setHasGameEnded(false);
+				setShowDebugWinButton(true);
+				triggerDebugWin();
+			};
+		}
+	}, [triggerDebugWin]);
 
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {
@@ -972,37 +978,34 @@ const ChessGame: React.FC = () => {
 								gameExporterRef.current?.exportAndDownload(gameState.status)
 							}
 						/>
-						{showDebugWinButton &&
-							gameStarted &&
-							!isGameOver &&
-							isAuthenticated && (
-								<div className='flex gap-2 justify-center text-xs'>
-									<button
-										onClick={triggerDebugWin}
-										className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
-										title='Debug: Win'
-									>
-										🏆 Win
-									</button>
-									<button
-										onClick={triggerDebugLoss}
-										className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
-										title='Debug: Loss'
-									>
-										💀 Loss
-									</button>
-									<button
-										onClick={triggerDebugDraw}
-										className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
-										title='Debug: Draw'
-									>
-										🤝 Draw
-									</button>
-									<span className='text-gray-400 self-center'>
-										(Shift+D to toggle)
-									</span>
-								</div>
-							)}
+						{showDebugWinButton && gameStarted && !isGameOver && (
+							<div className='flex gap-2 justify-center text-xs'>
+								<button
+									onClick={triggerDebugWin}
+									className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
+									title='Debug: Win'
+								>
+									🏆 Win
+								</button>
+								<button
+									onClick={triggerDebugLoss}
+									className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
+									title='Debug: Loss'
+								>
+									💀 Loss
+								</button>
+								<button
+									onClick={triggerDebugDraw}
+									className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
+									title='Debug: Draw'
+								>
+									🤝 Draw
+								</button>
+								<span className='text-gray-400 self-center'>
+									(Shift+D to toggle)
+								</span>
+							</div>
+						)}
 					</>
 				)}
 			</div>

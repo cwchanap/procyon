@@ -5,7 +5,7 @@ test.describe('Authentication System', () => {
 	let authHelper: AuthHelper;
 	let testUser: TestUser;
 
-	test.beforeEach(async () => {
+	test.beforeEach(async ({ page }) => {
 		authHelper = new AuthHelper(page);
 		testUser = AuthHelper.generateTestUser();
 	});

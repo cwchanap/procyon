@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable no-console */
+
 import type {
 	GameVariantAdapter,
 	BaseGameState,
@@ -48,34 +48,17 @@ export class ShogiAdapter implements GameVariantAdapter {
 		const validMoves: string[] = [];
 		const handPieces = currentPlayer === 'sente' ? senteHand : goteHand;
 
-		if (this.debugMode) {
-			console.log(`🔍 Generating valid moves for ${currentPlayer}:`);
-		}
-
 		// Board moves
 		for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
 			for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
 				const piece = board[row][col];
 				if (piece && piece.color === currentPlayer) {
 					const fromPos = { row, col };
-					const algebraicFrom = this.positionToAlgebraic(fromPos);
-
-					if (this.debugMode) {
-						console.log(`  Found ${piece.type} at ${algebraicFrom}`);
-					}
-
 					const possibleMoves = this.getPossibleMovesForPiece(
 						piece,
 						fromPos,
 						board
 					);
-
-					if (this.debugMode && possibleMoves.length > 0) {
-						console.log(
-							`    Possible moves for ${piece.type} at ${algebraicFrom}:`,
-							possibleMoves.map(pos => this.positionToAlgebraic(pos)).join(', ')
-						);
-					}
 
 					for (const toPos of possibleMoves) {
 						// Validate move doesn't leave king in check
@@ -122,22 +105,11 @@ export class ShogiAdapter implements GameVariantAdapter {
 			}
 		}
 
-		if (this.debugMode) {
-			console.log(`📋 Total valid moves found: ${validMoves.length}`);
-			if (validMoves.length > 0) {
-				console.log(`📝 Valid moves:`, validMoves);
-			}
-		}
-
 		if (validMoves.length === 0) {
 			return ['No valid moves available (checkmate or stalemate)'];
 		}
 
 		const groupedMoves = this.groupMovesByPiece(validMoves);
-
-		if (this.debugMode) {
-			console.log(`📋 Grouped moves sent to AI:\n${groupedMoves}`);
-		}
 
 		return [groupedMoves];
 	}
@@ -728,11 +700,6 @@ Your move:`;
 		const piece = board[from.row]?.[from.col];
 
 		if (!piece || piece.color !== currentPlayer) {
-			if (this.debugMode) {
-				console.log(
-					`    ❌ Invalid: No ${currentPlayer} piece at ${this.positionToAlgebraic(from)}`
-				);
-			}
 			return false;
 		}
 
@@ -743,19 +710,9 @@ Your move:`;
 
 		const wouldBeInCheck = this.isKingInCheck(testBoard, currentPlayer);
 		if (wouldBeInCheck) {
-			if (this.debugMode) {
-				console.log(
-					`    ❌ Invalid: Move ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} leaves king in check`
-				);
-			}
 			return false;
 		}
 
-		if (this.debugMode) {
-			console.log(
-				`    ✅ Valid: ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)}`
-			);
-		}
 		return true;
 	}
 

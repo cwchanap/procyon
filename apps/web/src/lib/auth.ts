@@ -1,4 +1,5 @@
 import { createAuthClient } from 'better-auth/react';
+import { usernameClient } from 'better-auth/client/plugins';
 import { env } from './env';
 
 function resolveApiBaseUrl(): string {
@@ -21,6 +22,7 @@ export const authClient = createAuthClient({
 	fetchOptions: {
 		credentials: 'include',
 	},
+	plugins: [usernameClient()],
 });
 
 export type { Session } from 'better-auth/types';
@@ -70,12 +72,22 @@ export function useAuth() {
 					email,
 					password,
 					name: username,
+					username,
 				});
-
 				if (result.error) {
+					const normalizedError = result.error as {
+						message?: string;
+						code?: string;
+					};
+					let message = normalizedError.message || 'Registration failed';
+					if (normalizedError.code === 'USERNAME_ALREADY_EXISTS') {
+						message = 'Username already taken';
+					} else if (normalizedError.code === 'EMAIL_ALREADY_EXISTS') {
+						message = 'Email already in use';
+					}
 					return {
 						success: false,
-						error: result.error.message || 'Registration failed',
+						error: message,
 					};
 				}
 
