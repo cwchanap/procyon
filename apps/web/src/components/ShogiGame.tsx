@@ -94,7 +94,7 @@ const ShogiGame: React.FC = () => {
 	// Trigger debug button with Shift+D
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.shiftKey && e.key === 'D') {
+			if (e.shiftKey && e.key.toLowerCase() === 'd') {
 				setShowDebugWinButton(prev => !prev);
 			}
 		};
@@ -142,9 +142,6 @@ const ShogiGame: React.FC = () => {
 							opponentLlmId,
 						}),
 					});
-
-					// eslint-disable-next-line no-console
-					console.log('✅ Shogi play history saved successfully');
 				} catch (error) {
 					// eslint-disable-next-line no-console
 					console.error('Failed to save Shogi play history:', error);
@@ -399,7 +396,7 @@ const ShogiGame: React.FC = () => {
 						if (
 							targetRow >= 0 &&
 							targetRow < SHOGI_BOARD_SIZE &&
-							!demo.board[targetRow][position.col]
+							!demo.board[targetRow]?.[position.col]
 						) {
 							possibleMoves = [{ row: targetRow, col: position.col }];
 						}
@@ -444,8 +441,6 @@ const ShogiGame: React.FC = () => {
 	}, []);
 
 	const triggerDebugWin = useCallback(() => {
-		// eslint-disable-next-line no-console
-		console.log('🎯 Debug: Triggering win for human player (Shogi)');
 		setGameState(prev => ({
 			...prev,
 			status: 'checkmate',
@@ -454,8 +449,6 @@ const ShogiGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugLoss = useCallback(() => {
-		// eslint-disable-next-line no-console
-		console.log('🎯 Debug: Triggering loss for human player (Shogi)');
 		const humanPlayer = aiPlayer === 'sente' ? 'gote' : 'sente';
 		setGameState(prev => ({
 			...prev,
@@ -465,13 +458,26 @@ const ShogiGame: React.FC = () => {
 	}, [aiPlayer]);
 
 	const triggerDebugDraw = useCallback(() => {
-		// eslint-disable-next-line no-console
-		console.log('🎯 Debug: Triggering draw (Shogi)');
 		setGameState(prev => ({
 			...prev,
 			status: 'draw',
 		}));
 	}, []);
+
+	useEffect(() => {
+		if (typeof window !== 'undefined') {
+			const global = window as unknown as {
+				__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__?: () => void;
+			};
+			// Helper for tests and manual debugging to force a human win
+			global.__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__ = () => {
+				setGameStarted(true);
+				setHasGameEnded(false);
+				setShowDebugWinButton(true);
+				triggerDebugWin();
+			};
+		}
+	}, [triggerDebugWin]);
 
 	// Calculate hasGameStarted before using it in callbacks
 	const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;

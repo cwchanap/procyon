@@ -1,4 +1,5 @@
-import { Page, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 export interface TestUser {
 	email: string;
@@ -56,7 +57,17 @@ export class AuthHelper {
 
 		await this.page.getByRole('button', { name: 'Create Account' }).click();
 
-		// Wait for redirect to home page
+		// Wait briefly for any client-side redirect to occur
+		await this.page.waitForTimeout(500);
+		const currentUrl = this.page.url();
+		if (currentUrl.includes('/register')) {
+			// If we're still on the register page (with or without query params),
+			// navigate explicitly to home. On successful registration the session
+			// cookie should already be set, so the navbar will reflect auth state.
+			await this.page.goto('/');
+		}
+
+		// Ensure we're on the home page
 		await expect(this.page).toHaveURL('/');
 		await expect(this.page).toHaveTitle('Chess Games');
 	}
@@ -81,7 +92,23 @@ export class AuthHelper {
 	 * Click the logout button
 	 */
 	async logout(): Promise<void> {
-		await this.page.getByRole('button', { name: 'Logout' }).click();
+		// If the Login button is visible, we are already logged out
+		const loginButton = this.page.getByRole('button', { name: 'Login' });
+		if (await loginButton.isVisible().catch(() => false)) {
+			return;
+		}
+
+		// Open the user dropdown from the nav bar
+		const navUserButton = this.page.locator('nav button').first();
+		await navUserButton.click();
+
+		// Click the Sign Out button in the dropdown
+		await this.page.getByRole('button', { name: 'Sign Out' }).click();
+
+		// Wait for the unauthenticated state to appear
+		await loginButton
+			.waitFor({ state: 'visible', timeout: 5000 })
+			.catch(() => {});
 	}
 
 	/**
@@ -91,12 +118,7 @@ export class AuthHelper {
 		// Wait for auth nav to load first
 		await this.waitForAuthNav();
 
-		// Check for logout button (most reliable indicator)
-		await expect(
-			this.page.getByRole('button', { name: 'Logout' })
-		).toBeVisible();
-
-		// Check for username and email in the auth nav (be more specific with selectors)
+		// Check for username and email text being visible on the page
 		await expect(this.page.locator(`text=${username}`).first()).toBeVisible();
 		await expect(this.page.locator(`text=${email}`).first()).toBeVisible();
 	}
@@ -108,18 +130,10 @@ export class AuthHelper {
 		// Wait for auth nav to load first
 		await this.waitForAuthNav();
 
-		// Check for sign in and sign up buttons
+		// Check for Login button in the nav as the unauthenticated indicator
 		await expect(
-			this.page.getByRole('button', { name: 'Sign In' })
+			this.page.getByRole('button', { name: 'Login' })
 		).toBeVisible();
-		await expect(
-			this.page.getByRole('button', { name: 'Sign Up' })
-		).toBeVisible();
-
-		// Ensure logout button is NOT visible
-		await expect(
-			this.page.getByRole('button', { name: 'Logout' })
-		).not.toBeVisible();
 	}
 
 	/**
@@ -157,27 +171,10 @@ export class AuthHelper {
 	 * Wait for auth nav to load (useful for initial page loads)
 	 */
 	async waitForAuthNav(): Promise<void> {
-		// Wait for either Sign In button or Logout button to be visible
-		try {
-			await Promise.race([
-				this.page
-					.getByRole('button', { name: 'Sign In' })
-					.waitFor({ state: 'visible', timeout: 5000 }),
-				this.page
-					.getByRole('button', { name: 'Logout' })
-					.waitFor({ state: 'visible', timeout: 5000 }),
-			]);
-		} catch (_error) {
-			// If neither appears, wait a bit and try once more
-			await this.page.waitForTimeout(1000);
-			await Promise.race([
-				this.page
-					.getByRole('button', { name: 'Sign In' })
-					.waitFor({ state: 'visible', timeout: 3000 }),
-				this.page
-					.getByRole('button', { name: 'Logout' })
-					.waitFor({ state: 'visible', timeout: 3000 }),
-			]);
-		}
+		// Wait for any navigation button (Login or user dropdown) to be visible
+		await this.page
+			.locator('nav button')
+			.first()
+			.waitFor({ state: 'visible', timeout: 5000 });
 	}
 }

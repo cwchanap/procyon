@@ -36,32 +36,12 @@ export class ChessAdapter implements GameVariantAdapter {
 		const { board, currentPlayer } = gameState;
 		const validMoves: string[] = [];
 
-		if (this.debugMode) {
-			// eslint-disable-next-line no-console
-			console.log(`🔍 Generating valid moves for ${currentPlayer}:`);
-		}
-
 		for (let row = 0; row < 8; row++) {
 			for (let col = 0; col < 8; col++) {
 				const piece = board[row][col];
 				if (piece && piece.color === currentPlayer) {
 					const fromPos = { row, col };
-					const algebraicFrom = this.positionToAlgebraic(fromPos);
-
-					if (this.debugMode) {
-						// eslint-disable-next-line no-console
-						console.log(`  Found ${piece.type} at ${algebraicFrom}`);
-					}
-
 					const possibleMoves = getPossibleMoves(board, piece, fromPos);
-
-					if (this.debugMode && possibleMoves.length > 0) {
-						// eslint-disable-next-line no-console
-						console.log(
-							`    Possible moves for ${piece.type} at ${algebraicFrom}:`,
-							possibleMoves.map(pos => this.positionToAlgebraic(pos)).join(', ')
-						);
-					}
 
 					for (const toPos of possibleMoves) {
 						const isValidMove = this.wouldMoveBeValid(
@@ -80,25 +60,11 @@ export class ChessAdapter implements GameVariantAdapter {
 			}
 		}
 
-		if (this.debugMode) {
-			// eslint-disable-next-line no-console
-			console.log(`📋 Total valid moves found: ${validMoves.length}`);
-			if (validMoves.length > 0) {
-				// eslint-disable-next-line no-console
-				console.log(`📝 Valid moves:`, validMoves);
-			}
-		}
-
 		if (validMoves.length === 0) {
 			return ['No valid moves available (checkmate or stalemate)'];
 		}
 
 		const groupedMoves = this.groupMovesByPiece(validMoves);
-
-		if (this.debugMode) {
-			// eslint-disable-next-line no-console
-			console.log(`📋 Grouped moves sent to AI:\n${groupedMoves}`);
-		}
 
 		return [groupedMoves];
 	}
@@ -264,22 +230,10 @@ Rules:
 		const piece = board[from.row]?.[from.col];
 
 		if (!piece || piece.color !== currentPlayer) {
-			if (this.debugMode) {
-				// eslint-disable-next-line no-console
-				console.log(
-					`    ❌ Invalid: No ${currentPlayer} piece at ${this.positionToAlgebraic(from)}`
-				);
-			}
 			return false;
 		}
 
 		if (!isMoveValid(board, from, to, piece)) {
-			if (this.debugMode) {
-				// eslint-disable-next-line no-console
-				console.log(
-					`    ❌ Invalid: Move ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} not allowed for ${piece.type}`
-				);
-			}
 			return false;
 		}
 
@@ -289,21 +243,9 @@ Rules:
 
 		const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
 		if (wouldBeInCheck) {
-			if (this.debugMode) {
-				// eslint-disable-next-line no-console
-				console.log(
-					`    ❌ Invalid: Move ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} leaves king in check`
-				);
-			}
 			return false;
 		}
 
-		if (this.debugMode) {
-			// eslint-disable-next-line no-console
-			console.log(
-				`    ✅ Valid: ${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)}`
-			);
-		}
 		return true;
 	}
 

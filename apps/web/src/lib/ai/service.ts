@@ -72,17 +72,6 @@ export class UniversalAIService {
 			const baseGameState = this.adapter.convertGameState(gameState);
 
 			if (this.config.debug) {
-				console.group('🐛 AI DEBUG MODE');
-				console.log('📋 Current Game State:');
-				console.log(`Player: ${baseGameState.currentPlayer}`);
-				console.log(`Status: ${baseGameState.status}`);
-				console.log(
-					`Move #: ${Math.floor(baseGameState.moveHistory.length / 2) + 1}`
-				);
-				console.log('\n📤 PROMPT SENT TO AI:');
-				console.log(prompt);
-				console.log('\n' + '='.repeat(80));
-
 				this.debugCallback?.(
 					'ai-debug',
 					`🤔 AI is thinking as ${baseGameState.currentPlayer}...`,
@@ -97,12 +86,6 @@ export class UniversalAIService {
 
 			const response = await this.callLLM(prompt);
 
-			if (this.config.debug) {
-				console.log('📥 RAW AI RESPONSE:');
-				console.log(response);
-				console.log('\n' + '='.repeat(80));
-			}
-
 			const parsedResponse = this.parseAIResponse(response);
 
 			// Store the interaction data for export
@@ -113,52 +96,6 @@ export class UniversalAIService {
 			};
 
 			if (this.config.debug) {
-				console.log('🎯 PARSED AI RESPONSE:');
-				console.log(parsedResponse);
-			}
-
-			// Validate the AI move using the rule guardian
-			if (parsedResponse) {
-				const validation = this.ruleGuardian.validateAIMove(
-					gameState,
-					parsedResponse
-				);
-
-				if (this.config.debug) {
-					console.log('🛡️ RULE GUARDIAN VALIDATION:');
-					console.log(`Valid: ${validation.isValid}`);
-					if (!validation.isValid) {
-						console.log(`Reason: ${validation.reason}`);
-						if (validation.suggestedAlternative) {
-							console.log(
-								'Suggested alternative:',
-								validation.suggestedAlternative
-							);
-						}
-					}
-				}
-
-				if (!validation.isValid) {
-					if (this.config.debug) {
-						console.groupEnd();
-						this.debugCallback?.(
-							'ai-error',
-							`🚫 Invalid AI move: ${validation.reason}`,
-							{
-								move: parsedResponse.move,
-								reason: validation.reason,
-								gameVariant: this.adapter.gameVariant,
-							}
-						);
-					}
-
-					throw new Error(`Invalid move: ${validation.reason}`);
-				}
-			}
-
-			if (this.config.debug) {
-				console.groupEnd();
-
 				if (parsedResponse) {
 					this.debugCallback?.(
 						'ai-move',
@@ -174,6 +111,30 @@ export class UniversalAIService {
 					this.debugCallback?.('ai-error', '❌ Failed to parse AI response', {
 						rawResponse: response,
 					});
+				}
+			}
+
+			// Validate the AI move using the rule guardian
+			if (parsedResponse) {
+				const validation = this.ruleGuardian.validateAIMove(
+					gameState,
+					parsedResponse
+				);
+
+				if (!validation.isValid) {
+					if (this.config.debug) {
+						this.debugCallback?.(
+							'ai-error',
+							`🚫 Invalid AI move: ${validation.reason}`,
+							{
+								move: parsedResponse.move,
+								reason: validation.reason,
+								gameVariant: this.adapter.gameVariant,
+							}
+						);
+					}
+
+					throw new Error(`Invalid move: ${validation.reason}`);
 				}
 			}
 
@@ -229,14 +190,6 @@ export class UniversalAIService {
 		}
 
 		const data = await response.json();
-
-		// Debug log the full response structure
-		if (this.config.debug) {
-			console.log(
-				'🔍 Full Gemini API response:',
-				JSON.stringify(data, null, 2)
-			);
-		}
 
 		// Check for safety ratings that might have blocked the response
 		if (data.promptFeedback?.blockReason) {
@@ -380,21 +333,12 @@ export class UniversalAIService {
 		try {
 			const jsonMatch = response.match(/\{[\s\S]*\}/);
 			if (!jsonMatch) {
-				if (this.config.debug) {
-					console.error('🚨 DEBUG: No JSON found in AI response');
-				}
 				throw new Error('No JSON found in response');
 			}
 
 			const parsed = JSON.parse(jsonMatch[0]);
 
 			if (!parsed.move || !parsed.move.from || !parsed.move.to) {
-				if (this.config.debug) {
-					console.error(
-						'🚨 DEBUG: Invalid move format in parsed response:',
-						parsed
-					);
-				}
 				throw new Error('Invalid move format in response');
 			}
 
@@ -402,10 +346,6 @@ export class UniversalAIService {
 			const moveTo = parsed.move.to;
 
 			if (this.config.debug) {
-				console.log('🔍 DEBUG: Move validation:');
-				console.log(`  From: "${moveFrom}" (type: ${typeof moveFrom})`);
-				console.log(`  To: "${moveTo}" (type: ${typeof moveTo})`);
-
 				// Check if moves are in correct algebraic format
 				const config = GAME_CONFIGS[this.adapter.gameVariant];
 				const filePattern = config.files.join('|');
@@ -415,9 +355,6 @@ export class UniversalAIService {
 				);
 				const fromValid = algebraicPattern.test(moveFrom);
 				const toValid = algebraicPattern.test(moveTo);
-
-				console.log(`  From valid: ${fromValid}`);
-				console.log(`  To valid: ${toValid}`);
 
 				if (!fromValid || !toValid) {
 					console.warn('⚠️ DEBUG: Move format may be incorrect!');
