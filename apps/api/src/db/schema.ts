@@ -16,6 +16,7 @@ export const user = sqliteTable('user', {
 		.default(false),
 	name: text('name'),
 	username: text('username').unique(), // Make nullable and unique
+	displayUsername: text('display_username'),
 	password: text('password'),
 	image: text('image'),
 	createdAt: integer('created_at', { mode: 'timestamp' })
@@ -56,6 +57,7 @@ export const account = sqliteTable(
 		userId: text('user_id')
 			.notNull()
 			.references(() => user.id, { onDelete: 'cascade' }),
+		password: text('password'),
 		accessToken: text('access_token'),
 		refreshToken: text('refresh_token'),
 		idToken: text('id_token'),
