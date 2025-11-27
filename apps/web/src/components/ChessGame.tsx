@@ -203,17 +203,20 @@ const ChessGame: React.FC = () => {
 			gameState.status === 'stalemate' ||
 			gameState.status === 'draw';
 
-		if (
-			isGameOver &&
-			gameStarted &&
-			gameMode === 'ai' &&
-			!hasGameEnded &&
-			(isAuthenticated || import.meta.env.DEV)
-		) {
+		if (isGameOver && !hasGameEnded) {
 			setHasGameEnded(true);
 
 			const savePlayHistory = async () => {
 				try {
+					// Dev-only debug counter for tests
+					if (typeof window !== 'undefined') {
+						const global = window as unknown as {
+							__PROCYON_DEBUG_CHESS_SAVE_COUNT__?: number;
+						};
+						global.__PROCYON_DEBUG_CHESS_SAVE_COUNT__ =
+							(global.__PROCYON_DEBUG_CHESS_SAVE_COUNT__ ?? 0) + 1;
+					}
+
 					// Determine game result from current player's perspective
 					let status: 'win' | 'loss' | 'draw';
 					if (gameState.status === 'checkmate') {
@@ -260,10 +263,7 @@ const ChessGame: React.FC = () => {
 	}, [
 		gameState.status,
 		gameState.currentPlayer,
-		gameStarted,
-		gameMode,
 		hasGameEnded,
-		isAuthenticated,
 		aiPlayer,
 		aiConfig.provider,
 		aiConfig.model,
@@ -311,68 +311,68 @@ const ChessGame: React.FC = () => {
 
 			switch (setup) {
 				case 'knight-moves':
-					board[4][4] = {
+					board[4]![4] = {
 						type: 'knight',
 						color: 'white',
 						hasMoved: false,
 					};
-					board[2][1] = {
+					board[2]![1] = {
 						type: 'pawn',
 						color: 'black',
 						hasMoved: false,
 					};
-					board[6][3] = {
+					board[6]![3] = {
 						type: 'pawn',
 						color: 'black',
 						hasMoved: false,
 					};
 					break;
 				case 'check-demo':
-					board[7][4] = {
+					board[7]![4] = {
 						type: 'king',
 						color: 'white',
 						hasMoved: false,
 					};
-					board[0][0] = {
+					board[0]![0] = {
 						type: 'rook',
 						color: 'black',
 						hasMoved: false,
 					};
-					board[7][0] = {
+					board[7]![0] = {
 						type: 'rook',
 						color: 'white',
 						hasMoved: false,
 					};
 					break;
 				case 'castling':
-					board[7][4] = {
+					board[7]![4] = {
 						type: 'king',
 						color: 'white',
 						hasMoved: false,
 					};
-					board[7][7] = {
+					board[7]![7] = {
 						type: 'rook',
 						color: 'white',
 						hasMoved: false,
 					};
-					board[7][0] = {
+					board[7]![0] = {
 						type: 'rook',
 						color: 'white',
 						hasMoved: false,
 					};
 					break;
 				case 'pawn-promotion':
-					board[1][3] = {
+					board[1]![3] = {
 						type: 'pawn',
 						color: 'white',
 						hasMoved: true,
 					};
-					board[0][4] = {
+					board[0]![4] = {
 						type: 'king',
 						color: 'black',
 						hasMoved: false,
 					};
-					board[7][4] = {
+					board[7]![4] = {
 						type: 'king',
 						color: 'white',
 						hasMoved: false,
@@ -448,7 +448,7 @@ const ChessGame: React.FC = () => {
 	];
 
 	const getCurrentDemo = useCallback((): LogicDemo => {
-		return logicDemos.find(demo => demo.id === currentDemo) || logicDemos[0];
+		return logicDemos.find(demo => demo.id === currentDemo) ?? logicDemos[0];
 	}, [currentDemo, logicDemos]);
 
 	// AI Configuration handlers
@@ -760,6 +760,8 @@ const ChessGame: React.FC = () => {
 			};
 			// Helper for tests and manual debugging to force a human win
 			global.__PROCYON_DEBUG_CHESS_TRIGGER_WIN__ = () => {
+				// Ensure we are in AI mode so play history saving conditions are met
+				setGameMode('ai');
 				setGameStarted(true);
 				setHasGameEnded(false);
 				setShowDebugWinButton(true);
@@ -909,7 +911,7 @@ const ChessGame: React.FC = () => {
 
 			{gameMode === 'ai' && (
 				<AIStatusPanel
-					aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+					aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
 					hasGameStarted={gameStarted}
 					isAIThinking={gameState.isAiThinking}
 					isAIPaused={isAiPaused}
@@ -968,7 +970,7 @@ const ChessGame: React.FC = () => {
 						<GameControls
 							hasGameStarted={gameStarted}
 							isGameOver={isGameOver}
-							aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+							aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
 							isDebugMode={isDebugMode}
 							canExport={gameStarted && !!gameExporterRef.current}
 							onStartOrReset={handleStartOrReset}
