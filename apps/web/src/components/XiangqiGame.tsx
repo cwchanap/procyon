@@ -102,8 +102,11 @@ const XiangqiGame: React.FC = () => {
 		loadConfig();
 	}, [aiService, isDebugMode]);
 
-	// Trigger debug button with Shift+D
+	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
+		if (!import.meta.env.DEV || typeof window === 'undefined') {
+			return;
+		}
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.shiftKey && e.key.toLowerCase() === 'd') {
 				setShowDebugWinButton(prev => !prev);
@@ -484,18 +487,19 @@ const XiangqiGame: React.FC = () => {
 	}, []);
 
 	useEffect(() => {
-		if (typeof window !== 'undefined') {
-			const global = window as unknown as {
-				__PROCYON_DEBUG_XIANGQI_TRIGGER_WIN__?: () => void;
-			};
-			// Helper for tests and manual debugging to force a human win
-			global.__PROCYON_DEBUG_XIANGQI_TRIGGER_WIN__ = () => {
-				setGameStarted(true);
-				setHasGameEnded(false);
-				setShowDebugWinButton(true);
-				triggerDebugWin();
-			};
+		if (!import.meta.env.DEV || typeof window === 'undefined') {
+			return;
 		}
+		const global = window as unknown as {
+			__PROCYON_DEBUG_XIANGQI_TRIGGER_WIN__?: () => void;
+		};
+		// Helper for tests and manual debugging to force a human win
+		global.__PROCYON_DEBUG_XIANGQI_TRIGGER_WIN__ = () => {
+			setGameStarted(true);
+			setHasGameEnded(false);
+			setShowDebugWinButton(true);
+			triggerDebugWin();
+		};
 	}, [triggerDebugWin]);
 
 	// Calculate hasGameStarted before using it in callbacks
@@ -875,7 +879,8 @@ const XiangqiGame: React.FC = () => {
 							onToggleDebug={() => setIsDebugMode(!isDebugMode)}
 							onExport={() => {}}
 						/>
-						{showDebugWinButton &&
+						{import.meta.env.DEV &&
+							showDebugWinButton &&
 							hasGameStarted &&
 							!isGameOver &&
 							isAuthenticated && (
