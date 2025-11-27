@@ -4,6 +4,30 @@ import { env } from './env';
 
 function resolveApiBaseUrl(): string {
 	const baseUrl = env.NEXT_PUBLIC_API_URL;
+
+	// Server-side (SSR): rely on dedicated server env vars or an absolute NEXT_PUBLIC_API_URL
+	if (typeof window === 'undefined') {
+		const serverEnvUrl =
+			import.meta.env.SERVER_API_URL ||
+			import.meta.env.NEXT_PUBLIC_API_URL_SERVER ||
+			(/^https?:\/\//i.test(baseUrl) ? baseUrl : '');
+
+		if (!serverEnvUrl) {
+			throw new Error(
+				'API base URL could not be resolved on the server. Set SERVER_API_URL or NEXT_PUBLIC_API_URL_SERVER to an absolute URL (e.g. https://api.example.com/api).'
+			);
+		}
+
+		if (!/^https?:\/\//i.test(serverEnvUrl)) {
+			throw new Error(
+				'SERVER_API_URL or NEXT_PUBLIC_API_URL_SERVER must be an absolute URL starting with http:// or https://.'
+			);
+		}
+
+		return serverEnvUrl.replace(/\/$/, '');
+	}
+
+	// Client-side: support absolute URLs or resolve relative paths against the current origin
 	if (/^https?:\/\//i.test(baseUrl)) {
 		return baseUrl.replace(/\/$/, '');
 	}
@@ -12,7 +36,10 @@ function resolveApiBaseUrl(): string {
 			.toString()
 			.replace(/\/$/, '');
 	}
-	return 'http://localhost:3501/api';
+
+	throw new Error(
+		'API base URL could not be resolved on the client. Ensure NEXT_PUBLIC_API_URL or PUBLIC_API_URL is set to a relative or absolute URL.'
+	);
 }
 
 const AUTH_BASE_URL = `${resolveApiBaseUrl()}/auth`;

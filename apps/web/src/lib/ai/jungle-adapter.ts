@@ -94,11 +94,22 @@ export class JungleAdapter implements GameVariantAdapter {
 	algebraicToPosition(algebraic: string): JunglePosition {
 		const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
 		const ranks = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
+		const normalized = algebraic?.trim().toLowerCase();
+		const file = normalized?.[0];
+		const rank = normalized?.slice(1);
 
-		return {
-			col: files.indexOf(algebraic[0] || 'a'),
-			row: ranks.indexOf(algebraic.slice(1) || '1'),
-		};
+		if (!file || !rank) {
+			throw new Error(`Invalid algebraic notation: ${algebraic}`);
+		}
+
+		const col = files.indexOf(file);
+		const row = ranks.indexOf(rank);
+
+		if (col === -1 || row === -1) {
+			throw new Error(`Invalid algebraic notation: ${algebraic}`);
+		}
+
+		return { col, row };
 	}
 
 	/**
