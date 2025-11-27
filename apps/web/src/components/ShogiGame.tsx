@@ -112,6 +112,14 @@ const ShogiGame: React.FC = () => {
 
 			const savePlayHistory = async () => {
 				try {
+					if (typeof window !== 'undefined') {
+						const global = window as unknown as {
+							__PROCYON_DEBUG_SHOGI_SAVE_COUNT__?: number;
+						};
+						global.__PROCYON_DEBUG_SHOGI_SAVE_COUNT__ =
+							(global.__PROCYON_DEBUG_SHOGI_SAVE_COUNT__ ?? 0) + 1;
+					}
+
 					let status: 'win' | 'loss' | 'draw';
 					if (gameState.status === 'checkmate') {
 						status = gameState.currentPlayer === aiPlayer ? 'win' : 'loss';
