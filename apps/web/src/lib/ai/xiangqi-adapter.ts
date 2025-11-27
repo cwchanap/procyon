@@ -247,18 +247,22 @@ Your move:`;
 	}
 
 	algebraicToPosition(algebraic: string): GamePosition {
-		const file = algebraic[0];
-		const rank = algebraic.slice(1);
+		const normalized = algebraic?.trim().toLowerCase();
+		const file = normalized?.[0];
+		const rank = normalized?.slice(1);
 
-		return {
-			col: XIANGQI_FILES.indexOf(file),
-			row: XIANGQI_RANKS.indexOf(rank),
-		};
-	}
+		if (!file || !rank) {
+			throw new Error(`Invalid algebraic notation: ${algebraic}`);
+		}
 
-	getPieceSymbol(piece: GamePiece): string {
-		const symbols = XIANGQI_SYMBOLS as any;
-		return symbols[piece.color]?.[piece.type] || '?';
+		const col = XIANGQI_FILES.indexOf(file);
+		const row = XIANGQI_RANKS.indexOf(rank);
+
+		if (col === -1 || row === -1) {
+			throw new Error(`Invalid algebraic notation: ${algebraic}`);
+		}
+
+		return { col, row };
 	}
 
 	private formatMoveHistory(moves: XiangqiMove[]): string {
@@ -407,6 +411,11 @@ Your move:`;
 		}
 
 		return analysis;
+	}
+
+	getPieceSymbol(piece: GamePiece): string {
+		const symbols = XIANGQI_SYMBOLS as any;
+		return symbols[piece.color]?.[piece.type] || '?';
 	}
 
 	private getPieceSymbolForMove(piece: any): string {
