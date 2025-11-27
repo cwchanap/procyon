@@ -79,6 +79,12 @@ app.post(
 		};
 
 		try {
+			console.log('Saving play history', {
+				userId: newPlayHistory.userId,
+				chessId: newPlayHistory.chessId,
+				status: newPlayHistory.status,
+				date: newPlayHistory.date,
+			});
 			const [record] = await db
 				.insert(playHistory)
 				.values(newPlayHistory)
