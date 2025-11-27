@@ -75,8 +75,11 @@ const JungleGame: React.FC = () => {
 		loadConfig();
 	}, [aiService, isDebugMode]);
 
-	// Trigger debug button with Shift+D
+	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
+		if (!import.meta.env.DEV || typeof window === 'undefined') {
+			return;
+		}
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.shiftKey && e.key.toLowerCase() === 'd') {
 				setShowDebugWinButton(prev => !prev);
@@ -412,18 +415,19 @@ const JungleGame: React.FC = () => {
 	}, []);
 
 	useEffect(() => {
-		if (typeof window !== 'undefined') {
-			const global = window as unknown as {
-				__PROCYON_DEBUG_JUNGLE_TRIGGER_WIN__?: () => void;
-			};
-			// Helper for tests and manual debugging to force a human win
-			global.__PROCYON_DEBUG_JUNGLE_TRIGGER_WIN__ = () => {
-				setGameStarted(true);
-				setHasGameEnded(false);
-				setShowDebugWinButton(true);
-				triggerDebugWin();
-			};
+		if (!import.meta.env.DEV || typeof window === 'undefined') {
+			return;
 		}
+		const global = window as unknown as {
+			__PROCYON_DEBUG_JUNGLE_TRIGGER_WIN__?: () => void;
+		};
+		// Helper for tests and manual debugging to force a human win
+		global.__PROCYON_DEBUG_JUNGLE_TRIGGER_WIN__ = () => {
+			setGameStarted(true);
+			setHasGameEnded(false);
+			setShowDebugWinButton(true);
+			triggerDebugWin();
+		};
 	}, [triggerDebugWin]);
 
 	const handleStartOrReset = useCallback(() => {
@@ -653,34 +657,37 @@ const JungleGame: React.FC = () => {
 							onToggleDebug={() => setIsDebugMode(!isDebugMode)}
 							onExport={() => {}}
 						/>
-						{showDebugWinButton && gameStarted && !isGameOver && (
-							<div className='flex gap-2 justify-center text-xs'>
-								<button
-									onClick={triggerDebugWin}
-									className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
-									title='Debug: Win'
-								>
-									🏆 Win
-								</button>
-								<button
-									onClick={triggerDebugLoss}
-									className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
-									title='Debug: Loss'
-								>
-									💀 Loss
-								</button>
-								<button
-									onClick={triggerDebugDraw}
-									className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
-									title='Debug: Draw'
-								>
-									🤝 Draw
-								</button>
-								<span className='text-gray-400 self-center'>
-									(Shift+D to toggle)
-								</span>
-							</div>
-						)}
+						{import.meta.env.DEV &&
+							showDebugWinButton &&
+							gameStarted &&
+							!isGameOver && (
+								<div className='flex gap-2 justify-center text-xs'>
+									<button
+										onClick={triggerDebugWin}
+										className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
+										title='Debug: Win'
+									>
+										🏆 Win
+									</button>
+									<button
+										onClick={triggerDebugLoss}
+										className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
+										title='Debug: Loss'
+									>
+										💀 Loss
+									</button>
+									<button
+										onClick={triggerDebugDraw}
+										className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
+										title='Debug: Draw'
+									>
+										🤝 Draw
+									</button>
+									<span className='text-gray-400 self-center'>
+										(Shift+D to toggle)
+									</span>
+								</div>
+							)}
 					</>
 				)}
 			</div>
