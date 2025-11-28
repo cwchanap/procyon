@@ -49,23 +49,19 @@ export default defineConfig({
   /* Run dev servers automatically only on CI; locally assume they're already running */
   webServer: isCI ? [
     {
-      command: 'sh -c "cd .. && cd web && /opt/homebrew/bin/bun run dev"',
+      command: 'sh -c "cd .. && cd web && bun run dev"',
       url: 'http://localhost:3500',
       reuseExistingServer: false,
       timeout: 120 * 1000,
       env: {
         ASTRO_DISABLE_DEV_TOOLBAR: 'true',
-        PATH: '/opt/homebrew/bin:' + process.env.PATH,
       },
     },
     {
-      command: 'sh -c "cd ../api && NODE_ENV=development /opt/homebrew/bin/bun --watch src/index.ts"',
+      command: 'sh -c "cd ../api && NODE_ENV=development bun --watch src/index.ts"',
       url: 'http://localhost:3501',
       reuseExistingServer: false,
       timeout: 120 * 1000,
-      env: {
-        PATH: '/opt/homebrew/bin:' + process.env.PATH,
-      },
     },
   ] : undefined,
 });
