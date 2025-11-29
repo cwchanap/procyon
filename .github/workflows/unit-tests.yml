@@ -3,24 +3,8 @@ name: Unit Tests
 on:
   push:
     branches: [main]
-    paths:
-      - "apps/web/**"
-      - "apps/api/**"
-      - "package.json"
-      - "bun.lock"
-      - "turbo.json"
-      - "tsconfig.json"
-      - "eslint.config.mjs"
   pull_request:
     branches: [main]
-    paths:
-      - "apps/web/**"
-      - "apps/api/**"
-      - "package.json"
-      - "bun.lock"
-      - "turbo.json"
-      - "tsconfig.json"
-      - "eslint.config.mjs"
 
 jobs:
   test-web:
