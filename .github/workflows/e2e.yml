@@ -38,8 +38,36 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps
 
+      - name: Start API server
+        run: |
+          cd apps/api
+          NODE_ENV=development BETTER_AUTH_SECRET="test-secret" bun src/index.ts &
+
+      - name: Start web dev server
+        env:
+          PUBLIC_API_URL: "http://localhost:3501/api"
+          SERVER_API_URL: "http://localhost:3501/api"
+          ASTRO_DISABLE_DEV_TOOLBAR: "true"
+        run: |
+          cd apps/web
+          bun run dev &
+
+      - name: Wait for web and API to be ready
+        run: |
+          timeout 120 bash -c '
+            until curl -sSf http://localhost:3500 >/dev/null; do
+              echo "Waiting for web server on :3500...";
+              sleep 5;
+            done;
+            until curl -sSf http://localhost:3501/health >/dev/null; do
+              echo "Waiting for API server on :3501/health...";
+              sleep 5;
+            done;
+          '
+
       - name: Run Playwright tests
         working-directory: apps/web
         env:
           CI: "true"
+          PLAYWRIGHT_SKIP_WEB_SERVER: "1"
         run: bun run test:e2e

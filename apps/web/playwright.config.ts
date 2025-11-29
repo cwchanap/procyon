@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const isCI = process.env.CI === 'true';
+const shouldStartWebServer =
+  isCI && process.env.PLAYWRIGHT_SKIP_WEB_SERVER !== '1';
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -47,7 +49,7 @@ export default defineConfig({
   ],
 
   /* Run dev servers automatically only on CI; locally assume they're already running */
-  webServer: isCI ? [
+  webServer: shouldStartWebServer ? [
     {
       command: 'sh -c "cd .. && cd web && bun run dev"',
       url: 'http://localhost:3500',
