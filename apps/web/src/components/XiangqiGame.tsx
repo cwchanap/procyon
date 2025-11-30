@@ -502,6 +502,34 @@ const XiangqiGame: React.FC = () => {
 		};
 	}, [triggerDebugWin]);
 
+	useEffect(() => {
+		if (!import.meta.env.DEV || typeof window === 'undefined') {
+			return;
+		}
+		const global = window as unknown as {
+			__PROCYON_DEBUG_XIANGQI_STATE__?: {
+				gameMode: XiangqiGameMode;
+				gameStarted: boolean;
+				hasGameStarted: boolean;
+				currentPlayer: XiangqiGameState['currentPlayer'];
+				status: XiangqiGameState['status'];
+			};
+		};
+		global.__PROCYON_DEBUG_XIANGQI_STATE__ = {
+			gameMode,
+			gameStarted,
+			hasGameStarted: gameStarted || gameState.moveHistory.length > 0,
+			currentPlayer: gameState.currentPlayer,
+			status: gameState.status,
+		};
+	}, [
+		gameMode,
+		gameStarted,
+		gameState.currentPlayer,
+		gameState.status,
+		gameState.moveHistory.length,
+	]);
+
 	// Calculate hasGameStarted before using it in callbacks
 	const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
 
