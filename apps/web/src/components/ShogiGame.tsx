@@ -494,6 +494,34 @@ const ShogiGame: React.FC = () => {
 	// Calculate hasGameStarted before using it in callbacks
 	const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
 
+	useEffect(() => {
+		if (!import.meta.env.DEV || typeof window === 'undefined') {
+			return;
+		}
+		const global = window as unknown as {
+			__PROCYON_DEBUG_SHOGI_STATE__?: {
+				gameMode: ShogiGameMode;
+				gameStarted: boolean;
+				hasGameStarted: boolean;
+				currentPlayer: ShogiGameState['currentPlayer'];
+				status: ShogiGameState['status'];
+			};
+		};
+		global.__PROCYON_DEBUG_SHOGI_STATE__ = {
+			gameMode,
+			gameStarted,
+			hasGameStarted,
+			currentPlayer: gameState.currentPlayer,
+			status: gameState.status,
+		};
+	}, [
+		gameMode,
+		gameStarted,
+		hasGameStarted,
+		gameState.currentPlayer,
+		gameState.status,
+	]);
+
 	const handleStartOrReset = useCallback(() => {
 		if (!hasGameStarted) {
 			// Starting the game - ensure game state is properly initialized

@@ -3,47 +3,68 @@ import { test, expect } from '@playwright/test';
 test.describe('Shogi AI Integration', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto('/shogi');
+		await page.waitForFunction(() => {
+			const global = window as any;
+			return !!global.__PROCYON_DEBUG_SHOGI_STATE__;
+		});
 	});
 
 	test('should display AI mode controls when AI mode is activated', async ({
 		page,
 	}) => {
-		// Check initial state is Play mode
-		await expect(
-			page.getByRole('button', { name: '🎮 Play Mode' })
-		).toHaveClass(/from-red-500/);
-
-		// Check AI mode button exists
-		await expect(
-			page.getByRole('button', { name: '🤖 AI Mode' })
-		).toBeVisible();
-
-		// Click AI Mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
-
-		// AI Mode should be active (highlighted)
-		await expect(page.getByRole('button', { name: '🤖 AI Mode' })).toHaveClass(
-			/from-blue-500/
-		);
-
-		// Title should remain as game title
+		// Check we start in AI mode with the Shogi title
 		await expect(
 			page.getByRole('heading', { name: '将棋 (Shogi)' })
 		).toBeVisible();
 
-		// AI player selection dropdown should be visible
-		await expect(page.getByRole('combobox')).toBeVisible();
+		// Check AI Settings button exists
+		await expect(
+			page.getByRole('button', { name: '⚙️ AI Settings' })
+		).toBeVisible();
+
+		// Open AI Settings dialog
+		await page.getByRole('button', { name: '⚙️ AI Settings' }).click();
+		await expect(
+			page.getByRole('heading', { name: 'AI Settings' })
+		).toBeVisible();
+
+		// If no AI providers are configured, show the fallback message and exit early
+		const noProvidersMessage = page.getByText('⚠️ No AI providers configured');
+		if (await noProvidersMessage.isVisible()) {
+			await expect(noProvidersMessage).toBeVisible();
+			await expect(
+				page.getByText(
+					'Please configure an API key in the Profile page to enable AI gameplay.'
+				)
+			).toBeVisible();
+			await expect(
+				page.getByRole('button', { name: 'Go to Profile' })
+			).toBeVisible();
+
+			return;
+		}
+
+		// AI player selection dropdown should be visible in the dialog
+		const dropdown = page.getByRole('combobox');
+		await expect(dropdown).toBeVisible();
 		await expect(page.getByText('AI plays Gote (後手)')).toBeVisible();
 
 		// Game board should be visible with proper layout
-		await expect(page.getByText('香')).toBeVisible(); // Lance pieces
-		await expect(page.getByText('王')).toBeVisible(); // King (Gote)
-		await expect(page.getByText('玉')).toBeVisible(); // King (Sente)
+		await expect(page.getByText('香').first()).toBeVisible(); // Lance pieces
+		await expect(page.getByText('王').first()).toBeVisible(); // King (Gote)
+		await expect(page.getByText('玉').first()).toBeVisible(); // King (Sente)
 	});
 
 	test('should allow switching AI player side', async ({ page }) => {
 		// Activate AI mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
+		await page.getByRole('button', { name: '⚙️ AI Settings' }).click();
+		const noProvidersMessage = page.getByText('⚠️ No AI providers configured');
+		if (await noProvidersMessage.isVisible()) {
+			// When no providers are configured, we just verify the message and
+			// skip the provider-specific controls
+			await expect(noProvidersMessage).toBeVisible();
+			return;
+		}
 
 		// Check default AI player is Gote
 		const dropdown = page.getByRole('combobox');
@@ -59,81 +80,78 @@ test.describe('Shogi AI Integration', () => {
 
 	test('should display proper game status in AI mode', async ({ page }) => {
 		// Activate AI mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
+		await page.getByRole('button', { name: '▶️ Start' }).click();
+		await page.waitForFunction(() => {
+			const global = window as any;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			return state && state.hasGameStarted === true && state.gameMode === 'ai';
+		});
+		await page.waitForFunction(() =>
+			document.body.innerText.includes('👤 Human 先手 to move')
+		);
 
 		// Should show human player indicator when it's human's turn
 		await expect(page.getByText('👤 Human 先手 to move')).toBeVisible();
 
 		// Game controls should be available
 		await expect(
-			page.getByRole('button', { name: '❌ Clear Selection' })
-		).toBeVisible();
-		await expect(
 			page.getByRole('button', { name: '🆕 New Game' })
 		).toBeVisible();
 	});
 
 	test('should switch between game modes correctly', async ({ page }) => {
-		// Start in Play mode
-		await expect(
-			page.getByRole('button', { name: '🎮 Play Mode' })
-		).toHaveClass(/from-red-500/);
-
-		// Switch to Tutorial mode
-		await page.getByRole('button', { name: '📚 Tutorial Mode' }).click();
-		await expect(
-			page.getByRole('button', { name: '📚 Tutorial Mode' })
-		).toHaveClass(/from-purple-500/);
-		await expect(
-			page.getByRole('heading', { name: 'Shogi Logic & Tutorials' })
-		).toBeVisible();
-
-		// Switch to AI mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
-		await expect(page.getByRole('button', { name: '🤖 AI Mode' })).toHaveClass(
-			/from-blue-500/
-		);
+		// Start in AI mode showing the main Shogi title
 		await expect(
 			page.getByRole('heading', { name: '将棋 (Shogi)' })
 		).toBeVisible();
 
-		// Switch back to Play mode
-		await page.getByRole('button', { name: '🎮 Play Mode' }).click();
+		// Switch to Tutorial mode
+		await page.getByRole('button', { name: '📚 Tutorial Mode' }).click();
 		await expect(
-			page.getByRole('button', { name: '🎮 Play Mode' })
-		).toHaveClass(/from-red-500/);
+			page.getByRole('heading', { name: 'Shogi Logic & Tutorials' })
+		).toBeVisible();
+
+		// Switch back to AI mode via AI Settings button
+		await page.getByRole('button', { name: '⚙️ AI Settings' }).click();
+		await expect(
+			page.getByText(
+				'Click on a piece to select it, then click on a highlighted square to move.'
+			)
+		).toBeVisible();
 	});
 
 	test('should maintain shogi board functionality in AI mode', async ({
 		page,
 	}) => {
-		// Activate AI mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
-
-		// Check shogi-specific pieces are visible
-		await expect(page.getByText('香')).toBeVisible(); // Lance
-		await expect(page.getByText('桂')).toBeVisible(); // Knight
-		await expect(page.getByText('銀')).toBeVisible(); // Silver
-		await expect(page.getByText('金')).toBeVisible(); // Gold
-		await expect(page.getByText('王')).toBeVisible(); // King (Gote)
-		await expect(page.getByText('玉')).toBeVisible(); // King (Sente)
-		await expect(page.getByText('飛')).toBeVisible(); // Rook
-		await expect(page.getByText('角')).toBeVisible(); // Bishop
-		await expect(page.getByText('歩')).toBeVisible(); // Pawn
+		// Check shogi-specific pieces are visible in the initial AI mode
+		await expect(page.getByText('香').first()).toBeVisible(); // Lance
+		await expect(page.getByText('桂').first()).toBeVisible(); // Knight
+		await expect(page.getByText('銀').first()).toBeVisible(); // Silver
+		await expect(page.getByText('金').first()).toBeVisible(); // Gold
+		await expect(page.getByText('王').first()).toBeVisible(); // King (Gote)
+		await expect(page.getByText('玉').first()).toBeVisible(); // King (Sente)
+		await expect(page.getByText('飛').first()).toBeVisible(); // Rook
+		await expect(page.getByText('角').first()).toBeVisible(); // Bishop
+		await expect(page.getByText('歩').first()).toBeVisible(); // Pawn
 
 		// Check hand areas are present
 		await expect(page.getByText('後手の持ち駒')).toBeVisible(); // Gote's captured pieces
 		await expect(page.getByText('先手の持ち駒')).toBeVisible(); // Sente's captured pieces
 
-		// Test New Game functionality
-		await page.getByRole('button', { name: '🆕 New Game' }).click();
+		// Test starting a new game and showing status
+		await page.getByRole('button', { name: '▶️ Start' }).click();
+		await page.waitForFunction(() => {
+			const global = window as any;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			return state && state.hasGameStarted === true && state.gameMode === 'ai';
+		});
+		await page.waitForFunction(() =>
+			document.body.innerText.includes('👤 Human 先手 to move')
+		);
 		await expect(page.getByText('👤 Human 先手 to move')).toBeVisible();
 	});
 
 	test('should display shogi game instructions', async ({ page }) => {
-		// Activate AI mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
-
 		// Check basic game instructions
 		await expect(
 			page.getByText(
@@ -155,33 +173,40 @@ test.describe('Shogi AI Integration', () => {
 	});
 
 	test('should display shogi board coordinates correctly', async ({ page }) => {
-		// Activate AI mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
-
 		// Check file numbers (9-1) are visible
-		await expect(page.getByText('9')).toBeVisible();
-		await expect(page.getByText('1')).toBeVisible();
+		await expect(page.getByText('9').first()).toBeVisible();
+		await expect(page.getByText('1').first()).toBeVisible();
 
 		// Check rank letters (a-i) are visible
-		await expect(page.getByText('a')).toBeVisible();
-		await expect(page.getByText('i')).toBeVisible();
+		await expect(page.getByText('a').first()).toBeVisible();
+		await expect(page.getByText('i').first()).toBeVisible();
 	});
 
 	test('should handle piece selection in AI mode', async ({ page }) => {
-		// Activate AI mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
+		// Ensure the game has started
+		await page.getByRole('button', { name: '▶️ Start' }).click();
+		await page.waitForFunction(() => {
+			const global = window as any;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			return state && state.hasGameStarted === true && state.gameMode === 'ai';
+		});
+		await page.waitForFunction(() =>
+			document.body.innerText.includes('👤 Human 先手 to move')
+		);
 
 		// Try to select a Sente piece (human player's piece)
 		// This should work since it's the human player's turn
 		const sentePawn = page.locator('text=歩').last(); // Bottom row pawn
 		await sentePawn.click();
 
-		// Clear selection button should be available for testing
-		await page.getByRole('button', { name: '❌ Clear Selection' }).click();
+		// After selection, game controls should still be usable
+		await expect(
+			page.getByRole('button', { name: '🆕 New Game' })
+		).toBeVisible();
 
 		// Reset game to clear any state
 		await page.getByRole('button', { name: '🆕 New Game' }).click();
-		await expect(page.getByText('👤 Human 先手 to move')).toBeVisible();
+		await expect(page.getByRole('button', { name: '▶️ Start' })).toBeVisible();
 	});
 
 	test('should mock AI responses for shogi testing', async ({
@@ -254,9 +279,15 @@ test.describe('Shogi AI Integration', () => {
 		});
 
 		// Test AI integration with mocked responses
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
-
-		// The AI should be ready to play with mocked responses
+		await page.getByRole('button', { name: '▶️ Start' }).click();
+		await page.waitForFunction(() => {
+			const global = window as any;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			return state && state.hasGameStarted === true && state.gameMode === 'ai';
+		});
+		await page.waitForFunction(() =>
+			document.body.innerText.includes('👤 Human 先手 to move')
+		);
 		await expect(page.getByText('👤 Human 先手 to move')).toBeVisible();
 
 		// Test drop move mocking
@@ -285,25 +316,22 @@ test.describe('Shogi AI Integration', () => {
 	});
 
 	test('should handle shogi promotion zones in AI mode', async ({ page }) => {
-		// Activate AI mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
+		// Ensure the game is started in AI mode
+		await page.getByRole('button', { name: '▶️ Start' }).click();
 
 		// The promotion zones are the first 3 ranks for each player
 		// We can't easily test promotion in E2E without making actual moves
 		// But we can verify the board structure supports it
 
 		// Check that pieces are positioned correctly
-		await expect(page.getByText('歩')).toBeVisible(); // Pawns in starting position
+		await expect(page.getByText('歩').first()).toBeVisible(); // Pawns in starting position
 
 		// Ensure game state is correct
 		await expect(page.getByText('👤 Human 先手 to move')).toBeVisible();
 	});
 
 	test('should display empty hand areas initially', async ({ page }) => {
-		// Activate AI mode
-		await page.getByRole('button', { name: '🤖 AI Mode' }).click();
-
 		// Check hand areas show no captured pieces initially
-		await expect(page.getByText('持ち駒なし')).toBeVisible(); // "No captured pieces"
+		await expect(page.getByText('持ち駒なし').first()).toBeVisible(); // "No captured pieces"
 	});
 });
