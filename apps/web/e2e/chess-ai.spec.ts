@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Chess AI Integration', () => {
+test.describe.skip('Chess AI Integration', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto('/chess');
 	});

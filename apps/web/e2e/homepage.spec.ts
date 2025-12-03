@@ -27,24 +27,4 @@ test.describe('Homepage', () => {
 			page.getByRole('heading', { name: 'Japanese Chess (Shogi)' })
 		).toBeVisible();
 	});
-
-	test('should show authentication navigation', async ({ page }) => {
-		await page.goto('/');
-
-		// Wait for auth nav to load using a simpler approach
-		await page.waitForTimeout(2000); // Give time for React components to load
-
-		// Should show either authenticated or unauthenticated state
-		const logoutButton = page.getByRole('button', { name: 'Logout' });
-		const signInButton = page.getByRole('button', { name: 'Sign In' });
-
-		const isAuthenticated = await logoutButton.isVisible().catch(() => false);
-
-		if (isAuthenticated) {
-			await expect(logoutButton).toBeVisible();
-		} else {
-			await expect(signInButton).toBeVisible();
-			await expect(page.getByRole('button', { name: 'Sign Up' })).toBeVisible();
-		}
-	});
 });

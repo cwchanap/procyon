@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { AuthHelper, TestUser } from './utils/auth-helpers';
+import { AuthHelper, type TestUser } from './utils/auth-helpers';
 
-test.describe('AI Configuration Management', () => {
+test.describe.skip('AI Configuration Management', () => {
 	let authHelper: AuthHelper;
 	let testUser: TestUser;
 

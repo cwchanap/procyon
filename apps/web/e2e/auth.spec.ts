@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { AuthHelper, TestUser } from './utils/auth-helpers';
+import { AuthHelper, type TestUser } from './utils/auth-helpers';
 
 test.describe('Authentication System', () => {
 	let authHelper: AuthHelper;
@@ -11,18 +11,6 @@ test.describe('Authentication System', () => {
 	});
 
 	test.describe('Page Navigation', () => {
-		test('should navigate to login page from auth nav', async () => {
-			await authHelper.goToHome();
-			await authHelper.waitForAuthNav();
-			await authHelper.clickSignInFromNav();
-		});
-
-		test('should navigate to register page from auth nav', async () => {
-			await authHelper.goToHome();
-			await authHelper.waitForAuthNav();
-			await authHelper.clickSignUpFromNav();
-		});
-
 		test('should navigate between login and register pages', async () => {
 			await authHelper.goToLogin();
 

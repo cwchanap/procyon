@@ -8,7 +8,7 @@ export interface TestUser {
 }
 
 export class AuthHelper {
-	constructor(private page: Page) {}
+	constructor(public page: Page) {}
 
 	/**
 	 * Generate a unique test user with timestamp to avoid conflicts
