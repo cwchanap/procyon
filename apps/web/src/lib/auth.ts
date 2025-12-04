@@ -3,46 +3,33 @@ import { createAuthClient } from 'better-auth/react';
 import { env } from './env';
 
 function resolveApiBaseUrl(): string {
-	const baseUrl = env.NEXT_PUBLIC_API_URL;
+	const baseUrl = env.PUBLIC_API_URL;
 
-	// Server-side (SSR): rely on dedicated server env vars or an absolute NEXT_PUBLIC_API_URL
-	if (typeof window === 'undefined') {
-		const serverEnvUrl =
-			import.meta.env.SERVER_API_URL ||
-			import.meta.env.NEXT_PUBLIC_API_URL_SERVER ||
-			(/^https?:\/\//i.test(baseUrl) ? baseUrl : '');
-
-		if (!serverEnvUrl) {
-			throw new Error(
-				'API base URL could not be resolved on the server. Set SERVER_API_URL or NEXT_PUBLIC_API_URL_SERVER to an absolute URL (e.g. https://api.example.com/api).'
-			);
-		}
-
-		if (!/^https?:\/\//i.test(serverEnvUrl)) {
-			throw new Error(
-				'SERVER_API_URL or NEXT_PUBLIC_API_URL_SERVER must be an absolute URL starting with http:// or https://.'
-			);
-		}
-
-		return serverEnvUrl.replace(/\/$/, '');
-	}
-
-	// Client-side: support absolute URLs or resolve relative paths against the current origin
+	// Server-side (SSR) and client: prefer absolute URLs when provided
 	if (/^https?:\/\//i.test(baseUrl)) {
 		return baseUrl.replace(/\/$/, '');
 	}
+
+	// Client-side: resolve relative paths (like /api) against the current origin
 	if (typeof window !== 'undefined' && window.location) {
 		return new URL(baseUrl, window.location.origin)
 			.toString()
 			.replace(/\/$/, '');
 	}
 
-	throw new Error(
-		'API base URL could not be resolved on the client. Ensure NEXT_PUBLIC_API_URL or PUBLIC_API_URL is set to a relative or absolute URL.'
-	);
+	// SSR/build fallback: use the configured path as-is (e.g. /api)
+	return baseUrl || '/api';
 }
 
-const AUTH_BASE_URL = `${resolveApiBaseUrl()}/auth`;
+const AUTH_BASE_URL = import.meta.env.SSR
+	? (() => {
+			const apiBase = env.PUBLIC_API_URL;
+			if (/^https?:\/\//i.test(apiBase)) {
+				return `${apiBase.replace(/\/$/, '')}/auth`;
+			}
+			return 'http://localhost:3501/api/auth';
+		})()
+	: `${resolveApiBaseUrl()}/auth`;
 
 export const authClient = createAuthClient({
 	baseURL: AUTH_BASE_URL,
@@ -94,12 +81,16 @@ export function useAuth() {
 			password: string
 		): Promise<{ success: boolean; error?: string }> => {
 			try {
-				const result = await signUp.email({
+				type SignUpEmailInput = Parameters<(typeof signUp)['email']>[0] & {
+					username: string;
+				};
+				const payload: SignUpEmailInput = {
 					email,
 					password,
 					name: username,
 					username,
-				});
+				};
+				const result = await signUp.email(payload);
 				if (result.error) {
 					const normalizedError = result.error as {
 						message?: string;

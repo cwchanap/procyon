@@ -54,4 +54,3 @@ jobs:
         run: bun run build
         env:
           PUBLIC_API_URL: "http://localhost:3501/api"
-          SERVER_API_URL: "http://localhost:3501/api"
