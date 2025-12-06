@@ -31,7 +31,35 @@
 
 _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
-[Gates determined based on constitution file]
+Verify compliance with `.specify/memory/constitution.md`:
+
+**Core Principles Compliance:**
+
+- [ ] I. Modular Game Architecture - If adding game variant, follows 4-module pattern (types/board/moves/game)?
+- [ ] II. Universal AI Adapter Pattern - If AI-related, uses UniversalAIService + game adapter + RuleGuardian?
+- [ ] III. Bun-First Development - Uses `bun` commands exclusively (no npm/node/yarn)?
+- [ ] IV. Dual Database Strategy - If DB changes, supports both SQLite (dev) and D1 (prod)?
+- [ ] V. Session-Based Authentication - If auth-related, uses Better Auth with sessions (not JWT)?
+- [ ] VI. Monorepo Organization - Code in correct workspace (apps/web, apps/api, packages/\*)?
+- [ ] VII. TypeScript Strictness - Strict mode enabled, `any` types justified?
+
+**Testing Standards:**
+
+- [ ] Unit tests for game logic modules with Bun test runner?
+- [ ] E2E tests for user journeys with Playwright + mocked APIs?
+
+**Code Quality:**
+
+- [ ] ESLint + Prettier configured with pre-commit hooks?
+- [ ] Tailwind CSS for styling (using cn(), cva() helpers)?
+
+**Workflow:**
+
+- [ ] Feature follows spec → plan → tasks workflow?
+- [ ] Branch naming matches `[###-feature-name]` convention?
+
+**Violations Requiring Justification:**
+[Document any violations in Complexity Tracking section below]
 
 ## Project Structure
 
