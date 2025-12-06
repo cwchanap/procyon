@@ -1,73 +1,252 @@
-# [PROJECT_NAME] Constitution
+# Procyon Constitution
 
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report:
+- Version: NEW → 1.0.0
+- Ratification: 2025-12-05
+- Last Amended: 2025-12-05
+- Modified Principles: N/A (initial version)
+- Added Sections: All (new constitution)
+- Removed Sections: N/A
+- Templates Status:
+  ✅ plan-template.md - Constitution Check section aligned
+  ✅ spec-template.md - Requirements and user story structure aligned
+  ✅ tasks-template.md - Task organization reflects principles
+  ⚠ checklist-template.md - Needs review for principle alignment
+  ⚠ agent-file-template.md - Needs review for principle alignment
+- Follow-up TODOs: None
+-->
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
+### I. Modular Game Architecture
 
-<!-- Example: I. Library-First -->
+**Principle**: Each game variant (Chess, Xiangqi, Shogi, Jungle) MUST follow the identical four-module pattern:
 
-[PRINCIPLE_1_DESCRIPTION]
+- `types.ts` - Core interfaces and enums (pieces, moves, positions)
+- `board.ts` - Board representation and piece management
+- `moves.ts` - Legal move generation and validation
+- `game.ts` - Game state, turn management, win conditions
 
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+**Rationale**: Consistency across game variants enables maintainability, knowledge transfer between games, and ensures quality standards apply uniformly. New developers can immediately understand any game variant by following the established pattern.
 
-### [PRINCIPLE_2_NAME]
+**Non-Negotiable Rules**:
 
-<!-- Example: II. CLI Interface -->
+- Every new game variant MUST implement all four modules
+- Module responsibilities MUST NOT overlap or merge
+- Game logic MUST be framework-agnostic (no React/Astro dependencies in game modules)
+- Each module MUST have corresponding unit tests
 
-[PRINCIPLE_2_DESCRIPTION]
+### II. Universal AI Adapter Pattern
 
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+**Principle**: AI integration MUST use the universal service pattern with game-specific adapters:
 
-### [PRINCIPLE_3_NAME]
+- Core orchestration via `UniversalAIService` for provider communication
+- Game-specific adapters convert state to prompts and parse responses
+- `RuleGuardian` validates ALL AI moves before application
+- Factory pattern creates AI instances per game variant
 
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
+**Rationale**: Supporting multiple AI providers (Gemini, OpenAI, Anthropic, OpenRouter, Chutes) without duplicating provider logic requires separation of concerns. Game-specific logic stays in adapters while provider communication remains centralized.
 
-[PRINCIPLE_3_DESCRIPTION]
+**Non-Negotiable Rules**:
 
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+- AI responses MUST follow strict JSON format with move notation and reasoning
+- All AI moves MUST pass `RuleGuardian` validation
+- Provider API keys MUST be masked in responses (`***${key.slice(-4)}`)
+- Interaction history MUST be tracked for game export functionality
 
-### [PRINCIPLE_4_NAME]
+### III. Bun-First Development
 
-<!-- Example: IV. Integration Testing -->
+**Principle**: Bun is the canonical runtime and package manager. All commands, scripts, and tooling MUST use Bun over npm/node/yarn/pnpm.
 
-[PRINCIPLE_4_DESCRIPTION]
+**Rationale**: Bun provides unified runtime, package management, test runner, and bundler. Using multiple tools increases complexity, slows CI/CD, and creates inconsistencies in local vs production environments.
 
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+**Non-Negotiable Rules**:
 
-### [PRINCIPLE_5_NAME]
+- All `package.json` scripts MUST use `bun` commands
+- Tests MUST use Bun's built-in test runner
+- Documentation MUST reference `bun` commands exclusively
+- Dependencies MUST be installed with `bun install`
 
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
+### IV. Dual Database Strategy
 
-[PRINCIPLE_5_DESCRIPTION]
+**Principle**: Database configuration MUST support both local development (SQLite via better-sqlite3) and production (Cloudflare D1) using Drizzle ORM.
 
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+**Rationale**: Local SQLite enables fast iteration without network dependencies or cloud costs. D1 provides production scalability and edge deployment. Drizzle ORM abstracts the differences.
 
-## [SECTION_2_NAME]
+**Non-Negotiable Rules**:
 
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+- Database initialization MUST check `NODE_ENV` to select driver
+- Schema MUST be defined in `apps/api/src/db/schema.ts`
+- Migrations for local dev MUST use `drizzle.config.dev.ts`
+- Production migrations MUST use `drizzle.config.ts`
+- Code MUST NOT assume specific database implementation details
 
-[SECTION_2_CONTENT]
+### V. Session-Based Authentication
 
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+**Principle**: Authentication MUST use Better Auth with session-based authentication (not JWT tokens).
 
-## [SECTION_3_NAME]
+**Rationale**: Session-based auth provides better security (server-side revocation), simpler implementation (no token refresh logic), and built-in CSRF protection. Better Auth handles password hashing, session management, and security best practices.
 
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+**Non-Negotiable Rules**:
 
-[SECTION_3_CONTENT]
+- Protected routes MUST use `authMiddleware` from `apps/api/src/auth/middleware.ts`
+- Frontend MUST use `authClient` from `apps/web/src/lib/auth.ts`
+- Passwords MUST be hashed by Better Auth (never manual hashing)
+- Session cookies MUST be httpOnly and secure in production
 
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### VI. Monorepo Organization
+
+**Principle**: Code MUST be organized in Turbo monorepo structure with clear workspace separation:
+
+- `apps/web` - Astro SSR + React frontend (port 3500)
+- `apps/api` - Hono API server (port 3501)
+- `packages/*` - Shared packages (future)
+
+**Rationale**: Monorepo enables code sharing, coordinated versioning, and single-command operations while maintaining clear boundaries between frontend and backend concerns.
+
+**Non-Negotiable Rules**:
+
+- Apps MUST NOT import from each other's source code
+- Shared code MUST move to `packages/` when needed by multiple apps
+- Each app MUST have its own `package.json` and dependencies
+- Root-level commands MUST use Turbo for orchestration
+
+### VII. TypeScript Strictness
+
+**Principle**: All TypeScript code MUST use strict mode with no `any` types except in explicitly justified cases.
+
+**Rationale**: Strict TypeScript catches bugs at compile time, enables better IDE support, and serves as living documentation. `any` types defeat type safety and should be rare exceptions.
+
+**Non-Negotiable Rules**:
+
+- `strict: true` MUST be enabled in all tsconfig files
+- `any` types MUST have inline comments justifying their use
+- Type definitions MUST be colocated with modules (prefer local types)
+- Shared types between apps MUST move to `packages/` when extracted
+
+## Testing Standards
+
+### Unit Testing
+
+**Principle**: Game logic MUST have unit tests using Bun's test runner. UI components testing is optional.
+
+**Rationale**: Game rules are complex and critical - bugs break user experience. Unit tests ensure move validation, board state, and game logic correctness without requiring browser testing.
+
+**Requirements**:
+
+- All game modules (`types.ts`, `board.ts`, `moves.ts`, `game.ts`) MUST have `.test.ts` files
+- Tests MUST be runnable via `bun test`
+- Tests MUST NOT depend on external services or databases
+- Test files MUST be colocated with source files
+
+### E2E Testing
+
+**Principle**: User-facing features MUST have E2E tests using Playwright with mocked external APIs.
+
+**Rationale**: E2E tests validate complete user journeys including authentication, game play, and AI integration. Mocking external APIs ensures tests are fast, reliable, and don't incur API costs.
+
+**Requirements**:
+
+- Tests MUST be in `apps/web/e2e/` directory
+- AI provider APIs MUST be mocked using `page.route()`
+- Auth flows MUST use `AuthHelper` utilities from `e2e/utils/auth-helpers.ts`
+- Tests MUST assume servers are running locally (started by Playwright on CI)
+- Unique test users MUST be generated with timestamps
+
+## Code Quality Standards
+
+### Linting and Formatting
+
+**Principle**: All code MUST pass ESLint and Prettier checks before commit.
+
+**Rationale**: Consistent formatting reduces diff noise, prevents bikeshedding, and enforces code quality standards. Pre-commit hooks catch issues before they reach CI.
+
+**Requirements**:
+
+- Husky + lint-staged MUST enforce pre-commit checks
+- ESLint 9 with TypeScript support MUST be configured
+- Prettier with Astro plugin MUST format all files
+- Commits failing lint checks MUST be rejected
+
+### Component Styling
+
+**Principle**: UI styling MUST use Tailwind CSS with utility classes and composition utilities (clsx, tailwind-merge, class-variance-authority).
+
+**Rationale**: Tailwind provides consistent design tokens, reduces CSS bundle size, and enables rapid iteration. Composition utilities prevent class conflicts and enable variant-based styling.
+
+**Requirements**:
+
+- Custom CSS MUST be justified (when Tailwind utilities insufficient)
+- Class composition MUST use `cn()` helper from `tailwind-merge`
+- Component variants MUST use `cva()` from `class-variance-authority`
+- Design tokens MUST be defined in Tailwind config
+
+## Workflow Standards
+
+### Development Workflow
+
+**Principle**: Features MUST follow the specification workflow: spec → plan → tasks → implementation.
+
+**Rationale**: Planning before coding ensures requirements are understood, edge cases are considered, and implementation is scoped correctly. Templates provide consistency.
+
+**Requirements**:
+
+- Feature specs MUST live in `specs/[###-feature-name]/spec.md`
+- User stories MUST be prioritized and independently testable
+- Implementation plans MUST include constitution compliance check
+- Tasks MUST be organized by user story with clear dependencies
+
+### Git Workflow
+
+**Principle**: Feature branches MUST follow naming convention `[###-feature-name]` and require review before merge.
+
+**Rationale**: Consistent naming enables automation, links code to specs, and provides context in git history. Reviews catch bugs and share knowledge.
+
+**Requirements**:
+
+- Branch names MUST match feature spec directory names
+- Commits MUST be atomic and have descriptive messages
+- PRs MUST reference related spec/task documentation
+- Main branch MUST remain deployable at all times
 
 ## Governance
 
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+### Amendment Process
 
-[GOVERNANCE_RULES]
+This constitution supersedes all other development practices and standards. Amendments require:
 
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+1. **Proposal**: Document proposed changes with rationale
+2. **Review**: Team discussion of impact and alternatives
+3. **Version Bump**: Semantic versioning (MAJOR.MINOR.PATCH)
+   - MAJOR: Backward incompatible principle changes or removals
+   - MINOR: New principles or materially expanded guidance
+   - PATCH: Clarifications, wording, typo fixes
+4. **Migration Plan**: Document changes needed in existing code
+5. **Template Sync**: Update all affected templates and documentation
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+### Compliance Review
 
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+All pull requests and code reviews MUST verify constitutional compliance:
+
+- Architecture patterns match Core Principles (I-VII)
+- Testing requirements met per Testing Standards
+- Code quality checks pass per Code Quality Standards
+- Workflow followed per Workflow Standards
+
+### Complexity Justification
+
+Deviations from constitution principles MUST be justified in writing:
+
+- Document why simpler alternative insufficient
+- Explain specific problem being solved
+- Provide migration path back to compliance when possible
+- Obtain team consensus before proceeding
+
+### Version History
+
+**Version**: 1.0.0 | **Ratified**: 2025-12-05 | **Last Amended**: 2025-12-05
+
+**Changelog**:
+
+- 1.0.0 (2025-12-05): Initial constitution ratified
