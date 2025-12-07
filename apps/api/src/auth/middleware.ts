@@ -1,43 +1,36 @@
 import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { getDB, schema } from '../db';
-import { eq } from 'drizzle-orm';
-import { auth } from './better-auth';
-import type { User } from '../db/schema';
+import { supabaseAdmin } from './supabase';
 
-export interface AuthContext {
-	user: User & { userId: string };
+interface AuthUser {
+	userId: string;
+	email?: string;
 }
 
 export async function authMiddleware(c: Context, next: Next) {
 	try {
-		// Get session from better-auth
-		const session = await auth.api.getSession({
-			headers: c.req.raw.headers,
+		const authHeader = c.req.header('authorization') || '';
+		const token = extractBearerToken(authHeader);
+
+		if (!token) {
+			throw new HTTPException(401, {
+				message: 'Unauthorized: Missing access token',
+			});
+		}
+
+		const { data, error } = await supabaseAdmin.auth.getUser(token);
+
+		if (error || !data?.user) {
+			throw new HTTPException(401, {
+				message: 'Unauthorized: Invalid or expired token',
+			});
+		}
+
+		const user = data.user;
+		c.set('user', {
+			userId: user.id,
+			email: user.email ?? undefined,
 		});
-
-		if (!session?.user) {
-			throw new HTTPException(401, {
-				message: 'Unauthorized: No valid session',
-			});
-		}
-
-		// Fetch full user data from database
-		const db = getDB();
-		const users = await db
-			.select()
-			.from(schema.user)
-			.where(eq(schema.user.id, session.user.id))
-			.limit(1);
-
-		if (users.length === 0) {
-			throw new HTTPException(401, {
-				message: 'Unauthorized: User not found',
-			});
-		}
-
-		const user = users[0]!; // Safe: we checked length above
-		c.set('user', { ...user, userId: user.id });
 		await next();
 	} catch (error) {
 		if (error instanceof HTTPException) {
@@ -50,6 +43,13 @@ export async function authMiddleware(c: Context, next: Next) {
 	}
 }
 
-export function getUser(c: Context): User & { userId: string } {
-	return c.get('user') as User & { userId: string };
+export function getUser(c: Context): AuthUser {
+	return c.get('user') as AuthUser;
+}
+
+function extractBearerToken(header: string): string | null {
+	const [scheme, value] = header.split(' ');
+	if (!scheme || !value) return null;
+	if (scheme.toLowerCase() !== 'bearer') return null;
+	return value;
 }
