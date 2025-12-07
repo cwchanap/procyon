@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+coverage/
+.astro/
+.turbo/
+.playwright-mcp/
+playwright-report/
+test-results/
+*.config.js
+*.config.mjs
+*.config.ts
