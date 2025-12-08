@@ -1,130 +1,125 @@
-import { createAuthClient } from 'better-auth/react';
-
+import { useEffect, useState } from 'react';
 import { env } from './env';
+import { supabaseClient } from './supabase';
+
+type AuthUser = {
+	id: string;
+	email?: string;
+	user_metadata?: Record<string, unknown>;
+};
+
+type LoginResult =
+	| { success: true }
+	| { success: false; error: string; retryAfterMs?: number };
+
+type RegisterResult = { success: boolean; error?: string };
 
 function resolveApiBaseUrl(): string {
-	const baseUrl = env.PUBLIC_API_URL;
-
-	// Server-side (SSR) and client: prefer absolute URLs when provided
-	if (/^https?:\/\//i.test(baseUrl)) {
-		return baseUrl.replace(/\/$/, '');
-	}
-
-	// Client-side: resolve relative paths (like /api) against the current origin
-	if (typeof window !== 'undefined' && window.location) {
-		return new URL(baseUrl, window.location.origin)
-			.toString()
-			.replace(/\/$/, '');
-	}
-
-	// SSR/build fallback: use the configured path as-is (e.g. /api)
-	return baseUrl || '/api';
+	const base = env.PUBLIC_API_URL || '/api';
+	return base.replace(/\/$/, '') || '/api';
 }
 
-const AUTH_BASE_URL = import.meta.env.SSR
-	? (() => {
-			const apiBase = env.PUBLIC_API_URL;
-			if (/^https?:\/\//i.test(apiBase)) {
-				return `${apiBase.replace(/\/$/, '')}/auth`;
-			}
-			return 'http://localhost:3501/api/auth';
-		})()
-	: `${resolveApiBaseUrl()}/auth`;
+const API_BASE_URL = resolveApiBaseUrl();
 
-export const authClient = createAuthClient({
-	baseURL: AUTH_BASE_URL,
-	fetchOptions: {
-		credentials: 'include',
-	},
-});
+async function apiLogin(email: string, password: string): Promise<LoginResult> {
+	const res = await fetch(`${API_BASE_URL}/auth/login`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ email, password }),
+	});
 
-export type { Session } from 'better-auth/types';
+	if (res.status === 429) {
+		const data = await res.json().catch(() => ({}));
+		return {
+			success: false,
+			error: data.error || 'Too many attempts. Please wait before retrying.',
+			retryAfterMs: data.retryAfterMs,
+		};
+	}
 
-// Re-export commonly used hooks for convenience
-export const { useSession, signIn, signOut, signUp } = authClient;
+	if (!res.ok) {
+		const data = await res.json().catch(() => ({}));
+		return { success: false, error: data.error || 'Login failed' };
+	}
 
-// Custom hook that maintains the same API as before
+	const data = (await res.json()) as {
+		access_token: string;
+		refresh_token: string;
+		user: AuthUser;
+	};
+
+	const { error: setSessionError } = await supabaseClient.auth.setSession({
+		access_token: data.access_token,
+		refresh_token: data.refresh_token,
+	});
+
+	if (setSessionError) {
+		return { success: false, error: setSessionError.message };
+	}
+
+	return { success: true };
+}
+
+async function apiRegister(
+	email: string,
+	username: string,
+	password: string
+): Promise<RegisterResult> {
+	const res = await fetch(`${API_BASE_URL}/auth/register`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ email, username, password }),
+	});
+
+	if (!res.ok) {
+		const data = await res.json().catch(() => ({}));
+		return { success: false, error: data.error || 'Registration failed' };
+	}
+
+	return { success: true };
+}
+
 export function useAuth() {
-	const session = useSession();
+	const [user, setUser] = useState<AuthUser | null>(null);
+	const [loading, setLoading] = useState(true);
+
+	useEffect(() => {
+		let mounted = true;
+		supabaseClient.auth
+			.getSession()
+			.then(({ data }) => {
+				if (!mounted) return;
+				setUser(data.session?.user ?? null);
+				setLoading(false);
+			})
+			.catch(() => {
+				if (!mounted) return;
+				setUser(null);
+				setLoading(false);
+			});
+
+		const { data: subscription } = supabaseClient.auth.onAuthStateChange(
+			(_event, session) => {
+				if (!mounted) return;
+				setUser(session?.user ?? null);
+			}
+		);
+
+		return () => {
+			mounted = false;
+			subscription?.subscription.unsubscribe();
+		};
+	}, []);
 
 	return {
-		user: session.data?.user ?? null,
-		loading: session.isPending,
-		login: async (
-			email: string,
-			password: string
-		): Promise<{ success: boolean; error?: string }> => {
-			try {
-				const result = await signIn.email({
-					email,
-					password,
-				});
-
-				if (result.error) {
-					return {
-						success: false,
-						error: result.error.message || 'Login failed',
-					};
-				}
-
-				return { success: true };
-			} catch (_error) {
-				return {
-					success: false,
-					error: 'Network error. Please try again.',
-				};
-			}
-		},
-		register: async (
-			email: string,
-			username: string,
-			password: string
-		): Promise<{ success: boolean; error?: string }> => {
-			try {
-				type SignUpEmailInput = Parameters<(typeof signUp)['email']>[0] & {
-					username: string;
-				};
-				const payload: SignUpEmailInput = {
-					email,
-					password,
-					name: username,
-					username,
-				};
-				const result = await signUp.email(payload);
-				if (result.error) {
-					const normalizedError = result.error as {
-						message?: string;
-						code?: string;
-					};
-					let message = normalizedError.message || 'Registration failed';
-					if (normalizedError.code === 'USERNAME_ALREADY_EXISTS') {
-						message = 'Username already taken';
-					} else if (normalizedError.code === 'EMAIL_ALREADY_EXISTS') {
-						message = 'Email already in use';
-					}
-					return {
-						success: false,
-						error: message,
-					};
-				}
-
-				return { success: true };
-			} catch (_error) {
-				return {
-					success: false,
-					error: 'Network error. Please try again.',
-				};
-			}
-		},
+		user,
+		loading,
+		login: (email: string, password: string) => apiLogin(email, password),
+		register: (email: string, username: string, password: string) =>
+			apiRegister(email, username, password),
 		logout: async () => {
-			try {
-				await signOut();
-			} catch (error) {
-				// eslint-disable-next-line no-console
-				console.error('Logout failed:', error);
-				throw error;
-			}
+			await supabaseClient.auth.signOut();
 		},
-		isAuthenticated: !!session.data?.user,
+		isAuthenticated: !!user,
 	};
 }
