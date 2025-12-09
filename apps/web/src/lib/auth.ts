@@ -76,6 +76,17 @@ async function apiRegister(
 		return { success: false, error: data.error || 'Registration failed' };
 	}
 
+	const loginResult = await apiLogin(email, password);
+
+	if (!loginResult.success) {
+		return {
+			success: false,
+			error:
+				loginResult.error ||
+				'Registration succeeded, but automatic login failed. Please log in manually.',
+		};
+	}
+
 	return { success: true };
 }
 
