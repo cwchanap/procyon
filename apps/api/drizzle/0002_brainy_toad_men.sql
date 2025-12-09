@@ -1,8 +1,8 @@
+PRAGMA foreign_keys=OFF;--> statement-breakpoint
 DROP TABLE `account`;--> statement-breakpoint
 DROP TABLE `session`;--> statement-breakpoint
 DROP TABLE `user`;--> statement-breakpoint
 DROP TABLE `verification`;--> statement-breakpoint
-PRAGMA foreign_keys=OFF;--> statement-breakpoint
 CREATE TABLE `__new_ai_configurations` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` text NOT NULL,
