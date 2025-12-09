@@ -18,11 +18,11 @@ const createPlayHistorySchema = z
 		chessId: z.nativeEnum(ChessVariantId),
 		status: z.nativeEnum(GameResultStatus),
 		date: z.string().datetime(),
-		opponentUserId: z.number().int().positive().optional(),
+		opponentUserId: z.string().uuid().optional(),
 		opponentLlmId: z.nativeEnum(OpponentLlmId).optional(),
 	})
 	.superRefine((data, ctx) => {
-		const hasUserOpponent = typeof data.opponentUserId === 'number';
+		const hasUserOpponent = typeof data.opponentUserId === 'string';
 		const hasLlmOpponent = typeof data.opponentLlmId === 'string';
 
 		if (!hasUserOpponent && !hasLlmOpponent) {
