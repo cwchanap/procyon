@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { useAuth } from '../lib/auth';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 import { env } from '../lib/env';
 
 // AI Provider and Model configurations
@@ -113,12 +113,13 @@ export function ProfilePage() {
 			if (configForProvider && configForProvider.id) {
 				// Load the full config with API key
 				try {
+					const authHeaders = await getAuthHeaders();
 					const response = await fetch(
 						`${env.PUBLIC_API_URL}/ai-config/${configForProvider.id}/full`,
 						{
-							credentials: 'include',
 							headers: {
 								'Content-Type': 'application/json',
+								...authHeaders,
 							},
 						}
 					);
@@ -165,10 +166,11 @@ export function ProfilePage() {
 
 	const fetchConfigurations = async () => {
 		try {
+			const authHeaders = await getAuthHeaders();
 			const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
-				credentials: 'include',
 				headers: {
 					'Content-Type': 'application/json',
+					...authHeaders,
 				},
 			});
 
@@ -193,12 +195,13 @@ export function ProfilePage() {
 
 		try {
 			setConfigStatus('saving');
+			const authHeaders = await getAuthHeaders();
 
 			const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 				method: 'POST',
-				credentials: 'include',
 				headers: {
 					'Content-Type': 'application/json',
+					...authHeaders,
 				},
 				body: JSON.stringify({
 					provider: selectedProvider,
@@ -235,12 +238,13 @@ export function ProfilePage() {
 		if (!config.id) return;
 
 		try {
+			const authHeaders = await getAuthHeaders();
 			const response = await fetch(
 				`${env.PUBLIC_API_URL}/ai-config/${config.id}/full`,
 				{
-					credentials: 'include',
 					headers: {
 						'Content-Type': 'application/json',
+						...authHeaders,
 					},
 				}
 			);

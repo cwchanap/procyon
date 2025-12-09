@@ -24,7 +24,7 @@ import type { AIConfig, AIProvider } from '../lib/ai/types';
 import { createChessAI } from '../lib/ai';
 import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
 import { GameExporter } from '../lib/ai/game-export';
-import { useAuth } from '../lib/auth';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 import { AI_PROVIDERS } from '../lib/ai/types';
 import { env } from '../lib/env';
 
@@ -75,10 +75,11 @@ const ChessGame: React.FC = () => {
 					return;
 				}
 
+				const authHeaders = await getAuthHeaders();
 				const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
-					credentials: 'include',
 					headers: {
 						'Content-Type': 'application/json',
+						...authHeaders,
 					},
 				});
 
@@ -120,9 +121,9 @@ const ChessGame: React.FC = () => {
 				const fullConfigResponse = await fetch(
 					`${env.PUBLIC_API_URL}/ai-config/${providerConfig.id}/full`,
 					{
-						credentials: 'include',
 						headers: {
 							'Content-Type': 'application/json',
+							...authHeaders,
 						},
 					}
 				);
@@ -239,11 +240,12 @@ const ChessGame: React.FC = () => {
 						opponentLlmId = 'gemini-2.5-flash';
 					}
 
+					const authHeaders = await getAuthHeaders();
 					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 						method: 'POST',
-						credentials: 'include',
 						headers: {
 							'Content-Type': 'application/json',
+							...authHeaders,
 						},
 						body: JSON.stringify({
 							chessId: 'chess',
