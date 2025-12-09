@@ -10,7 +10,9 @@ import aiConfigRoutes from './routes/ai-config';
 type Bindings = {
 	DB: D1Database;
 	ASSETS: Fetcher;
-	BETTER_AUTH_SECRET: string;
+	SUPABASE_URL: string;
+	SUPABASE_ANON_KEY: string;
+	SUPABASE_SERVICE_ROLE_KEY: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();

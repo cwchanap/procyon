@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Procyon is a monorepo multi-variant chess platform built with TypeScript, featuring:
 
 - **Web app** (Astro SSR + React + Tailwind CSS) - Frontend interface for Chess, Xiangqi, Shogi, and Jungle
-- **API server** (Hono) - Backend services with Better Auth and database
+- **API server** (Hono) - Backend services with Supabase Auth and database
 - **AI Integration** - Universal AI system supporting multiple providers (Gemini, OpenAI, Anthropic, OpenRouter, Chutes)
 - **Turbo** - Monorepo build system and task orchestration
 - **Bun** - Package manager and runtime (prefer over npm/node/yarn/pnpm)
@@ -47,13 +47,14 @@ packages/         # Shared packages (currently empty)
 - **Database**: Drizzle ORM with dual setup:
   - **Development**: Local SQLite via better-sqlite3 (`dev.db`)
   - **Production**: Cloudflare D1 via bindings
-- **Authentication**: Better Auth with session-based authentication
-  - Middleware: `src/auth/middleware.ts` (`authMiddleware` for protected routes)
-  - Routes: `src/routes/auth.ts` (registration/login via Better Auth)
-  - Configuration: `src/auth/better-auth.ts`
-- **Schema**: `src/db/schema.ts` defines users, sessions, accounts, and ai_configurations tables
+- **Authentication**: Supabase Auth with JWT-based authentication
+  - Middleware: `src/auth/middleware.ts` (`authMiddleware` for protected routes, validates Supabase JWT)
+  - Routes: `src/routes/auth.ts` (registration/login via Supabase)
+  - Supabase Client: `src/auth/supabase.ts` (service role + anon key clients)
+  - Rate Limiting: `src/auth/rate-limit.ts` (in-memory rate limiting for login attempts)
+- **Schema**: `src/db/schema.ts` defines ai_configurations and play_history tables (user data in Supabase)
 - **Routes**:
-  - `/api/auth` - Registration, login, session management (Better Auth)
+  - `/api/auth` - Registration, login, session management (Supabase Auth)
   - `/api/users` - User management
   - `/api/ai-config` - AI provider settings per user
   - `/api/play-history` - Game history tracking
@@ -165,7 +166,7 @@ AI responses must follow strict JSON format with move notation and reasoning. Th
 - **React 18** - UI library
 - **Tailwind CSS** - Utility-first CSS framework
 - **class-variance-authority**, **clsx**, **tailwind-merge** - Styling utilities
-- **better-auth** - Authentication client
+- **@supabase/supabase-js**, **@supabase/ssr** - Supabase client for authentication
 
 ### API Server
 
@@ -173,7 +174,7 @@ AI responses must follow strict JSON format with move notation and reasoning. Th
 - **Drizzle ORM** - TypeScript ORM for SQLite/D1
 - **better-sqlite3** - Local SQLite driver (development)
 - **@cloudflare/d1** - Cloudflare D1 bindings (production)
-- **better-auth** - Authentication system
+- **@supabase/supabase-js**, **@supabase/ssr** - Supabase authentication
 
 ### Development Tools
 
@@ -197,21 +198,25 @@ Dual database configuration using Drizzle ORM:
   - Use `drizzle.config.ts` for production migrations
   - Accessed via Cloudflare bindings
 
-Database initialization checks `NODE_ENV` to determine which database to use. Schema defined in `apps/api/src/db/schema.ts` with tables for users, sessions, accounts, and ai_configurations.
+Database initialization checks `NODE_ENV` to determine which database to use. Schema defined in `apps/api/src/db/schema.ts` with tables for ai_configurations and play_history. User data is stored in Supabase (not D1).
 
-### Authentication Flow
+### Authentication Flow (Dual Database Architecture)
 
-Better Auth-based authentication with session management:
+**Supabase** handles all user authentication; **D1** stores application data.
+
+Supabase Auth-based authentication with JWT tokens:
 
 1. **Registration/Login**: Routes in `apps/api/src/routes/auth.ts`
-   - Custom `/register` endpoint handles username
-   - Delegates to Better Auth for password hashing and session creation
-   - Session cookies issued on successful auth
+   - `/register` endpoint uses Supabase `signUp` with username in user_metadata
+   - `/login` endpoint uses Supabase `signInWithPassword` with rate limiting
+   - JWT tokens issued on successful auth (access_token + refresh_token)
 2. **Protected Routes**: Use `authMiddleware` from `apps/api/src/auth/middleware.ts`
-3. **Frontend Context**: `apps/web/src/lib/auth.ts` provides `useAuth()` hook and `authClient`
-   - Session-based authentication with Better Auth client
-   - `useSession()` hook for accessing current user
-   - `signIn`, `signOut`, `signUp` methods
+   - Validates Supabase JWT via `supabaseAdmin.auth.getUser(token)`
+   - Sets `user.userId` in Hono context for downstream routes
+3. **Frontend Context**: `apps/web/src/lib/auth.ts` provides `useAuth()` hook
+   - JWT-based authentication with Supabase client (`apps/web/src/lib/supabase.ts`)
+   - `login`, `register`, `logout` methods
+   - Session state managed by Supabase client with `onAuthStateChange`
 
 API keys for AI providers are masked in responses (`***${key.slice(-4)}`) for security.
 

@@ -2,19 +2,21 @@
 
 <!--
 Sync Impact Report:
-- Version: NEW → 1.0.0
+- Version: 1.0.0 → 1.1.0
 - Ratification: 2025-12-05
-- Last Amended: 2025-12-05
-- Modified Principles: N/A (initial version)
-- Added Sections: All (new constitution)
-- Removed Sections: N/A
+- Last Amended: 2025-12-06
+- Modified Principles: V. Session-Based Authentication → V. Supabase Authentication
+- Added Sections: None
+- Removed Sections: None
 - Templates Status:
   ✅ plan-template.md - Constitution Check section aligned
   ✅ spec-template.md - Requirements and user story structure aligned
   ✅ tasks-template.md - Task organization reflects principles
   ⚠ checklist-template.md - Needs review for principle alignment
   ⚠ agent-file-template.md - Needs review for principle alignment
-- Follow-up TODOs: None
+- Follow-up TODOs:
+  - Update plan-template.md Constitution Check to reference "Supabase Authentication" instead of "Session-Based Authentication"
+  - Update AGENTS.md and .github/copilot-instructions.md after 002-supabase-auth implementation
 -->
 
 ## Core Principles
@@ -82,18 +84,20 @@ Sync Impact Report:
 - Production migrations MUST use `drizzle.config.ts`
 - Code MUST NOT assume specific database implementation details
 
-### V. Session-Based Authentication
+### V. Supabase Authentication
 
-**Principle**: Authentication MUST use Better Auth with session-based authentication (not JWT tokens).
+**Principle**: Authentication MUST use Supabase Auth with JWT-based authentication. User identity is managed by Supabase while application data remains in D1/SQLite.
 
-**Rationale**: Session-based auth provides better security (server-side revocation), simpler implementation (no token refresh logic), and built-in CSRF protection. Better Auth handles password hashing, session management, and security best practices.
+**Rationale**: Supabase provides a managed authentication service with built-in user management dashboard, email verification, password reset, OAuth provider support, and secure token handling. JWTs are validated server-side on every protected request.
 
 **Non-Negotiable Rules**:
 
-- Protected routes MUST use `authMiddleware` from `apps/api/src/auth/middleware.ts`
-- Frontend MUST use `authClient` from `apps/web/src/lib/auth.ts`
-- Passwords MUST be hashed by Better Auth (never manual hashing)
-- Session cookies MUST be httpOnly and secure in production
+- Protected routes MUST use `authMiddleware` from `apps/api/src/auth/middleware.ts` to validate Supabase JWTs
+- Frontend MUST use Supabase client from `apps/web/src/lib/auth.ts`
+- Passwords MUST be handled by Supabase Auth (never manual hashing)
+- User metadata (username, display name) MUST be stored in Supabase user metadata
+- Application data (ai_configurations, play_history) MUST remain in D1 with TEXT userId referencing Supabase UUIDs
+- Supabase service role key MUST be stored in Wrangler secrets for production, never committed to version control
 
 ### VI. Monorepo Organization
 
@@ -245,8 +249,9 @@ Deviations from constitution principles MUST be justified in writing:
 
 ### Version History
 
-**Version**: 1.0.0 | **Ratified**: 2025-12-05 | **Last Amended**: 2025-12-05
+**Version**: 1.1.0 | **Ratified**: 2025-12-05 | **Last Amended**: 2025-12-06
 
 **Changelog**:
 
+- 1.1.0 (2025-12-06): Amended § V to replace Better Auth with Supabase Auth (feature 002-supabase-auth)
 - 1.0.0 (2025-12-05): Initial constitution ratified
