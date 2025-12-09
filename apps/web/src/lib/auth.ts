@@ -1,12 +1,39 @@
 import { useEffect, useState } from 'react';
 import { env } from './env';
 import { supabaseClient } from './supabase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 type AuthUser = {
 	id: string;
-	email?: string;
+	email: string;
+	username: string;
+	createdAt: string;
 	user_metadata?: Record<string, unknown>;
 };
+
+function mapSupabaseUser(user: SupabaseUser | null): AuthUser | null {
+	if (!user) return null;
+
+	const metadata = user.user_metadata as
+		| ({ username?: string } & Record<string, unknown>)
+		| null;
+	const rawUsername =
+		metadata && typeof metadata.username === 'string'
+			? metadata.username
+			: undefined;
+	const username =
+		rawUsername && rawUsername.trim().length > 0
+			? rawUsername
+			: user.email?.split('@')[0] || 'Player';
+
+	return {
+		id: user.id,
+		email: user.email ?? '',
+		username,
+		createdAt: user.created_at,
+		user_metadata: user.user_metadata as Record<string, unknown> | undefined,
+	};
+}
 
 type LoginResult =
 	| { success: true }
@@ -111,7 +138,7 @@ export function useAuth() {
 			.getSession()
 			.then(({ data }) => {
 				if (!mounted) return;
-				setUser(data.session?.user ?? null);
+				setUser(mapSupabaseUser(data.session?.user ?? null));
 				setLoading(false);
 			})
 			.catch(() => {
@@ -123,7 +150,7 @@ export function useAuth() {
 		const { data: subscription } = supabaseClient.auth.onAuthStateChange(
 			(_event, session) => {
 				if (!mounted) return;
-				setUser(session?.user ?? null);
+				setUser(mapSupabaseUser(session?.user ?? null));
 			}
 		);
 
