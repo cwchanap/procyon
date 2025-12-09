@@ -39,13 +39,20 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Start API server
+        env:
+          NODE_ENV: development
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           cd apps/api
-          NODE_ENV=development BETTER_AUTH_SECRET="test-secret" bun src/index.ts &
+          bun src/index.ts &
 
       - name: Start web dev server
         env:
           PUBLIC_API_URL: "http://localhost:3501/api"
+          PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           ASTRO_DISABLE_DEV_TOOLBAR: "true"
         run: |
           cd apps/web

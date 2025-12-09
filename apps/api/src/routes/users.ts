@@ -1,81 +1,80 @@
 import { Hono } from 'hono';
 import { authMiddleware, getUser } from '../auth/middleware';
-import { getDB, schema } from '../db';
-import { eq } from 'drizzle-orm';
+import { supabaseAdmin } from '../auth/supabase';
 
 const app = new Hono();
 
 // Get current user profile (protected route)
+// User data is now stored in Supabase, not D1
 app.get('/me', authMiddleware, async c => {
 	const user = getUser(c);
-	const db = getDB();
 
-	const userProfile = await db
-		.select({
-			id: schema.user.id,
-			email: schema.user.email,
-			username: schema.user.username,
-			name: schema.user.name,
-			createdAt: schema.user.createdAt,
-			updatedAt: schema.user.updatedAt,
-		})
-		.from(schema.user)
-		.where(eq(schema.user.id, user.userId))
-		.get();
+	// The user is already authenticated via middleware, so we can return user data
+	// from the JWT claims. For more detailed data, we query Supabase.
+	const { data, error } = await supabaseAdmin.auth.admin.getUserById(
+		user.userId
+	);
 
-	if (!userProfile) {
+	if (error || !data?.user) {
 		return c.json({ error: 'User not found' }, 404);
 	}
 
-	return c.json({ user: userProfile });
+	const supabaseUser = data.user;
+	return c.json({
+		user: {
+			id: supabaseUser.id,
+			email: supabaseUser.email,
+			username: supabaseUser.user_metadata?.username,
+			name: supabaseUser.user_metadata?.name,
+			createdAt: supabaseUser.created_at,
+			updatedAt: supabaseUser.updated_at,
+		},
+	});
 });
 
 // Update user profile (protected route)
+// Updates user_metadata in Supabase
 app.put('/me', authMiddleware, async c => {
 	const user = getUser(c);
 	const body = await c.req.json();
-	const db = getDB();
 
 	// Only allow updating username for now
 	const { username } = body;
 
 	if (username) {
-		try {
-			await db
-				.update(schema.user)
-				.set({ username, updatedAt: new Date() })
-				.where(eq(schema.user.id, user.userId));
-		} catch (e: unknown) {
-			const msg = (() => {
-				if (e && typeof e === 'object' && 'message' in e) {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					return String((e as { message?: any }).message ?? '');
-				}
-				return '';
-			})();
-			if (msg.includes('UNIQUE') && msg.includes('username')) {
-				return c.json({ error: 'Username already taken' }, 409);
+		const { error } = await supabaseAdmin.auth.admin.updateUserById(
+			user.userId,
+			{
+				user_metadata: { username },
 			}
-			throw e;
+		);
+
+		if (error) {
+			console.error('Error updating user metadata:', error);
+			return c.json({ error: 'Failed to update profile' }, 500);
 		}
 	}
 
-	const updatedUser = await db
-		.select({
-			id: schema.user.id,
-			email: schema.user.email,
-			username: schema.user.username,
-			name: schema.user.name,
-			createdAt: schema.user.createdAt,
-			updatedAt: schema.user.updatedAt,
-		})
-		.from(schema.user)
-		.where(eq(schema.user.id, user.userId))
-		.get();
+	// Fetch updated user data
+	const { data, error } = await supabaseAdmin.auth.admin.getUserById(
+		user.userId
+	);
 
+	if (error || !data?.user) {
+		return c.json({ error: 'User not found' }, 404);
+	}
+
+	const supabaseUser = data.user;
 	return c.json({
 		message: 'Profile updated successfully',
-		user: updatedUser,
+		user: {
+			id: supabaseUser.id,
+			email: supabaseUser.email,
+			username: supabaseUser.user_metadata?.username,
+			name: supabaseUser.user_metadata?.name,
+			createdAt: supabaseUser.created_at,
+			updatedAt: supabaseUser.updated_at,
+		},
 	});
 });
 
