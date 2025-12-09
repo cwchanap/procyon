@@ -7,7 +7,7 @@ type ServerPlayHistory = {
 	chessId: 'chess' | 'shogi' | 'xiangqi';
 	date: string;
 	status: 'win' | 'loss' | 'draw';
-	opponentUserId: number | null;
+	opponentUserId: string | null;
 	opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' | null;
 };
 

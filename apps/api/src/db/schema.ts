@@ -33,7 +33,7 @@ export const playHistory = sqliteTable('play_history', {
 	chessId: text('chess_id').$type<ChessVariantId>().notNull(),
 	date: text('date').notNull(),
 	status: text('status').$type<GameResultStatus>().notNull(),
-	opponentUserId: integer('opponent_user_id'),
+	opponentUserId: text('opponent_user_id').$type<string | null>(),
 	opponentLlmId: text('opponent_llm_id').$type<OpponentLlmId | null>(),
 });
 

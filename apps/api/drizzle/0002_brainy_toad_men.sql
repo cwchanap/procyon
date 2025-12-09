@@ -24,7 +24,7 @@ CREATE TABLE `__new_play_history` (
 	`chess_id` text NOT NULL,
 	`date` text NOT NULL,
 	`status` text NOT NULL,
-	`opponent_user_id` integer,
+	`opponent_user_id` text,
 	`opponent_llm_id` text
 );
 --> statement-breakpoint
