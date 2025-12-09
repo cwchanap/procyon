@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { supabaseAdmin } from '../auth/supabase';
 import { recordLoginAttempt, resetLoginAttempts } from '../auth/rate-limit';
+import { env } from '../env';
 
 const app = new Hono();
 
@@ -106,6 +107,27 @@ app.post('/logout', async c => {
 		if (!token) {
 			throw new HTTPException(401, {
 				message: 'Unauthorized: Missing access token',
+			});
+		}
+
+		const response = await fetch(`${env.SUPABASE_URL}/auth/v1/logout`, {
+			method: 'POST',
+			headers: {
+				apikey: env.SUPABASE_ANON_KEY,
+				Authorization: `Bearer ${token}`,
+			},
+		});
+
+		if (response.status === 401 || response.status === 403) {
+			throw new HTTPException(401, {
+				message: 'Unauthorized: Invalid or expired token',
+			});
+		}
+
+		if (!response.ok) {
+			console.error('logout error: unexpected status', response.status);
+			throw new HTTPException(500, {
+				message: 'Failed to revoke session tokens',
 			});
 		}
 
