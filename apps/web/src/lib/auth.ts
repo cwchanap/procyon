@@ -21,6 +21,17 @@ function resolveApiBaseUrl(): string {
 
 const API_BASE_URL = resolveApiBaseUrl();
 
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+	const { data } = await supabaseClient.auth.getSession();
+	const accessToken = data.session?.access_token;
+	if (!accessToken) {
+		return {};
+	}
+	return {
+		Authorization: `Bearer ${accessToken}`,
+	};
+}
+
 async function apiLogin(email: string, password: string): Promise<LoginResult> {
 	const res = await fetch(`${API_BASE_URL}/auth/login`, {
 		method: 'POST',

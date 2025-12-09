@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useAuth } from '../lib/auth';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 import { env } from '../lib/env';
 
 type ServerPlayHistory = {
@@ -87,11 +87,13 @@ export default function PlayHistoryPage() {
 				setIsLoading(true);
 				setError(null);
 
+				const authHeaders = await getAuthHeaders();
+
 				const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 					method: 'GET',
-					credentials: 'include',
 					headers: {
 						'Content-Type': 'application/json',
+						...authHeaders,
 					},
 					signal: controller.signal,
 				});

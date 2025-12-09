@@ -26,7 +26,7 @@ import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
 import AISettingsDialog from './ai/AISettingsDialog';
 import type { AIMove } from './ai/AIDebugDialog';
-import { useAuth } from '../lib/auth';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 
 interface XiangqiDemo {
 	id: string;
@@ -159,11 +159,12 @@ const XiangqiGame: React.FC = () => {
 						opponentLlmId = 'gemini-2.5-flash';
 					}
 
+					const authHeaders = await getAuthHeaders();
 					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 						method: 'POST',
-						credentials: 'include',
 						headers: {
 							'Content-Type': 'application/json',
+							...authHeaders,
 						},
 						body: JSON.stringify({
 							chessId: 'xiangqi',
@@ -583,10 +584,11 @@ const XiangqiGame: React.FC = () => {
 					return;
 				}
 
+				const authHeaders = await getAuthHeaders();
 				const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
-					credentials: 'include',
 					headers: {
 						'Content-Type': 'application/json',
+						...authHeaders,
 					},
 				});
 
@@ -628,9 +630,9 @@ const XiangqiGame: React.FC = () => {
 				const fullConfigResponse = await fetch(
 					`${env.PUBLIC_API_URL}/ai-config/${providerConfig.id}/full`,
 					{
-						credentials: 'include',
 						headers: {
 							'Content-Type': 'application/json',
+							...authHeaders,
 						},
 					}
 				);
