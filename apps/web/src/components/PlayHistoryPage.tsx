@@ -45,7 +45,15 @@ const LLM_LABELS: Record<
 
 function formatOpponent(entry: ServerPlayHistory): string {
 	if (entry.opponentUserId) {
-		return `Human opponent #${entry.opponentUserId}`;
+		// Check if it's a UUID (contains hyphens) or numeric ID
+		const isUuid = entry.opponentUserId.includes('-');
+		if (isUuid) {
+			// For UUIDs, show a more user-friendly format (first 8 chars)
+			return `Human opponent (${entry.opponentUserId.slice(0, 8)}...)`;
+		} else {
+			// Legacy numeric ID format
+			return `Human opponent #${entry.opponentUserId}`;
+		}
 	}
 
 	if (entry.opponentLlmId) {

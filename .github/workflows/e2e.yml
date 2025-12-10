@@ -45,8 +45,18 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
+          set -e
           cd apps/api
+          echo "Starting API server..."
           bun src/index.ts &
+          API_PID=$!
+          echo "API server PID: $API_PID"
+          sleep 3
+          if ! kill -0 $API_PID 2>/dev/null; then
+            echo "API server failed to start"
+            exit 1
+          fi
+          echo "API server started successfully"
 
       - name: Start web dev server
         env:
@@ -55,8 +65,18 @@ jobs:
           PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           ASTRO_DISABLE_DEV_TOOLBAR: "true"
         run: |
+          set -e
           cd apps/web
+          echo "Starting web dev server..."
           bun run dev &
+          WEB_PID=$!
+          echo "Web server PID: $WEB_PID"
+          sleep 3
+          if ! kill -0 $WEB_PID 2>/dev/null; then
+            echo "Web server failed to start"
+            exit 1
+          fi
+          echo "Web server started successfully"
 
       - name: Wait for web and API to be ready
         run: |

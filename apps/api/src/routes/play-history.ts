@@ -18,7 +18,8 @@ const createPlayHistorySchema = z
 		chessId: z.nativeEnum(ChessVariantId),
 		status: z.nativeEnum(GameResultStatus),
 		date: z.string().datetime(),
-		opponentUserId: z.string().uuid().optional(),
+		// Accept both UUID strings and legacy numeric IDs for backward compatibility
+		opponentUserId: z.string().optional(),
 		opponentLlmId: z.nativeEnum(OpponentLlmId).optional(),
 	})
 	.superRefine((data, ctx) => {
@@ -39,6 +40,23 @@ const createPlayHistorySchema = z
 				message: 'Specify only one opponent type',
 				path: ['opponentUserId'],
 			});
+		}
+
+		// Validate opponentUserId format (UUID or legacy numeric)
+		if (hasUserOpponent && data.opponentUserId) {
+			const isUuid =
+				/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+					data.opponentUserId
+				);
+			const isNumeric = /^\d+$/.test(data.opponentUserId);
+
+			if (!isUuid && !isNumeric) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: 'opponentUserId must be a valid UUID string or numeric ID',
+					path: ['opponentUserId'],
+				});
+			}
 		}
 	});
 
