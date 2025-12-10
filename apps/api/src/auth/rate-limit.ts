@@ -1,9 +1,16 @@
 /**
  * Simple in-memory rate limiter for login attempts.
  * Limits to MAX_ATTEMPTS per WINDOW_MS per email.
+ *
+ * NOTE: This implementation uses in-memory storage and periodic cleanup.
+ * For production deployments with multiple instances, consider using:
+ * - Redis with atomic operations (recommended for multi-instance setups)
+ * - A dedicated rate-limiting service (e.g., Cloudflare Rate Limiting)
+ * - Database-backed rate limiting with proper indexing
  */
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_ATTEMPTS = 5;
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 type AttemptInfo = {
 	count: number;
@@ -11,6 +18,43 @@ type AttemptInfo = {
 };
 
 const attempts = new Map<string, AttemptInfo>();
+
+// Periodic cleanup to prevent unbounded memory growth
+let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the periodic cleanup task. Call this during application startup.
+ */
+export function startRateLimitCleanup(): void {
+	if (cleanupInterval) return; // Already started
+
+	cleanupInterval = setInterval(() => {
+		const now = Date.now();
+		const cutoff = now - WINDOW_MS;
+		let cleaned = 0;
+
+		for (const [email, attempt] of attempts.entries()) {
+			if (attempt.firstAttemptAt < cutoff) {
+				attempts.delete(email);
+				cleaned++;
+			}
+		}
+
+		if (cleaned > 0) {
+			console.log(`Rate limit cleanup: removed ${cleaned} expired entries`);
+		}
+	}, CLEANUP_INTERVAL_MS);
+}
+
+/**
+ * Stop the periodic cleanup task. Call this during graceful shutdown.
+ */
+export function stopRateLimitCleanup(): void {
+	if (cleanupInterval) {
+		clearInterval(cleanupInterval);
+		cleanupInterval = null;
+	}
+}
 
 export interface RateLimitStatus {
 	allowed: boolean;

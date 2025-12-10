@@ -60,42 +60,66 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 async function apiLogin(email: string, password: string): Promise<LoginResult> {
-	const res = await fetch(`${API_BASE_URL}/auth/login`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ email, password }),
-	});
+	try {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-	if (res.status === 429) {
-		const data = await res.json().catch(() => ({}));
-		return {
-			success: false,
-			error: data.error || 'Too many attempts. Please wait before retrying.',
-			retryAfterMs: data.retryAfterMs,
+		const res = await fetch(`${API_BASE_URL}/auth/login`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ email, password }),
+			signal: controller.signal,
+		});
+
+		clearTimeout(timeoutId);
+
+		if (res.status === 429) {
+			const data = await res.json().catch(() => ({}));
+			return {
+				success: false,
+				error: data.error || 'Too many attempts. Please wait before retrying.',
+				retryAfterMs: data.retryAfterMs,
+			};
+		}
+
+		if (!res.ok) {
+			const data = await res.json().catch(() => ({}));
+			return { success: false, error: data.error || 'Login failed' };
+		}
+
+		const data = (await res.json()) as {
+			access_token: string;
+			refresh_token: string;
+			user: AuthUser;
 		};
+
+		const { error: setSessionError } = await supabaseClient.auth.setSession({
+			access_token: data.access_token,
+			refresh_token: data.refresh_token,
+		});
+
+		if (setSessionError) {
+			return { success: false, error: setSessionError.message };
+		}
+
+		return { success: true };
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.name === 'AbortError') {
+				return {
+					success: false,
+					error: 'Login request timed out. Please try again.',
+				};
+			}
+			if (error.message.includes('fetch')) {
+				return {
+					success: false,
+					error: 'Network error. Please check your connection.',
+				};
+			}
+		}
+		return { success: false, error: 'Login failed. Please try again.' };
 	}
-
-	if (!res.ok) {
-		const data = await res.json().catch(() => ({}));
-		return { success: false, error: data.error || 'Login failed' };
-	}
-
-	const data = (await res.json()) as {
-		access_token: string;
-		refresh_token: string;
-		user: AuthUser;
-	};
-
-	const { error: setSessionError } = await supabaseClient.auth.setSession({
-		access_token: data.access_token,
-		refresh_token: data.refresh_token,
-	});
-
-	if (setSessionError) {
-		return { success: false, error: setSessionError.message };
-	}
-
-	return { success: true };
 }
 
 async function apiRegister(

@@ -8,9 +8,13 @@ import userRoutes from './routes/users';
 import aiConfigRoutes from './routes/ai-config';
 import playHistoryRoutes from './routes/play-history';
 import { env, isProduction } from './env';
+import { startRateLimitCleanup } from './auth/rate-limit';
 
 // Initialize database (will use local SQLite for development)
 initializeDB();
+
+// Start rate limit cleanup task
+startRateLimitCleanup();
 
 const app = new Hono();
 
