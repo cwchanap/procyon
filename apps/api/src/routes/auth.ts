@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { supabaseAdmin } from '../auth/supabase';
+import { getSupabaseClientsFromContext } from '../auth/supabase';
 import { recordLoginAttempt, resetLoginAttempts } from '../auth/rate-limit';
 import { env } from '../env';
 
@@ -16,6 +16,10 @@ function getBearerToken(req: Request): string | null {
 
 app.post('/register', async c => {
 	try {
+		const { supabaseAdmin } = getSupabaseClientsFromContext({
+			env: c.env as Record<string, string | undefined>,
+		});
+
 		const { email, username, password } = (await c.req.json()) as {
 			email: string;
 			username?: string;
@@ -57,6 +61,10 @@ app.post('/register', async c => {
 
 app.post('/login', async c => {
 	try {
+		const { supabaseAdmin } = getSupabaseClientsFromContext({
+			env: c.env as Record<string, string | undefined>,
+		});
+
 		const { email, password } = (await c.req.json()) as {
 			email: string;
 			password: string;
@@ -103,6 +111,13 @@ app.post('/login', async c => {
 
 app.post('/logout', async c => {
 	try {
+		// logout uses anon key only
+		const envBindings = c.env as Record<string, string | undefined>;
+		const supabaseEnv = {
+			url: envBindings.SUPABASE_URL ?? env.SUPABASE_URL,
+			anonKey: envBindings.SUPABASE_ANON_KEY ?? env.SUPABASE_ANON_KEY,
+		};
+
 		const token = getBearerToken(c.req.raw);
 		if (!token) {
 			throw new HTTPException(401, {
@@ -110,10 +125,10 @@ app.post('/logout', async c => {
 			});
 		}
 
-		const response = await fetch(`${env.SUPABASE_URL}/auth/v1/logout`, {
+		const response = await fetch(`${supabaseEnv.url}/auth/v1/logout`, {
 			method: 'POST',
 			headers: {
-				apikey: env.SUPABASE_ANON_KEY,
+				apikey: supabaseEnv.anonKey,
 				Authorization: `Bearer ${token}`,
 			},
 		});
@@ -142,6 +157,10 @@ app.post('/logout', async c => {
 
 app.get('/session', async c => {
 	try {
+		const { supabaseAdmin } = getSupabaseClientsFromContext({
+			env: c.env as Record<string, string | undefined>,
+		});
+
 		const token = getBearerToken(c.req.raw);
 		if (!token) {
 			throw new HTTPException(401, {

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware, getUser } from '../auth/middleware';
-import { supabaseAdmin } from '../auth/supabase';
+import { getSupabaseClientsFromContext } from '../auth/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const app = new Hono();
 
@@ -10,7 +11,8 @@ const USERNAME_REGEX = /^[a-z0-9_-]+$/;
 
 async function isUsernameTaken(
 	normalizedUsername: string,
-	currentUserId: string
+	currentUserId: string,
+	supabaseAdmin: SupabaseClient
 ): Promise<boolean> {
 	const perPage = 200;
 	let page = 1;
@@ -56,6 +58,9 @@ async function isUsernameTaken(
 // User data is now stored in Supabase, not D1
 app.get('/me', authMiddleware, async c => {
 	const user = getUser(c);
+	const { supabaseAdmin } = getSupabaseClientsFromContext({
+		env: c.env as Record<string, string | undefined>,
+	});
 
 	// The user is already authenticated via middleware, so we can return user data
 	// from the JWT claims. For more detailed data, we query Supabase.
@@ -84,6 +89,9 @@ app.get('/me', authMiddleware, async c => {
 // Updates user_metadata in Supabase
 app.put('/me', authMiddleware, async c => {
 	const user = getUser(c);
+	const { supabaseAdmin } = getSupabaseClientsFromContext({
+		env: c.env as Record<string, string | undefined>,
+	});
 	const body = await c.req.json();
 
 	// Only allow updating username for now
@@ -123,7 +131,11 @@ app.put('/me', authMiddleware, async c => {
 		}
 
 		try {
-			const taken = await isUsernameTaken(normalized, user.userId);
+			const taken = await isUsernameTaken(
+				normalized,
+				user.userId,
+				supabaseAdmin
+			);
 			if (taken) {
 				return c.json(
 					{ error: 'Username already taken. Please choose another.' },
