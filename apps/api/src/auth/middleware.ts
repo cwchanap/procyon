@@ -1,6 +1,6 @@
 import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { supabaseAdmin } from './supabase';
+import { getSupabaseClientsFromContext } from './supabase';
 
 interface AuthUser {
 	userId: string;
@@ -18,7 +18,11 @@ export async function authMiddleware(c: Context, next: Next) {
 			});
 		}
 
-		const { data, error } = await supabaseAdmin.auth.getUser(token);
+		const { supabaseAdmin: adminClient } = getSupabaseClientsFromContext({
+			env: c.env as Record<string, string | undefined>,
+		});
+
+		const { data, error } = await adminClient.auth.getUser(token);
 
 		if (error || !data?.user) {
 			throw new HTTPException(401, {
