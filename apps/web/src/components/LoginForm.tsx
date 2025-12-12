@@ -8,10 +8,20 @@ export function LoginForm() {
 	const [password, setPassword] = useState('');
 	const [error, setError] = useState('');
 	const [loading, setLoading] = useState(false);
+	const [lockoutMs, setLockoutMs] = useState(0);
 	const { login } = useAuth();
+
+	React.useEffect(() => {
+		if (lockoutMs <= 0) return;
+		const interval = window.setInterval(() => {
+			setLockoutMs(ms => Math.max(ms - 1000, 0));
+		}, 1000);
+		return () => window.clearInterval(interval);
+	}, [lockoutMs]);
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (lockoutMs > 0) return;
 		setError('');
 		setLoading(true);
 
@@ -21,6 +31,9 @@ export function LoginForm() {
 			window.location.href = '/';
 		} else {
 			setError(result.error || 'Login failed');
+			if ('retryAfterMs' in result && typeof result.retryAfterMs === 'number') {
+				setLockoutMs(result.retryAfterMs);
+			}
 		}
 
 		setLoading(false);
@@ -80,13 +93,22 @@ export function LoginForm() {
 							{error}
 						</div>
 					)}
+					{lockoutMs > 0 && (
+						<div className='text-amber-300 text-sm text-center bg-amber-900/20 border border-amber-500/30 rounded-lg p-3'>
+							Too many attempts. Try again in {Math.ceil(lockoutMs / 1000)}s.
+						</div>
+					)}
 
 					<Button
 						type='submit'
 						className='w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-3 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200'
-						disabled={loading}
+						disabled={loading || lockoutMs > 0}
 					>
-						{loading ? 'Signing In...' : 'Sign In'}
+						{lockoutMs > 0
+							? `Locked (${Math.ceil(lockoutMs / 1000)}s)`
+							: loading
+								? 'Signing In...'
+								: 'Sign In'}
 					</Button>
 				</form>
 

@@ -14,6 +14,7 @@ import { createInitialTerrain } from '../lib/jungle/types';
 import { createInitialBoard } from '../lib/jungle/board';
 import { createJungleAI, defaultAIConfig, loadAIConfig } from '../lib/ai';
 import { env } from '../lib/env';
+import { getAuthHeaders } from '../lib/auth';
 import type { AIConfig } from '../lib/ai/types';
 import JungleBoard from './JungleBoard';
 import GameScaffold from './game/GameScaffold';
@@ -126,11 +127,12 @@ const JungleGame: React.FC = () => {
 						opponentLlmId = 'gemini-2.5-flash';
 					}
 
+					const authHeaders = await getAuthHeaders();
 					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 						method: 'POST',
-						credentials: 'include',
 						headers: {
 							'Content-Type': 'application/json',
+							...authHeaders,
 						},
 						body: JSON.stringify({
 							chessId: 'jungle',

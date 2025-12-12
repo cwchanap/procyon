@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { env } from '../../lib/env';
+import { getAuthHeaders } from '../../lib/auth';
 
 interface AISettingsDialogProps {
 	aiPlayer: string;
@@ -72,10 +73,11 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 	useEffect(() => {
 		const fetchProviders = async () => {
 			try {
+				const authHeaders = await getAuthHeaders();
 				const response = await fetch(`${API_BASE_URL}/ai-config`, {
-					credentials: 'include',
 					headers: {
 						'Content-Type': 'application/json',
+						...authHeaders,
 					},
 				});
 

@@ -48,22 +48,26 @@ AI responses follow strict JSON format validation and include move reasoning.
 
 ## Database & Authentication
 
-### Dual Database Setup
+### Dual Database Architecture
 
-- **Development**: Local SQLite via better-sqlite3 (`apps/api/dev.db`)
-- **Production**: Cloudflare D1 via bindings
+**Supabase** handles user authentication; **D1/SQLite** stores application data.
+
+- **Development**: Local SQLite via better-sqlite3 (`apps/api/dev.db`) for app data
+- **Production**: Cloudflare D1 via bindings for app data
+- **User Data**: Stored in Supabase (not D1) - user tables removed from D1 schema
 - Use `drizzle.config.dev.ts` for local, `drizzle.config.ts` for production
 
 ### Auth Flow
 
-Session-based authentication with better-auth and HTTP-only cookies:
+JWT-based authentication with Supabase Auth:
 
-- Registration/login via `apps/api/src/routes/auth.ts` using better-auth handlers
-- Custom `/register` endpoint handles username field (wraps better-auth signUpEmail)
-- Protected routes use `authMiddleware` from `apps/api/src/auth/middleware.ts` (session validation)
-- Frontend auth context in `apps/web/src/lib/auth.ts` uses session cookies (credentials: 'include')
-- No localStorage token management - sessions handled via HTTP-only cookies
-- Auth endpoints: `/auth/register`, `/auth/sign-in/email`, `/auth/logout`, `/auth/session`
+- Registration/login via `apps/api/src/routes/auth.ts` using Supabase client
+- `/register` uses Supabase `signUp` with username in user_metadata
+- `/login` uses Supabase `signInWithPassword` with rate limiting (5 attempts per 15 min)
+- Protected routes use `authMiddleware` from `apps/api/src/auth/middleware.ts` (JWT validation)
+- Supabase clients in `apps/api/src/auth/supabase.ts` (service role + anon key)
+- Frontend auth context in `apps/web/src/lib/auth.ts` with `useAuth()` hook
+- Auth endpoints: `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/session`
 
 ### Database Commands
 
@@ -167,9 +171,10 @@ Restart the shell : `zsh -il -c 'bun --version'`. Then you can run bun directly
 
 ## Active Technologies
 
-- TypeScript 5.x (strict mode enabled) + better-auth, @better-auth/drizzle-adapter, drizzle-orm, Hono 4.x (001-migrate-better-auth)
-- SQLite (development via better-sqlite3) / Cloudflare D1 (production) (001-migrate-better-auth)
+- TypeScript 5.x (strict mode enabled) + @supabase/supabase-js, @supabase/ssr, drizzle-orm, Hono 4.x
+- SQLite (development via better-sqlite3) / Cloudflare D1 (production) for app data
+- Supabase Auth for user authentication (JWT-based)
 
 ## Recent Changes
 
-- 001-migrate-better-auth: Added TypeScript 5.x (strict mode enabled) + better-auth, @better-auth/drizzle-adapter, drizzle-orm, Hono 4.x
+- 002-supabase-auth: Migrated from better-auth to Supabase Auth with dual-database architecture

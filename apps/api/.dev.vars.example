@@ -1,8 +1,16 @@
-# Local development environment variables for wrangler dev
-# Copy this file to .dev.vars and fill in the values
-# .dev.vars is gitignored and will be loaded by wrangler dev
+# Local development environment variables for `wrangler dev`
+# Copy this file to .dev.vars and fill in the values (file is gitignored)
+# Do NOT commit real secrets.
 
+NODE_ENV=development
 JWT_SECRET=your-secret-key-here-change-in-production
+
+# Supabase (use anon key for client traffic, service role ONLY for server/admin)
+SUPABASE_URL=https://your-supabase-project.supabase.co
+SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+
+# Cloudflare D1 (optional for local dev with wrangler)
 CLOUDFLARE_ACCOUNT_ID=your-account-id
 CLOUDFLARE_DATABASE_ID=your-database-id
 CLOUDFLARE_API_TOKEN=your-api-token

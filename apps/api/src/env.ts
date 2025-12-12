@@ -7,10 +7,10 @@ interface EnvConfig {
 	NODE_ENV: string;
 	PORT: number;
 
-	// Better Auth
-	BETTER_AUTH_SECRET: string;
-	BETTER_AUTH_URL: string;
-	BETTER_AUTH_TRUSTED_ORIGINS: string;
+	// Supabase
+	SUPABASE_URL: string;
+	SUPABASE_ANON_KEY: string;
+	SUPABASE_SERVICE_ROLE_KEY: string;
 
 	// Frontend
 	FRONTEND_URL: string;
@@ -44,12 +44,9 @@ export const env: EnvConfig = {
 	NODE_ENV: getEnv('NODE_ENV'),
 	PORT: getEnvNumber('PORT', 3501),
 
-	BETTER_AUTH_SECRET: getEnv('BETTER_AUTH_SECRET'),
-	BETTER_AUTH_URL: getEnv('BETTER_AUTH_URL', 'http://localhost:3501'),
-	BETTER_AUTH_TRUSTED_ORIGINS: getEnv(
-		'BETTER_AUTH_TRUSTED_ORIGINS',
-		'http://localhost:3500'
-	),
+	SUPABASE_URL: getEnv('SUPABASE_URL'),
+	SUPABASE_ANON_KEY: getEnv('SUPABASE_ANON_KEY'),
+	SUPABASE_SERVICE_ROLE_KEY: getEnv('SUPABASE_SERVICE_ROLE_KEY'),
 
 	FRONTEND_URL: getEnv('FRONTEND_URL', 'http://localhost:3500'),
 
@@ -61,10 +58,16 @@ export const env: EnvConfig = {
 };
 
 // Validate critical environment variables
-if (process.env.NODE_ENV === 'production' && !env.BETTER_AUTH_SECRET) {
-	throw new Error(
-		'BETTER_AUTH_SECRET is required in production. Set the BETTER_AUTH_SECRET environment variable.'
-	);
+if (process.env.NODE_ENV === 'production') {
+	if (!env.SUPABASE_URL) {
+		throw new Error('SUPABASE_URL is required in production.');
+	}
+	if (!env.SUPABASE_ANON_KEY) {
+		throw new Error('SUPABASE_ANON_KEY is required in production.');
+	}
+	if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+		throw new Error('SUPABASE_SERVICE_ROLE_KEY is required in production.');
+	}
 }
 
 export const isDevelopment = env.NODE_ENV === 'development';

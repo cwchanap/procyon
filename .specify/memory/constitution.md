@@ -1,197 +1,257 @@
+# Procyon Constitution
+
 <!--
-Sync Impact Report - Constitution v1.0.0
-========================================
-Version Change: Initial → 1.0.0 (MINOR: New constitution created)
-Ratification Date: 2025-10-27
-Last Amendment: 2025-10-27
-
-Modified Principles:
-- Created: I. Monorepo Architecture (Turbo + Bun workspaces)
-- Created: II. TypeScript-First Development
-- Created: III. E2E Test Coverage (Playwright)
-- Created: IV. Module Independence
-- Created: V. Environment-Aware Configuration
-- Created: VI. Code Quality & Conventions
-
-Added Sections:
-- Core Principles (6 principles)
-- Technology Stack Requirements
-- Development Workflow & Quality Gates
-- Governance
-
-Templates Status:
-✅ plan-template.md - Verified compatible (references constitution check)
-✅ spec-template.md - Verified compatible (user stories align with test-first)
-✅ tasks-template.md - Verified compatible (phase structure supports modular approach)
-⚠️  No commands directory found - skipped command verification
-
-Follow-up TODOs:
-- None - all placeholders filled with project-specific values
+Sync Impact Report:
+- Version: 1.0.0 → 1.1.0
+- Ratification: 2025-12-05
+- Last Amended: 2025-12-06
+- Modified Principles: V. Session-Based Authentication → V. Supabase Authentication
+- Added Sections: None
+- Removed Sections: None
+- Templates Status:
+  ✅ plan-template.md - Constitution Check section aligned
+  ✅ spec-template.md - Requirements and user story structure aligned
+  ✅ tasks-template.md - Task organization reflects principles
+  ⚠ checklist-template.md - Needs review for principle alignment
+  ⚠ agent-file-template.md - Needs review for principle alignment
+- Follow-up TODOs:
+  - Update plan-template.md Constitution Check to reference "Supabase Authentication" instead of "Session-Based Authentication"
+  - Update AGENTS.md and .github/copilot-instructions.md after 002-supabase-auth implementation
 -->
-
-# Procyon Chess Platform Constitution
 
 ## Core Principles
 
-### I. Monorepo Architecture
+### I. Modular Game Architecture
 
-All code MUST be organized within the Turbo + Bun monorepo structure with clear workspace boundaries:
+**Principle**: Each game variant (Chess, Xiangqi, Shogi, Jungle) MUST follow the identical four-module pattern:
 
-- `apps/web/` - Astro SSR frontend with React islands (port 3500)
-- `apps/api/` - Hono API server with Node.js adapter (port 3501)
-- `packages/*` - Shared utilities and cross-cutting concerns
-- Tests colocated with implementation or in dedicated `tests/e2e/` directory
+- `types.ts` - Core interfaces and enums (pieces, moves, positions)
+- `board.ts` - Board representation and piece management
+- `moves.ts` - Legal move generation and validation
+- `game.ts` - Game state, turn management, win conditions
 
-**Rationale**: Turbo orchestration enables efficient caching, parallel builds, and atomic changes across web/API boundaries. Bun provides fast package management and runtime consistency.
+**Rationale**: Consistency across game variants enables maintainability, knowledge transfer between games, and ensures quality standards apply uniformly. New developers can immediately understand any game variant by following the established pattern.
 
-### II. TypeScript-First Development
+**Non-Negotiable Rules**:
 
-All production code MUST be written in TypeScript with strict type checking enabled:
+- Every new game variant MUST implement all four modules
+- Module responsibilities MUST NOT overlap or merge
+- Game logic MUST be framework-agnostic (no React/Astro dependencies in game modules)
+- Each module MUST have corresponding unit tests
 
-- Strict TypeScript across monorepo with shared `tsconfig.json`
-- Interface-driven design for game logic: `GameState`, `Move`, `Position` types per variant
-- Discriminated unions for game status, piece types, and variant-specific enums
-- Zod validation at API boundaries (`@hono/zod-validator`)
+### II. Universal AI Adapter Pattern
 
-**Rationale**: Type safety prevents runtime errors in complex game logic (chess, xiangqi, shogi variants) and ensures contract compliance between frontend/backend.
+**Principle**: AI integration MUST use the universal service pattern with game-specific adapters:
 
-### III. E2E Test Coverage (Playwright)
+- Core orchestration via `UniversalAIService` for provider communication
+- Game-specific adapters convert state to prompts and parse responses
+- `RuleGuardian` validates ALL AI moves before application
+- Factory pattern creates AI instances per game variant
 
-Critical user flows MUST have Playwright E2E test coverage:
+**Rationale**: Supporting multiple AI providers (Gemini, OpenAI, Anthropic, OpenRouter, Chutes) without duplicating provider logic requires separation of concerns. Game-specific logic stays in adapters while provider communication remains centralized.
 
-- Authentication flows (registration, login, JWT persistence)
-- Game variant initialization and AI opponent interaction
-- AI configuration management (multi-provider setup, API key masking)
-- Tests MUST use route interception for external AI API calls
-- Helper utilities (e.g., `AuthHelper`) MUST provide reusable test patterns
+**Non-Negotiable Rules**:
 
-**Rationale**: Game logic complexity and multi-provider AI integration require end-to-end validation. Mocked AI responses ensure deterministic testing without API costs.
+- AI responses MUST follow strict JSON format with move notation and reasoning
+- All AI moves MUST pass `RuleGuardian` validation
+- Provider API keys MUST be masked in responses (`***${key.slice(-4)}`)
+- Interaction history MUST be tracked for game export functionality
 
-### IV. Module Independence
+### III. Bun-First Development
 
-Game variants and domain modules MUST be independently implementable and testable:
+**Principle**: Bun is the canonical runtime and package manager. All commands, scripts, and tooling MUST use Bun over npm/node/yarn/pnpm.
 
-- Each game variant (`chess/`, `xiangqi/`, `shogi/`) follows consistent structure: `types.ts`, `board.ts`, `moves.ts`, `game.ts`
-- AI adapters (`{game}-adapter.ts`) isolate game-specific AI prompts from universal AI orchestration
-- Database layer abstracts SQLite (dev) vs D1 (production) via environment-aware initialization
-- React components colocated by feature in `apps/web/src/components/`
+**Rationale**: Bun provides unified runtime, package management, test runner, and bundler. Using multiple tools increases complexity, slows CI/CD, and creates inconsistencies in local vs production environments.
 
-**Rationale**: Independent modules enable parallel development, variant-specific testing, and incremental feature rollout without cross-contamination.
+**Non-Negotiable Rules**:
 
-### V. Environment-Aware Configuration
+- All `package.json` scripts MUST use `bun` commands
+- Tests MUST use Bun's built-in test runner
+- Documentation MUST reference `bun` commands exclusively
+- Dependencies MUST be installed with `bun install`
 
-Configuration MUST adapt to development vs production environments:
+### IV. Dual Database Strategy
 
-- Database: Local SQLite (`apps/api/dev.db`) for development, Cloudflare D1 for production
-- Drizzle configs: `drizzle.config.dev.ts` for local, `drizzle.config.ts` for production
-- API keys masked in responses (`***${key.slice(-4)}`)
-- Secrets in `.env` files excluded from version control
-- CORS configured for localhost origins in development
+**Principle**: Database configuration MUST support both local development (SQLite via better-sqlite3) and production (Cloudflare D1) using Drizzle ORM.
 
-**Rationale**: Environment-specific configs prevent production secrets leakage and enable local-first development without cloud dependencies.
+**Rationale**: Local SQLite enables fast iteration without network dependencies or cloud costs. D1 provides production scalability and edge deployment. Drizzle ORM abstracts the differences.
 
-### VI. Code Quality & Conventions
+**Non-Negotiable Rules**:
 
-Code style and quality gates MUST be enforced via tooling:
+- Database initialization MUST check `NODE_ENV` to select driver
+- Schema MUST be defined in `apps/api/src/db/schema.ts`
+- Migrations for local dev MUST use `drizzle.config.dev.ts`
+- Production migrations MUST use `drizzle.config.ts`
+- Code MUST NOT assume specific database implementation details
 
-- Prettier formatting (`bun run format:check`) with four-space TypeScript blocks, LF endings, single quotes
-- ESLint rules flag unused symbols (except `_ignored`) and warn on non-API `console` usage
-- Naming: PascalCase (components), camelCase (helpers), kebab-case (routes/URLs)
-- Conventional Commits (e.g., `feat(web): add pricing card`)
-- Pre-commit hooks via Husky + lint-staged
+### V. Supabase Authentication
 
-**Rationale**: Automated quality gates reduce review friction and maintain consistent codebase readability across team members.
+**Principle**: Authentication MUST use Supabase Auth with JWT-based authentication. User identity is managed by Supabase while application data remains in D1/SQLite.
 
-## Technology Stack Requirements
+**Rationale**: Supabase provides a managed authentication service with built-in user management dashboard, email verification, password reset, OAuth provider support, and secure token handling. JWTs are validated server-side on every protected request.
 
-### Mandatory Technologies
+**Non-Negotiable Rules**:
 
-- **Package Manager & Runtime**: Bun (NOT npm/yarn/pnpm) - MUST use `bun` commands
-- **Monorepo Orchestration**: Turbo (caching, parallel execution, filtered runs)
-- **Frontend**: Astro (SSR mode) + React (islands architecture) + Tailwind CSS
-- **Backend**: Hono (API framework) + @hono/node-server adapter
-- **Database**: Drizzle ORM with SQLite (dev) / Cloudflare D1 (production)
-- **Auth**: JWT-based with bcryptjs hashing and middleware pattern
-- **Testing**: Bun test runner (unit/integration) + Playwright (E2E)
-- **Validation**: Zod schemas at API boundaries
+- Protected routes MUST use `authMiddleware` from `apps/api/src/auth/middleware.ts` to validate Supabase JWTs
+- Frontend MUST use Supabase client from `apps/web/src/lib/auth.ts`
+- Passwords MUST be handled by Supabase Auth (never manual hashing)
+- User metadata (username, display name) MUST be stored in Supabase user metadata
+- Application data (ai_configurations, play_history) MUST remain in D1 with TEXT userId referencing Supabase UUIDs
+- Supabase service role key MUST be stored in Wrangler secrets for production, never committed to version control
 
-### AI Provider Integrations
+### VI. Monorepo Organization
 
-Multiple AI providers MUST be supported with per-user configuration:
+**Principle**: Code MUST be organized in Turbo monorepo structure with clear workspace separation:
 
-- Supported: Gemini, OpenAI, Anthropic, OpenRouter
-- Game-specific prompts with position analysis and move validation
-- Strict JSON format validation for AI responses
-- Universal AI service with game-specific adapters
+- `apps/web` - Astro SSR + React frontend (port 3500)
+- `apps/api` - Hono API server (port 3501)
+- `packages/*` - Shared packages (future)
 
-## Development Workflow & Quality Gates
+**Rationale**: Monorepo enables code sharing, coordinated versioning, and single-command operations while maintaining clear boundaries between frontend and backend concerns.
 
-### Pre-Development Checklist
+**Non-Negotiable Rules**:
 
-Before starting feature work:
+- Apps MUST NOT import from each other's source code
+- Shared code MUST move to `packages/` when needed by multiple apps
+- Each app MUST have its own `package.json` and dependencies
+- Root-level commands MUST use Turbo for orchestration
 
-1. Ensure `bun install` has run at root
-2. Verify `apps/api/dev.db` exists (run `bun run --filter api db:migrate` if missing)
-3. Confirm ports 3500 (web) and 3501 (API) are available
-4. Review relevant game variant structure in `apps/web/src/lib/{game}/`
+### VII. TypeScript Strictness
 
-### Implementation Flow
+**Principle**: All TypeScript code MUST use strict mode with no `any` types except in explicitly justified cases.
 
-1. **Type Definitions**: Update `types.ts` for affected game variant
-2. **Core Logic**: Implement in respective modules (`board.ts`, `moves.ts`, `game.ts`)
-3. **API Layer**: Create route in `apps/api/src/routes/`, add Zod validation, register in `index.ts`
-4. **Frontend**: Create/update React components in `apps/web/src/components/`
-5. **E2E Tests**: Add Playwright specs with mocked AI responses
-6. **Documentation**: Update relevant docs (AGENTS.md, copilot-instructions.md)
+**Rationale**: Strict TypeScript catches bugs at compile time, enables better IDE support, and serves as living documentation. `any` types defeat type safety and should be rare exceptions.
 
-### Quality Gates (Pre-PR)
+**Non-Negotiable Rules**:
 
-All PRs MUST pass:
+- `strict: true` MUST be enabled in all tsconfig files
+- `any` types MUST have inline comments justifying their use
+- Type definitions MUST be colocated with modules (prefer local types)
+- Shared types between apps MUST move to `packages/` when extracted
 
-- `bun run lint` - No ESLint errors
-- `bun run test` - All unit/integration tests pass
-- `bun run test:e2e` - E2E tests pass (or note skipped with justification)
-- Database migrations applied if schema changed
-- No unmasked secrets or API keys in code/logs
+## Testing Standards
 
-### PR Requirements
+### Unit Testing
 
-- Follow Conventional Commits format
-- Scope commits narrowly with context-rich bodies
-- Include screenshots/recordings for UI changes
-- Attach Playwright report for E2E test changes
-- Explicitly call out schema/migration impacts
-- Link related issues
+**Principle**: Game logic MUST have unit tests using Bun's test runner. UI components testing is optional.
+
+**Rationale**: Game rules are complex and critical - bugs break user experience. Unit tests ensure move validation, board state, and game logic correctness without requiring browser testing.
+
+**Requirements**:
+
+- All game modules (`types.ts`, `board.ts`, `moves.ts`, `game.ts`) MUST have `.test.ts` files
+- Tests MUST be runnable via `bun test`
+- Tests MUST NOT depend on external services or databases
+- Test files MUST be colocated with source files
+
+### E2E Testing
+
+**Principle**: User-facing features MUST have E2E tests using Playwright with mocked external APIs.
+
+**Rationale**: E2E tests validate complete user journeys including authentication, game play, and AI integration. Mocking external APIs ensures tests are fast, reliable, and don't incur API costs.
+
+**Requirements**:
+
+- Tests MUST be in `apps/web/e2e/` directory
+- AI provider APIs MUST be mocked using `page.route()`
+- Auth flows MUST use `AuthHelper` utilities from `e2e/utils/auth-helpers.ts`
+- Tests MUST assume servers are running locally (started by Playwright on CI)
+- Unique test users MUST be generated with timestamps
+
+## Code Quality Standards
+
+### Linting and Formatting
+
+**Principle**: All code MUST pass ESLint and Prettier checks before commit.
+
+**Rationale**: Consistent formatting reduces diff noise, prevents bikeshedding, and enforces code quality standards. Pre-commit hooks catch issues before they reach CI.
+
+**Requirements**:
+
+- Husky + lint-staged MUST enforce pre-commit checks
+- ESLint 9 with TypeScript support MUST be configured
+- Prettier with Astro plugin MUST format all files
+- Commits failing lint checks MUST be rejected
+
+### Component Styling
+
+**Principle**: UI styling MUST use Tailwind CSS with utility classes and composition utilities (clsx, tailwind-merge, class-variance-authority).
+
+**Rationale**: Tailwind provides consistent design tokens, reduces CSS bundle size, and enables rapid iteration. Composition utilities prevent class conflicts and enable variant-based styling.
+
+**Requirements**:
+
+- Custom CSS MUST be justified (when Tailwind utilities insufficient)
+- Class composition MUST use `cn()` helper from `tailwind-merge`
+- Component variants MUST use `cva()` from `class-variance-authority`
+- Design tokens MUST be defined in Tailwind config
+
+## Workflow Standards
+
+### Development Workflow
+
+**Principle**: Features MUST follow the specification workflow: spec → plan → tasks → implementation.
+
+**Rationale**: Planning before coding ensures requirements are understood, edge cases are considered, and implementation is scoped correctly. Templates provide consistency.
+
+**Requirements**:
+
+- Feature specs MUST live in `specs/[###-feature-name]/spec.md`
+- User stories MUST be prioritized and independently testable
+- Implementation plans MUST include constitution compliance check
+- Tasks MUST be organized by user story with clear dependencies
+
+### Git Workflow
+
+**Principle**: Feature branches MUST follow naming convention `[###-feature-name]` and require review before merge.
+
+**Rationale**: Consistent naming enables automation, links code to specs, and provides context in git history. Reviews catch bugs and share knowledge.
+
+**Requirements**:
+
+- Branch names MUST match feature spec directory names
+- Commits MUST be atomic and have descriptive messages
+- PRs MUST reference related spec/task documentation
+- Main branch MUST remain deployable at all times
 
 ## Governance
 
 ### Amendment Process
 
-1. Propose change with rationale (why current constitution insufficient)
-2. Document impact on existing features/templates
-3. Update affected templates in `.specify/templates/`
-4. Increment version per semantic versioning rules
-5. Update Sync Impact Report at top of constitution
+This constitution supersedes all other development practices and standards. Amendments require:
 
-### Versioning Policy
-
-- **MAJOR**: Backward incompatible governance/principle removals or redefinitions
-- **MINOR**: New principle/section added or materially expanded guidance
-- **PATCH**: Clarifications, wording, typo fixes, non-semantic refinements
+1. **Proposal**: Document proposed changes with rationale
+2. **Review**: Team discussion of impact and alternatives
+3. **Version Bump**: Semantic versioning (MAJOR.MINOR.PATCH)
+   - MAJOR: Backward incompatible principle changes or removals
+   - MINOR: New principles or materially expanded guidance
+   - PATCH: Clarifications, wording, typo fixes
+4. **Migration Plan**: Document changes needed in existing code
+5. **Template Sync**: Update all affected templates and documentation
 
 ### Compliance Review
 
-- All specification/plan documents MUST reference constitution principles in "Constitution Check" sections
-- Task breakdowns MUST align with module independence principle
-- Code reviews MUST verify adherence to TypeScript-first and code quality principles
-- E2E test coverage MUST be justified if absent for critical flows
+All pull requests and code reviews MUST verify constitutional compliance:
 
-### Runtime Development Guidance
+- Architecture patterns match Core Principles (I-VII)
+- Testing requirements met per Testing Standards
+- Code quality checks pass per Code Quality Standards
+- Workflow followed per Workflow Standards
 
-For agent-specific development instructions, consult:
+### Complexity Justification
 
-- `.github/copilot-instructions.md` - GitHub Copilot guidance
-- `AGENTS.md` - Repository guidelines and structure
-- `.specify/templates/*.md` - Specification and planning templates
+Deviations from constitution principles MUST be justified in writing:
 
-**Version**: 1.0.0 | **Ratified**: 2025-10-27 | **Last Amended**: 2025-10-27
+- Document why simpler alternative insufficient
+- Explain specific problem being solved
+- Provide migration path back to compliance when possible
+- Obtain team consensus before proceeding
+
+### Version History
+
+**Version**: 1.1.0 | **Ratified**: 2025-12-05 | **Last Amended**: 2025-12-06
+
+**Changelog**:
+
+- 1.1.0 (2025-12-06): Amended § V to replace Better Auth with Supabase Auth (feature 002-supabase-auth)
+- 1.0.0 (2025-12-05): Initial constitution ratified

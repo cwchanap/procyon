@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useAuth } from '../lib/auth';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 import { env } from '../lib/env';
 
 type ServerPlayHistory = {
@@ -7,7 +7,7 @@ type ServerPlayHistory = {
 	chessId: 'chess' | 'shogi' | 'xiangqi';
 	date: string;
 	status: 'win' | 'loss' | 'draw';
-	opponentUserId: number | null;
+	opponentUserId: string | null;
 	opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' | null;
 };
 
@@ -45,7 +45,15 @@ const LLM_LABELS: Record<
 
 function formatOpponent(entry: ServerPlayHistory): string {
 	if (entry.opponentUserId) {
-		return `Human opponent #${entry.opponentUserId}`;
+		// Check if it's a UUID (contains hyphens) or numeric ID
+		const isUuid = entry.opponentUserId.includes('-');
+		if (isUuid) {
+			// For UUIDs, show a more user-friendly format (first 8 chars)
+			return `Human opponent (${entry.opponentUserId.slice(0, 8)}...)`;
+		} else {
+			// Legacy numeric ID format
+			return `Human opponent #${entry.opponentUserId}`;
+		}
 	}
 
 	if (entry.opponentLlmId) {
@@ -87,11 +95,13 @@ export default function PlayHistoryPage() {
 				setIsLoading(true);
 				setError(null);
 
+				const authHeaders = await getAuthHeaders();
+
 				const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 					method: 'GET',
-					credentials: 'include',
 					headers: {
 						'Content-Type': 'application/json',
+						...authHeaders,
 					},
 					signal: controller.signal,
 				});
