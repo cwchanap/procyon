@@ -36,5 +36,5 @@ export const supabaseClient = (() => {
 			}
 		) as SupabaseClient;
 	}
-	return createClient(supabaseUrl, supabaseAnonKey);
+	return getSupabaseClient();
 })();

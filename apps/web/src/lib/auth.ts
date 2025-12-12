@@ -127,29 +127,62 @@ async function apiRegister(
 	username: string,
 	password: string
 ): Promise<RegisterResult> {
-	const res = await fetch(`${API_BASE_URL}/auth/register`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ email, username, password }),
-	});
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-	if (!res.ok) {
-		const data = await res.json().catch(() => ({}));
-		return { success: false, error: data.error || 'Registration failed' };
+	try {
+		const res = await fetch(`${API_BASE_URL}/auth/register`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ email, username, password }),
+			signal: controller.signal,
+		});
+
+		clearTimeout(timeoutId);
+
+		if (!res.ok) {
+			const data = await res.json().catch(() => ({}));
+			return { success: false, error: data.error || 'Registration failed' };
+		}
+
+		const loginResult = await apiLogin(email, password);
+
+		if (!loginResult.success) {
+			return {
+				success: false,
+				error:
+					loginResult.error ||
+					'Registration succeeded, but automatic login failed. Please log in manually.',
+			};
+		}
+
+		return { success: true };
+	} catch (error) {
+		clearTimeout(timeoutId);
+
+		if (error instanceof Error) {
+			if (error.name === 'AbortError') {
+				return {
+					success: false,
+					error: 'Registration request timed out. Please try again.',
+				};
+			}
+			if (error instanceof SyntaxError) {
+				return {
+					success: false,
+					error: 'Unexpected response from server. Please try again.',
+				};
+			}
+			if (error.message.includes('fetch')) {
+				return {
+					success: false,
+					error: 'Network error. Please check your connection.',
+				};
+			}
+		}
+
+		return { success: false, error: 'Registration failed. Please try again.' };
 	}
-
-	const loginResult = await apiLogin(email, password);
-
-	if (!loginResult.success) {
-		return {
-			success: false,
-			error:
-				loginResult.error ||
-				'Registration succeeded, but automatic login failed. Please log in manually.',
-		};
-	}
-
-	return { success: true };
 }
 
 export function useAuth() {
