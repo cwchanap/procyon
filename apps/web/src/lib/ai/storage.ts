@@ -31,7 +31,7 @@ export async function loadAIConfig(): Promise<AIConfig> {
 
 	try {
 		const authHeaders = await getAuthHeaders();
-		// Try to load from backend API using session cookies
+		// Try to load from backend API using authorization headers
 		const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 			headers: {
 				'Content-Type': 'application/json',

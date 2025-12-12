@@ -93,6 +93,7 @@ app.put('/me', authMiddleware, async c => {
 		env: c.env as Record<string, string | undefined>,
 	});
 	const body = await c.req.json();
+	let updatedUsername: string | undefined;
 
 	// Only allow updating username for now
 	const { username } = body;
@@ -161,6 +162,8 @@ app.put('/me', authMiddleware, async c => {
 			console.error('Error updating user metadata:', error);
 			return c.json({ error: 'Failed to update profile' }, 500);
 		}
+
+		updatedUsername = normalized;
 	}
 
 	// Fetch updated user data
@@ -168,7 +171,27 @@ app.put('/me', authMiddleware, async c => {
 		user.userId
 	);
 
-	if (error || !data?.user) {
+	if (error) {
+		console.error('Failed to fetch updated user after profile update:', error);
+		if (typeof updatedUsername !== 'undefined') {
+			return c.json({
+				message: 'Profile updated successfully',
+				warning:
+					'Profile updated but failed to fetch the latest user data. Please refresh.',
+				user: {
+					id: user.userId,
+					email: user.email,
+					username: updatedUsername,
+				},
+			});
+		}
+		return c.json(
+			{ error: 'Failed to fetch updated user profile. Please try again.' },
+			500
+		);
+	}
+
+	if (!data?.user) {
 		return c.json({ error: 'User not found' }, 404);
 	}
 
