@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getSupabaseClientsFromContext } from '../auth/supabase';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 const app = new Hono();
 
@@ -9,49 +8,33 @@ const USERNAME_MIN_LENGTH = 3;
 const USERNAME_MAX_LENGTH = 30;
 const USERNAME_REGEX = /^[a-z0-9_-]+$/;
 
-async function isUsernameTaken(
-	normalizedUsername: string,
-	currentUserId: string,
-	supabaseAdmin: SupabaseClient
-): Promise<boolean> {
-	const perPage = 200;
-	let page = 1;
-
-	while (true) {
-		const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-			page,
-			perPage,
-		});
-
-		if (error) {
-			throw error;
-		}
-
-		const users = data?.users ?? [];
-		const match = users.find(user => {
-			const existingUsername = user.user_metadata?.username;
-			if (typeof existingUsername !== 'string') {
-				return false;
-			}
-
-			return (
-				user.id !== currentUserId &&
-				existingUsername.toLowerCase() === normalizedUsername
-			);
-		});
-
-		if (match) {
-			return true;
-		}
-
-		if (users.length < perPage) {
-			break;
-		}
-
-		page += 1;
+function isUsernameUniqueConstraintError(error: unknown): boolean {
+	if (!error || typeof error !== 'object') {
+		return false;
 	}
 
-	return false;
+	const maybeError = error as {
+		message?: unknown;
+		code?: unknown;
+		status?: unknown;
+	};
+
+	const message =
+		typeof maybeError.message === 'string'
+			? maybeError.message.toLowerCase()
+			: '';
+	const code = typeof maybeError.code === 'string' ? maybeError.code : '';
+	const status =
+		typeof maybeError.status === 'number' ? maybeError.status : null;
+
+	return (
+		code === '23505' ||
+		message.includes('23505') ||
+		message.includes('duplicate key value violates unique constraint') ||
+		message.includes('unique constraint') ||
+		(message.includes('duplicate') && message.includes('username')) ||
+		(status === 409 && message.includes('username'))
+	);
 }
 
 // Get current user profile (protected route)
@@ -131,35 +114,28 @@ app.put('/me', authMiddleware, async c => {
 			);
 		}
 
+		let updateError: unknown;
 		try {
-			const taken = await isUsernameTaken(
-				normalized,
+			const result = await supabaseAdmin.auth.admin.updateUserById(
 				user.userId,
-				supabaseAdmin
+				{
+					user_metadata: { username: normalized },
+				}
 			);
-			if (taken) {
+			updateError = result.error;
+		} catch (error) {
+			updateError = error;
+		}
+
+		if (updateError) {
+			if (isUsernameUniqueConstraintError(updateError)) {
 				return c.json(
 					{ error: 'Username already taken. Please choose another.' },
 					409
 				);
 			}
-		} catch (checkError) {
-			console.error('Error verifying username uniqueness:', checkError);
-			return c.json(
-				{ error: 'Unable to update username at this time. Please try again.' },
-				500
-			);
-		}
 
-		const { error } = await supabaseAdmin.auth.admin.updateUserById(
-			user.userId,
-			{
-				user_metadata: { username: normalized },
-			}
-		);
-
-		if (error) {
-			console.error('Error updating user metadata:', error);
+			console.error('Error updating user metadata:', updateError);
 			return c.json({ error: 'Failed to update profile' }, 500);
 		}
 

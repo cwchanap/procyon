@@ -9,9 +9,20 @@ type SupabaseClients = {
 export function createSupabaseClients(
 	supabaseUrl: string,
 	anonKey: string,
-	serviceRoleKey: string
+	serviceRoleKey?: string
 ): SupabaseClients {
-	const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+	if (!supabaseUrl || !anonKey) {
+		throw new Error(
+			'Supabase configuration missing. Set SUPABASE_URL and SUPABASE_ANON_KEY.'
+		);
+	}
+
+	const resolvedServiceRoleKey =
+		typeof serviceRoleKey === 'string' && serviceRoleKey.trim().length > 0
+			? serviceRoleKey
+			: anonKey;
+
+	const supabaseAdmin = createClient(supabaseUrl, resolvedServiceRoleKey, {
 		auth: {
 			autoRefreshToken: false,
 			persistSession: false,
@@ -46,7 +57,7 @@ export function getSupabaseClientsFromContext(context?: {
 	const boundAnon = context?.env?.SUPABASE_ANON_KEY;
 	const boundService = context?.env?.SUPABASE_SERVICE_ROLE_KEY;
 
-	if (boundUrl && boundAnon && boundService) {
+	if (boundUrl && boundAnon) {
 		return createSupabaseClients(boundUrl, boundAnon, boundService);
 	}
 

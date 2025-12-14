@@ -9,12 +9,45 @@ import aiConfigRoutes from './routes/ai-config';
 import playHistoryRoutes from './routes/play-history';
 import { env, isProduction } from './env';
 import { startRateLimitCleanup } from './auth/rate-limit';
+import { logger } from './logger';
 
 // Initialize database (will use local SQLite for development)
 initializeDB();
 
 // Start rate limit cleanup task
-startRateLimitCleanup();
+let stopCleanup: (() => void) | null = null;
+try {
+	stopCleanup = startRateLimitCleanup();
+} catch (error) {
+	logger.error('Failed to start rate limit cleanup task', { error });
+	throw error;
+}
+
+const maybeProcess = globalThis as unknown as {
+	process?: {
+		on?: (event: string, handler: () => void) => void;
+		exit?: (code?: number) => void;
+	};
+};
+
+const proc = maybeProcess.process;
+if (proc && typeof proc.on === 'function') {
+	const shutdown = (signal: string) => {
+		try {
+			stopCleanup?.();
+			logger.info('Graceful shutdown complete', { signal });
+		} catch (error) {
+			logger.error('Error during graceful shutdown', { signal, error });
+		}
+
+		if (typeof proc.exit === 'function') {
+			proc.exit(0);
+		}
+	};
+
+	proc.on('SIGINT', () => shutdown('SIGINT'));
+	proc.on('SIGTERM', () => shutdown('SIGTERM'));
+}
 
 const app = new Hono();
 

@@ -3,8 +3,37 @@ import { HTTPException } from 'hono/http-exception';
 import { getSupabaseClientsFromContext } from '../auth/supabase';
 import { recordLoginAttempt, resetLoginAttempts } from '../auth/rate-limit';
 import { env } from '../env';
+import { logger } from '../logger';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-const app = new Hono();
+type Bindings = {
+	SUPABASE_URL?: string;
+	SUPABASE_ANON_KEY?: string;
+	SUPABASE_SERVICE_ROLE_KEY?: string;
+};
+
+const app = new Hono<{ Bindings: Bindings }>();
+
+function getSupabaseAnonOrThrow(
+	c: { env: Bindings },
+	context: string
+): SupabaseClient {
+	try {
+		const { supabaseAnon } = getSupabaseClientsFromContext({
+			env: c.env,
+		});
+		if (!supabaseAnon) {
+			throw new Error('Supabase anon client unavailable');
+		}
+		return supabaseAnon;
+	} catch (error) {
+		logger.error('Supabase client initialization failed', { context, error });
+		throw new HTTPException(500, {
+			message:
+				'Supabase configuration is missing or invalid. Please set SUPABASE_URL and SUPABASE_ANON_KEY.',
+		});
+	}
+}
 
 function getBearerToken(req: Request): string | null {
 	const authHeader = req.headers.get('authorization') || '';
@@ -16,9 +45,7 @@ function getBearerToken(req: Request): string | null {
 
 app.post('/register', async c => {
 	try {
-		const { supabaseAdmin } = getSupabaseClientsFromContext({
-			env: c.env as Record<string, string | undefined>,
-		});
+		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.register');
 
 		const { email, username, password } = (await c.req.json()) as {
 			email: string;
@@ -26,7 +53,7 @@ app.post('/register', async c => {
 			password: string;
 		};
 
-		const { data, error } = await supabaseAdmin.auth.signUp({
+		const { data, error } = await supabaseAnon.auth.signUp({
 			email,
 			password,
 			options: {
@@ -54,16 +81,14 @@ app.post('/register', async c => {
 		);
 	} catch (error) {
 		if (error instanceof HTTPException) throw error;
-		console.error('register error:', error);
+		logger.error('register error', { error });
 		throw new HTTPException(500, { message: 'Internal server error' });
 	}
 });
 
 app.post('/login', async c => {
 	try {
-		const { supabaseAdmin } = getSupabaseClientsFromContext({
-			env: c.env as Record<string, string | undefined>,
-		});
+		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.login');
 
 		const { email, password } = (await c.req.json()) as {
 			email: string;
@@ -81,7 +106,7 @@ app.post('/login', async c => {
 			);
 		}
 
-		const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+		const { data, error } = await supabaseAnon.auth.signInWithPassword({
 			email,
 			password,
 		});
@@ -104,7 +129,7 @@ app.post('/login', async c => {
 		});
 	} catch (error) {
 		if (error instanceof HTTPException) throw error;
-		console.error('login error:', error);
+		logger.error('login error', { error });
 		throw new HTTPException(500, { message: 'Internal server error' });
 	}
 });
@@ -112,11 +137,21 @@ app.post('/login', async c => {
 app.post('/logout', async c => {
 	try {
 		// logout uses anon key only
-		const envBindings = c.env as Record<string, string | undefined>;
 		const supabaseEnv = {
-			url: envBindings.SUPABASE_URL ?? env.SUPABASE_URL,
-			anonKey: envBindings.SUPABASE_ANON_KEY ?? env.SUPABASE_ANON_KEY,
+			url: c.env.SUPABASE_URL ?? env.SUPABASE_URL,
+			anonKey: c.env.SUPABASE_ANON_KEY ?? env.SUPABASE_ANON_KEY,
 		};
+
+		if (!supabaseEnv.url || !supabaseEnv.anonKey) {
+			logger.error('logout error: supabase env missing', {
+				missingUrl: !supabaseEnv.url,
+				missingAnonKey: !supabaseEnv.anonKey,
+			});
+			throw new HTTPException(500, {
+				message:
+					'Supabase configuration is missing or invalid. Please set SUPABASE_URL and SUPABASE_ANON_KEY.',
+			});
+		}
 
 		const token = getBearerToken(c.req.raw);
 		if (!token) {
@@ -140,7 +175,9 @@ app.post('/logout', async c => {
 		}
 
 		if (!response.ok) {
-			console.error('logout error: unexpected status', response.status);
+			logger.error('logout error: unexpected status', {
+				status: response.status,
+			});
 			throw new HTTPException(500, {
 				message: 'Failed to revoke session tokens',
 			});
@@ -150,16 +187,14 @@ app.post('/logout', async c => {
 		return c.json({ message: 'Logged out' });
 	} catch (error) {
 		if (error instanceof HTTPException) throw error;
-		console.error('logout error:', error);
+		logger.error('logout error', { error });
 		throw new HTTPException(500, { message: 'Internal server error' });
 	}
 });
 
 app.get('/session', async c => {
 	try {
-		const { supabaseAdmin } = getSupabaseClientsFromContext({
-			env: c.env as Record<string, string | undefined>,
-		});
+		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.session');
 
 		const token = getBearerToken(c.req.raw);
 		if (!token) {
@@ -168,7 +203,7 @@ app.get('/session', async c => {
 			});
 		}
 
-		const { data, error } = await supabaseAdmin.auth.getUser(token);
+		const { data, error } = await supabaseAnon.auth.getUser(token);
 		if (error || !data?.user) {
 			throw new HTTPException(401, {
 				message: 'Unauthorized: Invalid or expired token',
@@ -184,7 +219,7 @@ app.get('/session', async c => {
 		});
 	} catch (error) {
 		if (error instanceof HTTPException) throw error;
-		console.error('session error:', error);
+		logger.error('session error', { error });
 		throw new HTTPException(500, { message: 'Internal server error' });
 	}
 });
