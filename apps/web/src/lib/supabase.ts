@@ -9,15 +9,14 @@ let _supabaseClient: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient {
 	if (!_supabaseClient) {
-		if (
-			supabaseUrl.trim().length === 0 ||
-			supabaseAnonKey.trim().length === 0
-		) {
+		const resolvedUrl = supabaseUrl?.trim();
+		const resolvedAnonKey = supabaseAnonKey?.trim();
+		if (!resolvedUrl || !resolvedAnonKey) {
 			throw new Error(
 				'Supabase configuration missing. Set PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY.'
 			);
 		}
-		_supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+		_supabaseClient = createClient(resolvedUrl, resolvedAnonKey);
 	}
 	return _supabaseClient;
 }
@@ -25,7 +24,9 @@ export function getSupabaseClient(): SupabaseClient {
 // Legacy export for backward compatibility - will throw if env vars are missing
 export const supabaseClient = (() => {
 	// During static build, provide a dummy object that will fail gracefully at runtime
-	if (supabaseUrl.trim().length === 0 || supabaseAnonKey.trim().length === 0) {
+	const resolvedUrl = supabaseUrl?.trim();
+	const resolvedAnonKey = supabaseAnonKey?.trim();
+	if (!resolvedUrl || !resolvedAnonKey) {
 		// Return a proxy that throws on any access - this allows builds to complete
 		// but will fail at runtime if actually used without proper configuration
 		return new Proxy(

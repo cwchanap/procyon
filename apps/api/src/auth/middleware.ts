@@ -18,11 +18,11 @@ export async function authMiddleware(c: Context, next: Next) {
 			});
 		}
 
-		const { supabaseAdmin: adminClient } = getSupabaseClientsFromContext({
+		const { supabaseAnon } = getSupabaseClientsFromContext({
 			env: c.env as Record<string, string | undefined>,
 		});
 
-		const { data, error } = await adminClient.auth.getUser(token);
+		const { data, error } = await supabaseAnon.auth.getUser(token);
 
 		if (error || !data?.user) {
 			throw new HTTPException(401, {

@@ -9,6 +9,34 @@ type Logger = {
 	error: (message: string, fields?: LogFields) => void;
 };
 
+function safeStringify(value: unknown): string {
+	const seen = new WeakSet<object>();
+
+	try {
+		return JSON.stringify(value, (_key, val: unknown) => {
+			if (typeof val === 'bigint') {
+				return val.toString();
+			}
+			if (val && typeof val === 'object') {
+				const obj = val as object;
+				if (seen.has(obj)) {
+					return '[Circular]';
+				}
+				seen.add(obj);
+			}
+			return val;
+		});
+	} catch (error) {
+		const errMessage = error instanceof Error ? error.message : String(error);
+		return JSON.stringify({
+			level: 'error',
+			message: 'Logger serialization failed',
+			timestamp: new Date().toISOString(),
+			fields: { error: errMessage },
+		});
+	}
+}
+
 function emit(level: LogLevel, message: string, fields?: LogFields): void {
 	const payload: Record<string, unknown> = {
 		level,
@@ -20,7 +48,7 @@ function emit(level: LogLevel, message: string, fields?: LogFields): void {
 		payload.fields = fields;
 	}
 
-	const line = JSON.stringify(payload);
+	const line = safeStringify(payload);
 
 	if (level === 'error') {
 		console.error(line);

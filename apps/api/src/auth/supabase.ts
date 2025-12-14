@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env } from '../env';
 
 type SupabaseClients = {
-	supabaseAdmin: SupabaseClient;
+	supabaseAdmin: SupabaseClient | null;
 	supabaseAnon: SupabaseClient;
 };
 
@@ -20,14 +20,16 @@ export function createSupabaseClients(
 	const resolvedServiceRoleKey =
 		typeof serviceRoleKey === 'string' && serviceRoleKey.trim().length > 0
 			? serviceRoleKey
-			: anonKey;
+			: null;
 
-	const supabaseAdmin = createClient(supabaseUrl, resolvedServiceRoleKey, {
-		auth: {
-			autoRefreshToken: false,
-			persistSession: false,
-		},
-	});
+	const supabaseAdmin = resolvedServiceRoleKey
+		? createClient(supabaseUrl, resolvedServiceRoleKey, {
+				auth: {
+					autoRefreshToken: false,
+					persistSession: false,
+				},
+			})
+		: null;
 
 	const supabaseAnon = createClient(supabaseUrl, anonKey, {
 		auth: {

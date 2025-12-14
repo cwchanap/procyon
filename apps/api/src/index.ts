@@ -23,6 +23,9 @@ try {
 	throw error;
 }
 
+let server: unknown = null;
+let isShuttingDown = false;
+
 const maybeProcess = globalThis as unknown as {
 	process?: {
 		on?: (event: string, handler: () => void) => void;
@@ -32,8 +35,37 @@ const maybeProcess = globalThis as unknown as {
 
 const proc = maybeProcess.process;
 if (proc && typeof proc.on === 'function') {
-	const shutdown = (signal: string) => {
+	const shutdown = async (signal: string) => {
+		if (isShuttingDown) return;
+		isShuttingDown = true;
+
 		try {
+			const closeWithTimeoutMs = 10_000;
+			const maybeServer = server as {
+				close?: (callback?: () => void) => void;
+			};
+
+			await new Promise<void>(resolve => {
+				const timeoutId = setTimeout(() => {
+					logger.warn('Graceful shutdown timed out; forcing exit', {
+						signal,
+						timeoutMs: closeWithTimeoutMs,
+					});
+					resolve();
+				}, closeWithTimeoutMs);
+
+				if (!maybeServer || typeof maybeServer.close !== 'function') {
+					clearTimeout(timeoutId);
+					resolve();
+					return;
+				}
+
+				maybeServer.close(() => {
+					clearTimeout(timeoutId);
+					resolve();
+				});
+			});
+
 			stopCleanup?.();
 			logger.info('Graceful shutdown complete', { signal });
 		} catch (error) {
@@ -45,8 +77,8 @@ if (proc && typeof proc.on === 'function') {
 		}
 	};
 
-	proc.on('SIGINT', () => shutdown('SIGINT'));
-	proc.on('SIGTERM', () => shutdown('SIGTERM'));
+	proc.on('SIGINT', () => void shutdown('SIGINT'));
+	proc.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
 const app = new Hono();
@@ -104,7 +136,7 @@ app.onError((err, c) => {
 // Start server
 console.log(`🚀 Hono API server is running on http://localhost:${env.PORT}`);
 
-serve({
+server = serve({
 	fetch: app.fetch,
 	port: env.PORT,
 });
