@@ -8,6 +8,8 @@
  * - A dedicated rate-limiting service (e.g., Cloudflare Rate Limiting)
  * - Database-backed rate limiting with proper indexing
  */
+import { logger } from '../logger';
+
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_ATTEMPTS = 5;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -25,12 +27,13 @@ let cleanupInterval: ReturnType<typeof setInterval> | null = null;
 /**
  * Start the periodic cleanup task. Call this during application startup.
  */
-export function startRateLimitCleanup(): void {
-	if (cleanupInterval) return; // Already started
+export function startRateLimitCleanup(): () => void {
+	if (cleanupInterval) return stopRateLimitCleanup; // Already started
 
 	cleanupInterval = setInterval(() => {
 		const now = Date.now();
 		const cutoff = now - WINDOW_MS;
+		const cutoffIso = new Date(cutoff).toISOString();
 		let cleaned = 0;
 
 		for (const [email, attempt] of attempts.entries()) {
@@ -41,9 +44,22 @@ export function startRateLimitCleanup(): void {
 		}
 
 		if (cleaned > 0) {
-			console.log(`Rate limit cleanup: removed ${cleaned} expired entries`);
+			logger.info('Rate limit cleanup', {
+				cleaned,
+				cutoff,
+				cutoffIso,
+				windowMs: WINDOW_MS,
+				intervalMs: CLEANUP_INTERVAL_MS,
+			});
 		}
 	}, CLEANUP_INTERVAL_MS);
+
+	const maybeUnref = cleanupInterval as unknown as { unref?: () => void };
+	if (typeof maybeUnref.unref === 'function') {
+		maybeUnref.unref();
+	}
+
+	return stopRateLimitCleanup;
 }
 
 /**
