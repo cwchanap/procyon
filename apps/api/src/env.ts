@@ -24,12 +24,31 @@ interface EnvConfig {
 	CI?: boolean;
 }
 
+function getProcessEnv(): Record<string, string | undefined> {
+	const maybeProcess = globalThis as unknown as {
+		process?: { env?: Record<string, string | undefined> };
+	};
+	return maybeProcess.process?.env ?? {};
+}
+
+const processEnv = getProcessEnv();
+
+function isWorkersRuntime(): boolean {
+	const g = globalThis as unknown as {
+		WebSocketPair?: unknown;
+		caches?: unknown;
+	};
+	return (
+		typeof g.WebSocketPair !== 'undefined' || typeof g.caches !== 'undefined'
+	);
+}
+
 function getEnv(key: string, defaultValue?: string): string {
-	return process.env[key] || defaultValue || '';
+	return processEnv[key] || defaultValue || '';
 }
 
 function getEnvNumber(key: string, defaultValue: number): number {
-	const value = process.env[key];
+	const value = processEnv[key];
 	if (!value) return defaultValue;
 
 	const parsed = Number.parseInt(value, 10);
@@ -37,7 +56,7 @@ function getEnvNumber(key: string, defaultValue: number): number {
 }
 
 function getEnvBoolean(key: string): boolean {
-	return process.env[key] === 'true' || process.env[key] === '1';
+	return processEnv[key] === 'true' || processEnv[key] === '1';
 }
 
 export const env: EnvConfig = {
@@ -50,15 +69,15 @@ export const env: EnvConfig = {
 
 	FRONTEND_URL: getEnv('FRONTEND_URL', 'http://localhost:3500'),
 
-	CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
-	CLOUDFLARE_DATABASE_ID: process.env.CLOUDFLARE_DATABASE_ID,
-	CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
+	CLOUDFLARE_ACCOUNT_ID: processEnv.CLOUDFLARE_ACCOUNT_ID,
+	CLOUDFLARE_DATABASE_ID: processEnv.CLOUDFLARE_DATABASE_ID,
+	CLOUDFLARE_API_TOKEN: processEnv.CLOUDFLARE_API_TOKEN,
 
 	CI: getEnvBoolean('CI'),
 };
 
 // Validate critical environment variables
-if (process.env.NODE_ENV === 'production') {
+if (env.NODE_ENV === 'production' && !isWorkersRuntime()) {
 	if (!env.SUPABASE_URL) {
 		throw new Error('SUPABASE_URL is required in production.');
 	}
