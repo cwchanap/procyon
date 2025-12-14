@@ -1,10 +1,16 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { env } from '../env';
 
 type SupabaseClients = {
 	supabaseAdmin: SupabaseClient | null;
 	supabaseAnon: SupabaseClient;
 };
+
+function getProcessEnvVar(key: string): string {
+	const maybeProcess = globalThis as unknown as {
+		process?: { env?: Record<string, string | undefined> };
+	};
+	return maybeProcess.process?.env?.[key] ?? '';
+}
 
 export function createSupabaseClients(
 	supabaseUrl: string,
@@ -41,15 +47,18 @@ export function createSupabaseClients(
 	return { supabaseAdmin, supabaseAnon };
 }
 
-// Default clients for traditional server runtime
-const defaultClients = createSupabaseClients(
-	env.SUPABASE_URL,
-	env.SUPABASE_ANON_KEY,
-	env.SUPABASE_SERVICE_ROLE_KEY
-);
+let defaultClients: SupabaseClients | null = null;
 
-export const supabaseAdmin = defaultClients.supabaseAdmin;
-export const supabaseAnon = defaultClients.supabaseAnon;
+function getDefaultClients(): SupabaseClients {
+	if (defaultClients) return defaultClients;
+
+	const supabaseUrl = getProcessEnvVar('SUPABASE_URL');
+	const anonKey = getProcessEnvVar('SUPABASE_ANON_KEY');
+	const serviceRoleKey = getProcessEnvVar('SUPABASE_SERVICE_ROLE_KEY');
+
+	defaultClients = createSupabaseClients(supabaseUrl, anonKey, serviceRoleKey);
+	return defaultClients;
+}
 
 // Utility to create clients from request bindings (e.g., Cloudflare Workers)
 export function getSupabaseClientsFromContext(context?: {
@@ -63,5 +72,5 @@ export function getSupabaseClientsFromContext(context?: {
 		return createSupabaseClients(boundUrl, boundAnon, boundService);
 	}
 
-	return defaultClients;
+	return getDefaultClients();
 }
