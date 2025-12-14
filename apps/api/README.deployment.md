@@ -61,6 +61,22 @@ For staging environment:
 bunx wrangler secret put JWT_SECRET --env staging
 ```
 
+Set Supabase configuration (required for /api/auth and /api/users):
+
+```bash
+bunx wrangler secret put SUPABASE_URL
+bunx wrangler secret put SUPABASE_ANON_KEY
+bunx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+```
+
+For staging environment:
+
+```bash
+bunx wrangler secret put SUPABASE_URL --env staging
+bunx wrangler secret put SUPABASE_ANON_KEY --env staging
+bunx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env staging
+```
+
 ### 5. Build Web App
 
 Make sure the web app is built before deploying:
