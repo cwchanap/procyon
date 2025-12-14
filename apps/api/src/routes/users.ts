@@ -16,25 +16,68 @@ function isUsernameUniqueConstraintError(error: unknown): boolean {
 	const maybeError = error as {
 		message?: unknown;
 		code?: unknown;
+		details?: unknown;
+		detail?: unknown;
+		constraint?: unknown;
 		status?: unknown;
 	};
 
-	const message =
-		typeof maybeError.message === 'string'
-			? maybeError.message.toLowerCase()
-			: '';
+	const rawMessage =
+		typeof maybeError.message === 'string' ? maybeError.message : '';
+	const message = rawMessage.toLowerCase();
 	const code = typeof maybeError.code === 'string' ? maybeError.code : '';
+	const rawDetails =
+		typeof maybeError.details === 'string'
+			? maybeError.details
+			: typeof maybeError.detail === 'string'
+				? maybeError.detail
+				: '';
+	const details = rawDetails.toLowerCase();
+	const constraint =
+		typeof maybeError.constraint === 'string' ? maybeError.constraint : '';
 	const status =
 		typeof maybeError.status === 'number' ? maybeError.status : null;
+	void status;
 
-	return (
+	const usernameConstraintNames = new Set(['auth_users_username_unique']);
+
+	const looksLikeUniqueViolation =
 		code === '23505' ||
 		message.includes('23505') ||
-		message.includes('duplicate key value violates unique constraint') ||
-		message.includes('unique constraint') ||
-		(message.includes('duplicate') && message.includes('username')) ||
-		(status === 409 && message.includes('username'))
-	);
+		message.includes('duplicate key value violates unique constraint');
+	if (!looksLikeUniqueViolation) {
+		return false;
+	}
+
+	if (constraint && usernameConstraintNames.has(constraint)) {
+		return true;
+	}
+
+	const constraintMatch = rawMessage.match(/unique constraint\s+"([^"]+)"/i);
+	const matchedConstraintName = constraintMatch?.[1];
+	if (
+		typeof matchedConstraintName === 'string' &&
+		usernameConstraintNames.has(matchedConstraintName)
+	) {
+		return true;
+	}
+
+	if (
+		message.includes('auth_users_username_unique') ||
+		details.includes('auth_users_username_unique')
+	) {
+		return true;
+	}
+
+	const usernameKeyPattern = /key \(.*username.*\)=/i;
+	if (
+		usernameKeyPattern.test(rawDetails) ||
+		usernameKeyPattern.test(rawMessage)
+	) {
+		return true;
+	}
+
+	return false;
 }
 
 // Get current user profile (protected route)
@@ -44,12 +87,20 @@ app.get('/me', authMiddleware, async c => {
 	const { supabaseAdmin } = getSupabaseClientsFromContext({
 		env: c.env as Record<string, string | undefined>,
 	});
+	if (!supabaseAdmin) {
+		return c.json(
+			{
+				error:
+					'Supabase admin client unavailable. Set SUPABASE_SERVICE_ROLE_KEY for admin operations.',
+			},
+			500
+		);
+	}
+	const adminClient = supabaseAdmin;
 
 	// The user is already authenticated via middleware, so we can return user data
 	// from the JWT claims. For more detailed data, we query Supabase.
-	const { data, error } = await supabaseAdmin.auth.admin.getUserById(
-		user.userId
-	);
+	const { data, error } = await adminClient.auth.admin.getUserById(user.userId);
 
 	if (error || !data?.user) {
 		return c.json({ error: 'User not found' }, 404);
@@ -75,6 +126,16 @@ app.put('/me', authMiddleware, async c => {
 	const { supabaseAdmin } = getSupabaseClientsFromContext({
 		env: c.env as Record<string, string | undefined>,
 	});
+	if (!supabaseAdmin) {
+		return c.json(
+			{
+				error:
+					'Supabase admin client unavailable. Set SUPABASE_SERVICE_ROLE_KEY for admin operations.',
+			},
+			500
+		);
+	}
+	const adminClient = supabaseAdmin;
 	const body = await c.req.json();
 	let updatedUsername: string | undefined;
 
@@ -116,12 +177,9 @@ app.put('/me', authMiddleware, async c => {
 
 		let updateError: unknown;
 		try {
-			const result = await supabaseAdmin.auth.admin.updateUserById(
-				user.userId,
-				{
-					user_metadata: { username: normalized },
-				}
-			);
+			const result = await adminClient.auth.admin.updateUserById(user.userId, {
+				user_metadata: { username: normalized },
+			});
 			updateError = result.error;
 		} catch (error) {
 			updateError = error;
@@ -143,9 +201,7 @@ app.put('/me', authMiddleware, async c => {
 	}
 
 	// Fetch updated user data
-	const { data, error } = await supabaseAdmin.auth.admin.getUserById(
-		user.userId
-	);
+	const { data, error } = await adminClient.auth.admin.getUserById(user.userId);
 
 	if (error) {
 		console.error('Failed to fetch updated user after profile update:', error);
