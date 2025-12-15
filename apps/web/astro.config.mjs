@@ -9,6 +9,31 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const API_ENV_KEYS_TO_LOAD = new Set(['SUPABASE_URL', 'SUPABASE_ANON_KEY']);
 
+function normalizeEnvValue(rawValue) {
+  const trimmed = rawValue.trim();
+  const quote = trimmed[0];
+  if ((quote !== '"' && quote !== "'") || trimmed.length < 2) return trimmed;
+  if (trimmed[trimmed.length - 1] !== quote) return trimmed;
+
+  const inner = trimmed.slice(1, -1);
+
+  let out = '';
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === '\\' && i + 1 < inner.length) {
+      const next = inner[i + 1];
+      if (next === '\\' || next === quote) {
+        out += next;
+        i++;
+        continue;
+      }
+    }
+    out += ch;
+  }
+
+  return out;
+}
+
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
   const apiEnvPath = path.resolve(__dirname, '../api/.env');
   if (fs.existsSync(apiEnvPath)) {
@@ -19,12 +44,12 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
       const eqIndex = trimmed.indexOf('=');
       if (eqIndex <= 0) continue;
       const key = trimmed.slice(0, eqIndex).trim();
-      const value = trimmed.slice(eqIndex + 1).trim();
+      const value = normalizeEnvValue(trimmed.slice(eqIndex + 1));
 
-	  if (!API_ENV_KEYS_TO_LOAD.has(key)) continue;
-	  if (key && value && !process.env[key]) {
-	    process.env[key] = value;
-	  }
+      if (!API_ENV_KEYS_TO_LOAD.has(key)) continue;
+      if (key && value && !process.env[key]) {
+        process.env[key] = value;
+      }
     }
   }
 }
