@@ -90,10 +90,27 @@ app.post('/login', async c => {
 	try {
 		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.login');
 
-		const { email, password } = (await c.req.json()) as {
-			email: string;
-			password: string;
-		};
+		const body = (await c.req.json()) as unknown;
+		const email =
+			typeof body === 'object' && body !== null && 'email' in body
+				? (body as { email?: unknown }).email
+				: undefined;
+		const password =
+			typeof body === 'object' && body !== null && 'password' in body
+				? (body as { password?: unknown }).password
+				: undefined;
+
+		if (typeof email !== 'string' || email.trim().length === 0) {
+			throw new HTTPException(400, {
+				message: 'Invalid request body: email must be a non-empty string',
+			});
+		}
+
+		if (typeof password !== 'string' || password.trim().length === 0) {
+			throw new HTTPException(400, {
+				message: 'Invalid request body: password must be a non-empty string',
+			});
+		}
 
 		const status = recordLoginAttempt(email);
 		if (!status.allowed) {
