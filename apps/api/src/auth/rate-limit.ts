@@ -2,7 +2,7 @@
  * Simple in-memory rate limiter for login attempts.
  * Limits to MAX_ATTEMPTS per WINDOW_MS per email.
  *
- * NOTE: This implementation uses in-memory storage and periodic cleanup.
+ * NOTE: This implementation uses in-memory storage and lazy cleanup.
  * For production deployments with multiple instances, consider using:
  * - Redis with atomic operations (recommended for multi-instance setups)
  * - A dedicated rate-limiting service (e.g., Cloudflare Rate Limiting)
@@ -21,44 +21,39 @@ type AttemptInfo = {
 
 const attempts = new Map<string, AttemptInfo>();
 
-// Periodic cleanup to prevent unbounded memory growth
-let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+let lastCleanupAt = 0;
+
+function maybeCleanup(now: number): void {
+	if (now - lastCleanupAt < CLEANUP_INTERVAL_MS) return;
+	lastCleanupAt = now;
+
+	const cutoff = now - WINDOW_MS;
+	const cutoffIso = new Date(cutoff).toISOString();
+	let cleaned = 0;
+
+	for (const [email, attempt] of attempts.entries()) {
+		if (attempt.firstAttemptAt < cutoff) {
+			attempts.delete(email);
+			cleaned++;
+		}
+	}
+
+	if (cleaned > 0) {
+		logger.info('Rate limit cleanup', {
+			cleaned,
+			cutoff,
+			cutoffIso,
+			windowMs: WINDOW_MS,
+			intervalMs: CLEANUP_INTERVAL_MS,
+		});
+	}
+}
 
 /**
  * Start the periodic cleanup task. Call this during application startup.
  */
 export function startRateLimitCleanup(): () => void {
-	if (cleanupInterval) return stopRateLimitCleanup; // Already started
-
-	cleanupInterval = setInterval(() => {
-		const now = Date.now();
-		const cutoff = now - WINDOW_MS;
-		const cutoffIso = new Date(cutoff).toISOString();
-		let cleaned = 0;
-
-		for (const [email, attempt] of attempts.entries()) {
-			if (attempt.firstAttemptAt < cutoff) {
-				attempts.delete(email);
-				cleaned++;
-			}
-		}
-
-		if (cleaned > 0) {
-			logger.info('Rate limit cleanup', {
-				cleaned,
-				cutoff,
-				cutoffIso,
-				windowMs: WINDOW_MS,
-				intervalMs: CLEANUP_INTERVAL_MS,
-			});
-		}
-	}, CLEANUP_INTERVAL_MS);
-
-	const maybeUnref = cleanupInterval as unknown as { unref?: () => void };
-	if (typeof maybeUnref.unref === 'function') {
-		maybeUnref.unref();
-	}
-
+	lastCleanupAt = Date.now();
 	return stopRateLimitCleanup;
 }
 
@@ -66,10 +61,7 @@ export function startRateLimitCleanup(): () => void {
  * Stop the periodic cleanup task. Call this during graceful shutdown.
  */
 export function stopRateLimitCleanup(): void {
-	if (cleanupInterval) {
-		clearInterval(cleanupInterval);
-		cleanupInterval = null;
-	}
+	return;
 }
 
 export interface RateLimitStatus {
@@ -83,6 +75,7 @@ export interface RateLimitStatus {
  */
 export function recordLoginAttempt(email: string): RateLimitStatus {
 	const now = Date.now();
+	maybeCleanup(now);
 	const normalized = email.toLowerCase();
 	const entry = attempts.get(normalized);
 
@@ -114,6 +107,7 @@ export function recordLoginAttempt(email: string): RateLimitStatus {
  * Clear attempts for a user after successful login.
  */
 export function resetLoginAttempts(email: string): void {
+	maybeCleanup(Date.now());
 	attempts.delete(email.toLowerCase());
 }
 

@@ -1,4 +1,6 @@
 import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import { HTTPException } from 'hono/http-exception';
 import { getSupabaseClientsFromContext } from '../auth/supabase';
 import { recordLoginAttempt, resetLoginAttempts } from '../auth/rate-limit';
@@ -13,6 +15,22 @@ type Bindings = {
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+const registerSchema = z.object({
+	email: z.string().email(),
+	username: z
+		.string()
+		.min(3)
+		.max(30)
+		.regex(/^[a-z0-9_-]+$/i)
+		.optional(),
+	password: z.string().min(8),
+});
+
+const loginSchema = z.object({
+	email: z.string().email(),
+	password: z.string().min(1),
+});
 
 function getSupabaseAnonOrThrow(
 	c: { env: Bindings },
@@ -43,15 +61,11 @@ function getBearerToken(req: Request): string | null {
 	return value;
 }
 
-app.post('/register', async c => {
+app.post('/register', zValidator('json', registerSchema), async c => {
 	try {
 		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.register');
 
-		const { email, username, password } = (await c.req.json()) as {
-			email: string;
-			username?: string;
-			password: string;
-		};
+		const { email, username, password } = c.req.valid('json');
 
 		const { data, error } = await supabaseAnon.auth.signUp({
 			email,
@@ -99,31 +113,11 @@ app.post('/register', async c => {
 	}
 });
 
-app.post('/login', async c => {
+app.post('/login', zValidator('json', loginSchema), async c => {
 	try {
 		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.login');
 
-		const body = (await c.req.json()) as unknown;
-		const email =
-			typeof body === 'object' && body !== null && 'email' in body
-				? (body as { email?: unknown }).email
-				: undefined;
-		const password =
-			typeof body === 'object' && body !== null && 'password' in body
-				? (body as { password?: unknown }).password
-				: undefined;
-
-		if (typeof email !== 'string' || email.trim().length === 0) {
-			throw new HTTPException(400, {
-				message: 'Invalid request body: email must be a non-empty string',
-			});
-		}
-
-		if (typeof password !== 'string' || password.trim().length === 0) {
-			throw new HTTPException(400, {
-				message: 'Invalid request body: password must be a non-empty string',
-			});
-		}
+		const { email, password } = c.req.valid('json');
 
 		const status = recordLoginAttempt(email);
 		if (!status.allowed) {
