@@ -185,6 +185,38 @@ async function apiRegister(
 	}
 }
 
+async function apiLogout(): Promise<void> {
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+	try {
+		const headers = await getAuthHeaders();
+		if (Object.keys(headers).length === 0) {
+			clearTimeout(timeoutId);
+			return;
+		}
+		const res = await fetch(`${API_BASE_URL}/auth/logout`, {
+			method: 'POST',
+			headers,
+			credentials: 'include',
+			signal: controller.signal,
+		});
+
+		clearTimeout(timeoutId);
+
+		if (!res.ok) {
+			const data = await res.json().catch(() => ({}));
+			globalThis.console?.error?.('API logout failed', {
+				status: res.status,
+				error: data.error,
+			});
+		}
+	} catch (error) {
+		clearTimeout(timeoutId);
+		globalThis.console?.error?.('API logout error', { error });
+	}
+}
+
 export function useAuth() {
 	const [user, setUser] = useState<AuthUser | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -224,7 +256,13 @@ export function useAuth() {
 		register: (email: string, username: string, password: string) =>
 			apiRegister(email, username, password),
 		logout: async () => {
-			await supabaseClient.auth.signOut();
+			await apiLogout();
+			const { error } = await supabaseClient.auth.signOut();
+			if (error) {
+				globalThis.console?.error?.('Supabase signOut failed', {
+					error: error.message,
+				});
+			}
 		},
 		isAuthenticated: !!user,
 	};
