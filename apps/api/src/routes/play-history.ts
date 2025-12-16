@@ -13,6 +13,11 @@ import {
 
 const app = new Hono();
 
+export const UUID_REGEX =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export const NUMERIC_ID_REGEX = /^\d+$/;
+
 const createPlayHistorySchema = z
 	.object({
 		chessId: z.nativeEnum(ChessVariantId),
@@ -47,11 +52,8 @@ const createPlayHistorySchema = z
 		// Validate opponentUserId format (UUID or legacy numeric)
 		if (hasUserOpponent && data.opponentUserId != null) {
 			const opponentId = String(data.opponentUserId);
-			const isUuid =
-				/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-					opponentId
-				);
-			const isNumeric = /^\d+$/.test(opponentId);
+			const isUuid = UUID_REGEX.test(opponentId);
+			const isNumeric = NUMERIC_ID_REGEX.test(opponentId);
 
 			if (!isUuid && !isNumeric) {
 				ctx.addIssue({

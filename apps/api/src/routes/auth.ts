@@ -61,25 +61,67 @@ function getBearerToken(req: Request): string | null {
 	return value;
 }
 
+function isUsernameUniqueConstraintError(error: unknown): boolean {
+	if (!error || typeof error !== 'object') {
+		return false;
+	}
+
+	const maybeError = error as {
+		message?: unknown;
+		code?: unknown;
+	};
+
+	const code = typeof maybeError.code === 'string' ? maybeError.code : '';
+	const rawMessage =
+		typeof maybeError.message === 'string' ? maybeError.message : '';
+	const message = rawMessage.toLowerCase();
+
+	if (code === '23505' || message.includes('23505')) {
+		return true;
+	}
+
+	if (message.includes('duplicate key') && message.includes('unique')) {
+		return true;
+	}
+
+	if (message.includes('auth_users_username_unique')) {
+		return true;
+	}
+
+	return false;
+}
+
 app.post('/register', zValidator('json', registerSchema), async c => {
 	try {
 		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.register');
 
 		const { email, username, password } = c.req.valid('json');
+		const normalizedUsername =
+			typeof username === 'string' ? username.trim().toLowerCase() : undefined;
 
+		const options = normalizedUsername
+			? { data: { username: normalizedUsername } }
+			: undefined;
 		const { data, error } = await supabaseAnon.auth.signUp({
 			email,
 			password,
-			options: {
-				data: {
-					username,
-				},
-			},
+			...(options ? { options } : {}),
 		});
 
-		if (error || !data.user) {
+		if (error) {
+			if (normalizedUsername && isUsernameUniqueConstraintError(error)) {
+				throw new HTTPException(409, {
+					message: 'Username already taken. Please choose another.',
+				});
+			}
 			throw new HTTPException(400, {
-				message: error?.message || 'Registration failed',
+				message: error.message || 'Registration failed',
+			});
+		}
+
+		if (!data.user) {
+			throw new HTTPException(400, {
+				message: 'Registration failed',
 			});
 		}
 
@@ -101,7 +143,7 @@ app.post('/register', zValidator('json', registerSchema), async c => {
 				user: {
 					id: data.user.id,
 					email: data.user.email,
-					username,
+					username: normalizedUsername,
 				},
 			},
 			201
