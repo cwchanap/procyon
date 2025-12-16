@@ -69,8 +69,21 @@ app.post('/register', async c => {
 			});
 		}
 
+		let session = data.session ?? null;
+		if (!session) {
+			const signInResult = await supabaseAnon.auth.signInWithPassword({
+				email,
+				password,
+			});
+			if (!signInResult.error && signInResult.data.session) {
+				session = signInResult.data.session;
+			}
+		}
+
 		return c.json(
 			{
+				access_token: session?.access_token ?? null,
+				refresh_token: session?.refresh_token ?? null,
 				user: {
 					id: data.user.id,
 					email: data.user.email,

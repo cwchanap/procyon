@@ -19,11 +19,13 @@ const createPlayHistorySchema = z
 		status: z.nativeEnum(GameResultStatus),
 		date: z.string().datetime(),
 		// Accept both UUID strings and legacy numeric IDs for backward compatibility
-		opponentUserId: z.string().optional(),
+		opponentUserId: z.union([z.string(), z.number()]).optional(),
 		opponentLlmId: z.nativeEnum(OpponentLlmId).optional(),
 	})
 	.superRefine((data, ctx) => {
-		const hasUserOpponent = typeof data.opponentUserId === 'string';
+		const hasUserOpponent =
+			typeof data.opponentUserId === 'string' ||
+			typeof data.opponentUserId === 'number';
 		const hasLlmOpponent = typeof data.opponentLlmId === 'string';
 
 		if (!hasUserOpponent && !hasLlmOpponent) {
@@ -43,12 +45,13 @@ const createPlayHistorySchema = z
 		}
 
 		// Validate opponentUserId format (UUID or legacy numeric)
-		if (hasUserOpponent && data.opponentUserId) {
+		if (hasUserOpponent && data.opponentUserId != null) {
+			const opponentId = String(data.opponentUserId);
 			const isUuid =
 				/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-					data.opponentUserId
+					opponentId
 				);
-			const isNumeric = /^\d+$/.test(data.opponentUserId);
+			const isNumeric = /^\d+$/.test(opponentId);
 
 			if (!isUuid && !isNumeric) {
 				ctx.addIssue({
@@ -92,7 +95,8 @@ app.post(
 			chessId: body.chessId,
 			status: body.status,
 			date: new Date(body.date).toISOString(),
-			opponentUserId: body.opponentUserId ?? null,
+			opponentUserId:
+				body.opponentUserId !== undefined ? String(body.opponentUserId) : null,
 			opponentLlmId: body.opponentLlmId ?? null,
 		};
 
