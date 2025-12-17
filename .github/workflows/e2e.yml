@@ -29,16 +29,33 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Check Supabase secrets
+        id: supabase-secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ] && [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Supabase secrets are not configured for this workflow run; skipping E2E steps."
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup Node (for Playwright tooling)
+        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
       - name: Install Playwright browsers
+        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         working-directory: apps/web
         run: npx playwright install --with-deps
 
       - name: Start API server
+        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         env:
           NODE_ENV: development
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -59,6 +76,7 @@ jobs:
           echo "API server started successfully"
 
       - name: Start web dev server
+        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         env:
           PUBLIC_API_URL: "http://localhost:3501/api"
           PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -79,6 +97,7 @@ jobs:
           echo "Web server started successfully"
 
       - name: Wait for web and API to be ready
+        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         run: |
           timeout 120 bash -c '
             until curl -sSf http://localhost:3500 >/dev/null; do
@@ -92,6 +111,7 @@ jobs:
           '
 
       - name: Run Playwright tests
+        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         working-directory: apps/web
         env:
           CI: "true"
