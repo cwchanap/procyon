@@ -93,9 +93,20 @@ function isUsernameUniqueConstraintError(error: unknown): boolean {
 
 app.post('/register', zValidator('json', registerSchema), async c => {
 	try {
-		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.register');
-
 		const { email, username, password } = c.req.valid('json');
+
+		const status = recordLoginAttempt(email);
+		if (!status.allowed) {
+			return c.json(
+				{
+					error: 'Too many login attempts. Please wait before retrying.',
+					retryAfterMs: status.retryAfterMs,
+				},
+				429
+			);
+		}
+
+		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.register');
 		const normalizedUsername =
 			typeof username === 'string' ? username.trim().toLowerCase() : undefined;
 
@@ -135,6 +146,8 @@ app.post('/register', zValidator('json', registerSchema), async c => {
 				session = signInResult.data.session;
 			}
 		}
+
+		resetLoginAttempts(email);
 
 		return c.json(
 			{
