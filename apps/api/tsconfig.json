@@ -9,7 +9,8 @@
       "ES2022"
     ],
     "types": [
-      "@cloudflare/workers-types"
+      "@cloudflare/workers-types",
+      "@types/bun"
     ]
   },
   "include": [
