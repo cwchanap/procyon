@@ -54,3 +54,5 @@ jobs:
         run: bun run build
         env:
           PUBLIC_API_URL: "http://localhost:3501/api"
+          PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          PUBLIC_SUPABASE_ANON_KEY: "example-public-anon-key"
