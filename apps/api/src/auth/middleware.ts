@@ -1,6 +1,7 @@
 import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { getSupabaseClientsFromContext } from './supabase';
+import { extractBearerToken } from './utils';
 
 interface AuthUser {
 	userId: string;
@@ -49,11 +50,4 @@ export async function authMiddleware(c: Context, next: Next) {
 
 export function getUser(c: Context): AuthUser {
 	return c.get('user') as AuthUser;
-}
-
-function extractBearerToken(header: string): string | null {
-	const [scheme, value] = header.split(' ');
-	if (!scheme || !value) return null;
-	if (scheme.toLowerCase() !== 'bearer') return null;
-	return value;
 }
