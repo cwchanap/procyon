@@ -3,6 +3,10 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { HTTPException } from 'hono/http-exception';
 import { getSupabaseClientsFromContext } from '../auth/supabase';
+import {
+	extractBearerToken,
+	isUsernameUniqueConstraintError,
+} from '../auth/utils';
 import { recordLoginAttempt, resetLoginAttempts } from '../auth/rate-limit';
 import { env } from '../env';
 import { logger } from '../logger';
@@ -53,44 +57,6 @@ function getSupabaseAnonOrThrow(
 	}
 }
 
-function getBearerToken(req: Request): string | null {
-	const authHeader = req.headers.get('authorization') || '';
-	const [scheme, value] = authHeader.split(' ');
-	if (!scheme || !value) return null;
-	if (scheme.toLowerCase() !== 'bearer') return null;
-	return value;
-}
-
-function isUsernameUniqueConstraintError(error: unknown): boolean {
-	if (!error || typeof error !== 'object') {
-		return false;
-	}
-
-	const maybeError = error as {
-		message?: unknown;
-		code?: unknown;
-	};
-
-	const code = typeof maybeError.code === 'string' ? maybeError.code : '';
-	const rawMessage =
-		typeof maybeError.message === 'string' ? maybeError.message : '';
-	const message = rawMessage.toLowerCase();
-
-	if (code === '23505' || message.includes('23505')) {
-		return true;
-	}
-
-	if (message.includes('duplicate key') && message.includes('unique')) {
-		return true;
-	}
-
-	if (message.includes('auth_users_username_unique')) {
-		return true;
-	}
-
-	return false;
-}
-
 app.post('/register', zValidator('json', registerSchema), async c => {
 	try {
 		const { email, username, password } = c.req.valid('json');
@@ -99,7 +65,7 @@ app.post('/register', zValidator('json', registerSchema), async c => {
 		if (!status.allowed) {
 			return c.json(
 				{
-					error: 'Too many login attempts. Please wait before retrying.',
+					error: 'Too many registration attempts. Please wait before retrying.',
 					retryAfterMs: status.retryAfterMs,
 				},
 				429
@@ -232,7 +198,9 @@ app.post('/logout', async c => {
 			});
 		}
 
-		const token = getBearerToken(c.req.raw);
+		const token = extractBearerToken(
+			c.req.raw.headers.get('authorization') || ''
+		);
 		if (!token) {
 			throw new HTTPException(401, {
 				message: 'Unauthorized: Missing access token',
@@ -275,7 +243,9 @@ app.get('/session', async c => {
 	try {
 		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.session');
 
-		const token = getBearerToken(c.req.raw);
+		const token = extractBearerToken(
+			c.req.raw.headers.get('authorization') || ''
+		);
 		if (!token) {
 			throw new HTTPException(401, {
 				message: 'Unauthorized: Missing access token',
