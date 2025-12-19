@@ -39,9 +39,6 @@ export function isUsernameUniqueConstraintError(error: unknown): boolean {
 	const details = rawDetails.toLowerCase();
 	const constraint =
 		typeof maybeError.constraint === 'string' ? maybeError.constraint : '';
-	const status =
-		typeof maybeError.status === 'number' ? maybeError.status : null;
-	void status;
 
 	const usernameConstraintNames = new Set(['auth_users_username_unique']);
 
