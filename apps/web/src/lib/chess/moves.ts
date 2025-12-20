@@ -1,19 +1,21 @@
-import type { ChessPiece, Position } from './types';
+import type { ChessPiece, Position, GameState } from './types';
 import {
 	isValidPosition,
 	isSquareEmpty,
 	isSquareOccupiedByOpponent,
 	isSquareOccupiedByAlly,
+	getPieceAt,
 } from './board';
 
 export function getPossibleMoves(
 	board: (ChessPiece | null)[][],
 	piece: ChessPiece,
-	from: Position
+	from: Position,
+	gameState?: GameState
 ): Position[] {
 	switch (piece.type) {
 		case 'pawn':
-			return getPawnMoves(board, piece, from);
+			return getPawnMoves(board, piece, from, gameState?.enPassantTarget);
 		case 'rook':
 			return getRookMoves(board, piece, from);
 		case 'bishop':
@@ -21,7 +23,7 @@ export function getPossibleMoves(
 		case 'queen':
 			return getQueenMoves(board, piece, from);
 		case 'king':
-			return getKingMoves(board, piece, from);
+			return getKingMoves(board, piece, from, gameState);
 		case 'knight':
 			return getKnightMoves(board, piece, from);
 		default:
@@ -32,7 +34,8 @@ export function getPossibleMoves(
 function getPawnMoves(
 	board: (ChessPiece | null)[][],
 	piece: ChessPiece,
-	from: Position
+	from: Position,
+	enPassantTarget?: Position
 ): Position[] {
 	const moves: Position[] = [];
 	const direction = piece.color === 'white' ? -1 : 1;
@@ -67,6 +70,22 @@ function getPawnMoves(
 		isSquareOccupiedByOpponent(board, captureRight, piece.color)
 	) {
 		moves.push(captureRight);
+	}
+
+	// En passant captures
+	if (enPassantTarget) {
+		if (
+			captureLeft.row === enPassantTarget.row &&
+			captureLeft.col === enPassantTarget.col
+		) {
+			moves.push(captureLeft);
+		}
+		if (
+			captureRight.row === enPassantTarget.row &&
+			captureRight.col === enPassantTarget.col
+		) {
+			moves.push(captureRight);
+		}
 	}
 
 	return moves;
@@ -158,7 +177,8 @@ function getQueenMoves(
 function getKingMoves(
 	board: (ChessPiece | null)[][],
 	piece: ChessPiece,
-	from: Position
+	from: Position,
+	gameState?: GameState
 ): Position[] {
 	const moves: Position[] = [];
 	const directions = [
@@ -183,7 +203,103 @@ function getKingMoves(
 		}
 	}
 
+	// Castling
+	if (gameState && !piece.hasMoved) {
+		const row = piece.color === 'white' ? 7 : 0;
+
+		// Only check castling if king is on starting square
+		if (from.row === row && from.col === 4) {
+			// Check if king is currently in check
+			if (!isSquareAttacked(board, from, piece.color)) {
+				// Kingside castling (O-O)
+				const kingsideRook = getPieceAt(board, { row, col: 7 });
+				if (
+					kingsideRook?.type === 'rook' &&
+					kingsideRook.color === piece.color &&
+					!kingsideRook.hasMoved
+				) {
+					// Check if squares between king and rook are empty
+					const f = { row, col: 5 };
+					const g = { row, col: 6 };
+					if (
+						isSquareEmpty(board, f) &&
+						isSquareEmpty(board, g) &&
+						!isSquareAttacked(board, f, piece.color) &&
+						!isSquareAttacked(board, g, piece.color)
+					) {
+						moves.push(g); // King moves to g1/g8
+					}
+				}
+
+				// Queenside castling (O-O-O)
+				const queensideRook = getPieceAt(board, { row, col: 0 });
+				if (
+					queensideRook?.type === 'rook' &&
+					queensideRook.color === piece.color &&
+					!queensideRook.hasMoved
+				) {
+					// Check if squares between king and rook are empty
+					const b = { row, col: 1 };
+					const c = { row, col: 2 };
+					const d = { row, col: 3 };
+					if (
+						isSquareEmpty(board, b) &&
+						isSquareEmpty(board, c) &&
+						isSquareEmpty(board, d) &&
+						!isSquareAttacked(board, c, piece.color) &&
+						!isSquareAttacked(board, d, piece.color)
+					) {
+						moves.push(c); // King moves to c1/c8
+					}
+				}
+			}
+		}
+	}
+
 	return moves;
+}
+
+// Helper function to check if a square is attacked by opponent pieces
+export function isSquareAttacked(
+	board: (ChessPiece | null)[][],
+	pos: Position,
+	defendingColor: 'white' | 'black'
+): boolean {
+	const attackingColor = defendingColor === 'white' ? 'black' : 'white';
+
+	for (let row = 0; row < 8; row++) {
+		for (let col = 0; col < 8; col++) {
+			const piece = board[row]?.[col];
+			if (piece && piece.color === attackingColor) {
+				// For pawns, only check diagonal attacks (not forward moves)
+				if (piece.type === 'pawn') {
+					const direction = piece.color === 'white' ? -1 : 1;
+					const attackLeft = { row: row + direction, col: col - 1 };
+					const attackRight = { row: row + direction, col: col + 1 };
+					if (
+						(attackLeft.row === pos.row && attackLeft.col === pos.col) ||
+						(attackRight.row === pos.row && attackRight.col === pos.col)
+					) {
+						return true;
+					}
+				} else if (piece.type === 'king') {
+					// For king, check if within one square (avoid recursion)
+					const rowDiff = Math.abs(row - pos.row);
+					const colDiff = Math.abs(col - pos.col);
+					if (rowDiff <= 1 && colDiff <= 1 && (rowDiff > 0 || colDiff > 0)) {
+						return true;
+					}
+				} else {
+					// For other pieces, use standard move generation (without gameState to avoid castling recursion)
+					const moves = getPossibleMoves(board, piece, { row, col });
+					if (moves.some(m => m.row === pos.row && m.col === pos.col)) {
+						return true;
+					}
+				}
+			}
+		}
+	}
+	return false;
 }
 
 function getKnightMoves(
@@ -221,8 +337,9 @@ export function isMoveValid(
 	board: (ChessPiece | null)[][],
 	from: Position,
 	to: Position,
-	piece: ChessPiece
+	piece: ChessPiece,
+	gameState?: GameState
 ): boolean {
-	const possibleMoves = getPossibleMoves(board, piece, from);
+	const possibleMoves = getPossibleMoves(board, piece, from, gameState);
 	return possibleMoves.some(move => move.row === to.row && move.col === to.col);
 }

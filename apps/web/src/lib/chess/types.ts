@@ -47,6 +47,7 @@ export interface GameState {
 	mode: GameMode;
 	aiPlayer?: PieceColor;
 	isAiThinking?: boolean;
+	enPassantTarget?: Position; // Square where en passant capture is possible
 }
 
 export const BOARD_SIZE = 8;

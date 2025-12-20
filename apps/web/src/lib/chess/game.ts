@@ -6,6 +6,7 @@ import type {
 	PieceColor,
 	ChessPiece,
 	GameMode,
+	PieceType,
 } from './types';
 import { createInitialBoard, getPieceAt, setPieceAt, copyBoard } from './board';
 import { getPossibleMoves, isMoveValid } from './moves';
@@ -54,8 +55,13 @@ export function selectSquare(
 		};
 	}
 
-	// Select the piece and show possible moves
-	const possibleMoves = getPossibleMoves(gameState.board, piece, position);
+	// Select the piece and show possible moves (pass gameState for en passant and castling)
+	const possibleMoves = getPossibleMoves(
+		gameState.board,
+		piece,
+		position,
+		gameState
+	);
 
 	return {
 		...gameState,
@@ -67,7 +73,8 @@ export function selectSquare(
 export function makeMove(
 	gameState: GameState,
 	from: Position,
-	to: Position
+	to: Position,
+	promotionPiece?: PieceType
 ): GameState | null {
 	const piece = getPieceAt(gameState.board, from);
 
@@ -75,17 +82,70 @@ export function makeMove(
 		return null;
 	}
 
-	if (!isMoveValid(gameState.board, from, to, piece)) {
+	if (!isMoveValid(gameState.board, from, to, piece, gameState)) {
 		return null;
 	}
 
 	// Create new board state
 	const newBoard = copyBoard(gameState.board);
-	const capturedPiece = getPieceAt(newBoard, to);
+	let capturedPiece = getPieceAt(newBoard, to);
+	let isEnPassant = false;
+	let isCastling = false;
+	let promotion: PieceType | undefined;
+	let enPassantTarget: Position | undefined;
 
-	// Move the piece
+	// Handle en passant capture
+	if (
+		piece.type === 'pawn' &&
+		gameState.enPassantTarget &&
+		to.row === gameState.enPassantTarget.row &&
+		to.col === gameState.enPassantTarget.col
+	) {
+		isEnPassant = true;
+		// The captured pawn is on the same column as destination but on the same row as the moving pawn
+		const capturedPawnPos = { row: from.row, col: to.col };
+		capturedPiece = getPieceAt(newBoard, capturedPawnPos);
+		setPieceAt(newBoard, capturedPawnPos, null);
+	}
+
+	// Handle castling
+	if (piece.type === 'king' && Math.abs(to.col - from.col) === 2) {
+		isCastling = true;
+		const row = from.row;
+
+		if (to.col === 6) {
+			// Kingside castling - move rook from h to f
+			const rook = getPieceAt(newBoard, { row, col: 7 });
+			setPieceAt(newBoard, { row, col: 7 }, null);
+			setPieceAt(newBoard, { row, col: 5 }, { ...rook!, hasMoved: true });
+		} else if (to.col === 2) {
+			// Queenside castling - move rook from a to d
+			const rook = getPieceAt(newBoard, { row, col: 0 });
+			setPieceAt(newBoard, { row, col: 0 }, null);
+			setPieceAt(newBoard, { row, col: 3 }, { ...rook!, hasMoved: true });
+		}
+	}
+
+	// Handle pawn promotion
+	if (piece.type === 'pawn') {
+		const promotionRow = piece.color === 'white' ? 0 : 7;
+		if (to.row === promotionRow) {
+			promotion = promotionPiece || 'queen'; // Default to queen if not specified
+		}
+	}
+
+	// Set en passant target if pawn moved two squares
+	if (piece.type === 'pawn' && Math.abs(to.row - from.row) === 2) {
+		const direction = piece.color === 'white' ? -1 : 1;
+		enPassantTarget = { row: from.row + direction, col: from.col };
+	}
+
+	// Move the piece (with promotion if applicable)
 	setPieceAt(newBoard, from, null);
-	setPieceAt(newBoard, to, { ...piece, hasMoved: true });
+	const movedPiece: ChessPiece = promotion
+		? { type: promotion, color: piece.color, hasMoved: true }
+		: { ...piece, hasMoved: true };
+	setPieceAt(newBoard, to, movedPiece);
 
 	// Check if this move would leave the king in check
 	if (isKingInCheck(newBoard, gameState.currentPlayer)) {
@@ -98,21 +158,31 @@ export function makeMove(
 		to,
 		piece,
 		capturedPiece: capturedPiece || undefined,
+		isEnPassant: isEnPassant || undefined,
+		isCastling: isCastling || undefined,
+		promotion,
 	};
 
 	// Switch player
 	const nextPlayer: PieceColor =
 		gameState.currentPlayer === 'white' ? 'black' : 'white';
 
-	return {
+	// Create new game state
+	const newGameState: GameState = {
 		...gameState,
 		board: newBoard,
 		currentPlayer: nextPlayer,
 		moveHistory: [...gameState.moveHistory, move],
 		selectedSquare: null,
 		possibleMoves: [],
-		status: 'playing', // For now, always keep playing
+		status: 'playing',
+		enPassantTarget,
 	};
+
+	// Auto-detect game status
+	newGameState.status = getGameStatus(newGameState);
+
+	return newGameState;
 }
 
 export function isKingInCheck(
@@ -177,15 +247,28 @@ function hasAnyLegalMoves(gameState: GameState): boolean {
 		for (let col = 0; col < 8; col++) {
 			const piece = gameState.board[row]?.[col];
 			if (piece && piece.color === gameState.currentPlayer) {
-				const moves = getPossibleMoves(gameState.board, piece, {
-					row,
-					col,
-				});
+				const moves = getPossibleMoves(
+					gameState.board,
+					piece,
+					{ row, col },
+					gameState
+				);
 				for (const move of moves) {
 					// Check if this move would leave the king in check
 					const testBoard = copyBoard(gameState.board);
 					setPieceAt(testBoard, { row, col }, null);
 					setPieceAt(testBoard, move, piece);
+
+					// Handle en passant capture for legality check
+					if (
+						piece.type === 'pawn' &&
+						gameState.enPassantTarget &&
+						move.row === gameState.enPassantTarget.row &&
+						move.col === gameState.enPassantTarget.col
+					) {
+						const capturedPawnPos = { row, col: move.col };
+						setPieceAt(testBoard, capturedPawnPos, null);
+					}
 
 					if (!isKingInCheck(testBoard, gameState.currentPlayer)) {
 						return true;
