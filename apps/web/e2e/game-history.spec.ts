@@ -8,17 +8,17 @@ test.describe('Game history saving flow', () => {
 
 	test.beforeEach(async ({ page }) => {
 		authHelper = new AuthHelper(page);
-		testUser = AuthHelper.generateTestUser();
+		testUser = AuthHelper.getFixtureUser();
 
-		await authHelper.register(testUser);
+		await authHelper.login(testUser.email, testUser.password);
 		// Give the auth client time to hydrate session state across the app
 		await page.waitForTimeout(2000);
 		await page.waitForTimeout(1000); // wait briefly for auth state to settle
 	});
 
 	// Note: We intentionally skip logout here to avoid flakiness from
-	// Playwright internal fixture timeouts. Each test uses a fresh user
-	// via beforeEach, so cross-test auth state is not an issue.
+	// Playwright internal fixture timeouts. Each test uses a fresh
+	// browser context and logs in the shared fixture user.
 	test.afterEach(async () => {});
 
 	test('should save play history for all game variants via debug controls', async ({

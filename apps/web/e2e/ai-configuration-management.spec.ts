@@ -7,10 +7,9 @@ test.describe.skip('AI Configuration Management', () => {
 
 	test.beforeEach(async ({ page }) => {
 		authHelper = new AuthHelper(page);
-		testUser = AuthHelper.generateTestUser();
+		testUser = AuthHelper.getFixtureUser();
 
-		// Register and login user for each test
-		await authHelper.register(testUser);
+		await authHelper.login(testUser.email, testUser.password);
 		await authHelper.expectAuthenticated(testUser.username, testUser.email);
 
 		// Navigate to profile page
