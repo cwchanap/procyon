@@ -29,38 +29,100 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Check Supabase secrets
-        id: supabase-secrets
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ] && [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Supabase secrets are not configured for this workflow run; skipping E2E steps."
-            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Setup Node (for Playwright tooling)
-        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
+      - name: Install Supabase CLI
+        run: npm install -g supabase
+
+      - name: Start Supabase (local)
+        run: supabase start
+
+      - name: Export Supabase env
+        run: |
+          supabase status --output json > supabase-status.json
+          SUPABASE_URL=$(jq -r '.api_url' supabase-status.json)
+          SUPABASE_ANON_KEY=$(jq -r '.anon_key' supabase-status.json)
+          SUPABASE_SERVICE_ROLE_KEY=$(jq -r '.service_role_key' supabase-status.json)
+          echo "SUPABASE_URL=$SUPABASE_URL" >> "$GITHUB_ENV"
+          echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> "$GITHUB_ENV"
+          echo "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
+
+      - name: Create E2E Supabase user
+        env:
+          SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
+          E2E_TEST_USER_EMAIL: test-procyon@cwchanap.dev
+          E2E_TEST_USER_PASSWORD: password123
+          E2E_TEST_USER_USERNAME: test-procyon
+        run: |
+          node - <<'NODE'
+          const email = process.env.E2E_TEST_USER_EMAIL;
+          const password = process.env.E2E_TEST_USER_PASSWORD;
+          const username = process.env.E2E_TEST_USER_USERNAME;
+          const url = process.env.SUPABASE_URL;
+          const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+          if (!url || !serviceRoleKey) {
+            console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
+            process.exit(1);
+          }
+
+          (async () => {
+            const res = await fetch(`${url}/auth/v1/admin/users`, {
+              method: 'POST',
+              headers: {
+                apikey: serviceRoleKey,
+                Authorization: `Bearer ${serviceRoleKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                email,
+                password,
+                email_confirm: true,
+                user_metadata: { username },
+              }),
+            });
+
+            const bodyText = await res.text();
+            if (res.ok) {
+              console.log('created');
+              return;
+            }
+
+            let message = bodyText;
+            try {
+              const parsed = JSON.parse(bodyText);
+              message = parsed.msg || parsed.message || parsed.error || message;
+            } catch {
+              // ignore parse errors
+            }
+
+            if (/already (registered|exists)|user already exists/i.test(message)) {
+              console.log('exists');
+              return;
+            }
+
+            console.error(`create failed: ${res.status} ${message}`);
+            process.exit(1);
+          })().catch(error => {
+            console.error('create failed:', error?.message || error);
+            process.exit(1);
+          });
+          NODE
+
       - name: Install Playwright browsers
-        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         working-directory: apps/web
         run: npx playwright install --with-deps
 
       - name: Start API server
-        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         env:
           NODE_ENV: development
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ env.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -e
           cd apps/api
@@ -76,11 +138,10 @@ jobs:
           echo "API server started successfully"
 
       - name: Start web dev server
-        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         env:
           PUBLIC_API_URL: "http://localhost:3501/api"
-          PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          PUBLIC_SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ env.SUPABASE_ANON_KEY }}
           ASTRO_DISABLE_DEV_TOOLBAR: "true"
         run: |
           set -e
@@ -97,7 +158,6 @@ jobs:
           echo "Web server started successfully"
 
       - name: Wait for web and API to be ready
-        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         run: |
           timeout 120 bash -c '
             until curl -sSf http://localhost:3500 >/dev/null; do
@@ -111,9 +171,11 @@ jobs:
           '
 
       - name: Run Playwright tests
-        if: steps.supabase-secrets.outputs.has_secrets == 'true'
         working-directory: apps/web
         env:
           CI: "true"
           PLAYWRIGHT_SKIP_WEB_SERVER: "1"
+          E2E_TEST_USER_EMAIL: test-procyon@cwchanap.dev
+          E2E_TEST_USER_PASSWORD: password123
+          E2E_TEST_USER_USERNAME: test-procyon
         run: bun run test:e2e
