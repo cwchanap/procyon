@@ -39,7 +39,9 @@ async function createUser() {
     // ignore parse errors
   }
 
-  if (/already (registered|exists)|user already exists/i.test(message)) {
+  const userExistsPattern =
+    /(?:email|user with this email|user) already (?:registered|exists)|already (?:registered|exists)/i;
+  if (userExistsPattern.test(message)) {
     console.log('exists');
     return;
   }
