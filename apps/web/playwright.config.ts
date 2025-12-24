@@ -1,14 +1,55 @@
 import { defineConfig, devices } from '@playwright/test';
+import { execSync } from 'node:child_process';
 
 const isCI = process.env.CI === 'true';
-const shouldStartWebServer =
-  isCI && process.env.PLAYWRIGHT_SKIP_WEB_SERVER !== '1';
+const shouldStartWebServer = process.env.PLAYWRIGHT_SKIP_WEB_SERVER !== '1';
+
+type SupabaseEnv = {
+  url: string;
+  anonKey: string;
+  serviceRoleKey: string;
+};
+
+function resolveSupabaseEnv(): SupabaseEnv {
+  try {
+    const raw = execSync('supabase status --output json', {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const status = JSON.parse(raw.toString()) as {
+      api_url?: string;
+      anon_key?: string;
+      service_role_key?: string;
+    };
+
+    if (!status.api_url || !status.anon_key || !status.service_role_key) {
+      throw new Error('Supabase status missing required keys.');
+    }
+
+    return {
+      url: status.api_url,
+      anonKey: status.anon_key,
+      serviceRoleKey: status.service_role_key,
+    };
+  } catch (error) {
+    throw new Error(
+      'Local Supabase is required for E2E. Start it with `supabase start`.'
+    );
+  }
+}
+
+const supabaseEnv = resolveSupabaseEnv();
+process.env.SUPABASE_URL = supabaseEnv.url;
+process.env.SUPABASE_ANON_KEY = supabaseEnv.anonKey;
+process.env.SUPABASE_SERVICE_ROLE_KEY = supabaseEnv.serviceRoleKey;
+process.env.PUBLIC_SUPABASE_URL = supabaseEnv.url;
+process.env.PUBLIC_SUPABASE_ANON_KEY = supabaseEnv.anonKey;
 
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
 
   /* Run tests in files in parallel */
   fullyParallel: true,
@@ -48,7 +89,7 @@ export default defineConfig({
     },
   ],
 
-  /* Run dev servers automatically only on CI; locally assume they're already running */
+  /* Run dev servers automatically; relies on local Supabase for auth */
   webServer: shouldStartWebServer ? [
     {
       command: 'sh -c "cd .. && cd web && bun run dev"',
@@ -56,6 +97,11 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120 * 1000,
       env: {
+        SUPABASE_URL: supabaseEnv.url,
+        SUPABASE_ANON_KEY: supabaseEnv.anonKey,
+        PUBLIC_SUPABASE_URL: supabaseEnv.url,
+        PUBLIC_SUPABASE_ANON_KEY: supabaseEnv.anonKey,
+        PUBLIC_API_URL: 'http://localhost:3501/api',
         ASTRO_DISABLE_DEV_TOOLBAR: 'true',
       },
     },
@@ -64,6 +110,12 @@ export default defineConfig({
       url: 'http://localhost:3501',
       reuseExistingServer: false,
       timeout: 120 * 1000,
+      env: {
+        NODE_ENV: 'development',
+        SUPABASE_URL: supabaseEnv.url,
+        SUPABASE_ANON_KEY: supabaseEnv.anonKey,
+        SUPABASE_SERVICE_ROLE_KEY: supabaseEnv.serviceRoleKey,
+      },
     },
   ] : undefined,
 });

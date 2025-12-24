@@ -1,18 +1,11 @@
-const email = process.env.E2E_TEST_USER_EMAIL;
-const password = process.env.E2E_TEST_USER_PASSWORD;
-const username = process.env.E2E_TEST_USER_USERNAME;
+const email = process.env.E2E_TEST_USER_EMAIL ?? 'test-procyon@cwchanap.dev';
+const password = process.env.E2E_TEST_USER_PASSWORD ?? 'password123';
+const username = process.env.E2E_TEST_USER_USERNAME ?? 'test-procyon';
 const url = process.env.SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!url || !serviceRoleKey) {
   console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
-  process.exit(1);
-}
-
-if (!email || !password || !username) {
-  console.error(
-    'Missing E2E_TEST_USER_EMAIL, E2E_TEST_USER_PASSWORD, or E2E_TEST_USER_USERNAME.'
-  );
   process.exit(1);
 }
 

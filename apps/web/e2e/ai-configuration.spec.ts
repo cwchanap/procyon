@@ -7,9 +7,9 @@ test.describe('AI Configuration Management', () => {
 
 	test.beforeEach(async ({ page }) => {
 		authHelper = new AuthHelper(page);
-		testUser = AuthHelper.getFixtureUser();
+		testUser = AuthHelper.generateTestUser();
 
-		await authHelper.login(testUser.email, testUser.password);
+		await authHelper.register(testUser);
 		await authHelper.expectAuthenticated(testUser.username, testUser.email);
 	});
 

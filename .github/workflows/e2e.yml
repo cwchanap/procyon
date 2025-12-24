@@ -9,6 +9,10 @@ on:
 jobs:
   e2e-web:
     runs-on: ubuntu-latest
+    env:
+      E2E_TEST_USER_EMAIL: test-procyon@cwchanap.dev
+      E2E_TEST_USER_PASSWORD: password123
+      E2E_TEST_USER_USERNAME: test-procyon
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,9 +58,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
-          E2E_TEST_USER_EMAIL: test-procyon@cwchanap.dev
-          E2E_TEST_USER_PASSWORD: password123
-          E2E_TEST_USER_USERNAME: test-procyon
         run: |
           node scripts/create-e2e-supabase-user.js
 
@@ -122,7 +123,4 @@ jobs:
         env:
           CI: "true"
           PLAYWRIGHT_SKIP_WEB_SERVER: "1"
-          E2E_TEST_USER_EMAIL: test-procyon@cwchanap.dev
-          E2E_TEST_USER_PASSWORD: password123
-          E2E_TEST_USER_USERNAME: test-procyon
         run: bun run test:e2e
