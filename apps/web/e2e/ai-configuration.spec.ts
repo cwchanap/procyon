@@ -9,7 +9,6 @@ test.describe('AI Configuration Management', () => {
 		authHelper = new AuthHelper(page);
 		testUser = AuthHelper.generateTestUser();
 
-		// Register and login user for each test
 		await authHelper.register(testUser);
 		await authHelper.expectAuthenticated(testUser.username, testUser.email);
 	});

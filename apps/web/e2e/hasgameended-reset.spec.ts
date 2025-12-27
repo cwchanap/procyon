@@ -17,8 +17,8 @@ test.describe('hasGameEnded reset flow', () => {
 	});
 
 	// Note: We intentionally skip logout here to avoid flakiness from
-	// Playwright internal fixture timeouts. Each test uses a fresh user
-	// via beforeEach, so cross-test auth state is not an issue.
+	// Playwright internal fixture timeouts. Each test uses a fresh
+	// browser context and registers a unique user.
 	test.afterEach(async () => {});
 
 	test('should save history for multiple chess games after mode switches', async ({

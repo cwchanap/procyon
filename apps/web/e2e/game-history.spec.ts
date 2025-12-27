@@ -17,8 +17,8 @@ test.describe('Game history saving flow', () => {
 	});
 
 	// Note: We intentionally skip logout here to avoid flakiness from
-	// Playwright internal fixture timeouts. Each test uses a fresh user
-	// via beforeEach, so cross-test auth state is not an issue.
+	// Playwright internal fixture timeouts. Each test uses a fresh
+	// browser context and registers a unique user.
 	test.afterEach(async () => {});
 
 	test('should save play history for all game variants via debug controls', async ({

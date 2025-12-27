@@ -7,8 +7,27 @@ export interface TestUser {
 	password: string;
 }
 
+const FIXTURE_EMAIL =
+	process.env.E2E_TEST_USER_EMAIL ?? 'test-procyon@cwchanap.dev';
+const FIXTURE_USERNAME =
+	process.env.E2E_TEST_USER_USERNAME ?? FIXTURE_EMAIL.split('@')[0];
+const FIXTURE_PASSWORD = process.env.E2E_TEST_USER_PASSWORD ?? 'password123';
+
+const FIXTURE_USER: TestUser = {
+	email: FIXTURE_EMAIL,
+	username: FIXTURE_USERNAME,
+	password: FIXTURE_PASSWORD,
+};
+
 export class AuthHelper {
 	constructor(public page: Page) {}
+
+	/**
+	 * Return the shared Supabase fixture user for E2E tests.
+	 */
+	static getFixtureUser(): TestUser {
+		return { ...FIXTURE_USER };
+	}
 
 	/**
 	 * Generate a unique test user with timestamp to avoid conflicts
