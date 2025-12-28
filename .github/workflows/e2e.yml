@@ -13,6 +13,11 @@ jobs:
       E2E_TEST_USER_EMAIL: test-procyon@cwchanap.dev
       E2E_TEST_USER_PASSWORD: password123
       E2E_TEST_USER_USERNAME: test-procyon
+      SUPABASE_URL: http://localhost:54321
+      SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"
+      SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q"
+      PUBLIC_SUPABASE_URL: http://localhost:54321
+      PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,16 +50,6 @@ jobs:
 
       - name: Start Supabase (local)
         run: supabase start
-
-      - name: Export Supabase env
-        run: |
-          supabase status --output json > supabase-status.json
-          SUPABASE_URL=$(jq -r '.api_url' supabase-status.json)
-          SUPABASE_ANON_KEY=$(jq -r '.anon_key' supabase-status.json)
-          SUPABASE_SERVICE_ROLE_KEY=$(jq -r '.service_role_key' supabase-status.json)
-          echo "SUPABASE_URL=$SUPABASE_URL" >> "$GITHUB_ENV"
-          echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> "$GITHUB_ENV"
-          echo "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
 
       - name: Create E2E Supabase user
         env:
