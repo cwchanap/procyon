@@ -48,9 +48,6 @@ jobs:
         with:
           version: latest
 
-      - name: Prepare Supabase env
-        run: cp supabase/.env.example supabase/.env
-
       - name: Start Supabase (local)
         run: supabase start
 
