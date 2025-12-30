@@ -58,12 +58,29 @@ jobs:
 
       - name: Export Supabase keys
         run: |
-          supabase status --output json > supabase-status.json
-          SUPABASE_ANON_KEY=$(jq -r '.anon_key' supabase-status.json)
-          SUPABASE_SERVICE_ROLE_KEY=$(jq -r '.service_role_key' supabase-status.json)
-          echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> "$GITHUB_ENV"
-          echo "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
-          echo "PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            supabase status --output json > supabase-status.json
+            SUPABASE_URL=$(jq -r '.api_url // empty' supabase-status.json)
+            SUPABASE_ANON_KEY=$(jq -r '.anon_key // empty' supabase-status.json)
+            SUPABASE_SERVICE_ROLE_KEY=$(jq -r '.service_role_key // empty' supabase-status.json)
+
+            if [ -n "$SUPABASE_URL" ] && [ "$SUPABASE_URL" != "null" ] && \
+               [ -n "$SUPABASE_ANON_KEY" ] && [ "$SUPABASE_ANON_KEY" != "null" ] && \
+               [ -n "$SUPABASE_SERVICE_ROLE_KEY" ] && [ "$SUPABASE_SERVICE_ROLE_KEY" != "null" ]; then
+              echo "SUPABASE_URL=$SUPABASE_URL" >> "$GITHUB_ENV"
+              echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> "$GITHUB_ENV"
+              echo "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
+              echo "PUBLIC_SUPABASE_URL=$SUPABASE_URL" >> "$GITHUB_ENV"
+              echo "PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> "$GITHUB_ENV"
+              exit 0
+            fi
+
+            echo "Supabase keys not ready yet (attempt $i/30), waiting..."
+            sleep 2
+          done
+
+          echo "Supabase keys were not available after waiting."
+          exit 1
 
       - name: Create E2E Supabase user
         run: |
