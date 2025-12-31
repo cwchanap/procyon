@@ -11,6 +11,19 @@ type SupabaseEnv = {
 };
 
 function resolveSupabaseEnv(): SupabaseEnv {
+  const envUrl = process.env.SUPABASE_URL ?? process.env.PUBLIC_SUPABASE_URL;
+  const envAnon =
+    process.env.SUPABASE_ANON_KEY ?? process.env.PUBLIC_SUPABASE_ANON_KEY;
+  const envService = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (envUrl && envAnon && envService) {
+    return {
+      url: envUrl,
+      anonKey: envAnon,
+      serviceRoleKey: envService,
+    };
+  }
+
   try {
     const raw = execSync('supabase status --output json', {
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -32,7 +45,7 @@ function resolveSupabaseEnv(): SupabaseEnv {
     };
   } catch (error) {
     throw new Error(
-      'Local Supabase is required for E2E. Start it with `supabase start`.'
+      'Supabase env is missing. Start local Supabase with `supabase start` or set SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY.'
     );
   }
 }
