@@ -59,7 +59,13 @@ jobs:
       - name: Export Supabase keys
         run: |
           for i in $(seq 1 30); do
-            supabase status --output json | tail -n 1 > supabase-status.json
+            STATUS_JSON=$(supabase status --output json | sed -n '/{/,/}/p')
+            if [ -n "$STATUS_JSON" ]; then
+              echo "$STATUS_JSON" > supabase-status.json
+            else
+              supabase status --output json > supabase-status.json
+            fi
+
             SUPABASE_URL=$(jq -r '.api_url // empty' supabase-status.json)
             SUPABASE_ANON_KEY=$(jq -r '.anon_key // empty' supabase-status.json)
             SUPABASE_SERVICE_ROLE_KEY=$(jq -r '.service_role_key // empty' supabase-status.json)
