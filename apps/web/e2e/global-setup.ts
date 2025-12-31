@@ -6,7 +6,7 @@ export default async function globalSetup() {
 	const __dirname = path.dirname(fileURLToPath(import.meta.url));
 	const scriptPath = path.resolve(
 		__dirname,
-		'../../scripts/create-e2e-supabase-user.js'
+		'../../../scripts/create-e2e-supabase-user.js'
 	);
 
 	const result = spawnSync('node', [scriptPath], {
