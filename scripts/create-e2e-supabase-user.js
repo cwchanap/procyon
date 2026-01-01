@@ -49,7 +49,7 @@ async function createUser() {
   }
 
   const userExistsPattern =
-    /(?:email|user with this email|user) already (?:registered|exists)|already (?:registered|exists)/i;
+    /(?:email|user with this email|user)(?:\s+\w+)*\s+already(?:\s+\w+)*\s+(?:registered|exists)|already(?:\s+\w+)*\s+(?:registered|exists)/i;
   if (userExistsPattern.test(message)) {
     console.log('exists');
     return;
