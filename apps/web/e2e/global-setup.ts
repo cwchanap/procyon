@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-export default async function globalSetup() {
+export default function globalSetup(): void {
 	const __dirname = path.dirname(fileURLToPath(import.meta.url));
 	const scriptPath = path.resolve(
 		__dirname,

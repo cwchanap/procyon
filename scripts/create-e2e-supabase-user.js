@@ -1,10 +1,15 @@
-const email = process.env.E2E_TEST_USER_EMAIL ?? 'test-procyon@cwchanap.dev';
-const password = process.env.E2E_TEST_USER_PASSWORD ?? 'password123';
-const username = process.env.E2E_TEST_USER_USERNAME ?? 'test-procyon';
 const normalizeEnvValue = value => {
   if (!value) return value;
   return value.trim().replace(/^["']+|["']+$/g, '');
 };
+
+const email =
+  normalizeEnvValue(process.env.E2E_TEST_USER_EMAIL) ??
+  'test-procyon@cwchanap.dev';
+const password =
+  normalizeEnvValue(process.env.E2E_TEST_USER_PASSWORD) ?? 'password123';
+const username =
+  normalizeEnvValue(process.env.E2E_TEST_USER_USERNAME) ?? 'test-procyon';
 
 const url = normalizeEnvValue(process.env.SUPABASE_URL);
 const serviceRoleKey = normalizeEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY);
