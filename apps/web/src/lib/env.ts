@@ -12,7 +12,15 @@ const API_FALLBACK_BASE_URL = import.meta.env.DEV
 	? 'http://localhost:3501/api'
 	: '/api';
 
-const PUBLIC_API_URL = import.meta.env.PUBLIC_API_URL || API_FALLBACK_BASE_URL;
+const normalizeEnvValue = (value: unknown): string => {
+	if (typeof value !== 'string') {
+		return '';
+	}
+	return value.trim().replace(/^["']+|["']+$/g, '');
+};
+
+const PUBLIC_API_URL =
+	normalizeEnvValue(import.meta.env.PUBLIC_API_URL) || API_FALLBACK_BASE_URL;
 const PUBLIC_SUPABASE_URL_RAW = import.meta.env.PUBLIC_SUPABASE_URL;
 const PUBLIC_SUPABASE_ANON_KEY_RAW = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
 
@@ -32,12 +40,10 @@ function assertNonEmptyString(
 	);
 }
 
-const PUBLIC_SUPABASE_URL =
-	typeof PUBLIC_SUPABASE_URL_RAW === 'string' ? PUBLIC_SUPABASE_URL_RAW : '';
-const PUBLIC_SUPABASE_ANON_KEY =
-	typeof PUBLIC_SUPABASE_ANON_KEY_RAW === 'string'
-		? PUBLIC_SUPABASE_ANON_KEY_RAW
-		: '';
+const PUBLIC_SUPABASE_URL = normalizeEnvValue(PUBLIC_SUPABASE_URL_RAW);
+const PUBLIC_SUPABASE_ANON_KEY = normalizeEnvValue(
+	PUBLIC_SUPABASE_ANON_KEY_RAW
+);
 
 // Validate configuration in production
 if (import.meta.env.PROD) {

@@ -58,11 +58,15 @@ jobs:
 
       - name: Export Supabase keys
         run: |
+          strip_quotes() {
+            printf '%s' "$1" | sed -e "s/^['\"]//" -e "s/['\"]$//"
+          }
+
           for i in $(seq 1 30); do
             STATUS_ENV=$(supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY)=' || true)
-            SUPABASE_URL=$(printf '%s\n' "$STATUS_ENV" | sed -n 's/^API_URL=//p')
-            SUPABASE_ANON_KEY=$(printf '%s\n' "$STATUS_ENV" | sed -n 's/^ANON_KEY=//p')
-            SUPABASE_SERVICE_ROLE_KEY=$(printf '%s\n' "$STATUS_ENV" | sed -n 's/^SERVICE_ROLE_KEY=//p')
+            SUPABASE_URL=$(strip_quotes "$(printf '%s\n' "$STATUS_ENV" | sed -n 's/^API_URL=//p')")
+            SUPABASE_ANON_KEY=$(strip_quotes "$(printf '%s\n' "$STATUS_ENV" | sed -n 's/^ANON_KEY=//p')")
+            SUPABASE_SERVICE_ROLE_KEY=$(strip_quotes "$(printf '%s\n' "$STATUS_ENV" | sed -n 's/^SERVICE_ROLE_KEY=//p')")
 
             if [ -n "$SUPABASE_URL" ] && [ "$SUPABASE_URL" != "null" ] && \
                [ -n "$SUPABASE_ANON_KEY" ] && [ "$SUPABASE_ANON_KEY" != "null" ] && \
