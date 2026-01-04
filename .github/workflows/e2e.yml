@@ -114,7 +114,7 @@ jobs:
       - name: Start web dev server
         env:
           PUBLIC_API_URL: "http://localhost:3501/api"
-          ASTRO_DISABLE_DEV_TOOLBAR: "true"
+          ASTRO_DISABLE_DEV_TOOLBAR: "1"
         run: |
           set -e
           cd apps/web

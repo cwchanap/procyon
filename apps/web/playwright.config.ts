@@ -10,11 +10,58 @@ type SupabaseEnv = {
   serviceRoleKey: string;
 };
 
+function normalizeEnvValue(value?: string): string {
+  if (!value) return '';
+  return value.trim().replace(/^["']+|["']+$/g, '');
+}
+
+function parseSupabaseEnvFromCli(): SupabaseEnv | null {
+  try {
+    const raw = execSync('supabase status -o env', {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString();
+
+    const findValue = (key: string): string => {
+      const match = raw.match(new RegExp(`^${key}=(.*)$`, 'm'));
+      return normalizeEnvValue(match?.[1]);
+    };
+
+    const url = findValue('API_URL');
+    const anonKey = findValue('ANON_KEY');
+    const serviceRoleKey = findValue('SERVICE_ROLE_KEY');
+
+    if (
+      url &&
+      anonKey &&
+      serviceRoleKey &&
+      url !== 'null' &&
+      anonKey !== 'null' &&
+      serviceRoleKey !== 'null'
+    ) {
+      return { url, anonKey, serviceRoleKey };
+    }
+  } catch {
+    // ignore CLI failures and fall back to env
+  }
+
+  return null;
+}
+
 function resolveSupabaseEnv(): SupabaseEnv {
-  const envUrl = process.env.SUPABASE_URL ?? process.env.PUBLIC_SUPABASE_URL;
-  const envAnon =
-    process.env.SUPABASE_ANON_KEY ?? process.env.PUBLIC_SUPABASE_ANON_KEY;
-  const envService = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const envUrl = normalizeEnvValue(
+    process.env.SUPABASE_URL ?? process.env.PUBLIC_SUPABASE_URL
+  );
+  const envAnon = normalizeEnvValue(
+    process.env.SUPABASE_ANON_KEY ?? process.env.PUBLIC_SUPABASE_ANON_KEY
+  );
+  const envService = normalizeEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  if (!isCI) {
+    const cliEnv = parseSupabaseEnvFromCli();
+    if (cliEnv) {
+      return cliEnv;
+    }
+  }
 
   if (envUrl && envAnon && envService) {
     return {
@@ -24,30 +71,14 @@ function resolveSupabaseEnv(): SupabaseEnv {
     };
   }
 
-  try {
-    const raw = execSync('supabase status --output json', {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    const status = JSON.parse(raw.toString()) as {
-      api_url?: string;
-      anon_key?: string;
-      service_role_key?: string;
-    };
-
-    if (!status.api_url || !status.anon_key || !status.service_role_key) {
-      throw new Error('Supabase status missing required keys.');
-    }
-
-    return {
-      url: status.api_url,
-      anonKey: status.anon_key,
-      serviceRoleKey: status.service_role_key,
-    };
-  } catch (error) {
-    throw new Error(
-      'Supabase env is missing. Start local Supabase with `supabase start` or set SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY.'
-    );
+  const cliEnv = parseSupabaseEnvFromCli();
+  if (cliEnv) {
+    return cliEnv;
   }
+
+  throw new Error(
+    'Supabase env is missing. Start local Supabase with `supabase start` or set SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY.'
+  );
 }
 
 const supabaseEnv = resolveSupabaseEnv();
@@ -115,7 +146,7 @@ export default defineConfig({
         PUBLIC_SUPABASE_URL: supabaseEnv.url,
         PUBLIC_SUPABASE_ANON_KEY: supabaseEnv.anonKey,
         PUBLIC_API_URL: 'http://localhost:3501/api',
-        ASTRO_DISABLE_DEV_TOOLBAR: 'true',
+        ASTRO_DISABLE_DEV_TOOLBAR: '1',
       },
     },
     {

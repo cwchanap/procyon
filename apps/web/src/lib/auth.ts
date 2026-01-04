@@ -74,17 +74,35 @@ async function apiLogin(email: string, password: string): Promise<LoginResult> {
 		clearTimeout(timeoutId);
 
 		if (res.status === 429) {
-			const data = await res.json().catch(() => ({}));
+			const bodyText = await res.text();
+			let data: { error?: string; retryAfterMs?: number } = {};
+			try {
+				data = JSON.parse(bodyText) as typeof data;
+			} catch {
+				// ignore parse errors
+			}
 			return {
 				success: false,
-				error: data.error || 'Too many attempts. Please wait before retrying.',
+				error:
+					data.error ||
+					bodyText ||
+					'Too many attempts. Please wait before retrying.',
 				retryAfterMs: data.retryAfterMs,
 			};
 		}
 
 		if (!res.ok) {
-			const data = await res.json().catch(() => ({}));
-			return { success: false, error: data.error || 'Login failed' };
+			const bodyText = await res.text();
+			let data: { error?: string; message?: string } = {};
+			try {
+				data = JSON.parse(bodyText) as typeof data;
+			} catch {
+				// ignore parse errors
+			}
+			return {
+				success: false,
+				error: data.error || data.message || bodyText || 'Login failed',
+			};
 		}
 
 		const data = (await res.json()) as {
@@ -141,8 +159,17 @@ async function apiRegister(
 		clearTimeout(timeoutId);
 
 		if (!res.ok) {
-			const data = await res.json().catch(() => ({}));
-			return { success: false, error: data.error || 'Registration failed' };
+			const bodyText = await res.text();
+			let data: { error?: string; message?: string } = {};
+			try {
+				data = JSON.parse(bodyText) as typeof data;
+			} catch {
+				// ignore parse errors
+			}
+			return {
+				success: false,
+				error: data.error || data.message || bodyText || 'Registration failed',
+			};
 		}
 
 		const loginResult = await apiLogin(email, password);

@@ -12,24 +12,34 @@ function getProcessEnvVar(key: string): string {
 	return maybeProcess.process?.env?.[key] ?? '';
 }
 
+function normalizeEnvValue(value: string | undefined): string {
+	if (!value) return '';
+	return value.trim().replace(/^["']+|["']+$/g, '');
+}
+
 export function createSupabaseClients(
 	supabaseUrl: string,
 	anonKey: string,
 	serviceRoleKey?: string
 ): SupabaseClients {
-	if (!supabaseUrl || !anonKey) {
+	const normalizedUrl = normalizeEnvValue(supabaseUrl);
+	const normalizedAnonKey = normalizeEnvValue(anonKey);
+	const normalizedServiceRoleKey = normalizeEnvValue(serviceRoleKey);
+
+	if (!normalizedUrl || !normalizedAnonKey) {
 		throw new Error(
 			'Supabase configuration missing. Set SUPABASE_URL and SUPABASE_ANON_KEY.'
 		);
 	}
 
 	const resolvedServiceRoleKey =
-		typeof serviceRoleKey === 'string' && serviceRoleKey.trim().length > 0
-			? serviceRoleKey
+		typeof normalizedServiceRoleKey === 'string' &&
+		normalizedServiceRoleKey.trim().length > 0
+			? normalizedServiceRoleKey
 			: null;
 
 	const supabaseAdmin = resolvedServiceRoleKey
-		? createClient(supabaseUrl, resolvedServiceRoleKey, {
+		? createClient(normalizedUrl, resolvedServiceRoleKey, {
 				auth: {
 					autoRefreshToken: false,
 					persistSession: false,
@@ -37,7 +47,7 @@ export function createSupabaseClients(
 			})
 		: null;
 
-	const supabaseAnon = createClient(supabaseUrl, anonKey, {
+	const supabaseAnon = createClient(normalizedUrl, normalizedAnonKey, {
 		auth: {
 			autoRefreshToken: false,
 			persistSession: false,

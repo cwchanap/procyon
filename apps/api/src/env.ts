@@ -43,13 +43,21 @@ function isWorkersRuntime(): boolean {
 	);
 }
 
+function normalizeEnvValue(value: string | undefined): string {
+	if (!value) return '';
+	return value.trim().replace(/^["']+|["']+$/g, '');
+}
+
 function getEnv(key: string, defaultValue?: string): string {
-	return processEnv[key] || defaultValue || '';
+	const raw = processEnv[key] ?? defaultValue;
+	return normalizeEnvValue(raw);
 }
 
 function getEnvNumber(key: string, defaultValue: number): number {
-	const value = processEnv[key];
-	if (!value) return defaultValue;
+	const value = normalizeEnvValue(processEnv[key]);
+	if (!value) {
+		return defaultValue;
+	}
 
 	const parsed = Number.parseInt(value, 10);
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultValue;
