@@ -146,7 +146,7 @@ export default defineConfig({
         PUBLIC_SUPABASE_URL: supabaseEnv.url,
         PUBLIC_SUPABASE_ANON_KEY: supabaseEnv.anonKey,
         PUBLIC_API_URL: 'http://localhost:3501/api',
-        ASTRO_DISABLE_DEV_TOOLBAR: '1',
+        ASTRO_DISABLE_DEV_TOOLBAR: 'true',
       },
     },
     {
