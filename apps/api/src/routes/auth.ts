@@ -87,19 +87,16 @@ app.post('/register', zValidator('json', registerSchema), async c => {
 
 		if (error) {
 			if (normalizedUsername && isUsernameUniqueConstraintError(error)) {
-				throw new HTTPException(409, {
-					message: 'Username already taken. Please choose another.',
-				});
+				return c.json(
+					{ error: 'Username already taken. Please choose another.' },
+					409
+				);
 			}
-			throw new HTTPException(400, {
-				message: error.message || 'Registration failed',
-			});
+			return c.json({ error: error.message || 'Registration failed' }, 400);
 		}
 
 		if (!data.user) {
-			throw new HTTPException(400, {
-				message: 'Registration failed',
-			});
+			return c.json({ error: 'Registration failed' }, 400);
 		}
 
 		let session = data.session ?? null;
@@ -128,9 +125,11 @@ app.post('/register', zValidator('json', registerSchema), async c => {
 			201
 		);
 	} catch (error) {
-		if (error instanceof HTTPException) throw error;
+		if (error instanceof HTTPException) {
+			return c.json({ error: error.message }, error.status);
+		}
 		logger.error('register error', { error });
-		throw new HTTPException(500, { message: 'Internal server error' });
+		return c.json({ error: 'Internal server error' }, 500);
 	}
 });
 
@@ -157,9 +156,7 @@ app.post('/login', zValidator('json', loginSchema), async c => {
 		});
 
 		if (error || !data.session) {
-			throw new HTTPException(401, {
-				message: error?.message || 'Invalid credentials',
-			});
+			return c.json({ error: 'Invalid email or password' }, 401);
 		}
 
 		resetLoginAttempts(email);
@@ -173,9 +170,11 @@ app.post('/login', zValidator('json', loginSchema), async c => {
 			},
 		});
 	} catch (error) {
-		if (error instanceof HTTPException) throw error;
+		if (error instanceof HTTPException) {
+			return c.json({ error: error.message }, error.status);
+		}
 		logger.error('login error', { error });
-		throw new HTTPException(500, { message: 'Internal server error' });
+		return c.json({ error: 'Internal server error' }, 500);
 	}
 });
 

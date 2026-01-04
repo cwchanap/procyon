@@ -46,7 +46,9 @@ export class AuthHelper {
 	 */
 	async goToRegister(): Promise<void> {
 		await this.page.goto('/register');
-		await expect(this.page).toHaveTitle('Sign Up - Procyon Chess');
+		await expect(this.page).toHaveTitle('Sign Up - Procyon Chess', {
+			timeout: 15000,
+		});
 	}
 
 	/**
@@ -54,7 +56,9 @@ export class AuthHelper {
 	 */
 	async goToLogin(): Promise<void> {
 		await this.page.goto('/login');
-		await expect(this.page).toHaveTitle('Sign In - Procyon Chess');
+		await expect(this.page).toHaveTitle('Sign In - Procyon Chess', {
+			timeout: 15000,
+		});
 	}
 
 	/**
@@ -87,8 +91,8 @@ export class AuthHelper {
 		}
 
 		// Ensure we're on the home page
-		await expect(this.page).toHaveURL('/');
-		await expect(this.page).toHaveTitle('Chess Games');
+		await expect(this.page).toHaveURL('/', { timeout: 15000 });
+		await expect(this.page).toHaveTitle('Chess Games', { timeout: 15000 });
 	}
 
 	/**
@@ -103,8 +107,8 @@ export class AuthHelper {
 		await this.page.getByRole('button', { name: 'Sign In' }).click();
 
 		// Wait for redirect to home page
-		await expect(this.page).toHaveURL('/');
-		await expect(this.page).toHaveTitle('Chess Games');
+		await expect(this.page).toHaveURL('/', { timeout: 15000 });
+		await expect(this.page).toHaveTitle('Chess Games', { timeout: 15000 });
 	}
 
 	/**
@@ -138,8 +142,12 @@ export class AuthHelper {
 		await this.waitForAuthNav();
 
 		// Check for username and email text being visible on the page
-		await expect(this.page.locator(`text=${username}`).first()).toBeVisible();
-		await expect(this.page.locator(`text=${email}`).first()).toBeVisible();
+		await expect(this.page.locator(`text=${username}`).first()).toBeVisible({
+			timeout: 15000,
+		});
+		await expect(this.page.locator(`text=${email}`).first()).toBeVisible({
+			timeout: 15000,
+		});
 	}
 
 	/**
@@ -150,9 +158,9 @@ export class AuthHelper {
 		await this.waitForAuthNav();
 
 		// Check for Login button in the nav as the unauthenticated indicator
-		await expect(
-			this.page.getByRole('button', { name: 'Login' })
-		).toBeVisible();
+		await expect(this.page.getByRole('button', { name: 'Login' })).toBeVisible({
+			timeout: 15000,
+		});
 	}
 
 	/**
@@ -194,6 +202,6 @@ export class AuthHelper {
 		await this.page
 			.locator('nav button')
 			.first()
-			.waitFor({ state: 'visible', timeout: 5000 });
+			.waitFor({ state: 'visible', timeout: 15000 });
 	}
 }

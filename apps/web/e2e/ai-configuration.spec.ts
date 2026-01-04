@@ -56,44 +56,28 @@ test.describe('AI Configuration Management', () => {
 		});
 
 		test('should display all available AI providers', async ({ page }) => {
-			const providerDropdown = page.getByRole('combobox').first();
-			await providerDropdown.click();
-
-			// Should see all providers
-			await expect(
-				page.getByRole('option', { name: 'Google Gemini' })
-			).toBeVisible();
-			await expect(
-				page.getByRole('option', { name: 'OpenRouter' })
-			).toBeVisible();
-			await expect(page.getByRole('option', { name: 'OpenAI' })).toBeVisible();
+			const providerOptions = page
+				.getByRole('combobox')
+				.first()
+				.locator('option');
+			const providerOptionTexts = await providerOptions.allTextContents();
+			expect(providerOptionTexts).toContain('Google Gemini');
+			expect(providerOptionTexts).toContain('OpenRouter');
+			expect(providerOptionTexts).toContain('OpenAI');
 		});
 
 		test('should display updated Gemini models including latest versions', async ({
 			page,
 		}) => {
-			// Select Google Gemini provider (should be default)
-			const modelDropdown = page.getByRole('combobox').nth(1);
-			await modelDropdown.click();
-
-			// Should see all updated Gemini models
-			await expect(
-				page.getByRole('option', { name: 'Gemini 2.0 Flash' })
-			).toBeVisible();
-			await expect(
-				page.getByRole('option', { name: 'Gemini 2.5 Flash' })
-			).toBeVisible();
-			await expect(
-				page.getByRole('option', { name: 'Gemini 2.5 Pro' })
-			).toBeVisible();
-			await expect(
-				page.getByRole('option', { name: 'Gemini 2.5 Flash Lite' })
-			).toBeVisible();
+			const modelOptions = page.getByRole('combobox').nth(1).locator('option');
+			const modelOptionTexts = await modelOptions.allTextContents();
+			expect(modelOptionTexts).toContain('Gemini 2.0 Flash');
+			expect(modelOptionTexts).toContain('Gemini 2.5 Flash');
+			expect(modelOptionTexts).toContain('Gemini 2.5 Pro');
+			expect(modelOptionTexts).toContain('Gemini 2.5 Flash Lite');
 
 			// Should NOT see deprecated 1.x models
-			await expect(
-				page.getByRole('option', { name: /Gemini 1\./i })
-			).not.toBeVisible();
+			expect(modelOptionTexts.join(' ')).not.toMatch(/Gemini 1\./i);
 		});
 
 		test('should require API key before enabling save button', async ({
@@ -123,8 +107,7 @@ test.describe('AI Configuration Management', () => {
 
 			// Select provider and model
 			const modelDropdown = page.getByRole('combobox').nth(1);
-			await modelDropdown.click();
-			await page.getByRole('option', { name: 'Gemini 2.5 Pro' }).click();
+			await modelDropdown.selectOption({ label: 'Gemini 2.5 Pro' });
 
 			// Still disabled without API key
 			await expect(saveButton).toBeDisabled();
@@ -146,8 +129,7 @@ test.describe('AI Configuration Management', () => {
 		test('should successfully save AI configuration', async ({ page }) => {
 			// Select Gemini 2.5 Pro model
 			const modelDropdown = page.getByRole('combobox').nth(1);
-			await modelDropdown.click();
-			await page.getByRole('option', { name: 'Gemini 2.5 Pro' }).click();
+			await modelDropdown.selectOption({ label: 'Gemini 2.5 Pro' });
 
 			// Enter API key
 			const testApiKey = 'gemini-test-api-key-12345';
@@ -174,13 +156,11 @@ test.describe('AI Configuration Management', () => {
 
 			// Change to OpenAI provider
 			const providerDropdown = page.getByRole('combobox').first();
-			await providerDropdown.click();
-			await page.getByRole('option', { name: 'OpenAI' }).click();
+			await providerDropdown.selectOption({ label: 'OpenAI' });
 
 			// Select OpenAI model
 			const modelDropdown = page.getByRole('combobox').nth(1);
-			await modelDropdown.click();
-			await page.getByRole('option', { name: 'GPT-4o' }).click();
+			await modelDropdown.selectOption({ label: 'GPT-4o' });
 
 			// Save OpenAI configuration
 			await page.getByPlaceholder('Enter your API key').fill('openai-key-456');
