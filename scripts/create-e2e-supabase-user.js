@@ -58,6 +58,11 @@ async function createUser() {
   const userExistsPattern =
     /(?:email|user with this email|user)(?:\s+\w+)*\s+already(?:\s+\w+)*\s+(?:registered|exists)|already(?:\s+\w+)*\s+(?:registered|exists)/i;
   if (userExistsPattern.test(message)) {
+    const recreated = await recreateExistingUser(headers);
+    if (recreated) {
+      console.log('recreated');
+      return;
+    }
     const updated = await updateExistingUser(headers);
     if (updated) {
       console.log('updated');
@@ -71,13 +76,13 @@ async function createUser() {
   process.exit(1);
 }
 
-async function updateExistingUser(headers) {
+async function findExistingUserId(headers) {
   const listResponse = await fetch(`${url}/auth/v1/admin/users?per_page=200`, {
     headers,
   });
 
   if (!listResponse.ok) {
-    return false;
+    return null;
   }
 
   const listBody = await listResponse.json().catch(() => null);
@@ -85,12 +90,49 @@ async function updateExistingUser(headers) {
   const existingUser = users.find(
     user => user?.email?.toLowerCase() === email.toLowerCase()
   );
-  if (!existingUser?.id) {
+  return existingUser?.id ?? null;
+}
+
+async function recreateExistingUser(headers) {
+  const existingUserId = await findExistingUserId(headers);
+  if (!existingUserId) {
+    return false;
+  }
+
+  const deleteResponse = await fetch(
+    `${url}/auth/v1/admin/users/${existingUserId}`,
+    {
+      method: 'DELETE',
+      headers,
+    }
+  );
+
+  if (!deleteResponse.ok) {
+    return false;
+  }
+
+  const recreateResponse = await fetch(`${url}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { username },
+    }),
+  });
+
+  return recreateResponse.ok;
+}
+
+async function updateExistingUser(headers) {
+  const existingUserId = await findExistingUserId(headers);
+  if (!existingUserId) {
     return false;
   }
 
   const updateResponse = await fetch(
-    `${url}/auth/v1/admin/users/${existingUser.id}`,
+    `${url}/auth/v1/admin/users/${existingUserId}`,
     {
       method: 'PUT',
       headers,

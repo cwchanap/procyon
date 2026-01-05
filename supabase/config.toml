@@ -25,3 +25,6 @@ site_url = "http://localhost:3500"
 additional_redirect_urls = ["http://localhost:3500"]
 jwt_expiry = 3600
 enable_signup = true
+
+[auth.email]
+enable_confirmations = false
