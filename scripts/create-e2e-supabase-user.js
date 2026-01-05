@@ -24,13 +24,15 @@ if (isMissing(url) || isMissing(serviceRoleKey)) {
 }
 
 async function createUser() {
+  const headers = {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+    'Content-Type': 'application/json',
+  };
+
   const response = await fetch(`${url}/auth/v1/admin/users`, {
     method: 'POST',
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       email,
       password,
@@ -56,12 +58,52 @@ async function createUser() {
   const userExistsPattern =
     /(?:email|user with this email|user)(?:\s+\w+)*\s+already(?:\s+\w+)*\s+(?:registered|exists)|already(?:\s+\w+)*\s+(?:registered|exists)/i;
   if (userExistsPattern.test(message)) {
+    const updated = await updateExistingUser(headers);
+    if (updated) {
+      console.log('updated');
+      return;
+    }
     console.log('exists');
     return;
   }
 
   console.error(`create failed: ${response.status} ${message}`);
   process.exit(1);
+}
+
+async function updateExistingUser(headers) {
+  const listResponse = await fetch(`${url}/auth/v1/admin/users?per_page=200`, {
+    headers,
+  });
+
+  if (!listResponse.ok) {
+    return false;
+  }
+
+  const listBody = await listResponse.json().catch(() => null);
+  const users = listBody?.users ?? [];
+  const existingUser = users.find(
+    user => user?.email?.toLowerCase() === email.toLowerCase()
+  );
+  if (!existingUser?.id) {
+    return false;
+  }
+
+  const updateResponse = await fetch(
+    `${url}/auth/v1/admin/users/${existingUser.id}`,
+    {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { username },
+      }),
+    }
+  );
+
+  return updateResponse.ok;
 }
 
 createUser().catch(error => {
