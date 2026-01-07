@@ -4,17 +4,21 @@ import { env } from '../lib/env';
 
 type ServerPlayHistory = {
 	id: number;
-	chessId: 'chess' | 'shogi' | 'xiangqi';
+	chessId: 'chess' | 'shogi' | 'xiangqi' | 'jungle';
 	date: string;
 	status: 'win' | 'loss' | 'draw';
 	opponentUserId: string | null;
 	opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' | null;
+	// Rating fields (populated after rating system was added)
+	ratingChange?: number;
+	newRating?: number;
 };
 
 const VARIANT_LABELS: Record<ServerPlayHistory['chessId'], string> = {
 	chess: 'Classical Chess',
 	shogi: 'Shogi',
 	xiangqi: 'Xiangqi',
+	jungle: 'Jungle',
 };
 
 const RESULT_STYLES: Record<
@@ -263,7 +267,8 @@ export default function PlayHistoryPage() {
 										<th className='py-3 pr-4'>Date</th>
 										<th className='py-3 pr-4'>Variant</th>
 										<th className='py-3 pr-4'>Opponent</th>
-										<th className='py-3'>Result</th>
+										<th className='py-3 pr-4'>Result</th>
+										<th className='py-3'>Rating</th>
 									</tr>
 								</thead>
 								<tbody className='divide-y divide-white/5'>
@@ -284,12 +289,38 @@ export default function PlayHistoryPage() {
 												<td className='py-4 pr-4'>
 													<span>{formatOpponent(entry)}</span>
 												</td>
-												<td className='py-4'>
+												<td className='py-4 pr-4'>
 													<span
 														className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${resultStyle.className}`}
 													>
 														{resultStyle.label}
 													</span>
+												</td>
+												<td className='py-4'>
+													{entry.ratingChange !== undefined &&
+													entry.ratingChange !== null ? (
+														<div className='flex flex-col'>
+															<span
+																className={`font-mono font-semibold ${
+																	entry.ratingChange > 0
+																		? 'text-green-400'
+																		: entry.ratingChange < 0
+																			? 'text-red-400'
+																			: 'text-gray-400'
+																}`}
+															>
+																{entry.ratingChange > 0 ? '+' : ''}
+																{entry.ratingChange}
+															</span>
+															{entry.newRating !== undefined && (
+																<span className='text-xs text-purple-200/60'>
+																	{entry.newRating}
+																</span>
+															)}
+														</div>
+													) : (
+														<span className='text-gray-500 text-xs'>—</span>
+													)}
 												</td>
 											</tr>
 										);

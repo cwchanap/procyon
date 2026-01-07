@@ -3,6 +3,7 @@ import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { useAuth, getAuthHeaders } from '../lib/auth';
 import { env } from '../lib/env';
+import { RatingsSection } from './RatingsSection';
 
 // AI Provider and Model configurations
 const AI_PROVIDERS = {
@@ -473,6 +474,11 @@ export function ProfilePage() {
 									</p>
 								)}
 							</div>
+						</div>
+
+						{/* Ratings Section */}
+						<div className='border-t border-purple-500/30 pt-6 mt-6'>
+							<RatingsSection />
 						</div>
 
 						{/* Action Buttons */}

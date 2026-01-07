@@ -4,12 +4,13 @@ import { zValidator } from '@hono/zod-validator';
 import { desc, eq } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
-import { playHistory, type PlayHistory } from '../db/schema';
+import { playHistory, ratingHistory } from '../db/schema';
 import {
 	ChessVariantId,
 	GameResultStatus,
 	OpponentLlmId,
 } from '../constants/game';
+import { updatePlayerRating } from '../services/rating-service';
 
 const app = new Hono();
 
@@ -71,12 +72,23 @@ app.get('/', authMiddleware, async c => {
 
 	try {
 		const history = await db
-			.select()
+			.select({
+				id: playHistory.id,
+				userId: playHistory.userId,
+				chessId: playHistory.chessId,
+				date: playHistory.date,
+				status: playHistory.status,
+				opponentUserId: playHistory.opponentUserId,
+				opponentLlmId: playHistory.opponentLlmId,
+				ratingChange: ratingHistory.ratingChange,
+				newRating: ratingHistory.newRating,
+			})
 			.from(playHistory)
+			.leftJoin(ratingHistory, eq(playHistory.id, ratingHistory.playHistoryId))
 			.where(eq(playHistory.userId, user.userId))
 			.orderBy(desc(playHistory.date));
 
-		return c.json({ playHistory: history as PlayHistory[] });
+		return c.json({ playHistory: history });
 	} catch (error) {
 		console.error('Error fetching play history:', error);
 		return c.json({ error: 'Failed to fetch play history' }, 500);
@@ -113,10 +125,37 @@ app.post(
 				.values(newPlayHistory)
 				.returning();
 
+			// Update rating after saving play history
+			let ratingUpdate = null;
+			try {
+				const ratingResult = await updatePlayerRating({
+					userId: user.userId,
+					variantId: body.chessId,
+					playHistoryId: record.id,
+					gameResult: body.status,
+					opponentLlmId: body.opponentLlmId ?? null,
+					opponentUserId: body.opponentUserId
+						? String(body.opponentUserId)
+						: null,
+				});
+
+				ratingUpdate = {
+					oldRating: ratingResult.oldRating,
+					newRating: ratingResult.newRating,
+					ratingChange: ratingResult.ratingChange,
+				};
+
+				console.log('Rating updated', ratingUpdate);
+			} catch (ratingError) {
+				// Log but don't fail the request if rating update fails
+				console.error('Error updating rating:', ratingError);
+			}
+
 			return c.json(
 				{
 					message: 'Play history saved',
 					playHistory: record as PlayHistory,
+					ratingUpdate,
 				},
 				201
 			);
