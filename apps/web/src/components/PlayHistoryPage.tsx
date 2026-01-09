@@ -312,7 +312,7 @@ export default function PlayHistoryPage() {
 																{entry.ratingChange > 0 ? '+' : ''}
 																{entry.ratingChange}
 															</span>
-															{entry.newRating !== undefined && (
+															{entry.newRating != null && (
 																<span className='text-xs text-purple-200/60'>
 																	{entry.newRating}
 																</span>

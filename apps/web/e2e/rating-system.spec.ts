@@ -1,5 +1,50 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { AuthHelper } from './utils/auth-helpers';
+
+/**
+ * Helper function to play a game and win using debug function
+ * @param page - Playwright Page object
+ * @param variant - Game variant to play ('chess' | 'shogi')
+ */
+async function playGameAndWin(
+	page: Page,
+	variant: 'chess' | 'shogi' = 'chess'
+) {
+	const debugFnName =
+		variant === 'chess'
+			? '__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
+			: '__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__';
+
+	// Navigate to game page
+	await page.goto(`/${variant}`);
+
+	// Start game
+	const startButton = page.getByRole('button', { name: '▶️ Start' });
+	await expect(startButton).toBeVisible();
+	await startButton.click();
+
+	// Wait for debug helper
+	await page.waitForFunction(
+		debugFn =>
+			typeof (window as unknown as Record<string, unknown>)[debugFn] ===
+			'function',
+		debugFnName
+	);
+
+	// Trigger a win
+	await page.evaluate(fnName => {
+		const fn = (window as unknown as Record<string, () => void>)[fnName];
+		if (fn) fn();
+	}, debugFnName);
+
+	// Wait for game to end
+	await expect(
+		page.getByRole('button', { name: '🎮 Play Again' })
+	).toBeVisible();
+
+	// Wait for rating to be saved
+	await page.waitForTimeout(2000);
+}
 
 test.describe('ELO Rating System', () => {
 	let authHelper: AuthHelper;
@@ -8,7 +53,10 @@ test.describe('ELO Rating System', () => {
 		authHelper = new AuthHelper(page);
 		const testUser = AuthHelper.getFixtureUser();
 		await authHelper.login(testUser.email, testUser.password);
-		await page.waitForTimeout(1000);
+
+		// Wait for login to complete by checking for profile navigation
+		// Instead of fixed timeout, wait for a reliable post-login indicator
+		await page.waitForURL(/.*\/profile/, { timeout: 10000 });
 	});
 
 	test.describe('Profile Page - Ratings Section', () => {
@@ -36,36 +84,7 @@ test.describe('ELO Rating System', () => {
 			page,
 		}) => {
 			// First, play a chess game to generate a rating
-			await page.goto('/chess');
-
-			// Start the game
-			const startButton = page.getByRole('button', { name: '▶️ Start' });
-			await expect(startButton).toBeVisible();
-			await startButton.click();
-
-			// Wait for the debug helper
-			await page.waitForFunction(
-				() =>
-					typeof (window as unknown as Record<string, unknown>)[
-						'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-					] === 'function'
-			);
-
-			// Trigger a win
-			await page.evaluate(() => {
-				const fn = (window as unknown as Record<string, () => void>)[
-					'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-				];
-				fn();
-			});
-
-			// Wait for game to end
-			await expect(
-				page.getByRole('button', { name: '🎮 Play Again' })
-			).toBeVisible();
-
-			// Wait for rating to be saved
-			await page.waitForTimeout(2000);
+			await playGameAndWin(page, 'chess');
 
 			// Now go to profile and check ratings
 			await page.goto('/profile');
@@ -90,36 +109,12 @@ test.describe('ELO Rating System', () => {
 			page,
 		}) => {
 			// First, play a chess game
-			await page.goto('/chess');
-
-			const startButton = page.getByRole('button', { name: '▶️ Start' });
-			await expect(startButton).toBeVisible();
-			await startButton.click();
-
-			await page.waitForFunction(
-				() =>
-					typeof (window as unknown as Record<string, unknown>)[
-						'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-					] === 'function'
-			);
-
-			await page.evaluate(() => {
-				const fn = (window as unknown as Record<string, () => void>)[
-					'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-				];
-				fn();
-			});
-
-			await expect(
-				page.getByRole('button', { name: '🎮 Play Again' })
-			).toBeVisible();
-
-			await page.waitForTimeout(2000);
+			await playGameAndWin(page, 'chess');
 
 			// Go to play history
 			await page.goto('/play-history');
 
-			// Check for the Rating column header
+			// Check for Rating column header
 			await expect(
 				page.getByRole('columnheader', { name: 'Rating' })
 			).toBeVisible();
@@ -134,31 +129,7 @@ test.describe('ELO Rating System', () => {
 			page,
 		}) => {
 			// Play a chess game to get a rating change
-			await page.goto('/chess');
-
-			const startButton = page.getByRole('button', { name: '▶️ Start' });
-			await expect(startButton).toBeVisible();
-			await startButton.click();
-
-			await page.waitForFunction(
-				() =>
-					typeof (window as unknown as Record<string, unknown>)[
-						'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-					] === 'function'
-			);
-
-			await page.evaluate(() => {
-				const fn = (window as unknown as Record<string, () => void>)[
-					'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-				];
-				fn();
-			});
-
-			await expect(
-				page.getByRole('button', { name: '🎮 Play Again' })
-			).toBeVisible();
-
-			await page.waitForTimeout(2000);
+			await playGameAndWin(page, 'chess');
 
 			// Go to play history
 			await page.goto('/play-history');
@@ -187,31 +158,7 @@ test.describe('ELO Rating System', () => {
 			await page.waitForTimeout(1000);
 
 			// Play a chess game
-			await page.goto('/chess');
-
-			const startButton = page.getByRole('button', { name: '▶️ Start' });
-			await expect(startButton).toBeVisible();
-			await startButton.click();
-
-			await page.waitForFunction(
-				() =>
-					typeof (window as unknown as Record<string, unknown>)[
-						'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-					] === 'function'
-			);
-
-			await page.evaluate(() => {
-				const fn = (window as unknown as Record<string, () => void>)[
-					'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-				];
-				fn();
-			});
-
-			// Wait for game to end and rating to save
-			await expect(
-				page.getByRole('button', { name: '🎮 Play Again' })
-			).toBeVisible();
-			await page.waitForTimeout(2000);
+			await playGameAndWin(page, 'chess');
 
 			// Go to profile and verify rating exists
 			await page.goto('/profile');
@@ -232,30 +179,7 @@ test.describe('ELO Rating System', () => {
 			page,
 		}) => {
 			// Play a chess game
-			await page.goto('/chess');
-
-			const startButton = page.getByRole('button', { name: '▶️ Start' });
-			await expect(startButton).toBeVisible();
-			await startButton.click();
-
-			await page.waitForFunction(
-				() =>
-					typeof (window as unknown as Record<string, unknown>)[
-						'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-					] === 'function'
-			);
-
-			await page.evaluate(() => {
-				const fn = (window as unknown as Record<string, () => void>)[
-					'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-				];
-				fn();
-			});
-
-			await expect(
-				page.getByRole('button', { name: '🎮 Play Again' })
-			).toBeVisible();
-			await page.waitForTimeout(2000);
+			await playGameAndWin(page, 'chess');
 
 			// Go to play history
 			await page.goto('/play-history');
@@ -272,54 +196,10 @@ test.describe('ELO Rating System', () => {
 			page,
 		}) => {
 			// Play a chess game
-			await page.goto('/chess');
-			let startButton = page.getByRole('button', { name: '▶️ Start' });
-			await expect(startButton).toBeVisible();
-			await startButton.click();
-
-			await page.waitForFunction(
-				() =>
-					typeof (window as unknown as Record<string, unknown>)[
-						'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-					] === 'function'
-			);
-
-			await page.evaluate(() => {
-				const fn = (window as unknown as Record<string, () => void>)[
-					'__PROCYON_DEBUG_CHESS_TRIGGER_WIN__'
-				];
-				fn();
-			});
-
-			await expect(
-				page.getByRole('button', { name: '🎮 Play Again' })
-			).toBeVisible();
-			await page.waitForTimeout(2000);
+			await playGameAndWin(page, 'chess');
 
 			// Play a shogi game
-			await page.goto('/shogi');
-			startButton = page.getByRole('button', { name: '▶️ Start' });
-			await expect(startButton).toBeVisible();
-			await startButton.click();
-
-			await page.waitForFunction(
-				() =>
-					typeof (window as unknown as Record<string, unknown>)[
-						'__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__'
-					] === 'function'
-			);
-
-			await page.evaluate(() => {
-				const fn = (window as unknown as Record<string, () => void>)[
-					'__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__'
-				];
-				fn();
-			});
-
-			await expect(
-				page.getByRole('button', { name: '🎮 Play Again' })
-			).toBeVisible();
-			await page.waitForTimeout(2000);
+			await playGameAndWin(page, 'shogi');
 
 			// Go to profile and check both ratings exist
 			await page.goto('/profile');

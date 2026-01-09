@@ -237,43 +237,52 @@ export async function updatePlayerRating(
 		currentRating.gamesPlayed
 	);
 
-	// Update player rating
-	await db
-		.update(playerRatings)
-		.set({
-			rating: calculation.newRating,
-			gamesPlayed: currentRating.gamesPlayed + 1,
-			wins:
-				gameResult === GameResultStatus.Win
-					? currentRating.wins + 1
-					: currentRating.wins,
-			losses:
-				gameResult === GameResultStatus.Loss
-					? currentRating.losses + 1
-					: currentRating.losses,
-			draws:
-				gameResult === GameResultStatus.Draw
-					? currentRating.draws + 1
-					: currentRating.draws,
-			peakRating: Math.max(calculation.newRating, currentRating.peakRating),
-			updatedAt: new Date().toISOString(),
-		})
-		.where(eq(playerRatings.id, currentRating.id));
+	// Wrap both operations in a transaction for atomicity
+	const historyRecord = await db.transaction(async tx => {
+		// Update player rating
+		await tx
+			.update(playerRatings)
+			.set({
+				rating: calculation.newRating,
+				gamesPlayed: currentRating.gamesPlayed + 1,
+				wins:
+					gameResult === GameResultStatus.Win
+						? currentRating.wins + 1
+						: currentRating.wins,
+				losses:
+					gameResult === GameResultStatus.Loss
+						? currentRating.losses + 1
+						: currentRating.losses,
+				draws:
+					gameResult === GameResultStatus.Draw
+						? currentRating.draws + 1
+						: currentRating.draws,
+				peakRating: Math.max(calculation.newRating, currentRating.peakRating),
+				updatedAt: new Date().toISOString(),
+			})
+			.where(eq(playerRatings.id, currentRating.id));
 
-	// Record rating history
-	const [historyRecord] = await db
-		.insert(ratingHistory)
-		.values({
-			userId,
-			variantId,
-			playHistoryId,
-			oldRating: currentRating.rating,
-			newRating: calculation.newRating,
-			ratingChange: calculation.ratingChange,
-			opponentRating,
-			gameResult,
-		})
-		.returning();
+		// Record rating history
+		const [record] = await tx
+			.insert(ratingHistory)
+			.values({
+				userId,
+				variantId,
+				playHistoryId,
+				oldRating: currentRating.rating,
+				newRating: calculation.newRating,
+				ratingChange: calculation.ratingChange,
+				opponentRating,
+				gameResult,
+			})
+			.returning();
+
+		if (!record) {
+			throw new Error('Failed to create rating history record');
+		}
+
+		return record;
+	});
 
 	return historyRecord;
 }

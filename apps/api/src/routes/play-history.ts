@@ -4,7 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { desc, eq } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
-import { playHistory, ratingHistory } from '../db/schema';
+import { playHistory, ratingHistory, type PlayHistory } from '../db/schema';
 import {
 	ChessVariantId,
 	GameResultStatus,
@@ -124,6 +124,10 @@ app.post(
 				.insert(playHistory)
 				.values(newPlayHistory)
 				.returning();
+
+			if (!record) {
+				throw new Error('Failed to create play history record');
+			}
 
 			// Update rating after saving play history
 			let ratingUpdate = null;
