@@ -123,6 +123,9 @@ export const aiOpponentRatings = sqliteTable(
 		variantId: text('variant_id').$type<ChessVariantId>().notNull(),
 		rating: integer('rating').notNull().default(1400),
 		description: text('description'),
+		createdAt: text('created_at')
+			.default(sql`CURRENT_TIMESTAMP`)
+			.notNull(),
 		updatedAt: text('updated_at')
 			.default(sql`CURRENT_TIMESTAMP`)
 			.notNull(),

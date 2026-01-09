@@ -102,10 +102,10 @@ export function RatingsSection() {
 						<div className='flex items-center justify-between mb-3'>
 							<div className='flex items-center gap-2'>
 								<span className='text-xl'>
-									{VARIANT_ICONS[rating.variantId]}
+									{VARIANT_ICONS[rating.variantId] || '🎮'}
 								</span>
 								<h4 className='text-lg font-medium text-white'>
-									{VARIANT_LABELS[rating.variantId]}
+									{VARIANT_LABELS[rating.variantId] || rating.variantId}
 								</h4>
 							</div>
 							<RatingBadge

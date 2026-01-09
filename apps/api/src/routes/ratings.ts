@@ -23,6 +23,25 @@ app.get('/', authMiddleware, async c => {
 	}
 });
 
+// GET /api/ratings/history/:variant - Get rating history for variant
+app.get('/history/:variant', authMiddleware, async c => {
+	const user = getUser(c);
+	const variant = c.req.param('variant') as ChessVariantId;
+
+	// Validate variant
+	if (!ALL_CHESS_VARIANT_IDS.includes(variant)) {
+		return c.json({ error: 'Invalid variant' }, 400);
+	}
+
+	try {
+		const history = await getRatingHistoryForUser(user.userId, variant);
+		return c.json({ history });
+	} catch (error) {
+		console.error('Error fetching rating history:', error);
+		return c.json({ error: 'Failed to fetch rating history' }, 500);
+	}
+});
+
 // GET /api/ratings/:variant - Get rating for specific variant
 app.get('/:variant', authMiddleware, async c => {
 	const user = getUser(c);
@@ -45,25 +64,6 @@ app.get('/:variant', authMiddleware, async c => {
 	} catch (error) {
 		console.error('Error fetching rating:', error);
 		return c.json({ error: 'Failed to fetch rating' }, 500);
-	}
-});
-
-// GET /api/ratings/history/:variant - Get rating history for variant
-app.get('/history/:variant', authMiddleware, async c => {
-	const user = getUser(c);
-	const variant = c.req.param('variant') as ChessVariantId;
-
-	// Validate variant
-	if (!ALL_CHESS_VARIANT_IDS.includes(variant)) {
-		return c.json({ error: 'Invalid variant' }, 400);
-	}
-
-	try {
-		const history = await getRatingHistoryForUser(user.userId, variant);
-		return c.json({ history });
-	} catch (error) {
-		console.error('Error fetching rating history:', error);
-		return c.json({ error: 'Failed to fetch rating history' }, 500);
 	}
 });
 
