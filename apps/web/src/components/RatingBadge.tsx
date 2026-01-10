@@ -11,12 +11,40 @@ interface RatingBadgeProps {
 	showLabel?: boolean;
 }
 
-const TIER_COLORS: Record<string, string> = {
-	gold: 'from-yellow-500 to-amber-600 border-yellow-400/50 text-yellow-100',
-	purple: 'from-purple-600 to-violet-700 border-purple-400/50 text-purple-100',
-	blue: 'from-blue-600 to-indigo-700 border-blue-400/50 text-blue-100',
-	green: 'from-green-600 to-emerald-700 border-green-400/50 text-green-100',
-	gray: 'from-gray-600 to-slate-700 border-gray-400/50 text-gray-100',
+interface TierColorClasses {
+	bg: string;
+	border: string;
+	text: string;
+}
+
+const DEFAULT_TIER_COLORS: TierColorClasses = {
+	bg: 'from-gray-600',
+	border: 'border-gray-400/50',
+	text: 'text-gray-100',
+};
+
+const TIER_COLORS: Record<string, TierColorClasses> = {
+	gold: {
+		bg: 'from-yellow-500',
+		border: 'border-yellow-400/50',
+		text: 'text-yellow-100',
+	},
+	purple: {
+		bg: 'from-purple-600',
+		border: 'border-purple-400/50',
+		text: 'text-purple-100',
+	},
+	blue: {
+		bg: 'from-blue-600',
+		border: 'border-blue-400/50',
+		text: 'text-blue-100',
+	},
+	green: {
+		bg: 'from-green-600',
+		border: 'border-green-400/50',
+		text: 'text-green-100',
+	},
+	gray: DEFAULT_TIER_COLORS,
 };
 
 const SIZE_CLASSES = {
@@ -31,11 +59,11 @@ export function RatingBadge({
 	size = 'md',
 	showLabel = true,
 }: RatingBadgeProps) {
-	const colorClasses = TIER_COLORS[tier.color] || TIER_COLORS.gray;
+	const colorClasses = TIER_COLORS[tier.color] ?? DEFAULT_TIER_COLORS;
 
 	return (
 		<div
-			className={`inline-flex items-center rounded-full bg-gradient-to-r ${colorClasses} border font-semibold shadow-lg ${SIZE_CLASSES[size]}`}
+			className={`inline-flex items-center rounded-full bg-gradient-to-r ${colorClasses.bg} to-amber-600 ${colorClasses.border} border ${colorClasses.text} font-semibold shadow-lg ${SIZE_CLASSES[size]}`}
 		>
 			<span className='font-mono'>{rating}</span>
 			{showLabel && (

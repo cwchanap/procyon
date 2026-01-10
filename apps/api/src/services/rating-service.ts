@@ -87,6 +87,11 @@ export function getActualScore(result: GameResultStatus): number {
 			return 0.5;
 		case GameResultStatus.Loss:
 			return 0.0;
+		default: {
+			// Exhaustive check for type safety
+			const exhaustiveCheck: never = result;
+			throw new Error(`Unhandled GameResultStatus: ${exhaustiveCheck}`);
+		}
 	}
 }
 
@@ -122,11 +127,16 @@ export function getRankTier(rating: number): RankTier {
 			return tier;
 		}
 	}
-	return RANK_TIERS[RANK_TIERS.length - 1];
+	// Return the lowest tier (Beginner) as fallback
+	const lowestTier = RANK_TIERS[RANK_TIERS.length - 1];
+	if (!lowestTier) {
+		throw new Error('RANK_TIERS array is empty');
+	}
+	return lowestTier;
 }
 
 /**
- * Get or create player rating for a variant
+ * Get or create player rating for a variant with race condition handling
  */
 export async function getOrCreatePlayerRating(
 	userId: string,
@@ -134,37 +144,70 @@ export async function getOrCreatePlayerRating(
 ): Promise<PlayerRating> {
 	const db = getDB();
 
-	const existing = await db
-		.select()
-		.from(playerRatings)
-		.where(
-			and(
-				eq(playerRatings.userId, userId),
-				eq(playerRatings.variantId, variantId)
+	try {
+		// Try to find existing rating first
+		const existing = await db
+			.select()
+			.from(playerRatings)
+			.where(
+				and(
+					eq(playerRatings.userId, userId),
+					eq(playerRatings.variantId, variantId)
+				)
 			)
-		)
-		.limit(1);
+			.limit(1);
 
-	if (existing.length > 0) {
-		return existing[0];
+		if (existing.length > 0 && existing[0]) {
+			return existing[0];
+		}
+
+		// Create new rating entry
+		const [newRating] = await db
+			.insert(playerRatings)
+			.values({
+				userId,
+				variantId,
+				rating: DEFAULT_PLAYER_RATING,
+				gamesPlayed: 0,
+				wins: 0,
+				losses: 0,
+				draws: 0,
+				peakRating: DEFAULT_PLAYER_RATING,
+			})
+			.returning();
+
+		if (!newRating) {
+			throw new Error('Failed to create player rating');
+		}
+
+		return newRating;
+	} catch (error: unknown) {
+		// Handle race condition: if unique constraint violated, retry fetch
+		const err = error as { code?: string; message?: string };
+		if (
+			err.code === 'SQLITE_CONSTRAINT' ||
+			err.code === '23505' ||
+			err.message?.includes('UNIQUE constraint failed')
+		) {
+			const existing = await db
+				.select()
+				.from(playerRatings)
+				.where(
+					and(
+						eq(playerRatings.userId, userId),
+						eq(playerRatings.variantId, variantId)
+					)
+				)
+				.limit(1);
+
+			if (existing.length > 0 && existing[0]) {
+				return existing[0];
+			}
+		}
+
+		// Re-throw unexpected errors
+		throw error;
 	}
-
-	// Create new rating entry
-	const [newRating] = await db
-		.insert(playerRatings)
-		.values({
-			userId,
-			variantId,
-			rating: DEFAULT_PLAYER_RATING,
-			gamesPlayed: 0,
-			wins: 0,
-			losses: 0,
-			draws: 0,
-			peakRating: DEFAULT_PLAYER_RATING,
-		})
-		.returning();
-
-	return newRating;
 }
 
 /**
@@ -187,7 +230,7 @@ export async function getAiOpponentRating(
 		)
 		.limit(1);
 
-	if (existing.length > 0) {
+	if (existing.length > 0 && existing[0]) {
 		return existing[0].rating;
 	}
 
@@ -212,6 +255,11 @@ export async function updatePlayerRating(
 
 	const db = getDB();
 
+	// Validate input before any database queries
+	if (!opponentLlmId && !opponentUserId) {
+		throw new Error('Either opponentLlmId or opponentUserId must be provided');
+	}
+
 	// Get current player rating
 	const currentRating = await getOrCreatePlayerRating(userId, variantId);
 
@@ -226,6 +274,7 @@ export async function updatePlayerRating(
 		);
 		opponentRating = opponentRatingData.rating;
 	} else {
+		// This should never happen due to validation above
 		throw new Error('Either opponentLlmId or opponentUserId must be provided');
 	}
 

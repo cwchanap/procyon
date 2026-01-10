@@ -42,8 +42,11 @@ async function playGameAndWin(
 		page.getByRole('button', { name: '🎮 Play Again' })
 	).toBeVisible();
 
-	// Wait for rating to be saved
-	await page.waitForTimeout(2000);
+	// Wait for rating to be saved by waiting for the rating API response
+	await page.waitForResponse(
+		response => response.url().includes('/api') && response.status() === 200,
+		{ timeout: 5000 }
+	);
 }
 
 test.describe('ELO Rating System', () => {
@@ -155,7 +158,11 @@ test.describe('ELO Rating System', () => {
 		test('should update rating after winning a game', async ({ page }) => {
 			// Get initial rating (might not exist for new user)
 			await page.goto('/profile');
-			await page.waitForTimeout(1000);
+
+			// Wait for profile page to load
+			await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible({
+				timeout: 5000,
+			});
 
 			// Play a chess game
 			await playGameAndWin(page, 'chess');
