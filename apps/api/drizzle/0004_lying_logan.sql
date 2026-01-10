@@ -5,10 +5,9 @@ CREATE TABLE `ai_opponent_ratings` (
 	`rating` integer DEFAULT 1400 NOT NULL,
 	`description` text,
 	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	UNIQUE(`opponent_llm_id`, `variant_id`)
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `ai_opponent_ratings_llm_variant_idx` ON `ai_opponent_ratings` (`opponent_llm_id`,`variant_id`);
 --> statement-breakpoint
 CREATE TABLE `player_ratings` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -21,10 +20,9 @@ CREATE TABLE `player_ratings` (
 	`draws` integer DEFAULT 0 NOT NULL,
 	`peak_rating` integer DEFAULT 1200 NOT NULL,
 	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	UNIQUE(`user_id`, `variant_id`)
 );
---> statement-breakpoint
-CREATE UNIQUE INDEX `player_ratings_user_variant_idx` ON `player_ratings` (`user_id`,`variant_id`);
 --> statement-breakpoint
 CREATE INDEX `player_ratings_rating_idx` ON `player_ratings` (`rating`);
 --> statement-breakpoint
