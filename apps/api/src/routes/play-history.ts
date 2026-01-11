@@ -10,7 +10,10 @@ import {
 	GameResultStatus,
 	OpponentLlmId,
 } from '../constants/game';
-import { updatePlayerRating } from '../services/rating-service';
+import {
+	updatePlayerRating,
+	updatePvpRatings,
+} from '../services/rating-service';
 
 const app = new Hono();
 
@@ -72,7 +75,7 @@ app.get('/', authMiddleware, async c => {
 
 	try {
 		const history = await db
-			.select({
+			.selectDistinct({
 				id: playHistory.id,
 				userId: playHistory.userId,
 				chessId: playHistory.chessId,
@@ -131,28 +134,43 @@ app.post(
 
 			// Update rating after saving play history
 			let ratingUpdate = null;
+			let ratingUpdateError = null;
 			try {
-				const ratingResult = await updatePlayerRating({
-					userId: user.userId,
-					variantId: body.chessId,
-					playHistoryId: record.id,
-					gameResult: body.status,
-					opponentLlmId: body.opponentLlmId ?? null,
-					opponentUserId: body.opponentUserId
-						? String(body.opponentUserId)
-						: null,
-				});
-
-				ratingUpdate = {
-					oldRating: ratingResult.oldRating,
-					newRating: ratingResult.newRating,
-					ratingChange: ratingResult.ratingChange,
-				};
-
+				if (body.opponentUserId) {
+					// PvP match - update both players' ratings
+					const pvpResult = await updatePvpRatings(
+						user.userId,
+						String(body.opponentUserId),
+						body.chessId,
+						record.id,
+						body.status
+					);
+					ratingUpdate = {
+						oldRating: pvpResult.ratingHistory1.oldRating,
+						newRating: pvpResult.ratingHistory1.newRating,
+						ratingChange: pvpResult.ratingHistory1.ratingChange,
+					};
+				} else {
+					// PvAI match - use existing single-player update
+					const ratingResult = await updatePlayerRating({
+						userId: user.userId,
+						variantId: body.chessId,
+						playHistoryId: record.id,
+						gameResult: body.status,
+						opponentLlmId: body.opponentLlmId ?? null,
+						opponentUserId: null,
+					});
+					ratingUpdate = {
+						oldRating: ratingResult.oldRating,
+						newRating: ratingResult.newRating,
+						ratingChange: ratingResult.ratingChange,
+					};
+				}
 				console.log('Rating updated', ratingUpdate);
 			} catch (ratingError) {
-				// Log but don't fail the request if rating update fails
+				// Log the error and inform user, but don't fail the request
 				console.error('Error updating rating:', ratingError);
+				ratingUpdateError = 'Failed to update rating';
 			}
 
 			return c.json(
@@ -160,6 +178,7 @@ app.post(
 					message: 'Play history saved',
 					playHistory: record as PlayHistory,
 					ratingUpdate,
+					ratingUpdateError,
 				},
 				201
 			);
