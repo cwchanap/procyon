@@ -5,6 +5,7 @@ import {
 	getActualScore,
 	calculateNewRating,
 	getRankTier,
+	RANK_TIERS,
 } from './rating-service';
 import { GameResultStatus } from '../constants/game';
 
@@ -241,6 +242,20 @@ describe('Rating Service - Pure Calculation Functions', () => {
 			expect(getRankTier(1200).minRating).toBe(1200);
 			expect(getRankTier(800).minRating).toBe(800);
 			expect(getRankTier(0).minRating).toBe(0);
+		});
+	});
+
+	describe('RANK_TIERS validation', () => {
+		test('RANK_TIERS is sorted descending by minRating', () => {
+			for (let i = 1; i < RANK_TIERS.length; i++) {
+				const current = RANK_TIERS[i];
+				const previous = RANK_TIERS[i - 1];
+				expect(current).toBeDefined();
+				expect(previous).toBeDefined();
+				if (current && previous) {
+					expect(current.minRating).toBeLessThan(previous.minRating);
+				}
+			}
 		});
 	});
 });

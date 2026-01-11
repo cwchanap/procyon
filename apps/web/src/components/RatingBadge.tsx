@@ -13,12 +13,14 @@ interface RatingBadgeProps {
 
 interface TierColorClasses {
 	bg: string;
+	to: string;
 	border: string;
 	text: string;
 }
 
 const DEFAULT_TIER_COLORS: TierColorClasses = {
 	bg: 'from-gray-600',
+	to: 'to-gray-800',
 	border: 'border-gray-400/50',
 	text: 'text-gray-100',
 };
@@ -26,21 +28,25 @@ const DEFAULT_TIER_COLORS: TierColorClasses = {
 const TIER_COLORS: Record<string, TierColorClasses> = {
 	gold: {
 		bg: 'from-yellow-500',
+		to: 'to-yellow-700',
 		border: 'border-yellow-400/50',
 		text: 'text-yellow-100',
 	},
 	purple: {
 		bg: 'from-purple-600',
+		to: 'to-purple-800',
 		border: 'border-purple-400/50',
 		text: 'text-purple-100',
 	},
 	blue: {
 		bg: 'from-blue-600',
+		to: 'to-blue-800',
 		border: 'border-blue-400/50',
 		text: 'text-blue-100',
 	},
 	green: {
 		bg: 'from-green-600',
+		to: 'to-green-800',
 		border: 'border-green-400/50',
 		text: 'text-green-100',
 	},
@@ -63,7 +69,7 @@ export function RatingBadge({
 
 	return (
 		<div
-			className={`inline-flex items-center rounded-full bg-gradient-to-r ${colorClasses.bg} to-amber-600 ${colorClasses.border} border ${colorClasses.text} font-semibold shadow-lg ${SIZE_CLASSES[size]}`}
+			className={`inline-flex items-center rounded-full bg-gradient-to-r ${colorClasses.bg} ${colorClasses.to} ${colorClasses.border} border ${colorClasses.text} font-semibold shadow-lg ${SIZE_CLASSES[size]}`}
 		>
 			<span className='font-mono'>{rating}</span>
 			{showLabel && (
