@@ -31,22 +31,25 @@ async function playGameAndWin(
 		debugFnName
 	);
 
+	// Set up response listener BEFORE triggering the action (prevents race condition)
+	const ratingApiPromise = page.waitForResponse(
+		response => response.url().includes('/api') && response.status() === 200,
+		{ timeout: 5000 }
+	);
+
 	// Trigger a win
 	await page.evaluate(fnName => {
 		const fn = (window as unknown as Record<string, () => void>)[fnName];
 		if (fn) fn();
 	}, debugFnName);
 
+	// Wait for the rating API response (before checking Play Again button)
+	await ratingApiPromise;
+
 	// Wait for game to end
 	await expect(
 		page.getByRole('button', { name: '🎮 Play Again' })
 	).toBeVisible();
-
-	// Wait for rating to be saved by waiting for the rating API response
-	await page.waitForResponse(
-		response => response.url().includes('/api') && response.status() === 200,
-		{ timeout: 5000 }
-	);
 }
 
 test.describe('ELO Rating System', () => {
