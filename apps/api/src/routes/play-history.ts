@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
 import { playHistory, ratingHistory, type PlayHistory } from '../db/schema';
@@ -87,7 +87,13 @@ app.get('/', authMiddleware, async c => {
 				newRating: ratingHistory.newRating,
 			})
 			.from(playHistory)
-			.leftJoin(ratingHistory, eq(playHistory.id, ratingHistory.playHistoryId))
+			.leftJoin(
+				ratingHistory,
+				and(
+					eq(playHistory.id, ratingHistory.playHistoryId),
+					eq(ratingHistory.userId, user.userId)
+				)
+			)
 			.where(eq(playHistory.userId, user.userId))
 			.orderBy(desc(playHistory.date));
 
