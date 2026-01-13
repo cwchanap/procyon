@@ -6,6 +6,7 @@ import {
 	calculateNewRating,
 	getRankTier,
 	RANK_TIERS,
+	updatePvpRatingsOnly,
 } from './rating-service';
 import { GameResultStatus } from '../constants/game';
 
@@ -258,4 +259,14 @@ describe('Rating Service - Pure Calculation Functions', () => {
 			}
 		});
 	});
+});
+
+describe('Rating Service - updatePvpRatingsOnly', () => {
+	test('updatePvpRatingsOnly function exists and is exported', () => {
+		expect(updatePvpRatingsOnly).toBeDefined();
+		expect(typeof updatePvpRatingsOnly).toBe('function');
+	});
+
+	// Note: Full integration tests would require database setup and are not included here.
+	// This test only verifies the function signature and export.
 });
