@@ -4,12 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
-import {
-	playHistory,
-	ratingHistory,
-	playerRatings,
-	type PlayHistory,
-} from '../db/schema';
+import { playHistory, ratingHistory, type PlayHistory } from '../db/schema';
 import {
 	ChessVariantId,
 	GameResultStatus,
@@ -17,7 +12,7 @@ import {
 } from '../constants/game';
 import {
 	updatePlayerRating,
-	updatePvpRatingsOnly,
+	updatePvpRatingsOnlyInTx,
 } from '../services/rating-service';
 
 const app = new Hono();
@@ -138,43 +133,19 @@ app.post(
 				} | null = null;
 
 				if (body.opponentUserId != null) {
-					// PvP match - update ratings first, then create play history records for both players
-					const pvpResult = await updatePvpRatingsOnly(
+					// PvP match - update ratings, then create play history records for both players
+					// P2 fix: Use transaction-aware function so all updates happen in same transaction
+					const pvpResult = await updatePvpRatingsOnlyInTx(
+						tx,
 						user.userId,
 						String(body.opponentUserId),
 						body.chessId,
 						body.status
 					);
 
-					// Get current ratings after the update for rating history
-					const user1Rating = await tx
-						.select()
-						.from(playerRatings)
-						.where(
-							and(
-								eq(playerRatings.userId, user.userId),
-								eq(playerRatings.variantId, body.chessId)
-							)
-						)
-						.limit(1);
-
-					const user2Rating = await tx
-						.select()
-						.from(playerRatings)
-						.where(
-							and(
-								eq(playerRatings.userId, String(body.opponentUserId)),
-								eq(playerRatings.variantId, body.chessId)
-							)
-						)
-						.limit(1);
-
-					if (!user1Rating[0] || !user2Rating[0]) {
-						throw new Error('Failed to fetch player ratings');
-					}
-
-					const oldRating1 = user1Rating[0].rating - pvpResult.ratingChange1;
-					const oldRating2 = user2Rating[0].rating - pvpResult.ratingChange2;
+					// Calculate old ratings from rating changes
+					const oldRating1 = pvpResult.rating1 - pvpResult.ratingChange1;
+					const oldRating2 = pvpResult.rating2 - pvpResult.ratingChange2;
 
 					// Create play history record for current user (user1)
 					const [user1Record] = await tx

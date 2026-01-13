@@ -7,6 +7,7 @@ import {
 	getRankTier,
 	RANK_TIERS,
 	updatePvpRatingsOnly,
+	updatePvpRatingsOnlyInTx,
 } from './rating-service';
 import { GameResultStatus } from '../constants/game';
 
@@ -274,4 +275,22 @@ describe('Rating Service - updatePvpRatingsOnly', () => {
 
 	// Note: Full integration tests would require database setup and are not included here.
 	// This test only verifies the function signature and export.
+});
+
+describe('Rating Service - updatePvpRatingsOnlyInTx', () => {
+	test('updatePvpRatingsOnlyInTx function exists and is exported', () => {
+		expect(updatePvpRatingsOnlyInTx).toBeDefined();
+		expect(typeof updatePvpRatingsOnlyInTx).toBe('function');
+	});
+
+	test('updatePvpRatingsOnlyInTx has same signature as updatePvpRatings but with transaction parameter', () => {
+		// Both functions should have similar signatures except for the tx parameter
+		expect(updatePvpRatingsOnlyInTx.length).toBe(5); // tx, userId1, userId2, variantId, user1Result
+		expect(updatePvpRatingsOnly.length).toBe(4); // userId1, userId2, variantId, user1Result
+	});
+
+	// Note: Full integration tests would require database setup.
+	// The transaction-aware version uses the same logic as updatePvpRatings,
+	// but accepts a transaction parameter to ensure atomicity with caller's transaction.
+	// This is tested by E2E play-history tests.
 });
