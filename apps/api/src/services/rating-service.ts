@@ -256,7 +256,118 @@ export async function getAiOpponentRating(
 }
 
 /**
- * Update both players' ratings after a PvP game
+ * Update both players' ratings after a PvP game (without creating rating history records)
+ * Used when play history records need to be created first
+ */
+export async function updatePvpRatingsOnly(
+	userId1: string,
+	userId2: string,
+	variantId: ChessVariantId,
+	user1Result: GameResultStatus
+): Promise<{
+	rating1: number;
+	rating2: number;
+	ratingChange1: number;
+	ratingChange2: number;
+}> {
+	const db = getDB();
+
+	// Determine user2's result (inverse of user1)
+	let user2Result: GameResultStatus;
+	if (user1Result === GameResultStatus.Win) {
+		user2Result = GameResultStatus.Loss;
+	} else if (user1Result === GameResultStatus.Loss) {
+		user2Result = GameResultStatus.Win;
+	} else {
+		user2Result = GameResultStatus.Draw;
+	}
+
+	// Get both players' current ratings
+	const [currentRating1, currentRating2] = await Promise.all([
+		getOrCreatePlayerRating(userId1, variantId),
+		getOrCreatePlayerRating(userId2, variantId),
+	]);
+
+	// Calculate new ratings
+	const calculation1 = calculateNewRating(
+		currentRating1.rating,
+		currentRating2.rating,
+		user1Result,
+		currentRating1.gamesPlayed
+	);
+
+	const calculation2 = calculateNewRating(
+		currentRating2.rating,
+		currentRating1.rating,
+		user2Result,
+		currentRating2.gamesPlayed
+	);
+
+	// Atomic transaction to update both players
+	await db.transaction(async tx => {
+		// Update player 1 using SQL expressions for atomic increments
+		await tx
+			.update(playerRatings)
+			.set({
+				rating: calculation1.newRating,
+				gamesPlayed: sql`${playerRatings.gamesPlayed} + 1`,
+				wins: sql`CASE 
+					WHEN ${user1Result} = '${GameResultStatus.Win}' 
+						THEN ${playerRatings.wins} + 1 
+						ELSE ${playerRatings.wins} 
+				END`,
+				losses: sql`CASE 
+					WHEN ${user1Result} = '${GameResultStatus.Loss}' 
+						THEN ${playerRatings.losses} + 1 
+						ELSE ${playerRatings.losses} 
+				END`,
+				draws: sql`CASE 
+					WHEN ${user1Result} = '${GameResultStatus.Draw}' 
+						THEN ${playerRatings.draws} + 1 
+						ELSE ${playerRatings.draws} 
+				END`,
+				peakRating: sql`GREATEST(${playerRatings.peakRating}, ${calculation1.newRating})`,
+				updatedAt: new Date().toISOString(),
+			})
+			.where(eq(playerRatings.id, currentRating1.id));
+
+		// Update player 2 using SQL expressions for atomic increments
+		await tx
+			.update(playerRatings)
+			.set({
+				rating: calculation2.newRating,
+				gamesPlayed: sql`${playerRatings.gamesPlayed} + 1`,
+				wins: sql`CASE 
+					WHEN ${user2Result} = '${GameResultStatus.Win}' 
+						THEN ${playerRatings.wins} + 1 
+						ELSE ${playerRatings.wins} 
+				END`,
+				losses: sql`CASE 
+					WHEN ${user2Result} = '${GameResultStatus.Loss}' 
+						THEN ${playerRatings.losses} + 1 
+						ELSE ${playerRatings.losses} 
+				END`,
+				draws: sql`CASE 
+					WHEN ${user2Result} = '${GameResultStatus.Draw}' 
+						THEN ${playerRatings.draws} + 1 
+						ELSE ${playerRatings.draws} 
+				END`,
+				peakRating: sql`GREATEST(${playerRatings.peakRating}, ${calculation2.newRating})`,
+				updatedAt: new Date().toISOString(),
+			})
+			.where(eq(playerRatings.id, currentRating2.id));
+	});
+
+	return {
+		rating1: calculation1.newRating,
+		rating2: calculation2.newRating,
+		ratingChange1: calculation1.ratingChange,
+		ratingChange2: calculation2.ratingChange,
+	};
+}
+
+/**
+ * Update both players' ratings after a PvP game and create rating history records
  */
 export async function updatePvpRatings(
 	userId1: string,
