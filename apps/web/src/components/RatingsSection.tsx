@@ -42,15 +42,20 @@ export function RatingsSection() {
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
+		const controller = new AbortController();
+
 		const fetchRatings = async () => {
 			try {
 				setIsLoading(true);
+				setError(null); // Reset error before fetch
+
 				const authHeaders = await getAuthHeaders();
 				const response = await fetch(`${env.PUBLIC_API_URL}/ratings`, {
 					headers: {
-						'Content-Type': 'application/json',
+						// Content-Type not needed for GET request
 						...authHeaders,
 					},
+					signal: controller.signal,
 				});
 
 				if (response.ok) {
@@ -59,7 +64,11 @@ export function RatingsSection() {
 				} else {
 					setError('Failed to load ratings');
 				}
-			} catch {
+			} catch (err) {
+				// Ignore AbortError from component unmount
+				if (err instanceof Error && err.name === 'AbortError') {
+					return;
+				}
 				setError('Failed to load ratings');
 			} finally {
 				setIsLoading(false);
@@ -67,6 +76,9 @@ export function RatingsSection() {
 		};
 
 		void fetchRatings();
+
+		// Cleanup function to abort fetch on unmount
+		return () => controller.abort();
 	}, []);
 
 	if (isLoading) {
@@ -96,7 +108,7 @@ export function RatingsSection() {
 			<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
 				{ratings.map(rating => (
 					<div
-						key={rating.variantId}
+						key={rating.id}
 						className='bg-gradient-to-br from-gray-700/50 to-purple-700/30 rounded-xl p-4 border border-purple-400/20 hover:border-purple-400/40 transition-colors'
 					>
 						<div className='flex items-center justify-between mb-3'>

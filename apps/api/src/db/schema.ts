@@ -111,6 +111,12 @@ export const ratingHistory = sqliteTable(
 		playHistoryIdIdx: index('rating_history_play_history_id_idx').on(
 			table.playHistoryId
 		),
+		// Unique constraint to prevent duplicate rating history for same play history record
+		// This ensures idempotency - same playHistoryId can't be processed twice
+		userPlayHistoryIdx: uniqueIndex('rating_history_user_playhistory_idx').on(
+			table.userId,
+			table.playHistoryId
+		),
 	})
 );
 
