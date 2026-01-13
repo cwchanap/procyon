@@ -28,12 +28,16 @@ async function playGameAndWin(
 		debugFn =>
 			typeof (window as unknown as Record<string, unknown>)[debugFn] ===
 			'function',
-		debugFnName
+		debugFnName,
+		{ timeout: 5000 }
 	);
 
 	// Set up response listener BEFORE triggering the action (prevents race condition)
 	const ratingApiPromise = page.waitForResponse(
-		response => response.url().includes('/api') && response.status() === 200,
+		response =>
+			response.url().includes('/api/rating') &&
+			response.request().method() === 'POST' &&
+			response.status() === 200,
 		{ timeout: 5000 }
 	);
 
@@ -154,6 +158,13 @@ test.describe('ELO Rating System', () => {
 			// For a win, the rating change should be positive
 			const ratingCell = tableRows.first().locator('td').last();
 			await expect(ratingCell).toBeVisible();
+
+			// Verify rating change shows positive indicator (+)
+			const ratingText = await ratingCell.textContent();
+			expect(ratingText).toMatch(/\+/);
+
+			// Verify positive CSS indicator (green color class)
+			await expect(ratingCell).toHaveClass(/text-green/);
 		});
 	});
 

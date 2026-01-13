@@ -119,13 +119,25 @@ app.post(
 		const body = c.req.valid('json');
 
 		try {
-			// Update rating and create play history together for data consistency
-			let ratingUpdate = null;
-			let ratingUpdateError = null;
-			let savedRecord = null;
+			// Validate: prevent self-play
+			if (
+				body.opponentUserId != null &&
+				String(body.opponentUserId) === user.userId
+			) {
+				return c.json({ error: 'Cannot play against yourself' }, 400);
+			}
 
-			try {
-				if (body.opponentUserId) {
+			// Perform all database operations in a single transaction
+			// This prevents partial updates and ensures data consistency
+			const result = await db.transaction(async tx => {
+				let savedRecord: PlayHistory | null = null;
+				let ratingUpdate: {
+					oldRating: number;
+					newRating: number;
+					ratingChange: number;
+				} | null = null;
+
+				if (body.opponentUserId != null) {
 					// PvP match - update ratings first, then create play history records for both players
 					const pvpResult = await updatePvpRatingsOnly(
 						user.userId,
@@ -134,8 +146,8 @@ app.post(
 						body.status
 					);
 
-					// Get current ratings before the update for rating history
-					const user1Rating = await db
+					// Get current ratings after the update for rating history
+					const user1Rating = await tx
 						.select()
 						.from(playerRatings)
 						.where(
@@ -146,7 +158,7 @@ app.post(
 						)
 						.limit(1);
 
-					const user2Rating = await db
+					const user2Rating = await tx
 						.select()
 						.from(playerRatings)
 						.where(
@@ -165,7 +177,7 @@ app.post(
 					const oldRating2 = user2Rating[0].rating - pvpResult.ratingChange2;
 
 					// Create play history record for current user (user1)
-					const [user1Record] = await db
+					const [user1Record] = await tx
 						.insert(playHistory)
 						.values({
 							userId: user.userId,
@@ -186,7 +198,7 @@ app.post(
 								? GameResultStatus.Win
 								: GameResultStatus.Draw;
 
-					const [user2Record] = await db
+					const [user2Record] = await tx
 						.insert(playHistory)
 						.values({
 							userId: String(body.opponentUserId),
@@ -205,7 +217,7 @@ app.post(
 					}
 
 					// Create rating history records for both players
-					await db.insert(ratingHistory).values({
+					await tx.insert(ratingHistory).values({
 						userId: user.userId,
 						variantId: body.chessId,
 						playHistoryId: user1Record.id,
@@ -216,7 +228,7 @@ app.post(
 						gameResult: body.status,
 					});
 
-					await db.insert(ratingHistory).values({
+					await tx.insert(ratingHistory).values({
 						userId: String(body.opponentUserId),
 						variantId: body.chessId,
 						playHistoryId: user2Record.id,
@@ -244,7 +256,7 @@ app.post(
 						opponentLlmId: body.opponentLlmId ?? null,
 					};
 
-					const [record] = await db
+					const [record] = await tx
 						.insert(playHistory)
 						.values(newPlayHistory)
 						.returning();
@@ -253,7 +265,7 @@ app.post(
 						throw new Error('Failed to create play history record');
 					}
 
-					// Update single-player rating
+					// Update single-player rating using transaction
 					const ratingResult = await updatePlayerRating({
 						userId: user.userId,
 						variantId: body.chessId,
@@ -270,58 +282,22 @@ app.post(
 						ratingChange: ratingResult.ratingChange,
 					};
 				}
-				console.log('Rating updated', ratingUpdate);
-			} catch (ratingError) {
-				// Log the error and inform user, but don't fail the request
-				console.error('Error updating rating:', ratingError);
-				ratingUpdateError = 'Failed to update rating';
-			}
 
-			if (savedRecord) {
-				return c.json(
-					{
-						message: 'Play history saved',
-						playHistory: savedRecord,
-						ratingUpdate,
-						ratingUpdateError,
-					},
-					201
-				);
-			} else {
-				// Fallback: create play history even if rating update failed
-				const newPlayHistory: typeof playHistory.$inferInsert = {
-					userId: user.userId,
-					chessId: body.chessId,
-					status: body.status,
-					date: new Date(body.date).toISOString(),
-					opponentUserId:
-						body.opponentUserId !== undefined
-							? String(body.opponentUserId)
-							: null,
-					opponentLlmId: body.opponentLlmId ?? null,
-				};
+				return { savedRecord, ratingUpdate };
+			});
 
-				const [record] = await db
-					.insert(playHistory)
-					.values(newPlayHistory)
-					.returning();
-
-				if (!record) {
-					throw new Error('Failed to create play history record');
-				}
-
-				return c.json(
-					{
-						message: 'Play history saved',
-						playHistory: record as PlayHistory,
-						ratingUpdate,
-						ratingUpdateError,
-					},
-					201
-				);
-			}
+			console.log('Rating updated', result.ratingUpdate);
+			return c.json(
+				{
+					message: 'Play history saved',
+					playHistory: result.savedRecord,
+					ratingUpdate: result.ratingUpdate,
+				},
+				201
+			);
 		} catch (error) {
 			console.error('Error saving play history:', error);
+			// Transaction will be automatically rolled back on error
 			return c.json({ error: 'Failed to save play history' }, 500);
 		}
 	}

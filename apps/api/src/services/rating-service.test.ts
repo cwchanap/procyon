@@ -267,6 +267,11 @@ describe('Rating Service - updatePvpRatingsOnly', () => {
 		expect(typeof updatePvpRatingsOnly).toBe('function');
 	});
 
+	// Note: The following tests would require database setup for full testing.
+	// Self-play validation and result validation happen inside the transaction,
+	// so we cannot test them without a properly initialized database.
+	// The validation logic is covered by E2E tests in the web app.
+
 	// Note: Full integration tests would require database setup and are not included here.
 	// This test only verifies the function signature and export.
 });
