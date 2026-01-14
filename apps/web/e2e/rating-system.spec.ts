@@ -33,12 +33,12 @@ async function playGameAndWin(
 	);
 
 	// Set up response listener BEFORE triggering the action (prevents race condition)
-	// P3 fix: Wait for /api/ratings (plural), not /api/rating (singular)
+	// P1 fix: Wait for POST /api/play-history (which updates ratings), not /api/ratings
 	const ratingApiPromise = page.waitForResponse(
 		response =>
-			response.url().includes('/api/ratings') &&
+			response.url().includes('/api/play-history') &&
 			response.request().method() === 'POST' &&
-			response.status() === 200,
+			response.status() === 201,
 		{ timeout: 5000 }
 	);
 
