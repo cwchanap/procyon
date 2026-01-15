@@ -441,7 +441,11 @@ export async function updatePvpRatingsOnly(
 						THEN ${playerRatings.draws} + 1
 						ELSE ${playerRatings.draws}
 				END`,
-				peakRating: sql`GREATEST(${playerRatings.peakRating}, ${calculation1.newRating})`,
+				peakRating: sql`CASE
+					WHEN ${playerRatings.peakRating} > ${calculation1.newRating}
+						THEN ${playerRatings.peakRating}
+						ELSE ${calculation1.newRating}
+				END`,
 				updatedAt: new Date().toISOString(),
 			})
 			.where(eq(playerRatings.id, currentRating1.id));
@@ -467,7 +471,11 @@ export async function updatePvpRatingsOnly(
 						THEN ${playerRatings.draws} + 1
 						ELSE ${playerRatings.draws}
 				END`,
-				peakRating: sql`GREATEST(${playerRatings.peakRating}, ${calculation2.newRating})`,
+				peakRating: sql`CASE
+					WHEN ${playerRatings.peakRating} > ${calculation2.newRating}
+						THEN ${playerRatings.peakRating}
+						ELSE ${calculation2.newRating}
+				END`,
 				updatedAt: new Date().toISOString(),
 			})
 			.where(eq(playerRatings.id, currentRating2.id));
@@ -570,7 +578,11 @@ export async function updatePvpRatingsOnlyInTx(
 					THEN ${playerRatings.draws} + 1
 					ELSE ${playerRatings.draws}
 			END`,
-			peakRating: sql`GREATEST(${playerRatings.peakRating}, ${calculation1.newRating})`,
+			peakRating: sql`CASE
+				WHEN ${playerRatings.peakRating} > ${calculation1.newRating}
+					THEN ${playerRatings.peakRating}
+					ELSE ${calculation1.newRating}
+			END`,
 			updatedAt: new Date().toISOString(),
 		})
 		.where(eq(playerRatings.id, currentRating1.id));
@@ -596,7 +608,11 @@ export async function updatePvpRatingsOnlyInTx(
 					THEN ${playerRatings.draws} + 1
 					ELSE ${playerRatings.draws}
 			END`,
-			peakRating: sql`GREATEST(${playerRatings.peakRating}, ${calculation2.newRating})`,
+			peakRating: sql`CASE
+				WHEN ${playerRatings.peakRating} > ${calculation2.newRating}
+					THEN ${playerRatings.peakRating}
+					ELSE ${calculation2.newRating}
+			END`,
 			updatedAt: new Date().toISOString(),
 		})
 		.where(eq(playerRatings.id, currentRating2.id));
@@ -731,7 +747,11 @@ export async function updatePvpRatings(
 							THEN ${playerRatings.draws} + 1
 							ELSE ${playerRatings.draws}
 					END`,
-					peakRating: sql`GREATEST(${playerRatings.peakRating}, ${calculation1.newRating})`,
+					peakRating: sql`CASE
+						WHEN ${playerRatings.peakRating} > ${calculation1.newRating}
+							THEN ${playerRatings.peakRating}
+							ELSE ${calculation1.newRating}
+					END`,
 					updatedAt: new Date().toISOString(),
 				})
 				.where(eq(playerRatings.id, currentRating1.id));
@@ -757,7 +777,11 @@ export async function updatePvpRatings(
 							THEN ${playerRatings.draws} + 1
 							ELSE ${playerRatings.draws}
 					END`,
-					peakRating: sql`GREATEST(${playerRatings.peakRating}, ${calculation2.newRating})`,
+					peakRating: sql`CASE
+						WHEN ${playerRatings.peakRating} > ${calculation2.newRating}
+							THEN ${playerRatings.peakRating}
+							ELSE ${calculation2.newRating}
+					END`,
 					updatedAt: new Date().toISOString(),
 				})
 				.where(eq(playerRatings.id, currentRating2.id));
@@ -901,7 +925,11 @@ export async function updatePlayerRating(
 						THEN ${playerRatings.draws} + 1 
 						ELSE ${playerRatings.draws} 
 				END`,
-				peakRating: sql`GREATEST(${playerRatings.peakRating}, ${calculation.newRating})`,
+				peakRating: sql`CASE
+					WHEN ${playerRatings.peakRating} > ${calculation.newRating}
+						THEN ${playerRatings.peakRating}
+						ELSE ${calculation.newRating}
+				END`,
 				updatedAt: new Date().toISOString(),
 			})
 			.where(eq(playerRatings.id, currentRating.id));
