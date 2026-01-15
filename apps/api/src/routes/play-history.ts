@@ -10,10 +10,7 @@ import {
 	GameResultStatus,
 	OpponentLlmId,
 } from '../constants/game';
-import {
-	updatePlayerRating,
-	updatePvpRatingsOnlyInTx,
-} from '../services/rating-service';
+import { updatePlayerRating } from '../services/rating-service';
 
 const app = new Hono();
 
@@ -109,18 +106,21 @@ app.post(
 	authMiddleware,
 	zValidator('json', createPlayHistorySchema),
 	async c => {
-		const db = getDB();
 		const user = getUser(c);
 		const body = c.req.valid('json');
 
 		try {
-			// Validate: prevent self-play
-			if (
-				body.opponentUserId != null &&
-				String(body.opponentUserId) === user.userId
-			) {
-				return c.json({ error: 'Cannot play against yourself' }, 400);
+			if (body.opponentUserId != null) {
+				return c.json(
+					{
+						error:
+							'PvP match results require server-side match validation and cannot be submitted via this endpoint.',
+					},
+					403
+				);
 			}
+
+			const db = getDB();
 
 			// Perform all database operations in a single transaction
 			// This prevents partial updates and ensures data consistency
@@ -132,127 +132,41 @@ app.post(
 					ratingChange: number;
 				} | null = null;
 
-				if (body.opponentUserId != null) {
-					// PvP match - update ratings, then create play history records for both players
-					// P2 fix: Use transaction-aware function so all updates happen in same transaction
-					const pvpResult = await updatePvpRatingsOnlyInTx(
-						tx,
-						user.userId,
-						String(body.opponentUserId),
-						body.chessId,
-						body.status
-					);
+				// PvAI match - create single play history record
+				const newPlayHistory: typeof playHistory.$inferInsert = {
+					userId: user.userId,
+					chessId: body.chessId,
+					status: body.status,
+					date: new Date(body.date).toISOString(),
+					opponentUserId: null,
+					opponentLlmId: body.opponentLlmId ?? null,
+				};
 
-					// Calculate old ratings from rating changes
-					const oldRating1 = pvpResult.rating1 - pvpResult.ratingChange1;
-					const oldRating2 = pvpResult.rating2 - pvpResult.ratingChange2;
+				const [record] = await tx
+					.insert(playHistory)
+					.values(newPlayHistory)
+					.returning();
 
-					// Create play history record for current user (user1)
-					const [user1Record] = await tx
-						.insert(playHistory)
-						.values({
-							userId: user.userId,
-							chessId: body.chessId,
-							status: body.status,
-							date: new Date(body.date).toISOString(),
-							opponentUserId: String(body.opponentUserId),
-							opponentLlmId: null,
-						})
-						.returning();
-
-					// Create play history record for opponent (user2)
-					// Determine opponent's result (inverse of user1)
-					const opponentStatus =
-						body.status === GameResultStatus.Win
-							? GameResultStatus.Loss
-							: body.status === GameResultStatus.Loss
-								? GameResultStatus.Win
-								: GameResultStatus.Draw;
-
-					const [user2Record] = await tx
-						.insert(playHistory)
-						.values({
-							userId: String(body.opponentUserId),
-							chessId: body.chessId,
-							status: opponentStatus,
-							date: new Date(body.date).toISOString(),
-							opponentUserId: user.userId,
-							opponentLlmId: null,
-						})
-						.returning();
-
-					if (!user1Record || !user2Record) {
-						throw new Error(
-							'Failed to create play history records for both players'
-						);
-					}
-
-					// Create rating history records for both players
-					await tx.insert(ratingHistory).values({
-						userId: user.userId,
-						variantId: body.chessId,
-						playHistoryId: user1Record.id,
-						oldRating: oldRating1,
-						newRating: pvpResult.rating1,
-						ratingChange: pvpResult.ratingChange1,
-						opponentRating: oldRating2,
-						gameResult: body.status,
-					});
-
-					await tx.insert(ratingHistory).values({
-						userId: String(body.opponentUserId),
-						variantId: body.chessId,
-						playHistoryId: user2Record.id,
-						oldRating: oldRating2,
-						newRating: pvpResult.rating2,
-						ratingChange: pvpResult.ratingChange2,
-						opponentRating: oldRating1,
-						gameResult: opponentStatus,
-					});
-
-					savedRecord = user1Record as PlayHistory;
-					ratingUpdate = {
-						oldRating: oldRating1,
-						newRating: pvpResult.rating1,
-						ratingChange: pvpResult.ratingChange1,
-					};
-				} else {
-					// PvAI match - create single play history record
-					const newPlayHistory: typeof playHistory.$inferInsert = {
-						userId: user.userId,
-						chessId: body.chessId,
-						status: body.status,
-						date: new Date(body.date).toISOString(),
-						opponentUserId: null,
-						opponentLlmId: body.opponentLlmId ?? null,
-					};
-
-					const [record] = await tx
-						.insert(playHistory)
-						.values(newPlayHistory)
-						.returning();
-
-					if (!record) {
-						throw new Error('Failed to create play history record');
-					}
-
-					// Update single-player rating using transaction
-					const ratingResult = await updatePlayerRating({
-						userId: user.userId,
-						variantId: body.chessId,
-						playHistoryId: record.id,
-						gameResult: body.status,
-						opponentLlmId: body.opponentLlmId ?? null,
-						opponentUserId: null,
-					});
-
-					savedRecord = record as PlayHistory;
-					ratingUpdate = {
-						oldRating: ratingResult.oldRating,
-						newRating: ratingResult.newRating,
-						ratingChange: ratingResult.ratingChange,
-					};
+				if (!record) {
+					throw new Error('Failed to create play history record');
 				}
+
+				// Update single-player rating using transaction
+				const ratingResult = await updatePlayerRating({
+					userId: user.userId,
+					variantId: body.chessId,
+					playHistoryId: record.id,
+					gameResult: body.status,
+					opponentLlmId: body.opponentLlmId ?? null,
+					opponentUserId: null,
+				});
+
+				savedRecord = record as PlayHistory;
+				ratingUpdate = {
+					oldRating: ratingResult.oldRating,
+					newRating: ratingResult.newRating,
+					ratingChange: ratingResult.ratingChange,
+				};
 
 				return { savedRecord, ratingUpdate };
 			});
