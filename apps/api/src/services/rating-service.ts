@@ -154,8 +154,12 @@ export function calculateNewRating(
 	const expectedScore = calculateExpectedScore(currentRating, opponentRating);
 	const actualScore = getActualScore(gameResult);
 	const kFactor = getKFactor(gamesPlayed);
-	const ratingChange = Math.round(kFactor * (actualScore - expectedScore));
-	const newRating = Math.max(100, currentRating + ratingChange); // Floor at 100
+	const tentativeRatingChange = Math.round(
+		kFactor * (actualScore - expectedScore)
+	);
+	const tentativeNewRating = currentRating + tentativeRatingChange;
+	const newRating = Math.max(100, tentativeNewRating); // Floor at 100
+	const ratingChange = newRating - currentRating;
 
 	return {
 		newRating,
@@ -420,27 +424,22 @@ export async function updatePvpRatingsOnly(
 			currentRating2.gamesPlayed
 		);
 
+		const user1WinsInc = user1Result === GameResultStatus.Win ? 1 : 0;
+		const user1LossesInc = user1Result === GameResultStatus.Loss ? 1 : 0;
+		const user1DrawsInc = user1Result === GameResultStatus.Draw ? 1 : 0;
+		const user2WinsInc = user2Result === GameResultStatus.Win ? 1 : 0;
+		const user2LossesInc = user2Result === GameResultStatus.Loss ? 1 : 0;
+		const user2DrawsInc = user2Result === GameResultStatus.Draw ? 1 : 0;
+
 		// Update player 1 using SQL expressions for atomic increments
 		await tx
 			.update(playerRatings)
 			.set({
 				rating: calculation1.newRating,
 				gamesPlayed: sql`${playerRatings.gamesPlayed} + 1`,
-				wins: sql`CASE
-					WHEN ${user1Result} = '${GameResultStatus.Win}'
-						THEN ${playerRatings.wins} + 1
-						ELSE ${playerRatings.wins}
-				END`,
-				losses: sql`CASE
-					WHEN ${user1Result} = '${GameResultStatus.Loss}'
-						THEN ${playerRatings.losses} + 1
-						ELSE ${playerRatings.losses}
-				END`,
-				draws: sql`CASE
-					WHEN ${user1Result} = '${GameResultStatus.Draw}'
-						THEN ${playerRatings.draws} + 1
-						ELSE ${playerRatings.draws}
-				END`,
+				wins: sql`${playerRatings.wins} + ${user1WinsInc}`,
+				losses: sql`${playerRatings.losses} + ${user1LossesInc}`,
+				draws: sql`${playerRatings.draws} + ${user1DrawsInc}`,
 				peakRating: sql`CASE
 					WHEN ${playerRatings.peakRating} > ${calculation1.newRating}
 						THEN ${playerRatings.peakRating}
@@ -456,21 +455,9 @@ export async function updatePvpRatingsOnly(
 			.set({
 				rating: calculation2.newRating,
 				gamesPlayed: sql`${playerRatings.gamesPlayed} + 1`,
-				wins: sql`CASE
-					WHEN ${user2Result} = '${GameResultStatus.Win}'
-						THEN ${playerRatings.wins} + 1
-						ELSE ${playerRatings.wins}
-				END`,
-				losses: sql`CASE
-					WHEN ${user2Result} = '${GameResultStatus.Loss}'
-						THEN ${playerRatings.losses} + 1
-						ELSE ${playerRatings.losses}
-				END`,
-				draws: sql`CASE
-					WHEN ${user2Result} = '${GameResultStatus.Draw}'
-						THEN ${playerRatings.draws} + 1
-						ELSE ${playerRatings.draws}
-				END`,
+				wins: sql`${playerRatings.wins} + ${user2WinsInc}`,
+				losses: sql`${playerRatings.losses} + ${user2LossesInc}`,
+				draws: sql`${playerRatings.draws} + ${user2DrawsInc}`,
 				peakRating: sql`CASE
 					WHEN ${playerRatings.peakRating} > ${calculation2.newRating}
 						THEN ${playerRatings.peakRating}
@@ -557,27 +544,22 @@ export async function updatePvpRatingsOnlyInTx(
 		currentRating2.gamesPlayed
 	);
 
+	const user1WinsInc = user1Result === GameResultStatus.Win ? 1 : 0;
+	const user1LossesInc = user1Result === GameResultStatus.Loss ? 1 : 0;
+	const user1DrawsInc = user1Result === GameResultStatus.Draw ? 1 : 0;
+	const user2WinsInc = user2Result === GameResultStatus.Win ? 1 : 0;
+	const user2LossesInc = user2Result === GameResultStatus.Loss ? 1 : 0;
+	const user2DrawsInc = user2Result === GameResultStatus.Draw ? 1 : 0;
+
 	// Update player 1 using SQL expressions for atomic increments
 	await dbTx
 		.update(playerRatings)
 		.set({
 			rating: calculation1.newRating,
 			gamesPlayed: sql`${playerRatings.gamesPlayed} + 1`,
-			wins: sql`CASE
-				WHEN ${user1Result} = '${GameResultStatus.Win}'
-					THEN ${playerRatings.wins} + 1
-					ELSE ${playerRatings.wins}
-			END`,
-			losses: sql`CASE
-				WHEN ${user1Result} = '${GameResultStatus.Loss}'
-					THEN ${playerRatings.losses} + 1
-					ELSE ${playerRatings.losses}
-			END`,
-			draws: sql`CASE
-				WHEN ${user1Result} = '${GameResultStatus.Draw}'
-					THEN ${playerRatings.draws} + 1
-					ELSE ${playerRatings.draws}
-			END`,
+			wins: sql`${playerRatings.wins} + ${user1WinsInc}`,
+			losses: sql`${playerRatings.losses} + ${user1LossesInc}`,
+			draws: sql`${playerRatings.draws} + ${user1DrawsInc}`,
 			peakRating: sql`CASE
 				WHEN ${playerRatings.peakRating} > ${calculation1.newRating}
 					THEN ${playerRatings.peakRating}
@@ -593,21 +575,9 @@ export async function updatePvpRatingsOnlyInTx(
 		.set({
 			rating: calculation2.newRating,
 			gamesPlayed: sql`${playerRatings.gamesPlayed} + 1`,
-			wins: sql`CASE
-				WHEN ${user2Result} = '${GameResultStatus.Win}'
-					THEN ${playerRatings.wins} + 1
-					ELSE ${playerRatings.wins}
-			END`,
-			losses: sql`CASE
-				WHEN ${user2Result} = '${GameResultStatus.Loss}'
-					THEN ${playerRatings.losses} + 1
-					ELSE ${playerRatings.losses}
-			END`,
-			draws: sql`CASE
-				WHEN ${user2Result} = '${GameResultStatus.Draw}'
-					THEN ${playerRatings.draws} + 1
-					ELSE ${playerRatings.draws}
-			END`,
+			wins: sql`${playerRatings.wins} + ${user2WinsInc}`,
+			losses: sql`${playerRatings.losses} + ${user2LossesInc}`,
+			draws: sql`${playerRatings.draws} + ${user2DrawsInc}`,
 			peakRating: sql`CASE
 				WHEN ${playerRatings.peakRating} > ${calculation2.newRating}
 					THEN ${playerRatings.peakRating}
@@ -670,7 +640,7 @@ export async function updatePvpRatings(
 	return await db.transaction(async tx => {
 		// First, try to insert rating history records.
 		// If they already exist (unique constraint violation), skip rating updates.
-		const [record1] = await tx
+		const [_record1] = await tx
 			.insert(ratingHistory)
 			.values({
 				userId: userId1,
@@ -685,7 +655,7 @@ export async function updatePvpRatings(
 			.onConflictDoNothing()
 			.returning();
 
-		const [record2] = await tx
+		const [_record2] = await tx
 			.insert(ratingHistory)
 			.values({
 				userId: userId2,
@@ -700,25 +670,63 @@ export async function updatePvpRatings(
 			.onConflictDoNothing()
 			.returning();
 
-		// Check if records were newly created
-		const isNew = record1 !== undefined && record2 !== undefined;
+		const [existingRecord1, existingRecord2] = await Promise.all([
+			tx
+				.select()
+				.from(ratingHistory)
+				.where(
+					and(
+						eq(ratingHistory.userId, userId1),
+						eq(ratingHistory.playHistoryId, playHistoryId)
+					)
+				)
+				.limit(1),
+			tx
+				.select()
+				.from(ratingHistory)
+				.where(
+					and(
+						eq(ratingHistory.userId, userId2),
+						eq(ratingHistory.playHistoryId, playHistoryId)
+					)
+				)
+				.limit(1),
+		]);
 
-		if (isNew) {
-			// Rating history didn't exist, proceed with rating updates
-			// P1 fix: Use getOrCreateRatingInTransaction to handle new users
+		const currentHistory1 = existingRecord1[0];
+		const currentHistory2 = existingRecord2[0];
+		if (!currentHistory1 || !currentHistory2) {
+			throw new Error('Failed to fetch rating history records');
+		}
+
+		const isPlaceholder1 =
+			currentHistory1.oldRating === 0 &&
+			currentHistory1.newRating === 0 &&
+			currentHistory1.opponentRating === 0;
+		const isPlaceholder2 =
+			currentHistory2.oldRating === 0 &&
+			currentHistory2.newRating === 0 &&
+			currentHistory2.opponentRating === 0;
+
+		if (!isPlaceholder1 && !isPlaceholder2) {
+			return {
+				ratingHistory1: currentHistory1,
+				ratingHistory2: currentHistory2,
+			};
+		}
+
+		if (isPlaceholder1 && isPlaceholder2) {
 			const [currentRating1, currentRating2] = await Promise.all([
 				getOrCreateRatingInTransaction(tx, userId1, variantId),
 				getOrCreateRatingInTransaction(tx, userId2, variantId),
 			]);
 
-			// Calculate new ratings
 			const calculation1 = calculateNewRating(
 				currentRating1.rating,
 				currentRating2.rating,
 				user1Result,
 				currentRating1.gamesPlayed
 			);
-
 			const calculation2 = calculateNewRating(
 				currentRating2.rating,
 				currentRating1.rating,
@@ -726,27 +734,21 @@ export async function updatePvpRatings(
 				currentRating2.gamesPlayed
 			);
 
-			// Update player 1 using SQL expressions for atomic increments
+			const user1WinsInc = user1Result === GameResultStatus.Win ? 1 : 0;
+			const user1LossesInc = user1Result === GameResultStatus.Loss ? 1 : 0;
+			const user1DrawsInc = user1Result === GameResultStatus.Draw ? 1 : 0;
+			const user2WinsInc = user2Result === GameResultStatus.Win ? 1 : 0;
+			const user2LossesInc = user2Result === GameResultStatus.Loss ? 1 : 0;
+			const user2DrawsInc = user2Result === GameResultStatus.Draw ? 1 : 0;
+
 			await tx
 				.update(playerRatings)
 				.set({
 					rating: calculation1.newRating,
 					gamesPlayed: sql`${playerRatings.gamesPlayed} + 1`,
-					wins: sql`CASE
-						WHEN ${user1Result} = '${GameResultStatus.Win}'
-							THEN ${playerRatings.wins} + 1
-							ELSE ${playerRatings.wins}
-					END`,
-					losses: sql`CASE
-						WHEN ${user1Result} = '${GameResultStatus.Loss}'
-							THEN ${playerRatings.losses} + 1
-							ELSE ${playerRatings.losses}
-					END`,
-					draws: sql`CASE
-						WHEN ${user1Result} = '${GameResultStatus.Draw}'
-							THEN ${playerRatings.draws} + 1
-							ELSE ${playerRatings.draws}
-					END`,
+					wins: sql`${playerRatings.wins} + ${user1WinsInc}`,
+					losses: sql`${playerRatings.losses} + ${user1LossesInc}`,
+					draws: sql`${playerRatings.draws} + ${user1DrawsInc}`,
 					peakRating: sql`CASE
 						WHEN ${playerRatings.peakRating} > ${calculation1.newRating}
 							THEN ${playerRatings.peakRating}
@@ -756,27 +758,14 @@ export async function updatePvpRatings(
 				})
 				.where(eq(playerRatings.id, currentRating1.id));
 
-			// Update player 2 using SQL expressions for atomic increments
 			await tx
 				.update(playerRatings)
 				.set({
 					rating: calculation2.newRating,
 					gamesPlayed: sql`${playerRatings.gamesPlayed} + 1`,
-					wins: sql`CASE
-						WHEN ${user2Result} = '${GameResultStatus.Win}'
-							THEN ${playerRatings.wins} + 1
-							ELSE ${playerRatings.wins}
-					END`,
-					losses: sql`CASE
-						WHEN ${user2Result} = '${GameResultStatus.Loss}'
-							THEN ${playerRatings.losses} + 1
-							ELSE ${playerRatings.losses}
-					END`,
-					draws: sql`CASE
-						WHEN ${user2Result} = '${GameResultStatus.Draw}'
-							THEN ${playerRatings.draws} + 1
-							ELSE ${playerRatings.draws}
-					END`,
+					wins: sql`${playerRatings.wins} + ${user2WinsInc}`,
+					losses: sql`${playerRatings.losses} + ${user2LossesInc}`,
+					draws: sql`${playerRatings.draws} + ${user2DrawsInc}`,
 					peakRating: sql`CASE
 						WHEN ${playerRatings.peakRating} > ${calculation2.newRating}
 							THEN ${playerRatings.peakRating}
@@ -786,7 +775,6 @@ export async function updatePvpRatings(
 				})
 				.where(eq(playerRatings.id, currentRating2.id));
 
-			// Update rating history records with actual values
 			const [updatedRecord1] = await tx
 				.update(ratingHistory)
 				.set({
@@ -795,7 +783,7 @@ export async function updatePvpRatings(
 					ratingChange: calculation1.ratingChange,
 					opponentRating: currentRating2.rating,
 				})
-				.where(eq(ratingHistory.id, record1.id))
+				.where(eq(ratingHistory.id, currentHistory1.id))
 				.returning();
 
 			const [updatedRecord2] = await tx
@@ -806,7 +794,7 @@ export async function updatePvpRatings(
 					ratingChange: calculation2.ratingChange,
 					opponentRating: currentRating1.rating,
 				})
-				.where(eq(ratingHistory.id, record2.id))
+				.where(eq(ratingHistory.id, currentHistory2.id))
 				.returning();
 
 			if (!updatedRecord1 || !updatedRecord2) {
@@ -817,48 +805,22 @@ export async function updatePvpRatings(
 				ratingHistory1: updatedRecord1,
 				ratingHistory2: updatedRecord2,
 			};
-		} else {
-			// Rating history already exists, fetch and return existing records
-			const [existingRecord1, existingRecord2] = await Promise.all([
-				tx
-					.select()
-					.from(ratingHistory)
-					.where(
-						and(
-							eq(ratingHistory.userId, userId1),
-							eq(ratingHistory.playHistoryId, playHistoryId)
-						)
-					)
-					.limit(1),
-				tx
-					.select()
-					.from(ratingHistory)
-					.where(
-						and(
-							eq(ratingHistory.userId, userId2),
-							eq(ratingHistory.playHistoryId, playHistoryId)
-						)
-					)
-					.limit(1),
-			]);
-
-			if (!existingRecord1[0] || !existingRecord2[0]) {
-				throw new Error('Failed to fetch existing rating history records');
-			}
-
-			return {
-				ratingHistory1: existingRecord1[0],
-				ratingHistory2: existingRecord2[0],
-			};
 		}
+
+		throw new Error('Inconsistent rating history placeholder state');
 	});
 }
 
 /**
- * Update player rating after a game
+ * Update player rating after a game.
+ *
+ * NOTE: This function is NOT idempotent. Calling it twice with the same
+ * playHistoryId will fail due to the unique constraint on rating_history.
+ * Callers should ensure they don't retry with the same playHistoryId.
  */
 export async function updatePlayerRating(
-	params: UpdateRatingParams
+	params: UpdateRatingParams,
+	tx?: unknown
 ): Promise<RatingHistory> {
 	const {
 		userId,
@@ -876,55 +838,54 @@ export async function updatePlayerRating(
 		throw new Error('Either opponentLlmId or opponentUserId must be provided');
 	}
 
-	// Get current player rating
-	const currentRating = await getOrCreatePlayerRating(userId, variantId);
+	const applyUpdate = async (dbTx: unknown) => {
+		const typedTx = dbTx as unknown as ReturnType<typeof getDB>;
 
-	// Determine opponent rating
-	let opponentRating: number;
-	if (opponentLlmId) {
-		opponentRating = await getAiOpponentRating(opponentLlmId, variantId);
-	} else if (opponentUserId) {
-		const opponentRatingData = await getOrCreatePlayerRating(
-			opponentUserId,
+		// Fetch current player rating inside transaction to avoid stale data
+		const currentRating = await getOrCreateRatingInTransaction(
+			typedTx,
+			userId,
 			variantId
 		);
-		opponentRating = opponentRatingData.rating;
-	} else {
-		// This should never happen due to validation above
-		throw new Error('Either opponentLlmId or opponentUserId must be provided');
-	}
 
-	// Calculate new rating
-	const calculation = calculateNewRating(
-		currentRating.rating,
-		opponentRating,
-		gameResult,
-		currentRating.gamesPlayed
-	);
+		// Determine opponent rating
+		let opponentRating: number;
+		if (opponentLlmId) {
+			opponentRating = await getAiOpponentRating(opponentLlmId, variantId);
+		} else if (opponentUserId) {
+			const opponentRatingData = await getOrCreateRatingInTransaction(
+				typedTx,
+				opponentUserId,
+				variantId
+			);
+			opponentRating = opponentRatingData.rating;
+		} else {
+			// This should never happen due to validation above
+			throw new Error(
+				'Either opponentLlmId or opponentUserId must be provided'
+			);
+		}
 
-	// Wrap both operations in a transaction for atomicity
-	const historyRecord = await db.transaction(async tx => {
-		// Update player rating using SQL expressions for atomic increments
-		await tx
+		// Calculate new rating with up-to-date gamesPlayed
+		const calculation = calculateNewRating(
+			currentRating.rating,
+			opponentRating,
+			gameResult,
+			currentRating.gamesPlayed
+		);
+
+		const winsInc = gameResult === GameResultStatus.Win ? 1 : 0;
+		const lossesInc = gameResult === GameResultStatus.Loss ? 1 : 0;
+		const drawsInc = gameResult === GameResultStatus.Draw ? 1 : 0;
+
+		await typedTx
 			.update(playerRatings)
 			.set({
 				rating: calculation.newRating,
 				gamesPlayed: sql`${playerRatings.gamesPlayed} + 1`,
-				wins: sql`CASE 
-					WHEN ${gameResult} = '${GameResultStatus.Win}' 
-						THEN ${playerRatings.wins} + 1 
-						ELSE ${playerRatings.wins} 
-				END`,
-				losses: sql`CASE 
-					WHEN ${gameResult} = '${GameResultStatus.Loss}' 
-						THEN ${playerRatings.losses} + 1 
-						ELSE ${playerRatings.losses} 
-				END`,
-				draws: sql`CASE 
-					WHEN ${gameResult} = '${GameResultStatus.Draw}' 
-						THEN ${playerRatings.draws} + 1 
-						ELSE ${playerRatings.draws} 
-				END`,
+				wins: sql`${playerRatings.wins} + ${winsInc}`,
+				losses: sql`${playerRatings.losses} + ${lossesInc}`,
+				draws: sql`${playerRatings.draws} + ${drawsInc}`,
 				peakRating: sql`CASE
 					WHEN ${playerRatings.peakRating} > ${calculation.newRating}
 						THEN ${playerRatings.peakRating}
@@ -934,8 +895,7 @@ export async function updatePlayerRating(
 			})
 			.where(eq(playerRatings.id, currentRating.id));
 
-		// Record rating history
-		const [record] = await tx
+		const [record] = await typedTx
 			.insert(ratingHistory)
 			.values({
 				userId,
@@ -954,10 +914,18 @@ export async function updatePlayerRating(
 		}
 
 		return record;
-	});
+	};
 
-	return historyRecord;
+	if (tx) {
+		return applyUpdate(tx);
+	}
+
+	return db.transaction(async innerTx => applyUpdate(innerTx));
 }
+
+/**
+ * Get all player ratings with tier information
+ */
 
 /**
  * Get all player ratings with tier information

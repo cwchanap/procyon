@@ -114,7 +114,7 @@ app.post(
 				return c.json(
 					{
 						error:
-							'PvP match results require server-side match validation and cannot be submitted via this endpoint.',
+							'PvP match results cannot be submitted directly. PvP matches require server-side validation through the match completion endpoint or real-time game server.',
 					},
 					403
 				);
@@ -152,14 +152,17 @@ app.post(
 				}
 
 				// Update single-player rating using transaction
-				const ratingResult = await updatePlayerRating({
-					userId: user.userId,
-					variantId: body.chessId,
-					playHistoryId: record.id,
-					gameResult: body.status,
-					opponentLlmId: body.opponentLlmId ?? null,
-					opponentUserId: null,
-				});
+				const ratingResult = await updatePlayerRating(
+					{
+						userId: user.userId,
+						variantId: body.chessId,
+						playHistoryId: record.id,
+						gameResult: body.status,
+						opponentLlmId: body.opponentLlmId ?? null,
+						opponentUserId: null,
+					},
+					tx
+				);
 
 				savedRecord = record as PlayHistory;
 				ratingUpdate = {
@@ -182,7 +185,7 @@ app.post(
 			);
 		} catch (error) {
 			console.error('Error saving play history:', error);
-			// Transaction will be automatically rolled back on error
+			// Only operations performed through the transaction object are rolled back.
 			return c.json({ error: 'Failed to save play history' }, 500);
 		}
 	}

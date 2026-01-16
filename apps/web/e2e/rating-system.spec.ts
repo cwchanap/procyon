@@ -65,9 +65,9 @@ test.describe('ELO Rating System', () => {
 		const testUser = AuthHelper.getFixtureUser();
 		await authHelper.login(testUser.email, testUser.password);
 
-		// Wait for login to complete by checking for profile navigation
+		// Wait for login to complete by checking for navigation to the home page
 		// Instead of fixed timeout, wait for a reliable post-login indicator
-		await page.waitForURL(/.*\/profile/, { timeout: 10000 });
+		await page.waitForURL(url => url.pathname === '/', { timeout: 10000 });
 	});
 
 	test.describe('Profile Page - Ratings Section', () => {

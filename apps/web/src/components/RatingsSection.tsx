@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getAuthHeaders } from '../lib/auth';
 import { env } from '../lib/env';
 import { RatingBadge } from './RatingBadge';
+import type { GameVariant } from '../lib/ai/game-variant-types';
 
 interface RankTier {
 	tier: string;
@@ -12,7 +13,7 @@ interface RankTier {
 interface PlayerRating {
 	id: number;
 	userId: string;
-	variantId: 'chess' | 'xiangqi' | 'shogi' | 'jungle';
+	variantId: GameVariant;
 	rating: number;
 	gamesPlayed: number;
 	wins: number;
@@ -43,6 +44,7 @@ export function RatingsSection() {
 
 	useEffect(() => {
 		const controller = new AbortController();
+		let isActive = true;
 
 		const fetchRatings = async () => {
 			try {
@@ -60,8 +62,10 @@ export function RatingsSection() {
 
 				if (response.ok) {
 					const data = await response.json();
+					if (!isActive || controller.signal.aborted) return;
 					setRatings(data.ratings || []);
 				} else {
+					if (!isActive || controller.signal.aborted) return;
 					setError('Failed to load ratings');
 				}
 			} catch (err) {
@@ -69,16 +73,22 @@ export function RatingsSection() {
 				if (err instanceof Error && err.name === 'AbortError') {
 					return;
 				}
+				if (!isActive || controller.signal.aborted) return;
 				setError('Failed to load ratings');
 			} finally {
-				setIsLoading(false);
+				if (isActive && !controller.signal.aborted) {
+					setIsLoading(false);
+				}
 			}
 		};
 
 		void fetchRatings();
 
 		// Cleanup function to abort fetch on unmount
-		return () => controller.abort();
+		return () => {
+			isActive = false;
+			controller.abort();
+		};
 	}, []);
 
 	if (isLoading) {
