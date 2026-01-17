@@ -1,5 +1,7 @@
 -- Add CHECK constraints to ensure data consistency
 --> statement-breakpoint
+BEGIN TRANSACTION;
+--> statement-breakpoint
 PRAGMA foreign_keys=OFF;
 --> statement-breakpoint
 CREATE TABLE `player_ratings__new` (
@@ -66,6 +68,34 @@ CREATE TABLE `rating_history__new` (
 	CHECK (`game_result` IN ('win', 'loss', 'draw'))
 );
 --> statement-breakpoint
+
+-- Normalize existing game_result values to the allowed set before inserting
+-- (handles case differences and common legacy variants)
+WITH normalized AS (
+	SELECT
+		`id`,
+		`user_id`,
+		`variant_id`,
+		`play_history_id`,
+		`old_rating`,
+		`new_rating`,
+		`rating_change`,
+		`opponent_rating`,
+		CASE
+			WHEN LOWER(`game_result`) IN ('win','loss','draw') THEN LOWER(`game_result`)
+			WHEN LOWER(`game_result`) IN ('w') THEN 'win'
+			WHEN LOWER(`game_result`) IN ('l') THEN 'loss'
+			WHEN LOWER(`game_result`) IN ('d','tie') THEN 'draw'
+			ELSE NULL
+		END AS `game_result_normalized`,
+		`created_at`
+	FROM `rating_history`
+)
+SELECT RAISE(ABORT, 'rating_history contains invalid game_result values')
+WHERE EXISTS (
+	SELECT 1 FROM normalized WHERE `game_result_normalized` IS NULL
+);
+--> statement-breakpoint
 INSERT INTO `rating_history__new` (
 	`id`,
 	`user_id`,
@@ -87,7 +117,13 @@ SELECT
 	`new_rating`,
 	`rating_change`,
 	`opponent_rating`,
-	`game_result`,
+	CASE
+		WHEN LOWER(`game_result`) IN ('win','loss','draw') THEN LOWER(`game_result`)
+		WHEN LOWER(`game_result`) IN ('w') THEN 'win'
+		WHEN LOWER(`game_result`) IN ('l') THEN 'loss'
+		WHEN LOWER(`game_result`) IN ('d','tie') THEN 'draw'
+		ELSE NULL
+	END AS `game_result`,
 	`created_at`
 FROM `rating_history`;
 --> statement-breakpoint
@@ -103,3 +139,5 @@ PRAGMA foreign_keys=ON;
 --> statement-breakpoint
 -- Add composite index on rating_history for common query pattern
 CREATE INDEX IF NOT EXISTS `rating_history_user_variant_idx` ON `rating_history` (`user_id`, `variant_id`);
+--> statement-breakpoint
+COMMIT;
