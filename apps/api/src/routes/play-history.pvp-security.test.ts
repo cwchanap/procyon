@@ -41,24 +41,26 @@ describe('POST /api/play-history PvP submission guard', () => {
 			return new Response('Not Found', { status: 404 });
 		}) as typeof fetch;
 
-		const res = await playHistoryRoutes.request('http://localhost/', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: 'Bearer test-token',
-			},
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date: new Date().toISOString(),
-				opponentUserId: '00000000-0000-4000-8000-000000000000',
-			}),
-		});
+		try {
+			const res = await playHistoryRoutes.request('http://localhost/', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: 'Bearer test-token',
+				},
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentUserId: '00000000-0000-4000-8000-000000000000',
+				}),
+			});
 
-		globalThis.fetch = originalFetch;
-
-		expect(res.status).toBe(403);
-		const body = (await res.json()) as { error?: unknown };
-		expect(typeof body.error).toBe('string');
+			expect(res.status).toBe(403);
+			const body = (await res.json()) as { error?: unknown };
+			expect(typeof body.error).toBe('string');
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });

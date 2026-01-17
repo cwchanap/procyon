@@ -195,6 +195,8 @@ describe('Rating Service - Pure Calculation Functions', () => {
 			);
 			// Rating should not go below 100
 			expect(result.newRating).toBe(100);
+			expect(result.ratingChange).toBe(0);
+			expect(result.newRating - 100).toBe(result.ratingChange);
 		});
 
 		test('expected score is included in result', () => {
