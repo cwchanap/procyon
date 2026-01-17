@@ -7,11 +7,17 @@ export interface TestUser {
 	password: string;
 }
 
+const normalizeEnvValue = (value?: string): string =>
+	value?.trim().replace(/^["']+|["']+$/g, '') ?? '';
+
 const FIXTURE_EMAIL =
-	process.env.E2E_TEST_USER_EMAIL ?? 'test-procyon@cwchanap.dev';
+	normalizeEnvValue(process.env.E2E_TEST_USER_EMAIL) ||
+	'test-procyon@cwchanap.dev';
 const FIXTURE_USERNAME =
-	process.env.E2E_TEST_USER_USERNAME ?? FIXTURE_EMAIL.split('@')[0];
-const FIXTURE_PASSWORD = process.env.E2E_TEST_USER_PASSWORD ?? 'password123';
+	normalizeEnvValue(process.env.E2E_TEST_USER_USERNAME) ||
+	FIXTURE_EMAIL.split('@')[0];
+const FIXTURE_PASSWORD =
+	normalizeEnvValue(process.env.E2E_TEST_USER_PASSWORD) || 'password123';
 
 const FIXTURE_USER: TestUser = {
 	email: FIXTURE_EMAIL,
