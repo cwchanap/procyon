@@ -10,7 +10,12 @@ export function RegisterForm() {
 	const [confirmPassword, setConfirmPassword] = useState('');
 	const [error, setError] = useState('');
 	const [loading, setLoading] = useState(false);
+	const [isHydrated, setIsHydrated] = useState(false);
 	const { register } = useAuth();
+
+	React.useEffect(() => {
+		setIsHydrated(true);
+	}, []);
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -40,7 +45,11 @@ export function RegisterForm() {
 	};
 
 	return (
-		<div className='w-full max-w-md mx-auto'>
+		<div
+			className='w-full max-w-md mx-auto'
+			data-testid='register-form'
+			data-hydrated={isHydrated ? 'true' : 'false'}
+		>
 			<div className='glass-effect shadow-xl rounded-lg p-6 backdrop-blur-lg border border-white/20'>
 				<div className='space-y-2 text-center mb-6'>
 					<h1 className='text-2xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent'>
