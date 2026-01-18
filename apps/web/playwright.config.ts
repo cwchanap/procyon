@@ -159,6 +159,8 @@ export default defineConfig({
         SUPABASE_URL: supabaseEnv.url,
         SUPABASE_ANON_KEY: supabaseEnv.anonKey,
         SUPABASE_SERVICE_ROLE_KEY: supabaseEnv.serviceRoleKey,
+		E2E_TEST: 'true',
+		DISABLE_RATE_LIMIT: 'true',
       },
     },
   ] : undefined,
