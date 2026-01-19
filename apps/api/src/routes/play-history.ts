@@ -1,15 +1,16 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
-import { playHistory, type PlayHistory } from '../db/schema';
+import { playHistory, ratingHistory, type PlayHistory } from '../db/schema';
 import {
 	ChessVariantId,
 	GameResultStatus,
 	OpponentLlmId,
 } from '../constants/game';
+import { updatePlayerRating } from '../services/rating-service';
 
 const app = new Hono();
 
@@ -71,12 +72,29 @@ app.get('/', authMiddleware, async c => {
 
 	try {
 		const history = await db
-			.select()
+			.selectDistinct({
+				id: playHistory.id,
+				userId: playHistory.userId,
+				chessId: playHistory.chessId,
+				date: playHistory.date,
+				status: playHistory.status,
+				opponentUserId: playHistory.opponentUserId,
+				opponentLlmId: playHistory.opponentLlmId,
+				ratingChange: ratingHistory.ratingChange,
+				newRating: ratingHistory.newRating,
+			})
 			.from(playHistory)
+			.leftJoin(
+				ratingHistory,
+				and(
+					eq(playHistory.id, ratingHistory.playHistoryId),
+					eq(ratingHistory.userId, user.userId)
+				)
+			)
 			.where(eq(playHistory.userId, user.userId))
 			.orderBy(desc(playHistory.date));
 
-		return c.json({ playHistory: history as PlayHistory[] });
+		return c.json({ playHistory: history });
 	} catch (error) {
 		console.error('Error fetching play history:', error);
 		return c.json({ error: 'Failed to fetch play history' }, 500);
@@ -88,40 +106,86 @@ app.post(
 	authMiddleware,
 	zValidator('json', createPlayHistorySchema),
 	async c => {
-		const db = getDB();
 		const user = getUser(c);
 		const body = c.req.valid('json');
 
-		const newPlayHistory: typeof playHistory.$inferInsert = {
-			userId: user.userId,
-			chessId: body.chessId,
-			status: body.status,
-			date: new Date(body.date).toISOString(),
-			opponentUserId:
-				body.opponentUserId !== undefined ? String(body.opponentUserId) : null,
-			opponentLlmId: body.opponentLlmId ?? null,
-		};
-
 		try {
-			console.log('Saving play history', {
-				chessId: newPlayHistory.chessId,
-				status: newPlayHistory.status,
-				date: newPlayHistory.date,
-			});
-			const [record] = await db
-				.insert(playHistory)
-				.values(newPlayHistory)
-				.returning();
+			if (body.opponentUserId != null) {
+				return c.json(
+					{
+						error:
+							'PvP match results cannot be submitted directly. PvP matches require server-side validation through the match completion endpoint or real-time game server.',
+					},
+					403
+				);
+			}
 
+			const db = getDB();
+
+			// Perform all database operations in a single transaction
+			// This prevents partial updates and ensures data consistency
+			const result = await db.transaction(async tx => {
+				let savedRecord: PlayHistory | null = null;
+				let ratingUpdate: {
+					oldRating: number;
+					newRating: number;
+					ratingChange: number;
+				} | null = null;
+
+				// PvAI match - create single play history record
+				const newPlayHistory: typeof playHistory.$inferInsert = {
+					userId: user.userId,
+					chessId: body.chessId,
+					status: body.status,
+					date: new Date(body.date).toISOString(),
+					opponentUserId: null,
+					opponentLlmId: body.opponentLlmId ?? null,
+				};
+
+				const [record] = await tx
+					.insert(playHistory)
+					.values(newPlayHistory)
+					.returning();
+
+				if (!record) {
+					throw new Error('Failed to create play history record');
+				}
+
+				// Update single-player rating using transaction
+				const ratingResult = await updatePlayerRating(
+					{
+						userId: user.userId,
+						variantId: body.chessId,
+						playHistoryId: record.id,
+						gameResult: body.status,
+						opponentLlmId: body.opponentLlmId ?? null,
+						opponentUserId: null,
+					},
+					tx
+				);
+
+				savedRecord = record as PlayHistory;
+				ratingUpdate = {
+					oldRating: ratingResult.oldRating,
+					newRating: ratingResult.newRating,
+					ratingChange: ratingResult.ratingChange,
+				};
+
+				return { savedRecord, ratingUpdate };
+			});
+
+			console.log('Rating updated', result.ratingUpdate);
 			return c.json(
 				{
 					message: 'Play history saved',
-					playHistory: record as PlayHistory,
+					playHistory: result.savedRecord,
+					ratingUpdate: result.ratingUpdate,
 				},
 				201
 			);
 		} catch (error) {
 			console.error('Error saving play history:', error);
+			// Only operations performed through the transaction object are rolled back.
 			return c.json({ error: 'Failed to save play history' }, 500);
 		}
 	}

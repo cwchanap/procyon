@@ -9,7 +9,12 @@ export function LoginForm() {
 	const [error, setError] = useState('');
 	const [loading, setLoading] = useState(false);
 	const [lockoutMs, setLockoutMs] = useState(0);
+	const [isHydrated, setIsHydrated] = useState(false);
 	const { login } = useAuth();
+
+	React.useEffect(() => {
+		setIsHydrated(true);
+	}, []);
 
 	React.useEffect(() => {
 		if (lockoutMs <= 0) return;
@@ -40,7 +45,11 @@ export function LoginForm() {
 	};
 
 	return (
-		<div className='w-full max-w-md mx-auto'>
+		<div
+			className='w-full max-w-md mx-auto'
+			data-testid='login-form'
+			data-hydrated={isHydrated ? 'true' : 'false'}
+		>
 			<div className='bg-gradient-to-br from-purple-900/20 to-pink-900/20 backdrop-blur-lg border border-purple-500/30 shadow-2xl rounded-2xl p-8'>
 				<div className='space-y-2 text-center mb-8'>
 					<h1 className='text-3xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent'>

@@ -64,6 +64,9 @@ if (process.env.SUPABASE_ANON_KEY && !process.env.PUBLIC_SUPABASE_ANON_KEY) {
 
 export default defineConfig({
   integrations: [react(), tailwind()],
+  devToolbar: {
+    enabled: false,
+  },
   output: 'static',
   server: {
     port: 3500,

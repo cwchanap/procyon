@@ -248,6 +248,15 @@ export function useAuth() {
 	const [user, setUser] = useState<AuthUser | null>(null);
 	const [loading, setLoading] = useState(true);
 
+	const syncUserFromSession = async () => {
+		try {
+			const { data } = await supabaseClient.auth.getSession();
+			setUser(mapSupabaseUser(data.session?.user ?? null));
+		} catch {
+			setUser(null);
+		}
+	};
+
 	useEffect(() => {
 		let mounted = true;
 		supabaseClient.auth
@@ -279,9 +288,20 @@ export function useAuth() {
 	return {
 		user,
 		loading,
-		login: (email: string, password: string) => apiLogin(email, password),
-		register: (email: string, username: string, password: string) =>
-			apiRegister(email, username, password),
+		login: async (email: string, password: string) => {
+			const result = await apiLogin(email, password);
+			if (result.success) {
+				await syncUserFromSession();
+			}
+			return result;
+		},
+		register: async (email: string, username: string, password: string) => {
+			const result = await apiRegister(email, username, password);
+			if (result.success) {
+				await syncUserFromSession();
+			}
+			return result;
+		},
 		logout: async () => {
 			await apiLogout();
 			const { error } = await supabaseClient.auth.signOut();
@@ -290,6 +310,7 @@ export function useAuth() {
 					error: error.message,
 				});
 			}
+			setUser(null);
 		},
 		isAuthenticated: !!user,
 	};

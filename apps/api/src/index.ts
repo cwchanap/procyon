@@ -7,6 +7,7 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import aiConfigRoutes from './routes/ai-config';
 import playHistoryRoutes from './routes/play-history';
+import ratingsRoutes from './routes/ratings';
 import { env, isProduction } from './env';
 import { startRateLimitCleanup } from './auth/rate-limit';
 import { logger } from './logger';
@@ -114,6 +115,9 @@ app.route('/api/ai-config', aiConfigRoutes);
 
 // Play history routes
 app.route('/api/play-history', playHistoryRoutes);
+
+// Ratings routes
+app.route('/api/ratings', ratingsRoutes);
 
 // API routes (legacy - can be removed later)
 app.get('/api/hello', c => {

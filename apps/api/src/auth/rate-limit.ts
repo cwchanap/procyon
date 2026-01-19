@@ -23,6 +23,22 @@ const attempts = new Map<string, AttemptInfo>();
 
 let lastCleanupAt = 0;
 
+const getProcessEnv = (): Record<string, string | undefined> => {
+	const maybeProcess = globalThis as unknown as {
+		process?: { env?: Record<string, string | undefined> };
+	};
+	return maybeProcess.process?.env ?? {};
+};
+
+const isRateLimitDisabled = (): boolean => {
+	const env = getProcessEnv();
+	return (
+		env.DISABLE_RATE_LIMIT === 'true' ||
+		env.E2E_TEST === 'true' ||
+		env.NODE_ENV === 'test'
+	);
+};
+
 function maybeCleanup(now: number): void {
 	if (now - lastCleanupAt < CLEANUP_INTERVAL_MS) return;
 	lastCleanupAt = now;
@@ -74,6 +90,10 @@ export interface RateLimitStatus {
  * Record a failed attempt and return rate limit status.
  */
 export function recordLoginAttempt(email: string): RateLimitStatus {
+	if (isRateLimitDisabled()) {
+		return { allowed: true, remaining: MAX_ATTEMPTS, retryAfterMs: 0 };
+	}
+
 	const now = Date.now();
 	maybeCleanup(now);
 	const normalized = email.toLowerCase();
@@ -107,6 +127,10 @@ export function recordLoginAttempt(email: string): RateLimitStatus {
  * Clear attempts for a user after successful login.
  */
 export function resetLoginAttempts(email: string): void {
+	if (isRateLimitDisabled()) {
+		return;
+	}
+
 	maybeCleanup(Date.now());
 	attempts.delete(email.toLowerCase());
 }

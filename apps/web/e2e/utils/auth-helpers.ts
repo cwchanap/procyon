@@ -7,11 +7,18 @@ export interface TestUser {
 	password: string;
 }
 
+const normalizeEnvValue = (value?: string): string =>
+	value?.trim().replace(/^["']+|["']+$/g, '') ?? '';
+
 const FIXTURE_EMAIL =
-	process.env.E2E_TEST_USER_EMAIL ?? 'test-procyon@cwchanap.dev';
+	normalizeEnvValue(process.env.E2E_TEST_USER_EMAIL) ||
+	'test-procyon@cwchanap.dev';
 const FIXTURE_USERNAME =
-	process.env.E2E_TEST_USER_USERNAME ?? FIXTURE_EMAIL.split('@')[0];
-const FIXTURE_PASSWORD = process.env.E2E_TEST_USER_PASSWORD ?? 'password123';
+	normalizeEnvValue(process.env.E2E_TEST_USER_USERNAME) ||
+	FIXTURE_EMAIL.split('@')[0] ||
+	'test-procyon';
+const FIXTURE_PASSWORD =
+	normalizeEnvValue(process.env.E2E_TEST_USER_PASSWORD) || 'password123';
 
 const FIXTURE_USER: TestUser = {
 	email: FIXTURE_EMAIL,
@@ -49,6 +56,9 @@ export class AuthHelper {
 		await expect(this.page).toHaveTitle('Sign Up - Procyon Chess', {
 			timeout: 15000,
 		});
+		await this.page
+			.locator('[data-testid="register-form"][data-hydrated="true"]')
+			.waitFor({ state: 'visible', timeout: 15000 });
 	}
 
 	/**
@@ -59,6 +69,9 @@ export class AuthHelper {
 		await expect(this.page).toHaveTitle('Sign In - Procyon Chess', {
 			timeout: 15000,
 		});
+		await this.page
+			.locator('[data-testid="login-form"][data-hydrated="true"]')
+			.waitFor({ state: 'visible', timeout: 15000 });
 	}
 
 	/**
