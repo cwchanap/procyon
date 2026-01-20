@@ -1,5 +1,11 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { AuthHelper, type TestUser } from './utils/auth-helpers';
+
+const waitForProfileReady = async (page: Page) => {
+	await page
+		.locator('[data-testid="profile-page"][data-auth-ready="true"]')
+		.waitFor({ state: 'visible', timeout: 15000 });
+};
 
 test.describe('AI Configuration Management', () => {
 	let authHelper: AuthHelper;
@@ -35,6 +41,7 @@ test.describe('AI Configuration Management', () => {
 			// Should be on profile page
 			await expect(page).toHaveURL('/profile');
 			await expect(page).toHaveTitle('Profile - Procyon Chess');
+			await waitForProfileReady(page);
 
 			// Should see AI Configuration section
 			await expect(
@@ -53,6 +60,7 @@ test.describe('AI Configuration Management', () => {
 				.click();
 			await page.getByRole('button', { name: 'Profile' }).click();
 			await expect(page).toHaveURL('/profile');
+			await waitForProfileReady(page);
 		});
 
 		test('should display all available AI providers', async ({ page }) => {
@@ -124,6 +132,7 @@ test.describe('AI Configuration Management', () => {
 				.click();
 			await page.getByRole('button', { name: 'Profile' }).click();
 			await expect(page).toHaveURL('/profile');
+			await waitForProfileReady(page);
 		});
 
 		test('should successfully save AI configuration', async ({ page }) => {

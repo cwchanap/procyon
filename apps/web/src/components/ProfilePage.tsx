@@ -61,7 +61,7 @@ interface AiConfiguration {
 }
 
 export function ProfilePage() {
-	const { user, isAuthenticated } = useAuth();
+	const { user, isAuthenticated, loading } = useAuth();
 	const [isHydrated, setIsHydrated] = useState(false);
 
 	const [isEditing, setIsEditing] = useState(false);
@@ -151,12 +151,28 @@ export function ProfilePage() {
 		}
 	}, [selectedProvider, configurations]);
 
+	const isAuthReady = !loading && isAuthenticated && !!user;
+
+	if (loading) {
+		return (
+			<div
+				className='min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center'
+				data-testid='profile-page'
+				data-hydrated={isHydrated ? 'true' : 'false'}
+				data-auth-ready='false'
+			>
+				<div className='text-center text-gray-200'>Loading profile...</div>
+			</div>
+		);
+	}
+
 	if (!isAuthenticated || !user) {
 		return (
 			<div
 				className='min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center'
 				data-testid='profile-page'
 				data-hydrated={isHydrated ? 'true' : 'false'}
+				data-auth-ready='false'
 			>
 				<div className='text-center'>
 					<h1 className='text-3xl font-bold text-white mb-4'>Access Denied</h1>
@@ -296,6 +312,7 @@ export function ProfilePage() {
 			className='min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900'
 			data-testid='profile-page'
 			data-hydrated={isHydrated ? 'true' : 'false'}
+			data-auth-ready={isAuthReady ? 'true' : 'false'}
 		>
 			<div className='container mx-auto px-4 py-8'>
 				<div className='max-w-2xl mx-auto'>
