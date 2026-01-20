@@ -62,6 +62,7 @@ interface AiConfiguration {
 
 export function ProfilePage() {
 	const { user, isAuthenticated } = useAuth();
+	const [isHydrated, setIsHydrated] = useState(false);
 
 	const [isEditing, setIsEditing] = useState(false);
 	const [editedUsername, setEditedUsername] = useState(user?.username || '');
@@ -85,6 +86,10 @@ export function ProfilePage() {
 			fetchConfigurations();
 		}
 	}, [isAuthenticated]);
+
+	useEffect(() => {
+		setIsHydrated(true);
+	}, []);
 
 	// Load saved configuration API key into form when configurations are fetched
 	useEffect(() => {
@@ -148,7 +153,11 @@ export function ProfilePage() {
 
 	if (!isAuthenticated || !user) {
 		return (
-			<div className='min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center'>
+			<div
+				className='min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center'
+				data-testid='profile-page'
+				data-hydrated={isHydrated ? 'true' : 'false'}
+			>
 				<div className='text-center'>
 					<h1 className='text-3xl font-bold text-white mb-4'>Access Denied</h1>
 					<p className='text-gray-300 mb-6'>
@@ -283,7 +292,11 @@ export function ProfilePage() {
 	};
 
 	return (
-		<div className='min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900'>
+		<div
+			className='min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900'
+			data-testid='profile-page'
+			data-hydrated={isHydrated ? 'true' : 'false'}
+		>
 			<div className='container mx-auto px-4 py-8'>
 				<div className='max-w-2xl mx-auto'>
 					{/* Header */}
