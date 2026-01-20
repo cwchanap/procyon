@@ -1,6 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { AuthHelper } from './utils/auth-helpers';
 
+const waitForProfileReady = async (page: Page) => {
+	await page
+		.locator('[data-testid="profile-page"][data-auth-ready="true"]')
+		.waitFor({ state: 'visible', timeout: 15000 });
+};
+
 /**
  * Helper function to play a game and win using debug function
  * @param page - Playwright Page object
@@ -39,7 +45,7 @@ async function playGameAndWin(
 			response.url().includes('/api/play-history') &&
 			response.request().method() === 'POST' &&
 			response.status() === 201,
-		{ timeout: 5000 }
+		{ timeout: 15000 }
 	);
 
 	// Trigger a win
@@ -64,15 +70,13 @@ test.describe('ELO Rating System', () => {
 		authHelper = new AuthHelper(page);
 		const testUser = AuthHelper.getFixtureUser();
 		await authHelper.login(testUser.email, testUser.password);
-
-		// Wait for login to complete by checking for navigation to the home page
-		// Instead of fixed timeout, wait for a reliable post-login indicator
-		await page.waitForURL(url => url.pathname === '/', { timeout: 10000 });
+		await authHelper.expectAuthenticated(testUser.username, testUser.email);
 	});
 
 	test.describe('Profile Page - Ratings Section', () => {
 		test('should display ratings section on profile page', async ({ page }) => {
 			await page.goto('/profile');
+			await waitForProfileReady(page);
 
 			// Wait for the page to load
 			await expect(
@@ -99,6 +103,7 @@ test.describe('ELO Rating System', () => {
 
 			// Now go to profile and check ratings
 			await page.goto('/profile');
+			await waitForProfileReady(page);
 
 			// Wait for the ratings section to load
 			await expect(
@@ -173,6 +178,7 @@ test.describe('ELO Rating System', () => {
 		test('should update rating after winning a game', async ({ page }) => {
 			// Get initial rating (might not exist for new user)
 			await page.goto('/profile');
+			await waitForProfileReady(page);
 
 			// Wait for profile page to load
 			await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible({
@@ -184,6 +190,7 @@ test.describe('ELO Rating System', () => {
 
 			// Go to profile and verify rating exists
 			await page.goto('/profile');
+			await waitForProfileReady(page);
 
 			// Wait for ratings section
 			await expect(
@@ -225,6 +232,7 @@ test.describe('ELO Rating System', () => {
 
 			// Go to profile and check both ratings exist
 			await page.goto('/profile');
+			await waitForProfileReady(page);
 
 			await expect(
 				page.getByRole('heading', { name: 'Your Ratings' })

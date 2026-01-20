@@ -97,6 +97,7 @@ if (env.NODE_ENV === 'production' && !isWorkersRuntime()) {
 	}
 }
 
-export const isDevelopment = env.NODE_ENV === 'development';
+export const isDevelopment =
+	env.NODE_ENV === 'development' || env.NODE_ENV === 'e2e';
 export const isProduction = env.NODE_ENV === 'production';
-export const isTest = env.NODE_ENV === 'test';
+export const isTest = env.NODE_ENV === 'test' || env.NODE_ENV === 'e2e';
