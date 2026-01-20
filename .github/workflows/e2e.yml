@@ -86,9 +86,13 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps
 
+      - name: Run API database migrations
+        working-directory: apps/api
+        run: bun run db:migrate
+
       - name: Start API server
         env:
-          NODE_ENV: development
+          NODE_ENV: e2e
         run: |
           set -e
           cd apps/api
