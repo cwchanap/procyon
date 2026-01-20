@@ -32,10 +32,9 @@ const getProcessEnv = (): Record<string, string | undefined> => {
 
 const isRateLimitDisabled = (): boolean => {
 	const env = getProcessEnv();
+	const nodeEnv = env.NODE_ENV ?? '';
 	return (
-		env.DISABLE_RATE_LIMIT === 'true' ||
-		env.E2E_TEST === 'true' ||
-		env.NODE_ENV === 'test'
+		env.DISABLE_RATE_LIMIT === 'true' || nodeEnv === 'test' || nodeEnv === 'e2e'
 	);
 };
 
