@@ -48,7 +48,14 @@
       "idx": 6,
       "version": "6",
       "when": 1767928933926,
-      "tag": "0006_wooden_mentallo",
+      "tag": "0006_enhanced_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1767928937000,
+      "tag": "0007_rating_history_idempotency",
       "breakpoints": true
     }
   ]
