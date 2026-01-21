@@ -254,6 +254,8 @@ export function useAuth() {
 			setUser(mapSupabaseUser(data.session?.user ?? null));
 		} catch {
 			setUser(null);
+		} finally {
+			setLoading(false);
 		}
 	};
 
@@ -276,6 +278,7 @@ export function useAuth() {
 			(_event, session) => {
 				if (!mounted) return;
 				setUser(mapSupabaseUser(session?.user ?? null));
+				setLoading(false);
 			}
 		);
 
