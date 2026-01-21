@@ -63,6 +63,7 @@ interface AiConfiguration {
 export function ProfilePage() {
 	const { user, isAuthenticated, loading } = useAuth();
 	const [isHydrated, setIsHydrated] = useState(false);
+	const [hasAttemptedAuth, setHasAttemptedAuth] = useState(false);
 
 	const [isEditing, setIsEditing] = useState(false);
 	const [editedUsername, setEditedUsername] = useState(user?.username || '');
@@ -86,6 +87,12 @@ export function ProfilePage() {
 			fetchConfigurations();
 		}
 	}, [isAuthenticated]);
+
+	useEffect(() => {
+		if (!loading) {
+			setHasAttemptedAuth(true);
+		}
+	}, [loading]);
 
 	useEffect(() => {
 		setIsHydrated(true);
@@ -151,10 +158,11 @@ export function ProfilePage() {
 		}
 	}, [selectedProvider, configurations]);
 
-	const isAuthReady = !loading;
 	const hasUser = isAuthenticated && !!user;
+	const isAuthReady = !loading && (hasAttemptedAuth || hasUser);
+	const showAuthLoading = loading || (!hasUser && !hasAttemptedAuth);
 
-	if (loading) {
+	if (showAuthLoading) {
 		return (
 			<div
 				className='min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center'
@@ -314,6 +322,7 @@ export function ProfilePage() {
 			data-testid='profile-page'
 			data-hydrated={isHydrated ? 'true' : 'false'}
 			data-auth-ready={isAuthReady ? 'true' : 'false'}
+			data-authenticated={hasUser ? 'true' : 'false'}
 		>
 			<div className='container mx-auto px-4 py-8'>
 				<div className='max-w-2xl mx-auto'>

@@ -3,7 +3,9 @@ import { AuthHelper, type TestUser } from './utils/auth-helpers';
 
 const waitForProfileReady = async (page: Page) => {
 	await page
-		.locator('[data-testid="profile-page"][data-auth-ready="true"]')
+		.locator(
+			'[data-testid="profile-page"][data-auth-ready="true"][data-authenticated="true"]'
+		)
 		.waitFor({ state: 'visible', timeout: 15000 });
 };
 

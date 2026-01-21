@@ -3,7 +3,9 @@ import { AuthHelper } from './utils/auth-helpers';
 
 const waitForProfileReady = async (page: Page) => {
 	await page
-		.locator('[data-testid="profile-page"][data-auth-ready="true"]')
+		.locator(
+			'[data-testid="profile-page"][data-auth-ready="true"][data-authenticated="true"]'
+		)
 		.waitFor({ state: 'visible', timeout: 15000 });
 };
 
@@ -130,14 +132,16 @@ test.describe('ELO Rating System', () => {
 			// Go to play history
 			await page.goto('/play-history');
 
-			// Check for Rating column header
-			await expect(
-				page.getByRole('columnheader', { name: 'Rating' })
-			).toBeVisible();
-
 			// Check for play history heading
 			await expect(
 				page.getByRole('heading', { name: 'Play History' })
+			).toBeVisible();
+
+			// Check for Rating column header once table renders
+			const historyTable = page.getByRole('table');
+			await expect(historyTable).toBeVisible();
+			await expect(
+				page.getByRole('columnheader', { name: 'Rating' })
 			).toBeVisible();
 		});
 
@@ -170,7 +174,9 @@ test.describe('ELO Rating System', () => {
 			expect(ratingText).toMatch(/\+/);
 
 			// Verify positive CSS indicator (green color class)
-			await expect(ratingCell).toHaveClass(/text-green/);
+			await expect(ratingCell.locator('span').first()).toHaveClass(
+				/text-green/
+			);
 		});
 	});
 
