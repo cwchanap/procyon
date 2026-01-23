@@ -237,42 +237,57 @@ export default function PlayHistoryPage() {
 						</span>
 					</div>
 
-					{isLoading ? (
-						<div className='py-16 text-center text-purple-100/70 animate-pulse'>
-							Loading your games...
-						</div>
-					) : error ? (
-						<div className='py-12 text-center space-y-4'>
-							<p className='text-red-200 font-medium'>{error}</p>
-							<button
-								type='button'
-								onClick={() => window.location.reload()}
-								className='px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors border border-white/20 text-sm text-white'
-							>
-								Retry
-							</button>
-						</div>
-					) : history.length === 0 ? (
-						<div className='py-16 text-center space-y-3 text-purple-100/70'>
-							<p className='text-lg font-medium'>
-								You have not recorded any games yet.
-							</p>
-							<p>Play against an AI or a friend to start your history.</p>
-						</div>
-					) : (
-						<div className='overflow-x-auto'>
-							<table className='min-w-full divide-y divide-white/10'>
-								<thead>
-									<tr className='text-left text-sm uppercase tracking-wider text-purple-200/70'>
-										<th className='py-3 pr-4'>Date</th>
-										<th className='py-3 pr-4'>Variant</th>
-										<th className='py-3 pr-4'>Opponent</th>
-										<th className='py-3 pr-4'>Result</th>
-										<th className='py-3'>Rating</th>
+					<div className='overflow-x-auto'>
+						<table className='min-w-full divide-y divide-white/10'>
+							<thead>
+								<tr className='text-left text-sm uppercase tracking-wider text-purple-200/70'>
+									<th className='py-3 pr-4'>Date</th>
+									<th className='py-3 pr-4'>Variant</th>
+									<th className='py-3 pr-4'>Opponent</th>
+									<th className='py-3 pr-4'>Result</th>
+									<th className='py-3'>Rating</th>
+								</tr>
+							</thead>
+							<tbody className='divide-y divide-white/5'>
+								{isLoading ? (
+									<tr>
+										<td
+											colSpan={5}
+											className='py-16 text-center text-purple-100/70 animate-pulse'
+										>
+											Loading your games...
+										</td>
 									</tr>
-								</thead>
-								<tbody className='divide-y divide-white/5'>
-									{history.map(entry => {
+								) : error ? (
+									<tr>
+										<td colSpan={5} className='py-12 text-center'>
+											<div className='space-y-4'>
+												<p className='text-red-200 font-medium'>{error}</p>
+												<button
+													type='button'
+													onClick={() => window.location.reload()}
+													className='px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors border border-white/20 text-sm text-white'
+												>
+													Retry
+												</button>
+											</div>
+										</td>
+									</tr>
+								) : history.length === 0 ? (
+									<tr>
+										<td colSpan={5} className='py-16 text-center'>
+											<div className='space-y-3 text-purple-100/70'>
+												<p className='text-lg font-medium'>
+													You have not recorded any games yet.
+												</p>
+												<p>
+													Play against an AI or a friend to start your history.
+												</p>
+											</div>
+										</td>
+									</tr>
+								) : (
+									history.map(entry => {
 										const resultStyle = RESULT_STYLES[entry.status];
 
 										return (
@@ -307,6 +322,7 @@ export default function PlayHistoryPage() {
 																		: entry.ratingChange < 0
 																			? 'text-red-400'
 																			: 'text-gray-400'
+																}
 																}`}
 															>
 																{entry.ratingChange > 0 ? '+' : ''}
@@ -324,11 +340,11 @@ export default function PlayHistoryPage() {
 												</td>
 											</tr>
 										);
-									})}
-								</tbody>
-							</table>
-						</div>
-					)}
+									})
+								)}
+							</tbody>
+						</table>
+					</div>
 				</section>
 			</div>
 		</div>

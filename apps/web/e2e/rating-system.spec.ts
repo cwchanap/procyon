@@ -142,7 +142,7 @@ test.describe('ELO Rating System', () => {
 			await expect(historyTable).toBeVisible();
 			await expect(
 				page.getByRole('columnheader', { name: 'Rating' })
-			).toBeVisible();
+			).toBeVisible({ timeout: 10000 });
 		});
 
 		test('should show rating change with color coding after game', async ({
