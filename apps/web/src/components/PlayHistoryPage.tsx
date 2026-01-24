@@ -241,11 +241,21 @@ export default function PlayHistoryPage() {
 						<table className='min-w-full divide-y divide-white/10'>
 							<thead>
 								<tr className='text-left text-sm uppercase tracking-wider text-purple-200/70'>
-									<th className='py-3 pr-4'>Date</th>
-									<th className='py-3 pr-4'>Variant</th>
-									<th className='py-3 pr-4'>Opponent</th>
-									<th className='py-3 pr-4'>Result</th>
-									<th className='py-3'>Rating</th>
+									<th scope='col' className='py-3 pr-4'>
+										Date
+									</th>
+									<th scope='col' className='py-3 pr-4'>
+										Variant
+									</th>
+									<th scope='col' className='py-3 pr-4'>
+										Opponent
+									</th>
+									<th scope='col' className='py-3 pr-4'>
+										Result
+									</th>
+									<th scope='col' className='py-3'>
+										Rating
+									</th>
 								</tr>
 							</thead>
 							<tbody className='divide-y divide-white/5'>
