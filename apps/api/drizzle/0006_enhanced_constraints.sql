@@ -64,20 +64,6 @@ CREATE TABLE `rating_history__new` (
 );
 --> statement-breakpoint
 
---- Validate existing game_result values before migration
--- Fail fast if any unexpected values are found (data corruption detection)
--- Allowed values: 'win', 'loss', 'draw', 'w', 'l', 'd', 'tie' (case-insensitive)
-WITH invalid_results AS (
-	SELECT DISTINCT game_result
-	FROM rating_history
-	WHERE LOWER(game_result) NOT IN ('win', 'loss', 'draw', 'w', 'l', 'd', 'tie')
-)
-SELECT RAISE(ABORT, 'rating_history contains invalid game_result values: ' || (
-	SELECT GROUP_CONCAT(game_result, ', ')
-	FROM invalid_results
-))
-WHERE EXISTS (SELECT 1 FROM invalid_results);
-
 --- Normalize existing game_result values to the allowed set before inserting
 -- (handles case differences and common legacy variants)
 -- Note: The CASE uses ELSE NULL to make any unhandled values visible downstream
