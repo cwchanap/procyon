@@ -10,8 +10,9 @@ type ServerPlayHistory = {
 	opponentUserId: string | null;
 	opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' | null;
 	// Rating fields (populated after rating system was added)
-	ratingChange?: number;
-	newRating?: number;
+	// Can be null when rating history doesn't exist (e.g., older games)
+	ratingChange: number | null | undefined;
+	newRating: number | null | undefined;
 };
 
 const VARIANT_LABELS: Record<ServerPlayHistory['chessId'], string> = {
@@ -322,8 +323,7 @@ export default function PlayHistoryPage() {
 													</span>
 												</td>
 												<td className='py-4'>
-													{entry.ratingChange !== undefined &&
-													entry.ratingChange !== null ? (
+													{entry.ratingChange != null ? (
 														<div className='flex flex-col'>
 															<span
 																className={`font-mono font-semibold ${
@@ -333,7 +333,7 @@ export default function PlayHistoryPage() {
 																			? 'text-red-400'
 																			: 'text-gray-400'
 																}
-																}`}
+																`}
 															>
 																{entry.ratingChange > 0 ? '+' : ''}
 																{entry.ratingChange}
