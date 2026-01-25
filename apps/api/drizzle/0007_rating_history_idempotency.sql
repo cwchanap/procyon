@@ -13,16 +13,6 @@ WHERE id NOT IN (
 	) AS t
 );
 
--- Fail fast if duplicates still exist (prevents index creation failure)
-WITH dupes AS (
-	SELECT user_id, play_history_id
-	FROM rating_history
-	GROUP BY user_id, play_history_id
-	HAVING COUNT(*) > 1
-)
-SELECT RAISE(ABORT, 'rating_history contains duplicate (user_id, play_history_id) rows')
-WHERE EXISTS (SELECT 1 FROM dupes);
-
 -- Add unique constraint on rating_history (user_id, play_history_id)
 CREATE UNIQUE INDEX IF NOT EXISTS rating_history_user_playhistory_idx
 ON rating_history (user_id, play_history_id);
