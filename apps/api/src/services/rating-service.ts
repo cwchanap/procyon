@@ -13,26 +13,78 @@ import {
 	OpponentLlmId,
 } from '../constants/game';
 
-// ELO constants
-const DEFAULT_PLAYER_RATING = 1200;
-const DEFAULT_AI_RATING = 1400;
+// =============================================================================
+// RATING SYSTEM CONFIGURATION
+// =============================================================================
 
-// K-factor decreases as players play more games (more stable ratings)
+/**
+ * ELO Rating System Configuration
+ *
+ * This configuration defines all constants used in the ELO rating calculations.
+ * The ELO system measures relative skill levels between players.
+ *
+ * Formula: New Rating = Old Rating + K × (Actual Score - Expected Score)
+ * Where Expected Score = 1 / (1 + 10^((Opponent Rating - Player Rating) / scaleFactor))
+ */
+export const RATING_CONFIG = {
+	/** Starting rating for new players */
+	defaultPlayerRating: 1200,
+
+	/** Fallback rating for AI opponents not configured in the database */
+	defaultAiRating: 1400,
+
+	/** Minimum possible rating (floor) to prevent negative ratings */
+	floorRating: 100,
+
+	/** Scale factor for expected score calculation (standard ELO uses 400) */
+	scaleFactor: 400,
+
+	/**
+	 * K-factor configuration - determines how much ratings change per game
+	 * Higher K = faster rating changes, Lower K = more stable ratings
+	 */
+	kFactor: {
+		/** Players with fewer than this many games get provisional K-factor */
+		provisionalThreshold: 30,
+		/** K-factor for provisional players (fast calibration) */
+		provisionalValue: 40,
+
+		/** Players with fewer than this many games (but >= provisional) get settling K-factor */
+		settlingThreshold: 100,
+		/** K-factor for settling players */
+		settlingValue: 24,
+
+		/** K-factor for established players (stable ratings) */
+		establishedValue: 16,
+	},
+
+	/** Default AI ratings by model (used if not configured in database) */
+	defaultAiRatings: {
+		[OpponentLlmId.Gemini25Flash]: 1500,
+		[OpponentLlmId.Gpt4o]: 1400,
+	} as Record<OpponentLlmId, number>,
+} as const;
+
+/**
+ * K-factor decreases as players play more games (more stable ratings)
+ */
 export function getKFactor(gamesPlayed: number): number {
-	if (gamesPlayed < 30) return 40; // Provisional: fast calibration
-	if (gamesPlayed < 100) return 24; // Settling period
-	return 16; // Established: stable rating
+	const { kFactor } = RATING_CONFIG;
+	if (gamesPlayed < kFactor.provisionalThreshold)
+		return kFactor.provisionalValue;
+	if (gamesPlayed < kFactor.settlingThreshold) return kFactor.settlingValue;
+	return kFactor.establishedValue;
 }
 
-// Default AI ratings by model (used if not configured in database)
-const DEFAULT_AI_RATINGS: Record<OpponentLlmId, number> = {
-	[OpponentLlmId.Gemini25Flash]: 1500,
-	[OpponentLlmId.Gpt4o]: 1400,
-};
+// =============================================================================
+// RANK TIER CONFIGURATION
+// =============================================================================
 
-// Rank tier definitions
-// IMPORTANT: RANK_TIERS must be sorted descending by minRating
-// getRankTier() returns the first matching tier, so order matters
+/**
+ * Rank tier definitions
+ * IMPORTANT: RANK_TIERS must be sorted descending by minRating
+ * getRankTier() returns the first matching tier, so order matters
+ */
 export interface RankTier {
 	tier: string;
 	color: string;
@@ -42,7 +94,11 @@ export interface RankTier {
 export const RANK_TIERS: RankTier[] = [
 	{ tier: 'Master', color: 'gold', minRating: 2000 },
 	{ tier: 'Expert', color: 'purple', minRating: 1600 },
-	{ tier: 'Advanced', color: 'blue', minRating: 1200 },
+	{
+		tier: 'Advanced',
+		color: 'blue',
+		minRating: RATING_CONFIG.defaultPlayerRating,
+	},
 	{ tier: 'Intermediate', color: 'green', minRating: 800 },
 	{ tier: 'Beginner', color: 'gray', minRating: 0 },
 ];
@@ -112,13 +168,17 @@ export interface PlayerRatingWithTier extends PlayerRating {
 
 /**
  * Calculate expected score using ELO formula
- * EA = 1 / (1 + 10^((RB - RA) / 400))
+ * EA = 1 / (1 + 10^((RB - RA) / scaleFactor))
  */
 export function calculateExpectedScore(
 	playerRating: number,
 	opponentRating: number
 ): number {
-	return 1 / (1 + Math.pow(10, (opponentRating - playerRating) / 400));
+	return (
+		1 /
+		(1 +
+			Math.pow(10, (opponentRating - playerRating) / RATING_CONFIG.scaleFactor))
+	);
 }
 
 /**
@@ -158,7 +218,7 @@ export function calculateNewRating(
 		kFactor * (actualScore - expectedScore)
 	);
 	const tentativeNewRating = currentRating + tentativeRatingChange;
-	const newRating = Math.max(100, tentativeNewRating); // Floor at 100
+	const newRating = Math.max(RATING_CONFIG.floorRating, tentativeNewRating);
 	const ratingChange = newRating - currentRating;
 
 	return {
@@ -217,12 +277,12 @@ export async function getOrCreatePlayerRating(
 			.values({
 				userId,
 				variantId,
-				rating: DEFAULT_PLAYER_RATING,
+				rating: RATING_CONFIG.defaultPlayerRating,
 				gamesPlayed: 0,
 				wins: 0,
 				losses: 0,
 				draws: 0,
-				peakRating: DEFAULT_PLAYER_RATING,
+				peakRating: RATING_CONFIG.defaultPlayerRating,
 			})
 			.returning();
 
@@ -291,12 +351,12 @@ async function getOrCreateRatingInTransaction(
 			.values({
 				userId,
 				variantId,
-				rating: DEFAULT_PLAYER_RATING,
+				rating: RATING_CONFIG.defaultPlayerRating,
 				gamesPlayed: 0,
 				wins: 0,
 				losses: 0,
 				draws: 0,
-				peakRating: DEFAULT_PLAYER_RATING,
+				peakRating: RATING_CONFIG.defaultPlayerRating,
 			})
 			.returning();
 
@@ -354,7 +414,10 @@ export async function getAiOpponentRating(
 	}
 
 	// Return default if not configured in database
-	return DEFAULT_AI_RATINGS[opponentLlmId] ?? DEFAULT_AI_RATING;
+	return (
+		RATING_CONFIG.defaultAiRatings[opponentLlmId] ??
+		RATING_CONFIG.defaultAiRating
+	);
 }
 
 /**
