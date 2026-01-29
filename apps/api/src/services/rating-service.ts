@@ -62,7 +62,7 @@ export const RATING_CONFIG = {
 	defaultAiRatings: {
 		[OpponentLlmId.Gemini25Flash]: 1500,
 		[OpponentLlmId.Gpt4o]: 1400,
-	} as Record<OpponentLlmId, number>,
+	} as Partial<Record<OpponentLlmId, number>>,
 } as const;
 
 /**
