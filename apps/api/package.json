@@ -9,7 +9,7 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target bun",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
-    "test": "bun test || echo \"No api tests yet; ignoring failure\"",
+    "test": "bun test",
     "test:watch": "bun test --watch",
     "db:generate": "drizzle-kit generate --config=drizzle.config.dev.ts",
     "db:migrate": "bun src/migrate.ts",
