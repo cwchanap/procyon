@@ -33,9 +33,7 @@ const getProcessEnv = (): Record<string, string | undefined> => {
 const isRateLimitDisabled = (): boolean => {
 	const env = getProcessEnv();
 	const nodeEnv = env.NODE_ENV ?? '';
-	return (
-		env.DISABLE_RATE_LIMIT === 'true' || nodeEnv === 'test' || nodeEnv === 'e2e'
-	);
+	return env.DISABLE_RATE_LIMIT === 'true' || nodeEnv === 'e2e';
 };
 
 function maybeCleanup(now: number): void {

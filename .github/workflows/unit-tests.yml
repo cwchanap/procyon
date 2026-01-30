@@ -30,10 +30,10 @@ jobs:
         run: bun install
 
       - name: Unit tests (web)
-        run: bun run test --filter=web -- --coverage --coverage-reporter=lcov
+        run: bun run test --filter=web -- --coverage --coverage-reporter=lcov --coverage-dir=apps/web/coverage
 
       - name: Upload coverage to Codecov (web)
-        if: ${{ hashFiles('apps/web/coverage/lcov.info') != '' }}
+        if: ${{ secrets.CODECOV_TOKEN != '' && hashFiles('apps/web/coverage/lcov.info') != '' }}
         uses: codecov/codecov-action@v4
         with:
           files: apps/web/coverage/lcov.info
@@ -65,10 +65,10 @@ jobs:
         run: bun install
 
       - name: Unit tests (api)
-        run: bun run test --filter=api -- --coverage --coverage-reporter=lcov
+        run: bun run test --filter=api -- --coverage --coverage-reporter=lcov --coverage-dir=apps/api/coverage
 
       - name: Upload coverage to Codecov (api)
-        if: ${{ hashFiles('apps/api/coverage/lcov.info') != '' }}
+        if: ${{ secrets.CODECOV_TOKEN != '' && hashFiles('apps/api/coverage/lcov.info') != '' }}
         uses: codecov/codecov-action@v4
         with:
           files: apps/api/coverage/lcov.info
