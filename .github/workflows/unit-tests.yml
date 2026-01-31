@@ -9,6 +9,8 @@ on:
 jobs:
   test-web:
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,17 +35,19 @@ jobs:
         run: bun run test --filter=web -- --coverage --coverage-reporter=lcov --coverage-dir=apps/web/coverage
 
       - name: Upload coverage to Codecov (web)
-        if: ${{ secrets.CODECOV_TOKEN != '' && hashFiles('apps/web/coverage/lcov.info') != '' }}
+        if: ${{ env.CODECOV_TOKEN != '' && hashFiles('apps/web/coverage/lcov.info') != '' }}
         uses: codecov/codecov-action@v4
         with:
           files: apps/web/coverage/lcov.info
           flags: web
           name: web-unit-tests
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
           fail_ci_if_error: true
 
   test-api:
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -68,11 +72,11 @@ jobs:
         run: bun run test --filter=api -- --coverage --coverage-reporter=lcov --coverage-dir=apps/api/coverage
 
       - name: Upload coverage to Codecov (api)
-        if: ${{ secrets.CODECOV_TOKEN != '' && hashFiles('apps/api/coverage/lcov.info') != '' }}
+        if: ${{ env.CODECOV_TOKEN != '' && hashFiles('apps/api/coverage/lcov.info') != '' }}
         uses: codecov/codecov-action@v4
         with:
           files: apps/api/coverage/lcov.info
           flags: api
           name: api-unit-tests
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
           fail_ci_if_error: true
