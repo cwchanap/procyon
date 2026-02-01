@@ -30,7 +30,7 @@ jobs:
         run: bun install
 
       - name: Unit tests (web)
-        run: bun run test --filter=web -- --coverage --coverage-reporter=lcov --coverage-dir=apps/web/coverage
+        run: bun run test --filter=web -- --coverage --coverage-reporter=lcov --coverage-dir=coverage
 
       - name: Upload coverage to Codecov (web)
         if: ${{ hashFiles('apps/web/coverage/lcov.info') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
@@ -65,7 +65,7 @@ jobs:
         run: bun install
 
       - name: Unit tests (api)
-        run: bun run test --filter=api -- --coverage --coverage-reporter=lcov --coverage-dir=apps/api/coverage
+        run: bun run test --filter=api -- --coverage --coverage-reporter=lcov --coverage-dir=coverage
 
       - name: Upload coverage to Codecov (api)
         if: ${{ hashFiles('apps/api/coverage/lcov.info') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
