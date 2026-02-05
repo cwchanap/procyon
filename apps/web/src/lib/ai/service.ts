@@ -1,11 +1,11 @@
 /* eslint-disable no-console */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { AIConfig, AIResponse } from './types';
 import type {
 	GameVariant,
 	BaseGameState,
 	GamePosition,
 	GamePiece,
+	AnyGameState,
 } from './game-variant-types';
 import { GAME_CONFIGS } from './game-variant-types';
 import { createRuleGuardian, type RuleGuardian } from './rule-guardian';
@@ -15,15 +15,16 @@ export type {
 	BaseGameState,
 	GamePosition,
 	GamePiece,
+	AnyGameState,
 } from './game-variant-types';
 
-export interface GameVariantAdapter {
+export interface GameVariantAdapter<T extends AnyGameState = AnyGameState> {
 	gameVariant: GameVariant;
-	convertGameState(gameState: any): BaseGameState;
-	getAllValidMoves(gameState: any): string[];
-	generatePrompt(gameState: any): string;
-	createVisualBoard(gameState: any): string;
-	analyzeThreatsSafety(gameState: any): string;
+	convertGameState(gameState: T): BaseGameState;
+	getAllValidMoves(gameState: T): string[];
+	generatePrompt(gameState: T): string;
+	createVisualBoard(gameState: T): string;
+	analyzeThreatsSafety(gameState: T): string;
 	positionToAlgebraic(position: GamePosition): string;
 	algebraicToPosition(algebraic: string): GamePosition;
 	getPieceSymbol(piece: GamePiece): string;
@@ -35,10 +36,10 @@ export interface AIInteractionData {
 	parsedResponse: AIResponse | null;
 }
 
-export class UniversalAIService {
+export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 	private config: AIConfig;
-	public adapter: GameVariantAdapter;
-	private ruleGuardian: RuleGuardian;
+	public adapter: GameVariantAdapter<T>;
+	private ruleGuardian: RuleGuardian<T>;
 	private debugCallback?: (
 		type: string,
 		message: string,
@@ -46,10 +47,10 @@ export class UniversalAIService {
 	) => void;
 	private lastInteraction?: AIInteractionData;
 
-	constructor(config: AIConfig, adapter: GameVariantAdapter) {
+	constructor(config: AIConfig, adapter: GameVariantAdapter<T>) {
 		this.config = config;
 		this.adapter = adapter;
-		this.ruleGuardian = createRuleGuardian(adapter.gameVariant);
+		this.ruleGuardian = createRuleGuardian<T>(adapter.gameVariant);
 	}
 
 	setDebugCallback(
@@ -62,7 +63,7 @@ export class UniversalAIService {
 		return this.lastInteraction;
 	}
 
-	async makeMove(gameState: any): Promise<AIResponse | null> {
+	async makeMove(gameState: T): Promise<AIResponse | null> {
 		if (!this.config.enabled || !this.config.apiKey) {
 			return null;
 		}

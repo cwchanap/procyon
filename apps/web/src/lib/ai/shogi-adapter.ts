@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type {
 	GameVariantAdapter,
 	BaseGameState,
@@ -11,6 +9,7 @@ import type {
 	ShogiPosition,
 	ShogiPiece,
 	ShogiMove,
+	ShogiPieceColor,
 } from '../shogi';
 import {
 	SHOGI_FILES,
@@ -20,7 +19,7 @@ import {
 } from '../shogi';
 import { GAME_CONFIGS } from './game-variant-types';
 
-export class ShogiAdapter implements GameVariantAdapter {
+export class ShogiAdapter implements GameVariantAdapter<ShogiGameState> {
 	gameVariant = 'shogi' as const;
 	private config = GAME_CONFIGS.shogi;
 	private debugMode: boolean;
@@ -308,8 +307,10 @@ Your move:`;
 	}
 
 	getPieceSymbol(piece: GamePiece): string {
-		const unicode = PIECE_UNICODE as any;
-		return unicode[piece.type]?.[piece.color] || '?';
+		const pieceType = piece.type as keyof typeof PIECE_UNICODE;
+		const unicode = PIECE_UNICODE[pieceType];
+		if (!unicode) return '?';
+		return unicode[piece.color as keyof typeof unicode] || '?';
 	}
 
 	private formatHandPieces(gameState: ShogiGameState): string {
@@ -556,7 +557,7 @@ Your move:`;
 	}
 
 	private findPiece(
-		board: any[][],
+		board: (ShogiPiece | null)[][],
 		type: string,
 		color: string
 	): { row: number; col: number } | null {
@@ -613,7 +614,7 @@ Your move:`;
 	}
 
 	private evaluateKingSafety(
-		board: any[][],
+		board: (ShogiPiece | null)[][],
 		kingPos: { row: number; col: number },
 		color: string
 	): string {

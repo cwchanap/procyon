@@ -1,5 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import type { GameVariant, GamePosition } from './game-variant-types';
+import type { GameVariant, GamePosition, AnyGameState } from './game-variant-types';
+import type { GameState as ChessGameState } from '../chess/types';
+import type { XiangqiGameState } from '../xiangqi/types';
+import type { ShogiGameState } from '../shogi';
+import type { JungleGameState } from '../jungle/types';
 import type { AIResponse } from './types';
 
 export interface MoveValidationResult {
@@ -8,9 +11,9 @@ export interface MoveValidationResult {
 	suggestedAlternative?: { from: string; to: string };
 }
 
-export interface RuleGuardian {
+export interface RuleGuardian<T extends AnyGameState = AnyGameState> {
 	gameVariant: GameVariant;
-	validateAIMove(gameState: any, aiResponse: AIResponse): MoveValidationResult;
+	validateAIMove(gameState: T, aiResponse: AIResponse): MoveValidationResult;
 	parseMove(algebraicMove: { from: string; to: string }): {
 		fromPos: GamePosition;
 		toPos: GamePosition;
@@ -18,10 +21,10 @@ export interface RuleGuardian {
 	};
 }
 
-export class ChessRuleGuardian implements RuleGuardian {
+export class ChessRuleGuardian implements RuleGuardian<ChessGameState> {
 	gameVariant = 'chess' as const;
 
-	validateAIMove(gameState: any, aiResponse: AIResponse): MoveValidationResult {
+	validateAIMove(gameState: ChessGameState, aiResponse: AIResponse): MoveValidationResult {
 		try {
 			const { fromPos, toPos } = this.parseMove(aiResponse.move);
 
@@ -88,10 +91,10 @@ export class ChessRuleGuardian implements RuleGuardian {
 	}
 }
 
-export class XiangqiRuleGuardian implements RuleGuardian {
+export class XiangqiRuleGuardian implements RuleGuardian<XiangqiGameState> {
 	gameVariant = 'xiangqi' as const;
 
-	validateAIMove(gameState: any, aiResponse: AIResponse): MoveValidationResult {
+	validateAIMove(gameState: XiangqiGameState, aiResponse: AIResponse): MoveValidationResult {
 		try {
 			const { fromPos, toPos } = this.parseMove(aiResponse.move);
 
@@ -187,10 +190,10 @@ export class XiangqiRuleGuardian implements RuleGuardian {
 	}
 }
 
-export class ShogiRuleGuardian implements RuleGuardian {
+export class ShogiRuleGuardian implements RuleGuardian<ShogiGameState> {
 	gameVariant = 'shogi' as const;
 
-	validateAIMove(gameState: any, aiResponse: AIResponse): MoveValidationResult {
+	validateAIMove(gameState: ShogiGameState, aiResponse: AIResponse): MoveValidationResult {
 		try {
 			const { fromPos, toPos, isDrop } = this.parseMove(aiResponse.move);
 
@@ -289,10 +292,10 @@ export class ShogiRuleGuardian implements RuleGuardian {
 	}
 }
 
-export class JungleRuleGuardian implements RuleGuardian {
+export class JungleRuleGuardian implements RuleGuardian<JungleGameState> {
 	gameVariant = 'jungle' as const;
 
-	validateAIMove(gameState: any, aiResponse: AIResponse): MoveValidationResult {
+	validateAIMove(gameState: JungleGameState, aiResponse: AIResponse): MoveValidationResult {
 		try {
 			const { fromPos, toPos } = this.parseMove(aiResponse.move);
 
@@ -359,16 +362,16 @@ export class JungleRuleGuardian implements RuleGuardian {
 	}
 }
 
-export function createRuleGuardian(gameVariant: GameVariant): RuleGuardian {
+export function createRuleGuardian<T extends AnyGameState>(gameVariant: GameVariant): RuleGuardian<T> {
 	switch (gameVariant) {
 		case 'chess':
-			return new ChessRuleGuardian();
+			return new ChessRuleGuardian() as RuleGuardian<T>;
 		case 'xiangqi':
-			return new XiangqiRuleGuardian();
+			return new XiangqiRuleGuardian() as RuleGuardian<T>;
 		case 'shogi':
-			return new ShogiRuleGuardian();
+			return new ShogiRuleGuardian() as RuleGuardian<T>;
 		case 'jungle':
-			return new JungleRuleGuardian();
+			return new JungleRuleGuardian() as RuleGuardian<T>;
 		default:
 			throw new Error(`Unsupported game variant: ${gameVariant}`);
 	}
