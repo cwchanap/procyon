@@ -18,7 +18,8 @@
       "mcp__chrome-devtools__list_pages",
       "Bash(bun run:*)",
       "mcp__sequential-thinking__sequentialthinking",
-      "Bash(bun test:*)"
+      "Bash(bun test:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

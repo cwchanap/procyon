@@ -1,25 +1,25 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type {
 	GameVariantAdapter,
 	BaseGameState,
 	GamePosition,
 	GamePiece,
 } from './service';
-import type { XiangqiGameState, XiangqiMove } from '../xiangqi/types';
+import type { XiangqiGameState, XiangqiMove, XiangqiPiece } from '../xiangqi/types';
 import {
 	XIANGQI_FILES,
 	XIANGQI_RANKS,
 	XIANGQI_SYMBOLS,
 	PALACE_ROWS,
 	PALACE_COLS,
+	XIANGQI_ROWS,
+	XIANGQI_COLS,
 } from '../xiangqi/types';
 import { getPossibleMoves } from '../xiangqi/moves';
 import { isKingInCheck } from '../xiangqi/game';
 import { copyBoard, setPieceAt } from '../xiangqi/board';
 import { GAME_CONFIGS } from './game-variant-types';
 
-export class XiangqiAdapter implements GameVariantAdapter {
+export class XiangqiAdapter implements GameVariantAdapter<XiangqiGameState> {
 	gameVariant = 'xiangqi' as const;
 	private config = GAME_CONFIGS.xiangqi;
 	private debugMode: boolean;
@@ -288,12 +288,12 @@ Your move:`;
 	}
 
 	private findPiece(
-		board: any[][],
+		board: (XiangqiPiece | null)[][],
 		type: string,
 		color: string
 	): { row: number; col: number } | null {
-		for (let row = 0; row < 10; row++) {
-			for (let col = 0; col < 9; col++) {
+		for (let row = 0; row < XIANGQI_ROWS; row++) {
+			for (let col = 0; col < XIANGQI_COLS; col++) {
 				const piece = board[row][col];
 				if (piece && piece.type === type && piece.color === color) {
 					return { row, col };
@@ -303,7 +303,7 @@ Your move:`;
 		return null;
 	}
 
-	private countMaterial(board: any[][], color: string): number {
+	private countMaterial(board: (XiangqiPiece | null)[][], color: string): number {
 		const values = {
 			king: 0, // General
 			advisor: 2,
@@ -315,8 +315,8 @@ Your move:`;
 		};
 		let total = 0;
 
-		for (let row = 0; row < 10; row++) {
-			for (let col = 0; col < 9; col++) {
+		for (let row = 0; row < XIANGQI_ROWS; row++) {
+			for (let col = 0; col < XIANGQI_COLS; col++) {
 				const piece = board[row][col];
 				if (piece && piece.color === color) {
 					total += values[piece.type as keyof typeof values] || 0;
@@ -332,7 +332,7 @@ Your move:`;
 	}
 
 	private evaluateGeneralSafety(
-		board: any[][],
+		board: (XiangqiPiece | null)[][],
 		generalPos: { row: number; col: number },
 		color: string
 	): string {
@@ -364,7 +364,7 @@ Your move:`;
 	}
 
 	private countPiecesBetween(
-		board: any[][],
+		board: (XiangqiPiece | null)[][],
 		pos1: { row: number; col: number },
 		pos2: { row: number; col: number }
 	): number {
@@ -392,13 +392,13 @@ Your move:`;
 		return count;
 	}
 
-	private analyzeCannons(board: any[][], color: string): string {
+	private analyzeCannons(board: (XiangqiPiece | null)[][], color: string): string {
 		let analysis = '';
 		const cannons = [];
 
 		// Find all cannons of current player
-		for (let row = 0; row < 10; row++) {
-			for (let col = 0; col < 9; col++) {
+		for (let row = 0; row < XIANGQI_ROWS; row++) {
+			for (let col = 0; col < XIANGQI_COLS; col++) {
 				const piece = board[row][col];
 				if (piece && piece.type === 'cannon' && piece.color === color) {
 					cannons.push({ row, col });
@@ -414,11 +414,13 @@ Your move:`;
 	}
 
 	getPieceSymbol(piece: GamePiece): string {
-		const symbols = XIANGQI_SYMBOLS as any;
-		return symbols[piece.color]?.[piece.type] || '?';
+		const color = piece.color as keyof typeof XIANGQI_SYMBOLS;
+		const symbols = XIANGQI_SYMBOLS[color];
+		if (!symbols) return '?';
+		return symbols[piece.type as keyof typeof symbols] || '?';
 	}
 
-	private getPieceSymbolForMove(piece: any): string {
+	private getPieceSymbolForMove(piece: XiangqiPiece): string {
 		return this.getPieceSymbol(piece);
 	}
 
