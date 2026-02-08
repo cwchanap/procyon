@@ -1,4 +1,9 @@
-import type { ShogiPiece, ShogiPosition, ShogiPieceColor, ShogiPieceType } from './types';
+import type {
+	ShogiPiece,
+	ShogiPosition,
+	ShogiPieceColor,
+	ShogiPieceType,
+} from './types';
 import { SHOGI_BOARD_SIZE } from './types';
 
 export function createInitialBoard(): (ShogiPiece | null)[][] {
@@ -8,7 +13,15 @@ export function createInitialBoard(): (ShogiPiece | null)[][] {
 
 	// Gote pieces (top side, rows 0-2)
 	const goteBackRow: ShogiPieceType[] = [
-		'lance', 'knight', 'silver', 'gold', 'king', 'gold', 'silver', 'knight', 'lance',
+		'lance',
+		'knight',
+		'silver',
+		'gold',
+		'king',
+		'gold',
+		'silver',
+		'knight',
+		'lance',
 	];
 
 	for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
@@ -16,8 +29,8 @@ export function createInitialBoard(): (ShogiPiece | null)[][] {
 	}
 
 	// Gote bishop and rook
-	board[1]![1] = { type: 'bishop', color: 'gote' };
-	board[1]![7] = { type: 'rook', color: 'gote' };
+	board[1]![1] = { type: 'rook', color: 'gote' };
+	board[1]![7] = { type: 'bishop', color: 'gote' };
 
 	// Gote pawns
 	for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
@@ -30,12 +43,20 @@ export function createInitialBoard(): (ShogiPiece | null)[][] {
 	}
 
 	// Sente bishop and rook
-	board[7]![1] = { type: 'rook', color: 'sente' };
-	board[7]![7] = { type: 'bishop', color: 'sente' };
+	board[7]![1] = { type: 'bishop', color: 'sente' };
+	board[7]![7] = { type: 'rook', color: 'sente' };
 
 	// Sente pieces (bottom side, rows 6-8)
 	const senteBackRow: ShogiPieceType[] = [
-		'lance', 'knight', 'silver', 'gold', 'king', 'gold', 'silver', 'knight', 'lance',
+		'lance',
+		'knight',
+		'silver',
+		'gold',
+		'king',
+		'gold',
+		'silver',
+		'knight',
+		'lance',
 	];
 
 	for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
@@ -105,6 +126,22 @@ export function copyBoard(
 }
 
 export function positionToAlgebraic(pos: ShogiPosition): string {
+	// Validate position bounds
+	if (
+		typeof pos.row !== 'number' ||
+		typeof pos.col !== 'number' ||
+		!Number.isInteger(pos.row) ||
+		!Number.isInteger(pos.col) ||
+		pos.row < 0 ||
+		pos.row > 8 ||
+		pos.col < 0 ||
+		pos.col > 8
+	) {
+		throw new RangeError(
+			`positionToAlgebraic: Invalid position - row: ${pos.row}, col: ${pos.col}. Expected integers in range 0-8.`
+		);
+	}
+
 	// Shogi uses files 9-1 (right to left from sente's perspective)
 	// and ranks a-i (top to bottom)
 	const files = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
@@ -142,7 +179,10 @@ export function getDirection(color: ShogiPieceColor): number {
 /**
  * Check if a position is in the promotion zone for a given color
  */
-export function isInPromotionZone(pos: ShogiPosition, color: ShogiPieceColor): boolean {
+export function isInPromotionZone(
+	pos: ShogiPosition,
+	color: ShogiPieceColor
+): boolean {
 	if (color === 'sente') {
 		return pos.row <= 2; // Rows 0, 1, 2 for sente
 	} else {
@@ -178,15 +218,29 @@ export function mustPromote(piece: ShogiPiece, toPos: ShogiPosition): boolean {
 /**
  * Check if a piece can promote
  */
-export function canPromote(piece: ShogiPiece, fromPos: ShogiPosition, toPos: ShogiPosition): boolean {
+export function canPromote(
+	piece: ShogiPiece,
+	fromPos: ShogiPosition,
+	toPos: ShogiPosition
+): boolean {
 	if (piece.isPromoted) return false;
 
 	// Only certain pieces can promote
-	const promotablePieces: ShogiPieceType[] = ['pawn', 'lance', 'knight', 'silver', 'bishop', 'rook'];
+	const promotablePieces: ShogiPieceType[] = [
+		'pawn',
+		'lance',
+		'knight',
+		'silver',
+		'bishop',
+		'rook',
+	];
 	if (!promotablePieces.includes(piece.type)) return false;
 
 	// Can promote when entering, leaving, or moving within promotion zone
-	return isInPromotionZone(fromPos, piece.color) || isInPromotionZone(toPos, piece.color);
+	return (
+		isInPromotionZone(fromPos, piece.color) ||
+		isInPromotionZone(toPos, piece.color)
+	);
 }
 
 /**

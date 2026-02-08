@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useAuth } from '../lib/auth';
+import { useState, useCallback, useRef } from 'react';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 import type { AIConfig, AIProvider } from '../lib/ai/types';
 import { AI_PROVIDERS } from '../lib/ai/types';
 import type { GameVariant } from '../lib/ai/game-variant-types';
@@ -34,7 +34,7 @@ export function useGameAI({
 	initialConfig,
 	onConfigChange,
 }: UseGameAIOptions): UseGameAIReturn {
-	const { isAuthenticated, getAuthHeaders } = useAuth();
+	const { isAuthenticated } = useAuth();
 
 	const [aiConfig, setAIConfig] = useState<AIConfig>({
 		...initialConfig,
@@ -43,11 +43,19 @@ export function useGameAI({
 	const [providerError, setProviderError] = useState<string | null>(null);
 	const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
+	// AbortController ref for cancelling previous fetch requests
+	const abortControllerRef = useRef<AbortController | null>(null);
+
 	const handleProviderChange = useCallback(
 		async (newProvider: AIProvider) => {
-			const providerInfo = AI_PROVIDERS[newProvider];
-			const fallbackModel =
-				providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
+			// Abort any previous request
+			if (abortControllerRef.current) {
+				abortControllerRef.current.abort();
+			}
+
+			// Create new AbortController for this request
+			const controller = new AbortController();
+			abortControllerRef.current = controller;
 
 			setProviderError(null);
 
@@ -58,13 +66,22 @@ export function useGameAI({
 				}
 
 				setIsLoadingConfig(true);
+
+				// Get fallback model using functional state update
+				const providerInfo = AI_PROVIDERS[newProvider];
+
 				const authHeaders = await getAuthHeaders();
 				const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 					headers: {
 						'Content-Type': 'application/json',
 						...authHeaders,
 					},
+					signal: controller.signal,
 				});
+
+				if (controller.signal.aborted) {
+					return;
+				}
 
 				if (!response.ok) {
 					// eslint-disable-next-line no-console
@@ -73,6 +90,7 @@ export function useGameAI({
 						response.status,
 						response.statusText
 					);
+					setIsLoadingConfig(false);
 					setProviderError(
 						"We couldn't load your saved AI settings. Please try again from AI Settings."
 					);
@@ -99,16 +117,22 @@ export function useGameAI({
 						`No API key found for ${providerInfo.name}. Please add one in the AI Settings menu.`
 					);
 					// Still update provider but with empty key
-					const newConfig: AIConfig = {
-						...aiConfig,
-						provider: newProvider,
-						model: fallbackModel,
-						apiKey: '',
-						enabled: false,
-						gameVariant,
-					};
-					setAIConfig(newConfig);
-					onConfigChange?.(newConfig);
+					setAIConfig(prevConfig => {
+						const fallbackModel =
+							providerInfo.models[0] ||
+							providerInfo.defaultModel ||
+							prevConfig.model;
+						const newConfig: AIConfig = {
+							...prevConfig,
+							provider: newProvider,
+							model: fallbackModel,
+							apiKey: '',
+							enabled: false,
+							gameVariant,
+						};
+						onConfigChange?.(newConfig);
+						return newConfig;
+					});
 					return;
 				}
 
@@ -120,8 +144,13 @@ export function useGameAI({
 							'Content-Type': 'application/json',
 							...authHeaders,
 						},
+						signal: controller.signal,
 					}
 				);
+
+				if (controller.signal.aborted) {
+					return;
+				}
 
 				if (!fullConfigResponse.ok) {
 					// eslint-disable-next-line no-console
@@ -130,6 +159,7 @@ export function useGameAI({
 						fullConfigResponse.status,
 						fullConfigResponse.statusText
 					);
+					setIsLoadingConfig(false);
 					setProviderError(
 						"We couldn't load your API key. Please try again from AI Settings."
 					);
@@ -137,17 +167,27 @@ export function useGameAI({
 				}
 
 				const fullConfig = await fullConfigResponse.json();
-				const newConfig: AIConfig = {
-					...aiConfig,
-					provider: newProvider,
-					model: fullConfig.model || fallbackModel,
-					apiKey: fullConfig.apiKey || '',
-					enabled: true,
-					gameVariant,
-				};
-				setAIConfig(newConfig);
-				onConfigChange?.(newConfig);
+				setAIConfig(prevConfig => {
+					const fallbackModel =
+						providerInfo.models[0] ||
+						providerInfo.defaultModel ||
+						prevConfig.model;
+					const newConfig: AIConfig = {
+						...prevConfig,
+						provider: newProvider,
+						model: fullConfig.model || fallbackModel,
+						apiKey: fullConfig.apiKey || '',
+						enabled: true,
+						gameVariant,
+					};
+					onConfigChange?.(newConfig);
+					return newConfig;
+				});
 			} catch (error) {
+				if (error instanceof Error && error.name === 'AbortError') {
+					// Request was aborted, don't show error
+					return;
+				}
 				// eslint-disable-next-line no-console
 				console.error('Error fetching AI configuration:', error);
 				setProviderError(
@@ -157,7 +197,7 @@ export function useGameAI({
 				setIsLoadingConfig(false);
 			}
 		},
-		[aiConfig, isAuthenticated, getAuthHeaders, gameVariant, onConfigChange]
+		[isAuthenticated, getAuthHeaders, gameVariant, onConfigChange]
 	);
 
 	const handleConfigChange = useCallback(

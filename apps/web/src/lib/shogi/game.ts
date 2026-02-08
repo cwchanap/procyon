@@ -333,7 +333,11 @@ export function isKingInCheck(
 		if (kingPosition) break;
 	}
 
-	if (!kingPosition) return false;
+	if (!kingPosition) {
+		throw new Error(
+			`isKingInCheck: King not found for ${kingColor}. Board may be corrupted.`
+		);
+	}
 
 	// Check if any opponent piece can attack the king
 	const opponentColor: ShogiPieceColor =
@@ -421,16 +425,31 @@ export function makeAIMove(
 	gameState: ShogiGameState,
 	from: string,
 	to: string,
-	promote: boolean = false
+	promote: boolean = false,
+	pieceType?: string
 ): ShogiGameState | null {
 	// Handle drop moves (from = "*")
 	if (from === '*') {
-		// For drop moves, we need the selected hand piece to be set
-		// This should be handled by the AI adapter setting the right piece
+		// For drop moves, we need the piece type to find it in hand
 		const toPos = algebraicToPosition(to);
-		if (!toPos) return null;
+		if (!toPos || !pieceType) return null;
 
-		return makeDrop(gameState, toPos);
+		// Find the piece in the current player's hand
+		const hand =
+			gameState.currentPlayer === 'sente'
+				? gameState.senteHand
+				: gameState.goteHand;
+		const handPiece = hand.find(
+			p => p.type === pieceType && p.color === gameState.currentPlayer
+		);
+		if (!handPiece) return null;
+
+		// Set the selected hand piece and make the drop
+		const stateWithSelection: ShogiGameState = {
+			...gameState,
+			selectedHandPiece: handPiece,
+		};
+		return makeDrop(stateWithSelection, toPos);
 	}
 
 	// Convert algebraic notation to positions

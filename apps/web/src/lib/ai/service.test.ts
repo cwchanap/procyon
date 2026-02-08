@@ -54,12 +54,14 @@ describe('UniversalAIService', () => {
 	describe('updateConfig', () => {
 		test('should update config partially', () => {
 			service.updateConfig({ enabled: true });
-			// Service should accept partial updates without error
+			// Verify enabled was updated
+			expect(service.getConfig().enabled).toBe(true);
 		});
 
 		test('should update config with new model', () => {
 			service.updateConfig({ model: 'gemini-1.5-pro' });
-			// Service should accept model changes without error
+			// Verify model was updated
+			expect(service.getConfig().model).toBe('gemini-1.5-pro');
 		});
 	});
 

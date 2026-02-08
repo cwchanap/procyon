@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '../lib/auth';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 import type { AIConfig } from '../lib/ai/types';
 import type { GameVariant, GameStatus } from '../lib/ai/game-variant-types';
 
@@ -13,7 +13,6 @@ export interface UsePlayHistoryOptions {
 	aiPlayer: string | null | undefined;
 	aiConfig: AIConfig;
 	moveCount: number;
-	currentPlayer: string;
 	getWinnerColor: () => string | null;
 }
 
@@ -33,7 +32,7 @@ export function usePlayHistory({
 	moveCount,
 	getWinnerColor,
 }: UsePlayHistoryOptions): UsePlayHistoryReturn {
-	const { isAuthenticated, getAuthHeaders } = useAuth();
+	const { isAuthenticated } = useAuth();
 	const savedRef = useRef(false);
 
 	const savePlayHistory = useCallback(async () => {
@@ -101,7 +100,6 @@ export function usePlayHistory({
 		gameVariant,
 		moveCount,
 		getWinnerColor,
-		getAuthHeaders,
 	]);
 
 	// Auto-save when game ends
