@@ -1,25 +1,28 @@
-import type { AIResponse } from './types';
-import type { GameVariantAdapter } from './service';
+import type {
+	GameVariantAdapter,
+	BaseGameState,
+	GamePosition,
+	GamePiece,
+} from './service';
 import type {
 	JungleGameState,
 	JunglePosition,
-	JunglePiece,
 	JunglePieceType,
 } from '../jungle/types';
+import { JUNGLE_ROWS, JUNGLE_COLS } from '../jungle/types';
 import { getPossibleMoves } from '../jungle/moves';
 import { getPieceAt } from '../jungle/board';
 
-export class JungleAdapter implements GameVariantAdapter {
+export class JungleAdapter implements GameVariantAdapter<JungleGameState> {
 	gameVariant = 'jungle' as const;
 
 	constructor(_debug: boolean = false) {
 		// Debug functionality handled by universal service
 	}
 
-	convertGameState(gameState: JungleGameState): any {
+	convertGameState(gameState: JungleGameState): BaseGameState {
 		return {
 			board: gameState.board,
-			terrain: gameState.terrain,
 			currentPlayer: gameState.currentPlayer,
 			status: gameState.status,
 			moveHistory: gameState.moveHistory,
@@ -28,10 +31,10 @@ export class JungleAdapter implements GameVariantAdapter {
 		};
 	}
 
-	getAllValidMoves(gameState: any): string[] {
+	getAllValidMoves(gameState: JungleGameState): string[] {
 		const moves: string[] = [];
-		for (let row = 0; row < 9; row++) {
-			for (let col = 0; col < 7; col++) {
+		for (let row = 0; row < JUNGLE_ROWS; row++) {
+			for (let col = 0; col < JUNGLE_COLS; col++) {
 				const piece = getPieceAt(gameState.board, { row, col });
 				if (piece && piece.color === gameState.currentPlayer) {
 					const from = { row, col };
@@ -52,10 +55,10 @@ export class JungleAdapter implements GameVariantAdapter {
 		return moves;
 	}
 
-	createVisualBoard(gameState: any): string {
+	createVisualBoard(gameState: JungleGameState): string {
 		let board = '';
-		for (let row = 0; row < 9; row++) {
-			for (let col = 0; col < 7; col++) {
+		for (let row = 0; row < JUNGLE_ROWS; row++) {
+			for (let col = 0; col < JUNGLE_COLS; col++) {
 				const piece = getPieceAt(gameState.board, { row, col });
 				if (piece) {
 					board += this.getPieceSymbol(piece) + ' ';
@@ -68,7 +71,7 @@ export class JungleAdapter implements GameVariantAdapter {
 		return board;
 	}
 
-	analyzeThreatsSafety(_gameState: any): string {
+	analyzeThreatsSafety(_gameState: JungleGameState): string {
 		return 'Threat analysis not implemented for Jungle chess';
 	}
 
@@ -79,7 +82,7 @@ export class JungleAdapter implements GameVariantAdapter {
 	/**
 	 * Convert Jungle position to algebraic notation
 	 */
-	positionToAlgebraic(position: JunglePosition): string {
+	positionToAlgebraic(position: GamePosition): string {
 		const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
 		const ranks = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
 		const file = files[position.col];
@@ -91,7 +94,7 @@ export class JungleAdapter implements GameVariantAdapter {
 	/**
 	 * Convert algebraic notation to Jungle position
 	 */
-	algebraicToPosition(algebraic: string): JunglePosition {
+	algebraicToPosition(algebraic: string): GamePosition {
 		const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
 		const ranks = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
 		const normalized = algebraic?.trim().toLowerCase();
@@ -115,8 +118,8 @@ export class JungleAdapter implements GameVariantAdapter {
 	/**
 	 * Get piece symbol for display
 	 */
-	getPieceSymbol(piece: JunglePiece): string {
-		const symbols = {
+	getPieceSymbol(piece: GamePiece): string {
+		const symbols: Record<string, Record<string, string>> = {
 			red: {
 				elephant: '象',
 				lion: '獅',
@@ -138,7 +141,7 @@ export class JungleAdapter implements GameVariantAdapter {
 				rat: '鼠',
 			},
 		};
-		return symbols[piece.color][piece.type];
+		return symbols[piece.color]?.[piece.type] || '?';
 	}
 
 	/**
@@ -260,74 +263,6 @@ export class JungleAdapter implements GameVariantAdapter {
 		prompt += `- Parse moves like "a1 a2" as {"from": "a1", "to": "a2"}\n`;
 
 		return prompt;
-	}
-
-	/**
-	 * Parse AI response to extract move
-	 */
-	parseAIResponse(
-		response: string,
-		gameState: JungleGameState
-	): AIResponse | null {
-		try {
-			// Try to extract JSON response first
-			const jsonMatch = response.match(/\{[\s\S]*\}/);
-			if (jsonMatch) {
-				const parsed = JSON.parse(jsonMatch[0]);
-				if (parsed.move && parsed.reasoning) {
-					return {
-						move: {
-							from: parsed.move.from,
-							to: parsed.move.to,
-						},
-						thinking: parsed.reasoning,
-						confidence: parsed.confidence || 0.8,
-					};
-				}
-			}
-
-			// Fallback: extract move from text
-			const movePattern = /([a-g][1-9])\s*(?:\s+|(?:-|->|→))\s*([a-g][1-9])/i;
-			const match = response.match(movePattern);
-
-			if (match) {
-				const from = this.algebraicToPosition(match[1] || 'a1');
-				const to = this.algebraicToPosition(match[2] || 'a1');
-
-				// Validate the move
-				const piece = getPieceAt(gameState.board, from);
-				if (!piece || piece.color !== gameState.currentPlayer) {
-					return null;
-				}
-
-				const possibleMoves = getPossibleMoves(
-					gameState.board,
-					gameState.terrain,
-					from
-				);
-
-				const isValidMove = possibleMoves.some(
-					move => move.row === to.row && move.col === to.col
-				);
-
-				if (!isValidMove) {
-					return null;
-				}
-
-				return {
-					move: {
-						from: this.positionToAlgebraic(from),
-						to: this.positionToAlgebraic(to),
-					},
-					thinking: response.substring(0, 200) + '...',
-					confidence: 0.7,
-				};
-			}
-
-			return null;
-		} catch (_error) {
-			return null;
-		}
 	}
 
 	/**

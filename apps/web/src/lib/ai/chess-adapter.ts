@@ -1,18 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type {
 	GameVariantAdapter,
 	BaseGameState,
 	GamePosition,
 	GamePiece,
 } from './service';
-import type { GameState, Position, Move } from '../chess/types';
-import { RANKS, FILES } from '../chess/types';
+import type { GameState, Position, Move, ChessPiece } from '../chess/types';
+import { RANKS, FILES, BOARD_SIZE } from '../chess/types';
 import { getPossibleMoves, isMoveValid } from '../chess/moves';
 import { isKingInCheck } from '../chess/game';
 import { copyBoard, setPieceAt } from '../chess/board';
 import { GAME_CONFIGS } from './game-variant-types';
 
-export class ChessAdapter implements GameVariantAdapter {
+export class ChessAdapter implements GameVariantAdapter<GameState> {
 	gameVariant = 'chess' as const;
 	private config = GAME_CONFIGS.chess;
 	private debugMode: boolean;
@@ -294,12 +293,12 @@ Rules:
 	}
 
 	private findPiece(
-		board: any[][],
+		board: (ChessPiece | null)[][],
 		type: string,
 		color: string
 	): { row: number; col: number } | null {
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
+		for (let row = 0; row < BOARD_SIZE; row++) {
+			for (let col = 0; col < BOARD_SIZE; col++) {
 				const piece = board[row][col];
 				if (piece && piece.type === type && piece.color === color) {
 					return { row, col };
@@ -309,7 +308,7 @@ Rules:
 		return null;
 	}
 
-	private countMaterial(board: any[][], color: string): number {
+	private countMaterial(board: (ChessPiece | null)[][], color: string): number {
 		const values = {
 			pawn: 1,
 			knight: 3,
@@ -320,8 +319,8 @@ Rules:
 		};
 		let total = 0;
 
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
+		for (let row = 0; row < BOARD_SIZE; row++) {
+			for (let col = 0; col < BOARD_SIZE; col++) {
 				const piece = board[row][col];
 				if (piece && piece.color === color) {
 					total += values[piece.type as keyof typeof values] || 0;
@@ -333,7 +332,7 @@ Rules:
 	}
 
 	private evaluateKingSafety(
-		board: any[][],
+		board: (ChessPiece | null)[][],
 		kingPos: { row: number; col: number },
 		color: string
 	): string {
@@ -357,7 +356,7 @@ Rules:
 		return 'CAUTION - King position needs attention';
 	}
 
-	private getPieceSymbolForMove(piece: any): string {
+	private getPieceSymbolForMove(piece: ChessPiece): string {
 		const symbols = {
 			king: '♔/♚',
 			queen: '♕/♛',
@@ -366,7 +365,7 @@ Rules:
 			knight: '♘/♞',
 			pawn: '♙/♟',
 		};
-		return symbols[piece.type as keyof typeof symbols] || piece.type;
+		return symbols[piece.type] || piece.type;
 	}
 
 	private groupMovesByPiece(moves: string[]): string {
@@ -410,15 +409,15 @@ Rules:
 	}
 
 	private findHangingPieces(
-		board: any[][],
+		board: (ChessPiece | null)[][],
 		color: string
 	): Array<{ piece: string; square: string }> {
 		const opponent = color === 'white' ? 'black' : 'white';
 		const hangingPieces: Array<{ piece: string; square: string }> = [];
 
 		// Find all pieces of the current player
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
+		for (let row = 0; row < BOARD_SIZE; row++) {
+			for (let col = 0; col < BOARD_SIZE; col++) {
 				const piece = board[row][col];
 				if (piece && piece.color === color) {
 					const pos = { row, col };
@@ -441,13 +440,13 @@ Rules:
 	}
 
 	private isSquareAttackedBy(
-		board: any[][],
+		board: (ChessPiece | null)[][],
 		pos: Position,
 		attackerColor: string
 	): boolean {
 		// Check if any piece of attackerColor can attack this square
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
+		for (let row = 0; row < BOARD_SIZE; row++) {
+			for (let col = 0; col < BOARD_SIZE; col++) {
 				const piece = board[row][col];
 				if (piece && piece.color === attackerColor) {
 					const possibleMoves = getPossibleMoves(board, piece, {
@@ -468,14 +467,14 @@ Rules:
 	}
 
 	private isSquareDefendedBy(
-		board: any[][],
+		board: (ChessPiece | null)[][],
 		pos: Position,
 		defenderColor: string
 	): boolean {
 		// Check if any piece of defenderColor can defend this square
 		// (i.e., can move to this square, even if occupied by friendly piece)
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
+		for (let row = 0; row < BOARD_SIZE; row++) {
+			for (let col = 0; col < BOARD_SIZE; col++) {
 				const piece = board[row][col];
 				if (
 					piece &&
@@ -501,14 +500,14 @@ Rules:
 	}
 
 	private findAttackedSquares(
-		board: any[][],
+		board: (ChessPiece | null)[][],
 		attackerColor: string
 	): Position[] {
 		const attackedSquares = new Set<string>();
 
 		// Find all squares that can be attacked by the given color
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
+		for (let row = 0; row < BOARD_SIZE; row++) {
+			for (let col = 0; col < BOARD_SIZE; col++) {
 				const piece = board[row][col];
 				if (piece && piece.color === attackerColor) {
 					const possibleMoves = getPossibleMoves(board, piece, {

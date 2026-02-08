@@ -1,3 +1,8 @@
+import type { GameState as ChessGameState, ChessPiece, Move as ChessMove } from '../chess/types';
+import type { XiangqiGameState, XiangqiPiece, XiangqiMove } from '../xiangqi/types';
+import type { ShogiGameState, ShogiPiece, ShogiMove } from '../shogi';
+import type { JungleGameState, JunglePiece, JungleMove } from '../jungle/types';
+
 export type GameVariant = 'chess' | 'xiangqi' | 'shogi' | 'jungle';
 
 export interface GamePosition {
@@ -5,18 +10,27 @@ export interface GamePosition {
 	col: number;
 }
 
+// Union type for all game pieces
+export type AnyGamePiece = ChessPiece | XiangqiPiece | ShogiPiece | JunglePiece;
+
+// Union type for all game moves
+export type AnyGameMove = ChessMove | XiangqiMove | ShogiMove | JungleMove;
+
+// Union type for all game states
+export type AnyGameState = ChessGameState | XiangqiGameState | ShogiGameState | JungleGameState;
+
+// Generic piece interface for adapter use
 export interface GamePiece {
 	type: string;
 	color: string;
-	[key: string]: any; // Allow for game-specific properties
 }
 
+// Generic move interface for adapter use
 export interface GameMove {
 	from: GamePosition | null; // null for drop moves in shogi
 	to: GamePosition;
 	piece: GamePiece;
 	capturedPiece?: GamePiece;
-	[key: string]: any; // Allow for game-specific properties
 }
 
 export type GameStatus =
@@ -26,6 +40,7 @@ export type GameStatus =
 	| 'stalemate'
 	| 'draw';
 
+// Base game state that all variants share
 export interface BaseGameState {
 	board: (GamePiece | null)[][];
 	currentPlayer: string;
@@ -33,7 +48,30 @@ export interface BaseGameState {
 	moveHistory: GameMove[];
 	selectedSquare: GamePosition | null;
 	possibleMoves: GamePosition[];
-	[key: string]: any; // Allow for game-specific properties
+}
+
+// Type-safe game state mapping
+export interface GameStateMap {
+	chess: ChessGameState;
+	xiangqi: XiangqiGameState;
+	shogi: ShogiGameState;
+	jungle: JungleGameState;
+}
+
+// Type-safe piece mapping
+export interface GamePieceMap {
+	chess: ChessPiece;
+	xiangqi: XiangqiPiece;
+	shogi: ShogiPiece;
+	jungle: JunglePiece;
+}
+
+// Type-safe move mapping
+export interface GameMoveMap {
+	chess: ChessMove;
+	xiangqi: XiangqiMove;
+	shogi: ShogiMove;
+	jungle: JungleMove;
 }
 
 export interface GameVariantConfig {
