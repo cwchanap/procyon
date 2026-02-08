@@ -116,19 +116,6 @@ describe('Shogi Game Engine', () => {
 
 		test('should capture opponent piece and add to hand', () => {
 			// Set up a position where capture is possible
-			const board = copyBoard(state.board);
-			// Place a sente pawn where it can capture a gote pawn
-			setPieceAt(board, { row: 3, col: 4 }, { type: 'pawn', color: 'sente' });
-			setPieceAt(board, { row: 2, col: 4 }, null); // Remove gote pawn for this test
-
-			const _testState: ShogiGameState = {
-				...state,
-				board,
-			};
-
-			// Move to capture position
-			// First advance to row 2 where there might be something to capture
-			// For this test, let's set up a direct capture scenario
 			const captureBoard = copyBoard(state.board);
 			setPieceAt(
 				captureBoard,

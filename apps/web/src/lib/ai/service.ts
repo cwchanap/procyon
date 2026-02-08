@@ -381,4 +381,8 @@ export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 	updateConfig(newConfig: Partial<AIConfig>): void {
 		this.config = { ...this.config, ...newConfig };
 	}
+
+	getConfig(): AIConfig {
+		return { ...this.config };
+	}
 }
