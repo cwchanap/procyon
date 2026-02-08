@@ -117,22 +117,20 @@ export function useGameAI({
 						`No API key found for ${providerInfo.name}. Please add one in the AI Settings menu.`
 					);
 					// Still update provider but with empty key
-					setAIConfig(prevConfig => {
-						const fallbackModel =
-							providerInfo.models[0] ||
-							providerInfo.defaultModel ||
-							prevConfig.model;
-						const newConfig: AIConfig = {
-							...prevConfig,
-							provider: newProvider,
-							model: fallbackModel,
-							apiKey: '',
-							enabled: false,
-							gameVariant,
-						};
-						onConfigChange?.(newConfig);
-						return newConfig;
-					});
+					const fallbackModel =
+						providerInfo.models[0] ||
+						providerInfo.defaultModel ||
+						aiConfig.model;
+					const newConfig: AIConfig = {
+						...aiConfig,
+						provider: newProvider,
+						model: fallbackModel,
+						apiKey: '',
+						enabled: false,
+						gameVariant,
+					};
+					setAIConfig(newConfig);
+					onConfigChange?.(newConfig);
 					return;
 				}
 
@@ -167,22 +165,18 @@ export function useGameAI({
 				}
 
 				const fullConfig = await fullConfigResponse.json();
-				setAIConfig(prevConfig => {
-					const fallbackModel =
-						providerInfo.models[0] ||
-						providerInfo.defaultModel ||
-						prevConfig.model;
-					const newConfig: AIConfig = {
-						...prevConfig,
-						provider: newProvider,
-						model: fullConfig.model || fallbackModel,
-						apiKey: fullConfig.apiKey || '',
-						enabled: true,
-						gameVariant,
-					};
-					onConfigChange?.(newConfig);
-					return newConfig;
-				});
+				const fallbackModel =
+					providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
+				const newConfig: AIConfig = {
+					...aiConfig,
+					provider: newProvider,
+					model: fullConfig.model || fallbackModel,
+					apiKey: fullConfig.apiKey || '',
+					enabled: true,
+					gameVariant,
+				};
+				setAIConfig(newConfig);
+				onConfigChange?.(newConfig);
 			} catch (error) {
 				if (error instanceof Error && error.name === 'AbortError') {
 					// Request was aborted, don't show error
@@ -197,7 +191,7 @@ export function useGameAI({
 				setIsLoadingConfig(false);
 			}
 		},
-		[isAuthenticated, getAuthHeaders, gameVariant, onConfigChange]
+		[isAuthenticated, getAuthHeaders, gameVariant, onConfigChange, aiConfig]
 	);
 
 	const handleConfigChange = useCallback(
