@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { useAuth, getAuthHeaders } from '../lib/auth';
 import type { AIConfig, AIProvider } from '../lib/ai/types';
 import { AI_PROVIDERS } from '../lib/ai/types';
@@ -45,6 +45,16 @@ export function useGameAI({
 
 	// AbortController ref for cancelling previous fetch requests
 	const abortControllerRef = useRef<AbortController | null>(null);
+
+	// Cleanup: Abort any in-flight requests when component unmounts
+	React.useEffect(() => {
+		return () => {
+			if (abortControllerRef.current) {
+				abortControllerRef.current.abort();
+				abortControllerRef.current = null;
+			}
+		};
+	}, []);
 
 	const handleProviderChange = useCallback(
 		async (newProvider: AIProvider) => {
