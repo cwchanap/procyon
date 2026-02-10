@@ -126,21 +126,17 @@ export function useGameAI({
 					setProviderError(
 						`No API key found for ${providerInfo.name}. Please add one in the AI Settings menu.`
 					);
-					// Still update provider but with empty key
+					// Still update provider but with empty key - use functional update to avoid stale closure
 					const fallbackModel =
-						providerInfo.models[0] ||
-						providerInfo.defaultModel ||
-						aiConfig.model;
-					const newConfig: AIConfig = {
-						...aiConfig,
+						providerInfo.models[0] || providerInfo.defaultModel;
+					setAIConfig(prev => ({
+						...prev,
 						provider: newProvider,
-						model: fallbackModel,
+						model: fallbackModel || prev.model,
 						apiKey: '',
 						enabled: false,
 						gameVariant,
-					};
-					setAIConfig(newConfig);
-					onConfigChange?.(newConfig);
+					}));
 					return;
 				}
 
@@ -176,17 +172,25 @@ export function useGameAI({
 
 				const fullConfig = await fullConfigResponse.json();
 				const fallbackModel =
-					providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
-				const newConfig: AIConfig = {
-					...aiConfig,
+					providerInfo.models[0] || providerInfo.defaultModel;
+				setAIConfig(prev => ({
+					...prev,
 					provider: newProvider,
-					model: fullConfig.model || fallbackModel,
+					model: fullConfig.model || fallbackModel || prev.model,
 					apiKey: fullConfig.apiKey || '',
 					enabled: true,
 					gameVariant,
-				};
-				setAIConfig(newConfig);
-				onConfigChange?.(newConfig);
+				}));
+				if (onConfigChange) {
+					onConfigChange({
+						...aiConfig,
+						provider: newProvider,
+						model: fullConfig.model || fallbackModel || aiConfig.model,
+						apiKey: fullConfig.apiKey || '',
+						enabled: true,
+						gameVariant,
+					});
+				}
 			} catch (error) {
 				if (error instanceof Error && error.name === 'AbortError') {
 					// Request was aborted, don't show error
@@ -201,7 +205,7 @@ export function useGameAI({
 				setIsLoadingConfig(false);
 			}
 		},
-		[isAuthenticated, getAuthHeaders, gameVariant, onConfigChange, aiConfig]
+		[isAuthenticated, getAuthHeaders, gameVariant, onConfigChange]
 	);
 
 	const handleConfigChange = useCallback(

@@ -9,7 +9,6 @@ import type {
 	ShogiPosition,
 	ShogiPiece,
 	ShogiMove,
-	ShogiPieceColor,
 } from '../shogi';
 import {
 	SHOGI_FILES,
@@ -18,6 +17,9 @@ import {
 	SHOGI_BOARD_SIZE,
 } from '../shogi';
 import { GAME_CONFIGS } from './game-variant-types';
+import { getPossibleMoves, canDropAt } from '../shogi/moves';
+import { isKingInCheck } from '../shogi/game';
+import { copyBoard, setPieceAt } from '../shogi/board';
 
 export class ShogiAdapter implements GameVariantAdapter<ShogiGameState> {
 	gameVariant = 'shogi' as const;
@@ -36,9 +38,6 @@ export class ShogiAdapter implements GameVariantAdapter<ShogiGameState> {
 			moveHistory: gameState.moveHistory,
 			selectedSquare: gameState.selectedSquare,
 			possibleMoves: gameState.possibleMoves,
-			senteHand: gameState.senteHand,
-			goteHand: gameState.goteHand,
-			selectedHandPiece: gameState.selectedHandPiece,
 		};
 	}
 
@@ -50,14 +49,10 @@ export class ShogiAdapter implements GameVariantAdapter<ShogiGameState> {
 		// Board moves
 		for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
 			for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-				const piece = board[row][col];
+				const piece = board[row]?.[col];
 				if (piece && piece.color === currentPlayer) {
 					const fromPos = { row, col };
-					const possibleMoves = this.getPossibleMovesForPiece(
-						piece,
-						fromPos,
-						board
-					);
+					const possibleMoves = getPossibleMoves(board, piece, fromPos);
 
 					for (const toPos of possibleMoves) {
 						// Validate move doesn't leave king in check
@@ -93,11 +88,9 @@ export class ShogiAdapter implements GameVariantAdapter<ShogiGameState> {
 			const pieceSymbol = this.getPieceSymbol(handPiece);
 			for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
 				for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-					if (
-						!board[row][col] &&
-						this.canDropPiece(handPiece, { row, col }, board)
-					) {
-						const to = this.positionToAlgebraic({ row, col });
+					const dropPos = { row, col };
+					if (!board[row]?.[col] && canDropAt(board, handPiece, dropPos)) {
+						const to = this.positionToAlgebraic(dropPos);
 						validMoves.push(`*${to} (${pieceSymbol} drop)`);
 					}
 				}
@@ -213,7 +206,7 @@ Your move:`;
 			const rankLetter = SHOGI_RANKS[rank];
 			visual += `${rankLetter} │ `;
 			for (let file = 0; file < SHOGI_BOARD_SIZE; file++) {
-				const piece = board[rank][file];
+				const piece = board[rank]?.[file];
 				if (piece) {
 					const symbol = this.getPieceSymbol(piece);
 					const rotated = piece.color === 'gote' ? `v${symbol}` : ` ${symbol}`;
@@ -284,7 +277,29 @@ Your move:`;
 	}
 
 	positionToAlgebraic(position: GamePosition): string {
-		return SHOGI_FILES[position.col] + SHOGI_RANKS[position.row];
+		// Validate position bounds
+		if (
+			typeof position.row !== 'number' ||
+			typeof position.col !== 'number' ||
+			!Number.isInteger(position.row) ||
+			!Number.isInteger(position.col) ||
+			position.row < 0 ||
+			position.row > 8 ||
+			position.col < 0 ||
+			position.col > 8
+		) {
+			throw new RangeError(
+				`positionToAlgebraic: Invalid position - row: ${position.row}, col: ${position.col}. Expected integers in range 0-8.`
+			);
+		}
+		const file = SHOGI_FILES[position.col];
+		const rank = SHOGI_RANKS[position.row];
+		if (!file || !rank) {
+			throw new RangeError(
+				`positionToAlgebraic: Invalid position - file or rank not found for row: ${position.row}, col: ${position.col}.`
+			);
+		}
+		return file + rank;
 	}
 
 	algebraicToPosition(algebraic: string): GamePosition {
@@ -327,144 +342,6 @@ Your move:`;
 		);
 	}
 
-	private getPossibleMovesForPiece(
-		piece: ShogiPiece,
-		position: ShogiPosition,
-		board: (ShogiPiece | null)[][]
-	): ShogiPosition[] {
-		const moves: ShogiPosition[] = [];
-		const { row, col } = position;
-		const direction = piece.color === 'sente' ? -1 : 1;
-
-		const addMoveIfValid = (targetRow: number, targetCol: number) => {
-			if (
-				targetRow >= 0 &&
-				targetRow < SHOGI_BOARD_SIZE &&
-				targetCol >= 0 &&
-				targetCol < SHOGI_BOARD_SIZE
-			) {
-				const targetPiece = board[targetRow][targetCol];
-				if (!targetPiece || targetPiece.color !== piece.color) {
-					moves.push({ row: targetRow, col: targetCol });
-				}
-			}
-		};
-
-		const addSlidingMoves = (rowDelta: number, colDelta: number) => {
-			for (let i = 1; i < SHOGI_BOARD_SIZE; i++) {
-				const targetRow = row + i * rowDelta;
-				const targetCol = col + i * colDelta;
-				if (
-					targetRow < 0 ||
-					targetRow >= SHOGI_BOARD_SIZE ||
-					targetCol < 0 ||
-					targetCol >= SHOGI_BOARD_SIZE
-				) {
-					break;
-				}
-				const targetPiece = board[targetRow][targetCol];
-				if (!targetPiece) {
-					moves.push({ row: targetRow, col: targetCol });
-				} else {
-					if (targetPiece.color !== piece.color) {
-						moves.push({ row: targetRow, col: targetCol });
-					}
-					break;
-				}
-			}
-		};
-
-		switch (piece.type) {
-			case 'pawn':
-				addMoveIfValid(row + direction, col);
-				break;
-
-			case 'lance':
-				addSlidingMoves(direction, 0);
-				break;
-
-			case 'knight':
-				addMoveIfValid(row + 2 * direction, col - 1);
-				addMoveIfValid(row + 2 * direction, col + 1);
-				break;
-
-			case 'silver':
-				addMoveIfValid(row + direction, col - 1);
-				addMoveIfValid(row + direction, col);
-				addMoveIfValid(row + direction, col + 1);
-				addMoveIfValid(row - direction, col - 1);
-				addMoveIfValid(row - direction, col + 1);
-				break;
-
-			case 'gold':
-			case 'promoted_pawn':
-			case 'promoted_lance':
-			case 'promoted_knight':
-			case 'promoted_silver':
-				// Gold general movement
-				addMoveIfValid(row + direction, col - 1);
-				addMoveIfValid(row + direction, col);
-				addMoveIfValid(row + direction, col + 1);
-				addMoveIfValid(row, col - 1);
-				addMoveIfValid(row, col + 1);
-				addMoveIfValid(row - direction, col);
-				break;
-
-			case 'bishop':
-				addSlidingMoves(1, 1);
-				addSlidingMoves(1, -1);
-				addSlidingMoves(-1, 1);
-				addSlidingMoves(-1, -1);
-				break;
-
-			case 'rook':
-				addSlidingMoves(1, 0);
-				addSlidingMoves(-1, 0);
-				addSlidingMoves(0, 1);
-				addSlidingMoves(0, -1);
-				break;
-
-			case 'horse': // Promoted bishop
-				// Bishop moves
-				addSlidingMoves(1, 1);
-				addSlidingMoves(1, -1);
-				addSlidingMoves(-1, 1);
-				addSlidingMoves(-1, -1);
-				// King moves
-				addMoveIfValid(row + 1, col);
-				addMoveIfValid(row - 1, col);
-				addMoveIfValid(row, col + 1);
-				addMoveIfValid(row, col - 1);
-				break;
-
-			case 'dragon': // Promoted rook
-				// Rook moves
-				addSlidingMoves(1, 0);
-				addSlidingMoves(-1, 0);
-				addSlidingMoves(0, 1);
-				addSlidingMoves(0, -1);
-				// King moves
-				addMoveIfValid(row + 1, col + 1);
-				addMoveIfValid(row + 1, col - 1);
-				addMoveIfValid(row - 1, col + 1);
-				addMoveIfValid(row - 1, col - 1);
-				break;
-
-			case 'king':
-				// King moves in all 8 directions
-				for (let dr = -1; dr <= 1; dr++) {
-					for (let dc = -1; dc <= 1; dc++) {
-						if (dr !== 0 || dc !== 0) {
-							addMoveIfValid(row + dr, col + dc);
-						}
-					}
-				}
-				break;
-		}
-
-		return moves;
-	}
-
 	private canPiecePromote(
 		piece: ShogiPiece,
 		from: ShogiPosition,
@@ -500,29 +377,6 @@ Your move:`;
 				(piece.type === 'knight' && to.row >= 7)
 			);
 		}
-	}
-
-	private canDropPiece(
-		piece: ShogiPiece,
-		position: ShogiPosition,
-		board: (ShogiPiece | null)[][]
-	): boolean {
-		// Basic drop rules - no immediate checkmate with pawn drops, no double pawns, etc.
-		if (piece.type === 'pawn') {
-			// Check for existing pawn on same file
-			for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
-				const existingPiece = board[row][position.col];
-				if (
-					existingPiece &&
-					existingPiece.type === 'pawn' &&
-					existingPiece.color === piece.color &&
-					!existingPiece.isPromoted
-				) {
-					return false;
-				}
-			}
-		}
-		return true;
 	}
 
 	private formatMoveHistory(moves: ShogiMove[]): string {
@@ -563,7 +417,7 @@ Your move:`;
 	): { row: number; col: number } | null {
 		for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
 			for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-				const piece = board[row][col];
+				const piece = board[row]?.[col];
 				if (piece && piece.type === type && piece.color === color) {
 					return { row, col };
 				}
@@ -595,7 +449,7 @@ Your move:`;
 		// Count pieces on board
 		for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
 			for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-				const piece = gameState.board[row][col];
+				const piece = gameState.board[row]?.[col];
 				if (piece && piece.color === color) {
 					total += values[piece.type as keyof typeof values] || 0;
 				}
@@ -649,7 +503,7 @@ Your move:`;
 		let piecesInZone = 0;
 		for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
 			for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-				const piece = board[row][col];
+				const piece = board[row]?.[col];
 				if (
 					piece &&
 					piece.color === currentPlayer &&
@@ -681,16 +535,19 @@ Your move:`;
 
 			if (move.includes('drop')) {
 				const pieceMatch = move.match(/\(([^)]+) drop\)/);
-				pieceType = pieceMatch ? `${pieceMatch[1]} (drop)` : 'Drop';
+				pieceType = pieceMatch?.[1] ? `${pieceMatch[1]} (drop)` : 'Drop';
 			} else {
 				const pieceMatch = move.match(/\(([^)]+)\)/);
-				pieceType = pieceMatch ? pieceMatch[1] : 'Unknown';
+				pieceType = pieceMatch?.[1] || 'Unknown';
 			}
 
 			if (!groups[pieceType]) {
 				groups[pieceType] = [];
 			}
-			groups[pieceType].push(move.replace(/\s*\([^)]+\)/, ''));
+			const group = groups[pieceType];
+			if (group) {
+				group.push(move.replace(/\s*\([^)]+\)/, ''));
+			}
 		}
 
 		let result = '';
@@ -714,50 +571,15 @@ Your move:`;
 		}
 
 		// Create test board to check if move leaves king in check
-		const testBoard = board.map(row => [...row]);
-		testBoard[from.row][from.col] = null;
-		testBoard[to.row][to.col] = piece;
+		const testBoard = copyBoard(board);
+		setPieceAt(testBoard, from, null);
+		setPieceAt(testBoard, to, piece);
 
-		const wouldBeInCheck = this.isKingInCheck(testBoard, currentPlayer);
+		const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
 		if (wouldBeInCheck) {
 			return false;
 		}
 
 		return true;
-	}
-
-	private isKingInCheck(
-		board: (ShogiPiece | null)[][],
-		kingColor: ShogiPieceColor
-	): boolean {
-		const kingPosition = this.findPiece(board, 'king', kingColor);
-		if (!kingPosition) return false;
-
-		const opponentColor = kingColor === 'sente' ? 'gote' : 'sente';
-
-		// Check if any opponent piece can attack the king
-		for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
-			for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-				const piece = board[row][col];
-				if (piece && piece.color === opponentColor) {
-					const from = { row, col };
-					const possibleMoves = this.getPossibleMovesForPiece(
-						piece,
-						from,
-						board
-					);
-					if (
-						possibleMoves.some(
-							move =>
-								move.row === kingPosition.row && move.col === kingPosition.col
-						)
-					) {
-						return true;
-					}
-				}
-			}
-		}
-
-		return false;
 	}
 }

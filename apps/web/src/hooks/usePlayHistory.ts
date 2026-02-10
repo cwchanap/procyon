@@ -54,8 +54,6 @@ export function usePlayHistory({
 			return;
 		}
 
-		savedRef.current = true;
-
 		const winnerColor = getWinnerColor();
 		let result: 'win' | 'loss' | 'draw';
 
@@ -84,11 +82,16 @@ export function usePlayHistory({
 				}),
 			});
 
-			if (!response.ok) {
+			if (response.ok) {
+				// Only mark as saved if the request was successful
+				savedRef.current = true;
+			} else {
 				// eslint-disable-next-line no-console
 				console.error('Failed to save play history:', response.statusText);
 			}
 		} catch (error) {
+			// Reset savedRef to allow retry
+			savedRef.current = false;
 			// eslint-disable-next-line no-console
 			console.error('Error saving play history:', error);
 		}
