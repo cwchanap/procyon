@@ -43,6 +43,10 @@ export function useGameAI({
 	const [providerError, setProviderError] = useState<string | null>(null);
 	const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
+	// Ref to track latest aiConfig for callbacks without stale closures
+	const aiConfigRef = useRef<AIConfig>(aiConfig);
+	aiConfigRef.current = aiConfig;
+
 	// AbortController ref for cancelling previous fetch requests
 	const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -129,14 +133,14 @@ export function useGameAI({
 					// Still update provider but with empty key - use functional update to avoid stale closure
 					const fallbackModel =
 						providerInfo.models[0] || providerInfo.defaultModel;
-					setAIConfig(prev => ({
-						...prev,
+					const fallbackConfig = {
 						provider: newProvider,
-						model: fallbackModel || prev.model,
+						model: fallbackModel,
 						apiKey: '',
 						enabled: false,
 						gameVariant,
-					}));
+					} as const;
+					setAIConfig(prev => ({ ...prev, ...fallbackConfig }));
 					return;
 				}
 
@@ -173,22 +177,18 @@ export function useGameAI({
 				const fullConfig = await fullConfigResponse.json();
 				const fallbackModel =
 					providerInfo.models[0] || providerInfo.defaultModel;
-				setAIConfig(prev => ({
-					...prev,
+				const newConfig = {
 					provider: newProvider,
-					model: fullConfig.model || fallbackModel || prev.model,
+					model: fullConfig.model || fallbackModel,
 					apiKey: fullConfig.apiKey || '',
 					enabled: true,
 					gameVariant,
-				}));
+				} as const;
+				setAIConfig(prev => ({ ...prev, ...newConfig }));
 				if (onConfigChange) {
 					onConfigChange({
-						...aiConfig,
-						provider: newProvider,
-						model: fullConfig.model || fallbackModel || aiConfig.model,
-						apiKey: fullConfig.apiKey || '',
-						enabled: true,
-						gameVariant,
+						...aiConfigRef.current,
+						...newConfig,
 					});
 				}
 			} catch (error) {
