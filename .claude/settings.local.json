@@ -19,7 +19,7 @@
       "Bash(bun run:*)",
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(bun test:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc*)"
     ],
     "deny": [],
     "ask": []
