@@ -376,6 +376,11 @@ export function canDropAt(
 	piece: ShogiPiece,
 	pos: ShogiPosition
 ): boolean {
+	// Position must be within board bounds
+	if (!isValidPosition(pos)) {
+		return false;
+	}
+
 	// Cannot drop on occupied square
 	if (!isSquareEmpty(board, pos)) {
 		return false;
