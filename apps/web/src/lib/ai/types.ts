@@ -53,6 +53,7 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderInfo> = {
 export interface AIMove {
 	from: string;
 	to: string;
+	pieceType?: string; // Required for drop moves in Shogi (e.g., 'pawn', 'lance')
 	reasoning?: string;
 }
 

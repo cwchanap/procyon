@@ -5,6 +5,7 @@ import {
 	selectSquare,
 	selectHandPiece,
 	clearSelection,
+	makeAIMove as makeShogiAIMove,
 	SHOGI_BOARD_SIZE,
 	SHOGI_FILES,
 	SHOGI_RANKS,
@@ -354,15 +355,28 @@ const ShogiGame: React.FC = () => {
 						// Parse AI move from algebraic notation
 						if (aiResponse.move.from === '*') {
 							// Drop move
-							const _toPos = algebraicToPosition(aiResponse.move.to);
-							// TODO: Implement drop move logic
-							// console.log('AI drop move:', aiResponse.move.to);
+							const to = aiResponse.move.to;
+							const pieceType = aiResponse.move.pieceType;
+
+							if (pieceType) {
+								// Apply drop move using makeShogiAIMove
+								const moveResult = makeShogiAIMove(
+									gameState,
+									'*',
+									to,
+									false,
+									pieceType
+								);
+								if (moveResult) {
+									setGameState(moveResult);
+								}
+							}
 						} else {
 							// Regular move
 							const fromPos = algebraicToPosition(aiResponse.move.from);
 							const toPos = algebraicToPosition(aiResponse.move.to);
 
-							// Apply the move using shogi game logic
+							// Apply move using shogi game logic
 							const moveResult = selectSquare(gameState, fromPos);
 							if (moveResult.selectedSquare) {
 								const finalResult = selectSquare(moveResult, toPos);

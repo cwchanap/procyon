@@ -1,9 +1,25 @@
-import type { GameVariant, GamePosition, AnyGameState } from './game-variant-types';
+import type {
+	GameVariant,
+	GamePosition,
+	AnyGameState,
+} from './game-variant-types';
 import type { GameState as ChessGameState } from '../chess/types';
 import type { XiangqiGameState } from '../xiangqi/types';
-import type { ShogiGameState } from '../shogi';
+import type { ShogiGameState, ShogiPieceType } from '../shogi';
 import type { JungleGameState } from '../jungle/types';
 import type { AIResponse } from './types';
+
+// Valid Shogi piece types for drops (base types only, no promoted pieces)
+const VALID_SHOGI_PIECE_TYPES: ShogiPieceType[] = [
+	'king',
+	'rook',
+	'bishop',
+	'gold',
+	'silver',
+	'knight',
+	'lance',
+	'pawn',
+];
 
 export interface MoveValidationResult {
 	isValid: boolean;
@@ -24,7 +40,10 @@ export interface RuleGuardian<T extends AnyGameState = AnyGameState> {
 export class ChessRuleGuardian implements RuleGuardian<ChessGameState> {
 	gameVariant = 'chess' as const;
 
-	validateAIMove(gameState: ChessGameState, aiResponse: AIResponse): MoveValidationResult {
+	validateAIMove(
+		gameState: ChessGameState,
+		aiResponse: AIResponse
+	): MoveValidationResult {
 		try {
 			const { fromPos, toPos } = this.parseMove(aiResponse.move);
 
@@ -94,7 +113,10 @@ export class ChessRuleGuardian implements RuleGuardian<ChessGameState> {
 export class XiangqiRuleGuardian implements RuleGuardian<XiangqiGameState> {
 	gameVariant = 'xiangqi' as const;
 
-	validateAIMove(gameState: XiangqiGameState, aiResponse: AIResponse): MoveValidationResult {
+	validateAIMove(
+		gameState: XiangqiGameState,
+		aiResponse: AIResponse
+	): MoveValidationResult {
 		try {
 			const { fromPos, toPos } = this.parseMove(aiResponse.move);
 
@@ -193,7 +215,10 @@ export class XiangqiRuleGuardian implements RuleGuardian<XiangqiGameState> {
 export class ShogiRuleGuardian implements RuleGuardian<ShogiGameState> {
 	gameVariant = 'shogi' as const;
 
-	validateAIMove(gameState: ShogiGameState, aiResponse: AIResponse): MoveValidationResult {
+	validateAIMove(
+		gameState: ShogiGameState,
+		aiResponse: AIResponse
+	): MoveValidationResult {
 		try {
 			const { fromPos, toPos, isDrop } = this.parseMove(aiResponse.move);
 
@@ -211,6 +236,44 @@ export class ShogiRuleGuardian implements RuleGuardian<ShogiGameState> {
 					return {
 						isValid: false,
 						reason: 'Cannot drop on occupied square',
+					};
+				}
+
+				// Check if pieceType is provided and valid
+				if (!aiResponse.move.pieceType) {
+					return {
+						isValid: false,
+						reason: 'Drop moves must include pieceType (e.g., "pawn", "lance")',
+					};
+				}
+
+				// Validate pieceType
+				if (
+					!VALID_SHOGI_PIECE_TYPES.includes(
+						aiResponse.move.pieceType as ShogiPieceType
+					)
+				) {
+					return {
+						isValid: false,
+						reason: `Invalid pieceType for drop: ${aiResponse.move.pieceType}. Must be one of: ${VALID_SHOGI_PIECE_TYPES.join(', ')}`,
+					};
+				}
+
+				// Check if the player has this piece in hand
+				const hand =
+					gameState.currentPlayer === 'sente'
+						? gameState.senteHand
+						: gameState.goteHand;
+				const pieceInHand = hand.find(
+					p =>
+						p.type === aiResponse.move.pieceType &&
+						p.color === gameState.currentPlayer
+				);
+
+				if (!pieceInHand) {
+					return {
+						isValid: false,
+						reason: `You don't have a ${aiResponse.move.pieceType} in your hand`,
 					};
 				}
 
@@ -295,7 +358,10 @@ export class ShogiRuleGuardian implements RuleGuardian<ShogiGameState> {
 export class JungleRuleGuardian implements RuleGuardian<JungleGameState> {
 	gameVariant = 'jungle' as const;
 
-	validateAIMove(gameState: JungleGameState, aiResponse: AIResponse): MoveValidationResult {
+	validateAIMove(
+		gameState: JungleGameState,
+		aiResponse: AIResponse
+	): MoveValidationResult {
 		try {
 			const { fromPos, toPos } = this.parseMove(aiResponse.move);
 
@@ -362,7 +428,9 @@ export class JungleRuleGuardian implements RuleGuardian<JungleGameState> {
 	}
 }
 
-export function createRuleGuardian<T extends AnyGameState>(gameVariant: GameVariant): RuleGuardian<T> {
+export function createRuleGuardian<T extends AnyGameState>(
+	gameVariant: GameVariant
+): RuleGuardian<T> {
 	switch (gameVariant) {
 		case 'chess':
 			return new ChessRuleGuardian() as RuleGuardian<T>;

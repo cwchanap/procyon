@@ -4,7 +4,7 @@ import type {
 	ShogiPieceColor,
 	ShogiPieceType,
 } from './types';
-import { SHOGI_BOARD_SIZE } from './types';
+import { SHOGI_BOARD_SIZE, SHOGI_FILES, SHOGI_RANKS } from './types';
 
 export function createInitialBoard(): (ShogiPiece | null)[][] {
 	const board: (ShogiPiece | null)[][] = Array(SHOGI_BOARD_SIZE)
@@ -133,35 +133,39 @@ export function positionToAlgebraic(pos: ShogiPosition): string {
 		!Number.isInteger(pos.row) ||
 		!Number.isInteger(pos.col) ||
 		pos.row < 0 ||
-		pos.row > 8 ||
+		pos.row >= SHOGI_BOARD_SIZE ||
 		pos.col < 0 ||
-		pos.col > 8
+		pos.col >= SHOGI_BOARD_SIZE
 	) {
 		throw new RangeError(
-			`positionToAlgebraic: Invalid position - row: ${pos.row}, col: ${pos.col}. Expected integers in range 0-8.`
+			`positionToAlgebraic: Invalid position - row: ${pos.row}, col: ${pos.col}. Expected integers in range 0-${SHOGI_BOARD_SIZE - 1}.`
 		);
 	}
 
-	// Shogi uses files 9-1 (right to left from sente's perspective)
-	// and ranks a-i (top to bottom)
-	const files = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
-	const ranks = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
-	return `${files[pos.col]}${ranks[pos.row]}`;
+	// Use exported constants for files and ranks
+	const file = SHOGI_FILES[pos.col];
+	const rank = SHOGI_RANKS[pos.row];
+
+	if (!file || !rank) {
+		throw new RangeError(
+			`positionToAlgebraic: Invalid position - file or rank not found for row: ${pos.row}, col: ${pos.col}.`
+		);
+	}
+
+	return file + rank;
 }
 
 export function algebraicToPosition(algebraic: string): ShogiPosition | null {
 	if (!algebraic || algebraic.length !== 2) return null;
-
-	const files = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
-	const ranks = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
 
 	const file = algebraic[0];
 	const rank = algebraic[1]?.toLowerCase();
 
 	if (!file || !rank) return null;
 
-	const col = files.indexOf(file);
-	const row = ranks.indexOf(rank);
+	// Use exported constants
+	const col = SHOGI_FILES.indexOf(file);
+	const row = SHOGI_RANKS.indexOf(rank);
 
 	if (col === -1 || row === -1) return null;
 
