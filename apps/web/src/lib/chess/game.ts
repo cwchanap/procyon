@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import type {
 	GameState,
 	Position,
@@ -207,17 +206,10 @@ export function makeAIMove(
 	const toPos = algebraicToPosition(to);
 
 	if (!fromPos || !toPos) {
-		console.error(`❌ Position conversion failed: ${from} → ${to}`);
 		return null;
 	}
 
-	const result = makeMove(gameState, fromPos, toPos);
-
-	if (!result) {
-		console.error(`❌ makeMove failed for ${from} → ${to}`);
-	}
-
-	return result;
+	return makeMove(gameState, fromPos, toPos);
 }
 
 export function setAIThinking(
