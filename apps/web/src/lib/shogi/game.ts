@@ -4,6 +4,7 @@ import type {
 	ShogiMove,
 	ShogiPieceColor,
 	ShogiPiece,
+	ShogiPieceType,
 } from './types';
 import { SHOGI_BOARD_SIZE } from './types';
 import {
@@ -486,7 +487,7 @@ export function makeAIMove(
 	from: string,
 	to: string,
 	promote: boolean = false,
-	pieceType?: string
+	pieceType?: ShogiPieceType
 ): ShogiGameState | null {
 	// Handle drop moves (from = "*")
 	if (from === '*') {
