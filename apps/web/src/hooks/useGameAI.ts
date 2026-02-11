@@ -50,6 +50,9 @@ export function useGameAI({
 	// AbortController ref for cancelling previous fetch requests
 	const abortControllerRef = useRef<AbortController | null>(null);
 
+	// Request token ref to track the latest config load request
+	const configRequestTokenRef = useRef<number>(0);
+
 	// Cleanup: Abort any in-flight requests when component unmounts
 	React.useEffect(() => {
 		return () => {
@@ -70,6 +73,9 @@ export function useGameAI({
 			// Create new AbortController for this request
 			const controller = new AbortController();
 			abortControllerRef.current = controller;
+
+			// Increment request token to track this as the latest request
+			const thisRequestToken = ++configRequestTokenRef.current;
 
 			setProviderError(null);
 
@@ -142,13 +148,12 @@ export function useGameAI({
 						enabled: false,
 						gameVariant,
 					} as const;
-					setAIConfig(prev => {
-						const merged = { ...prev, ...fallbackConfig };
-						if (onConfigChange) {
-							onConfigChange(merged);
-						}
-						return merged;
-					});
+					// Compute merged config outside updater to ensure single onConfigChange call
+					const merged = { ...aiConfigRef.current, ...fallbackConfig };
+					setAIConfig(() => merged);
+					if (onConfigChange) {
+						onConfigChange(merged);
+					}
 					return;
 				}
 
@@ -209,7 +214,10 @@ export function useGameAI({
 					'An error occurred while loading AI settings. Please try again.'
 				);
 			} finally {
-				setIsLoadingConfig(false);
+				// Only clear loading state if this is still the latest request
+				if (thisRequestToken === configRequestTokenRef.current) {
+					setIsLoadingConfig(false);
+				}
 			}
 		},
 		[isAuthenticated, getAuthHeaders, gameVariant, onConfigChange]

@@ -359,8 +359,27 @@ const ShogiGame: React.FC = () => {
 							const pieceType = aiResponse.move.pieceType;
 
 							if (!pieceType) {
-								// eslint-disable-next-line no-console
-								console.warn('AI drop move missing pieceType, ignoring drop');
+								// Log detailed error with aiResponse for debugging
+								console.error(
+									'[Shogi AI] Invalid drop move: missing pieceType',
+									{ aiResponse, move: aiResponse.move }
+								);
+
+								// Add to debug moves if debug mode is enabled
+								if (isDebugMode) {
+									setAIDebugMoves(prev => [
+										...prev,
+										createAIMove(
+											`Invalid drop (missing pieceType): ${aiResponse.move.to}`,
+											true,
+											undefined,
+											`Missing pieceType in AI response: ${JSON.stringify(
+												aiResponse.move
+											)}`
+										),
+									]);
+								}
+								// Explicit no-op: state remains unchanged, error is logged
 							} else {
 								// Apply drop move using makeShogiAIMove
 								const moveResult = makeShogiAIMove(
