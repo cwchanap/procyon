@@ -358,7 +358,10 @@ const ShogiGame: React.FC = () => {
 							const to = aiResponse.move.to;
 							const pieceType = aiResponse.move.pieceType;
 
-							if (pieceType) {
+							if (!pieceType) {
+								// eslint-disable-next-line no-console
+								console.warn('AI drop move missing pieceType, ignoring drop');
+							} else {
 								// Apply drop move using makeShogiAIMove
 								const moveResult = makeShogiAIMove(
 									gameState,
@@ -369,6 +372,11 @@ const ShogiGame: React.FC = () => {
 								);
 								if (moveResult) {
 									setGameState(moveResult);
+								} else {
+									// eslint-disable-next-line no-console
+									console.warn(
+										`Failed to apply AI drop move: pieceType=${pieceType}, to=${to}`
+									);
 								}
 							}
 						} else {

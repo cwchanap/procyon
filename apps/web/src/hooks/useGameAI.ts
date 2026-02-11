@@ -132,7 +132,9 @@ export function useGameAI({
 					);
 					// Still update provider but with empty key - use functional update to avoid stale closure
 					const fallbackModel =
-						providerInfo.models[0] || providerInfo.defaultModel;
+						providerInfo.models[0] ||
+						providerInfo.defaultModel ||
+						'gpt-4o-mini';
 					const fallbackConfig = {
 						provider: newProvider,
 						model: fallbackModel,
@@ -140,7 +142,13 @@ export function useGameAI({
 						enabled: false,
 						gameVariant,
 					} as const;
-					setAIConfig(prev => ({ ...prev, ...fallbackConfig }));
+					setAIConfig(prev => {
+						const merged = { ...prev, ...fallbackConfig };
+						if (onConfigChange) {
+							onConfigChange(merged);
+						}
+						return merged;
+					});
 					return;
 				}
 
@@ -176,7 +184,7 @@ export function useGameAI({
 
 				const fullConfig = await fullConfigResponse.json();
 				const fallbackModel =
-					providerInfo.models[0] || providerInfo.defaultModel;
+					providerInfo.models[0] || providerInfo.defaultModel || 'gpt-4o-mini';
 				const newConfig = {
 					provider: newProvider,
 					model: fullConfig.model || fallbackModel,
@@ -184,15 +192,12 @@ export function useGameAI({
 					enabled: true,
 					gameVariant,
 				} as const;
-				// Merge config once and use it for both state update and callback
-				// to avoid potential stale closure issues
-				setAIConfig(prev => {
-					const merged = { ...prev, ...newConfig };
-					if (onConfigChange) {
-						onConfigChange(merged);
-					}
-					return merged;
-				});
+				// Compute merged config outside updater to ensure single onConfigChange call
+				const merged = { ...aiConfigRef.current, ...newConfig };
+				if (onConfigChange) {
+					onConfigChange(merged);
+				}
+				setAIConfig(() => merged);
 			} catch (error) {
 				if (error instanceof Error && error.name === 'AbortError') {
 					// Request was aborted, don't show error

@@ -7,8 +7,8 @@ export type ShogiPieceType =
 	| 'knight'
 	| 'lance'
 	| 'pawn'
-	| 'dragon'      // Promoted rook
-	| 'horse'       // Promoted bishop
+	| 'dragon' // Promoted rook
+	| 'horse' // Promoted bishop
 	| 'promoted_silver'
 	| 'promoted_knight'
 	| 'promoted_lance'
@@ -48,6 +48,11 @@ export interface ShogiGameState {
 	senteHand: ShogiPiece[];
 	goteHand: ShogiPiece[];
 	selectedHandPiece: ShogiPiece | null;
+	pendingPromotion?: {
+		piece: ShogiPiece;
+		from: ShogiPosition;
+		to: ShogiPosition;
+	};
 }
 
 export const SHOGI_BOARD_SIZE = 9;

@@ -106,22 +106,31 @@ export function selectSquare(
 		);
 
 		if (isValidDestination) {
-			// Determine promotion: promote if entering promotion zone
-			// Shogi pieces promote when moving into, within, or out of the promotion zone
-			// Promotion zone is the last 3 rows for each player
-			const shouldPromote = canPromote(selectedPiece, from, position);
+			// Determine promotion: only auto-promote if forced
 			const forcedPromotion = mustPromote(selectedPiece, position);
+			const canPromotePiece = canPromote(selectedPiece, from, position);
 
-			const moveResult = makeMove(
-				gameState,
-				from,
-				position,
-				shouldPromote || forcedPromotion
-			);
-
-			// If move is valid, return the new state; otherwise clear selection
-			if (moveResult) {
-				return moveResult;
+			if (forcedPromotion) {
+				// Forced promotion - apply move with promotion immediately
+				const moveResult = makeMove(gameState, from, position, true);
+				if (moveResult) {
+					return moveResult;
+				}
+			} else if (canPromotePiece) {
+				// Optional promotion - set pendingPromotion and let UI prompt user
+				return {
+					...gameState,
+					selectedSquare: null,
+					possibleMoves: [],
+					selectedHandPiece: null,
+					pendingPromotion: { piece: selectedPiece, from, to: position },
+				};
+			} else {
+				// No promotion possible - make regular move
+				const moveResult = makeMove(gameState, from, position, false);
+				if (moveResult) {
+					return moveResult;
+				}
 			}
 		}
 	}
@@ -158,6 +167,7 @@ export function clearSelection(gameState: ShogiGameState): ShogiGameState {
 		selectedSquare: null,
 		possibleMoves: [],
 		selectedHandPiece: null,
+		pendingPromotion: undefined,
 	};
 }
 
@@ -256,6 +266,7 @@ export function makeMove(
 		senteHand: newSenteHand,
 		goteHand: newGoteHand,
 		status: 'playing',
+		pendingPromotion: undefined,
 	};
 
 	// Update status based on check/checkmate
@@ -343,6 +354,7 @@ function makeDrop(
 		senteHand: newSenteHand,
 		goteHand: newGoteHand,
 		status: 'playing',
+		pendingPromotion: undefined,
 	};
 
 	newState.status = getGameStatus(newState);
@@ -454,6 +466,19 @@ function hasAnyLegalMoves(gameState: ShogiGameState): boolean {
 	}
 
 	return false;
+}
+
+export function confirmPromotion(
+	gameState: ShogiGameState,
+	promote: boolean
+): ShogiGameState | null {
+	if (!gameState.pendingPromotion) {
+		return null;
+	}
+
+	const { from, to } = gameState.pendingPromotion;
+	const moveResult = makeMove(gameState, from, to, promote);
+	return moveResult;
 }
 
 export function makeAIMove(

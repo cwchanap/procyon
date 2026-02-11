@@ -9,9 +9,8 @@ import type { ShogiGameState, ShogiPieceType } from '../shogi';
 import type { JungleGameState } from '../jungle/types';
 import type { AIResponse } from './types';
 
-// Valid Shogi piece types for drops (base types only, no promoted pieces)
+// Valid Shogi piece types for drops (base types only, no promoted pieces, king cannot be dropped)
 const VALID_SHOGI_PIECE_TYPES: ShogiPieceType[] = [
-	'king',
 	'rook',
 	'bishop',
 	'gold',
