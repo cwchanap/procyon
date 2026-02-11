@@ -184,13 +184,15 @@ export function useGameAI({
 					enabled: true,
 					gameVariant,
 				} as const;
-				setAIConfig(prev => ({ ...prev, ...newConfig }));
-				if (onConfigChange) {
-					onConfigChange({
-						...aiConfigRef.current,
-						...newConfig,
-					});
-				}
+				// Merge config once and use it for both state update and callback
+				// to avoid potential stale closure issues
+				setAIConfig(prev => {
+					const merged = { ...prev, ...newConfig };
+					if (onConfigChange) {
+						onConfigChange(merged);
+					}
+					return merged;
+				});
 			} catch (error) {
 				if (error instanceof Error && error.name === 'AbortError') {
 					// Request was aborted, don't show error
