@@ -95,8 +95,43 @@ export function selectSquare(
 		};
 	}
 
-	// Otherwise, the click might be a move destination (handled elsewhere)
-	return gameState;
+	// If a square is selected, try to make a move to the clicked position
+	const from = gameState.selectedSquare;
+	const selectedPiece = getPieceAt(gameState.board, from);
+
+	if (selectedPiece) {
+		// Check if this is a valid move destination
+		const isValidDestination = gameState.possibleMoves.some(
+			move => move.row === position.row && move.col === position.col
+		);
+
+		if (isValidDestination) {
+			// Determine promotion: promote if entering promotion zone
+			// Shogi pieces promote when moving into, within, or out of the promotion zone
+			// Promotion zone is the last 3 rows for each player
+			const shouldPromote = canPromote(selectedPiece, from, position);
+			const forcedPromotion = mustPromote(selectedPiece, position);
+
+			const moveResult = makeMove(
+				gameState,
+				from,
+				position,
+				shouldPromote || forcedPromotion
+			);
+
+			// If move is valid, return the new state; otherwise clear selection
+			if (moveResult) {
+				return moveResult;
+			}
+		}
+	}
+
+	// Invalid move destination, clear selection
+	return {
+		...gameState,
+		selectedSquare: null,
+		possibleMoves: [],
+	};
 }
 
 export function selectHandPiece(
