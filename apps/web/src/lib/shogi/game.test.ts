@@ -5,6 +5,7 @@ import {
 	makeMove,
 	isKingInCheck,
 	getGameStatus,
+	confirmPromotion,
 } from './game';
 import { createInitialBoard, getPieceAt, copyBoard, setPieceAt } from './board';
 import { getPossibleMoves, canDropAt } from './moves';
@@ -305,6 +306,131 @@ describe('Shogi Game Engine', () => {
 		test('should return playing for normal position', () => {
 			const state = createInitialGameState();
 			expect(getGameStatus(state)).toBe('playing');
+		});
+	});
+
+	describe('Promotion behavior', () => {
+		test('should auto-promote when forced (pawn/lance at last row)', () => {
+			// Set up a pawn about to enter the last row (row 0 for sente)
+			const testBoard = copyBoard(createInitialBoard());
+			// Keep the kings but clear pawns
+			setPieceAt(testBoard, { row: 6, col: 4 }, null); // Remove sente pawn
+			// Move gote king to safe location so we don't overwrite it
+			setPieceAt(testBoard, { row: 0, col: 4 }, null); // Remove from col 4
+			setPieceAt(
+				testBoard,
+				{ row: 0, col: 0 },
+				{ type: 'king', color: 'gote' }
+			); // Place king at a1
+			// Place sente pawn at row 1, one move away from last row
+			setPieceAt(
+				testBoard,
+				{ row: 1, col: 4 },
+				{ type: 'pawn', color: 'sente' }
+			);
+
+			const testState: ShogiGameState = {
+				...createInitialGameState(),
+				board: testBoard,
+			};
+
+			// Select the pawn
+			const selectedState = selectSquare(testState, { row: 1, col: 4 });
+			expect(selectedState.selectedSquare).toEqual({ row: 1, col: 4 });
+
+			// Move to last row - should auto-promote (forced)
+			const moveState = selectSquare(selectedState, { row: 0, col: 4 });
+			expect(moveState).not.toBeNull();
+			expect(moveState.moveHistory.length).toBe(1);
+			expect(moveState.moveHistory[0]?.isPromotion).toBe(true);
+		});
+
+		test('should set pendingPromotion for optional promotion', () => {
+			// Set up a pawn entering promotion zone (row 2) but not last row
+			const testBoard = copyBoard(createInitialBoard());
+			setPieceAt(
+				testBoard,
+				{ row: 3, col: 4 },
+				{ type: 'pawn', color: 'sente' }
+			);
+			setPieceAt(testBoard, { row: 2, col: 4 }, null);
+
+			const testState: ShogiGameState = {
+				...createInitialGameState(),
+				board: testBoard,
+			};
+
+			// Select the pawn
+			const selectedState = selectSquare(testState, { row: 3, col: 4 });
+			expect(selectedState.selectedSquare).toEqual({ row: 3, col: 4 });
+
+			// Move to promotion zone - should set pendingPromotion, not auto-promote
+			const moveState = selectSquare(selectedState, { row: 2, col: 4 });
+			expect(moveState.pendingPromotion).toBeDefined();
+			expect(moveState.pendingPromotion?.piece.type).toBe('pawn');
+			expect(moveState.moveHistory.length).toBe(0); // Move not yet made
+		});
+
+		test('confirmPromotion should apply move with promotion', () => {
+			// Set up pending promotion
+			const testBoard = copyBoard(createInitialBoard());
+			setPieceAt(
+				testBoard,
+				{ row: 3, col: 4 },
+				{ type: 'pawn', color: 'sente' }
+			);
+			setPieceAt(testBoard, { row: 2, col: 4 }, null);
+
+			const pendingState: ShogiGameState = {
+				...createInitialGameState(),
+				board: testBoard,
+				pendingPromotion: {
+					piece: { type: 'pawn', color: 'sente' },
+					from: { row: 3, col: 4 },
+					to: { row: 2, col: 4 },
+				},
+			};
+
+			// Confirm promotion
+			const promotedState = confirmPromotion(pendingState, true);
+			expect(promotedState).not.toBeNull();
+			expect(promotedState?.moveHistory.length).toBe(1);
+			expect(promotedState?.moveHistory[0]?.isPromotion).toBe(true);
+			expect(promotedState?.pendingPromotion).toBeUndefined();
+		});
+
+		test('confirmPromotion should apply move without promotion', () => {
+			// Set up pending promotion
+			const testBoard = copyBoard(createInitialBoard());
+			setPieceAt(
+				testBoard,
+				{ row: 3, col: 4 },
+				{ type: 'pawn', color: 'sente' }
+			);
+			setPieceAt(testBoard, { row: 2, col: 4 }, null);
+
+			const pendingState: ShogiGameState = {
+				...createInitialGameState(),
+				board: testBoard,
+				pendingPromotion: {
+					piece: { type: 'pawn', color: 'sente' },
+					from: { row: 3, col: 4 },
+					to: { row: 2, col: 4 },
+				},
+			};
+
+			// Decline promotion
+			const notPromotedState = confirmPromotion(pendingState, false);
+			expect(notPromotedState).not.toBeNull();
+			expect(notPromotedState?.moveHistory.length).toBe(1);
+			expect(notPromotedState?.moveHistory[0]?.isPromotion).toBe(false);
+			expect(notPromotedState?.pendingPromotion).toBeUndefined();
+		});
+
+		test('confirmPromotion should return null when no pending promotion', () => {
+			const state = createInitialGameState();
+			const result = confirmPromotion(state, true);
+			expect(result).toBeNull();
 		});
 	});
 });

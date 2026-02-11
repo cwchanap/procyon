@@ -189,18 +189,8 @@ For drop moves, include pieceType:
     "confidence": 85
 }
 
- For drop moves, use:
-{
-    "move": {
-        "from": "*",
-        "to": "5e",
-        "pieceType": "pawn"
-    },
-    "reasoning": "Explanation of why you're dropping this piece",
-    "confidence": 85
-}
+ IMPORTANT: For drop moves, you MUST include "pieceType" with one of: 'pawn', 'lance', 'knight', 'silver', 'gold', 'bishop', 'rook'
 
-IMPORTANT: For drop moves, you MUST include "pieceType" with one of: 'pawn', 'lance', 'knight', 'silver', 'gold', 'bishop', 'rook', 'king'
 
 🚨 ABSOLUTE REQUIREMENT: You MUST choose ONLY from the valid moves listed above.
    - Use the shogi coordinate system (files 9-1, ranks a-i)

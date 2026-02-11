@@ -13,7 +13,7 @@ import type { AIResponse } from './types';
 import type { ChessPiece } from '../chess/types';
 import type { XiangqiPiece } from '../xiangqi/types';
 import type { ShogiPiece } from '../shogi';
-import type { JunglePiece } from '../jungle/types';
+import type { JunglePiece, JungleTerrain } from '../jungle/types';
 
 describe('Rule Guardian System', () => {
 	describe('createRuleGuardian', () => {
@@ -239,6 +239,8 @@ describe('Rule Guardian System', () => {
 		let gameState: {
 			board: (ShogiPiece | null)[][];
 			currentPlayer: 'sente' | 'gote';
+			senteHand: ShogiPiece[];
+			goteHand: ShogiPiece[];
 		};
 
 		beforeEach(() => {
@@ -247,16 +249,18 @@ describe('Rule Guardian System', () => {
 				board: Array(9)
 					.fill(null)
 					.map(() => Array(9).fill(null)),
-				currentPlayer: 'black',
+				currentPlayer: 'sente',
+				senteHand: [{ type: 'pawn', color: 'sente' }],
+				goteHand: [],
 			};
 		});
 
 		test('should validate regular move', () => {
-			gameState.board[6][4] = { type: 'pawn', color: 'black' };
+			gameState.board[6][4] = { type: 'pawn', color: 'sente' };
 
 			const response: AIResponse = {
 				move: { from: '5g', to: '5f' },
-				reasoning: 'Pawn advance',
+				confidence: 0.8,
 			};
 
 			const result = guardian.validateAIMove(gameState, response);
@@ -265,8 +269,8 @@ describe('Rule Guardian System', () => {
 
 		test('should validate drop move', () => {
 			const response: AIResponse = {
-				move: { from: '*', to: '5e' },
-				reasoning: 'Piece drop',
+				move: { from: '*', to: '5e', pieceType: 'pawn' },
+				confidence: 0.8,
 			};
 
 			const result = guardian.validateAIMove(gameState, response);
@@ -274,11 +278,11 @@ describe('Rule Guardian System', () => {
 		});
 
 		test('should reject drop on occupied square', () => {
-			gameState.board[4][4] = { type: 'pawn', color: 'black' };
+			gameState.board[4][4] = { type: 'pawn', color: 'sente' };
 
 			const response: AIResponse = {
-				move: { from: '*', to: '5e' },
-				reasoning: 'Drop on occupied',
+				move: { from: '*', to: '5e', pieceType: 'pawn' },
+				confidence: 0.8,
 			};
 
 			const result = guardian.validateAIMove(gameState, response);
@@ -303,7 +307,7 @@ describe('Rule Guardian System', () => {
 		test('should reject move from empty square', () => {
 			const response: AIResponse = {
 				move: { from: '5e', to: '5d' },
-				reasoning: 'Empty square',
+				confidence: 0.8,
 			};
 
 			const result = guardian.validateAIMove(gameState, response);
@@ -312,11 +316,11 @@ describe('Rule Guardian System', () => {
 		});
 
 		test('should reject moving opponent piece', () => {
-			gameState.board[4][4] = { type: 'pawn', color: 'white' };
+			gameState.board[4][4] = { type: 'pawn', color: 'gote' };
 
 			const response: AIResponse = {
 				move: { from: '5e', to: '5d' },
-				reasoning: 'Wrong color',
+				confidence: 0.8,
 			};
 
 			const result = guardian.validateAIMove(gameState, response);
@@ -326,13 +330,27 @@ describe('Rule Guardian System', () => {
 
 		test('should validate bounds for shogi board', () => {
 			const response: AIResponse = {
-				move: { from: '9a', to: '0a' }, // Invalid rank
-				reasoning: 'Out of bounds',
+				move: { from: '9a', to: '0a' },
+				confidence: 0.8,
 			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);
 			expect(result.reason).toContain('out of bounds');
+		});
+
+		test('should reject king drop - king cannot be dropped', () => {
+			// Add king to sente's hand
+			gameState.senteHand.push({ type: 'king', color: 'sente' });
+
+			const response: AIResponse = {
+				move: { from: '*', to: '5e', pieceType: 'king' },
+				confidence: 0.8,
+			};
+
+			const result = guardian.validateAIMove(gameState, response);
+			expect(result.isValid).toBe(false);
+			expect(result.reason).toContain('Invalid pieceType for drop');
 		});
 	});
 
@@ -340,7 +358,7 @@ describe('Rule Guardian System', () => {
 		let guardian: JungleRuleGuardian;
 		let gameState: {
 			board: (JunglePiece | null)[][];
-			terrain: any[][];
+			terrain: JungleTerrain[][];
 			currentPlayer: 'red' | 'blue';
 		};
 
