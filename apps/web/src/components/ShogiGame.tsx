@@ -5,6 +5,7 @@ import {
 	selectSquare,
 	selectHandPiece,
 	clearSelection,
+	confirmPromotion,
 	makeAIMove as makeShogiAIMove,
 	SHOGI_BOARD_SIZE,
 	SHOGI_FILES,
@@ -497,6 +498,16 @@ const ShogiGame: React.FC = () => {
 		[gameState]
 	);
 
+	const handlePromotionChoice = useCallback(
+		(promote: boolean) => {
+			const newGameState = confirmPromotion(gameState, promote);
+			if (newGameState) {
+				setGameState(newGameState);
+			}
+		},
+		[gameState]
+	);
+
 	const resetGame = useCallback(() => {
 		setGameState(createInitialGameState());
 		setGameStarted(false);
@@ -838,6 +849,35 @@ const ShogiGame: React.FC = () => {
 					</>
 				)}
 			</div>
+
+			{/* Promotion Dialog */}
+			{gameState.pendingPromotion && (
+				<div className='fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50'>
+					<div className='glass-effect p-6 rounded-2xl border border-white border-opacity-30 max-w-sm mx-4'>
+						<h3 className='text-xl font-bold text-white mb-2 text-center'>
+							成りますか？
+						</h3>
+						<p className='text-orange-200 text-center mb-4'>
+							Promote your{' '}
+							{gameState.pendingPromotion.piece.type.replace('_', ' ')}?
+						</p>
+						<div className='flex gap-4 justify-center'>
+							<button
+								onClick={() => handlePromotionChoice(true)}
+								className='bg-gradient-to-r from-orange-500 to-red-500 hover:from-red-500 hover:to-orange-500 px-6 py-2 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
+							>
+								✓ Promote
+							</button>
+							<button
+								onClick={() => handlePromotionChoice(false)}
+								className='glass-effect px-6 py-2 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
+							>
+								✗ Decline
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 
 			{gameMode === 'ai' ? (
 				<div className='flex justify-center'>

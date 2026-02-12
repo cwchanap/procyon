@@ -379,9 +379,9 @@ export function isKingInCheck(
 	}
 
 	if (!kingPosition) {
-		throw new Error(
-			`isKingInCheck: King not found for ${kingColor}. Board may be corrupted.`
-		);
+		// King not found - treat as losing position (in check / captured)
+		// This handles edge cases gracefully without throwing
+		return true;
 	}
 
 	// Check if any opponent piece can attack the king

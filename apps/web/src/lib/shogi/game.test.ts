@@ -346,6 +346,17 @@ describe('Shogi Game Engine', () => {
 
 			expect(isKingInCheck(board, 'sente')).toBe(false);
 		});
+
+		test('should return true when king is missing (losing position)', () => {
+			const board: (ShogiPiece | null)[][] = Array(SHOGI_BOARD_SIZE)
+				.fill(null)
+				.map(() => Array(SHOGI_BOARD_SIZE).fill(null));
+
+			// Empty board - no king present
+			// Should return true (treated as losing position) instead of throwing
+			expect(isKingInCheck(board, 'sente')).toBe(true);
+			expect(isKingInCheck(board, 'gote')).toBe(true);
+		});
 	});
 
 	describe('getGameStatus', () => {
