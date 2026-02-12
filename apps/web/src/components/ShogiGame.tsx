@@ -421,7 +421,16 @@ const ShogiGame: React.FC = () => {
 			const timer = setTimeout(makeAIMove, 1000);
 			return () => clearTimeout(timer);
 		}
-	}, [gameState, gameMode, gameStarted, aiPlayer, aiService, isAIThinking]);
+	}, [
+		gameState,
+		gameMode,
+		gameStarted,
+		aiPlayer,
+		aiService,
+		isAIThinking,
+		isDebugMode,
+		createAIMove,
+	]);
 
 	const algebraicToPosition = useCallback(
 		(algebraic: string): ShogiPosition => {

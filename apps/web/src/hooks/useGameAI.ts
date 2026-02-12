@@ -137,10 +137,15 @@ export function useGameAI({
 						`No API key found for ${providerInfo.name}. Please add one in the AI Settings menu.`
 					);
 					// Still update provider but with empty key - use functional update to avoid stale closure
+					// AI_PROVIDERS guarantees models[0] and defaultModel for all providers
 					const fallbackModel =
-						providerInfo.models[0] ||
-						providerInfo.defaultModel ||
-						'gpt-4o-mini';
+						providerInfo.models[0] || providerInfo.defaultModel;
+					if (!fallbackModel) {
+						throw new Error(
+							`No valid model found for provider: ${newProvider}. ` +
+								`Provider configuration is missing both models and defaultModel.`
+						);
+					}
 					const fallbackConfig = {
 						provider: newProvider,
 						model: fallbackModel,
