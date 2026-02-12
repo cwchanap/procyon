@@ -334,4 +334,128 @@ test.describe('Shogi AI Integration', () => {
 		// Check hand areas show no captured pieces initially
 		await expect(page.getByText('持ち駒なし').first()).toBeVisible(); // "No captured pieces"
 	});
+
+	test('should have keyboard accessible promotion modal', async ({
+		page,
+		context,
+	}) => {
+		// Start the game
+		await page.getByRole('button', { name: '▶️ Start' }).click();
+		await page.waitForFunction(() => {
+			const global = window as any;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			return state && state.hasGameStarted === true && state.gameMode === 'ai';
+		});
+
+		// Mock AI responses to get a piece into promotion position
+		await context.route('**/api/ai/**', async (route: any) => {
+			const mockResponse = {
+				move: {
+					from: '9a',
+					to: '9d', // Move lance towards promotion zone
+					reasoning: 'Advancing lance for promotion opportunity',
+				},
+				confidence: 85,
+				thinking: 'Moving lance toward promotion zone.',
+			};
+
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify(mockResponse),
+			});
+		});
+
+		// Manually trigger promotion dialog for testing
+		// This simulates a piece that can be promoted
+		await page.evaluate(() => {
+			const global = window as any;
+			if (global.__PROCYON_DEBUG_SHOGI_STATE__) {
+				const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+				// Manually set pending promotion state
+				state.gameState.pendingPromotion = {
+					from: { file: 9, rank: 'd' },
+					to: { file: 9, rank: 'e' },
+					piece: { type: 'pawn', owner: 'sente' },
+				};
+			}
+		});
+
+		// Wait for promotion dialog to appear
+		await expect(
+			page.getByRole('dialog', { name: '成りますか？' })
+		).toBeVisible();
+
+		// Check that dialog has proper ARIA attributes
+		const dialog = page.locator('[role="dialog"]');
+		await expect(dialog).toHaveAttribute('aria-modal', 'true');
+		await expect(dialog).toHaveAttribute('aria-labelledby');
+
+		// Check that Promote button is focused (autoFocus)
+		const promoteButton = page.getByRole('button', { name: 'Promote' });
+		await expect(promoteButton).toBeFocused();
+
+		// Check that Decline button has proper aria-label
+		const declineButton = page.getByRole('button', { name: 'Decline' });
+		await expect(declineButton).toHaveAttribute(
+			'aria-label',
+			'Decline promotion'
+		);
+
+		// Test Enter key to promote
+		await page.keyboard.press('Enter');
+		// Dialog should close after pressing Enter
+		await expect(dialog).not.toBeVisible();
+
+		// Re-open dialog for Escape key test
+		await page.evaluate(() => {
+			const global = window as any;
+			if (global.__PROCYON_DEBUG_SHOGI_STATE__) {
+				const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+				state.gameState.pendingPromotion = {
+					from: { file: 9, rank: 'd' },
+					to: { file: 9, rank: 'e' },
+					piece: { type: 'pawn', owner: 'sente' },
+				};
+			}
+		});
+
+		await expect(dialog).toBeVisible();
+
+		// Test Escape key to decline
+		await page.keyboard.press('Escape');
+		// Dialog should close after pressing Escape
+		await expect(dialog).not.toBeVisible();
+
+		// Test focus trapping with Tab key
+		await page.evaluate(() => {
+			const global = window as any;
+			if (global.__PROCYON_DEBUG_SHOGI_STATE__) {
+				const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+				state.gameState.pendingPromotion = {
+					from: { file: 9, rank: 'd' },
+					to: { file: 9, rank: 'e' },
+					piece: { type: 'pawn', owner: 'sente' },
+				};
+			}
+		});
+
+		await expect(dialog).toBeVisible();
+
+		// Press Tab to move focus between buttons
+		await page.keyboard.press('Tab');
+		await expect(declineButton).toBeFocused();
+
+		// Press Tab again to cycle back to first button
+		await page.keyboard.press('Tab');
+		await expect(promoteButton).toBeFocused();
+
+		// Press Shift+Tab to move backwards
+		await page.keyboard.press('Shift+Tab');
+		await expect(declineButton).toBeFocused();
+
+		// Clean up by closing dialog
+		await page.keyboard.press('Escape');
+		await expect(dialog).not.toBeVisible();
+	});
 });

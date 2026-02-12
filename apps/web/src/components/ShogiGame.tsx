@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { ShogiGameState, ShogiPosition, ShogiPiece } from '../lib/shogi';
 import {
 	createInitialGameState,
@@ -53,6 +53,10 @@ const ShogiGame: React.FC = () => {
 	const [_isLoadingConfig, setIsLoadingConfig] = useState(true);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [hasGameEnded, setHasGameEnded] = useState(false);
+
+	// Refs for promotion modal focus management
+	const modalRef = useRef<HTMLDivElement>(null);
+	const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -508,6 +512,67 @@ const ShogiGame: React.FC = () => {
 		[gameState]
 	);
 
+	// Focus management for promotion modal
+	useEffect(() => {
+		if (gameState.pendingPromotion && modalRef.current) {
+			// Store the currently focused element
+			previousActiveElementRef.current = document.activeElement as HTMLElement;
+
+			// Move focus into the dialog
+			modalRef.current.focus();
+
+			// Focus trap: ensure Tab key cycles within the dialog
+			const handleTabKey = (e: KeyboardEvent) => {
+				if (!modalRef.current) return;
+
+				const focusableElements =
+					modalRef.current.querySelectorAll<HTMLElement>(
+						'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+					);
+				const firstElement = focusableElements[0];
+				const lastElement = focusableElements[focusableElements.length - 1];
+
+				if (e.key === 'Tab') {
+					if (e.shiftKey) {
+						// Shift+Tab
+						if (document.activeElement === firstElement) {
+							e.preventDefault();
+							lastElement?.focus();
+						}
+					} else {
+						// Tab
+						if (document.activeElement === lastElement) {
+							e.preventDefault();
+							firstElement?.focus();
+						}
+					}
+				}
+			};
+
+			document.addEventListener('keydown', handleTabKey);
+
+			return () => {
+				document.removeEventListener('keydown', handleTabKey);
+				// Restore focus to the previously focused element when dialog closes
+				previousActiveElementRef.current?.focus();
+			};
+		}
+	}, [gameState.pendingPromotion]);
+
+	// Keyboard event handler for promotion modal
+	const handleModalKeyDown = useCallback(
+		(e: React.KeyboardEvent) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				handlePromotionChoice(true);
+			} else if (e.key === 'Escape') {
+				e.preventDefault();
+				handlePromotionChoice(false);
+			}
+		},
+		[handlePromotionChoice]
+	);
+
 	const resetGame = useCallback(() => {
 		setGameState(createInitialGameState());
 		setGameStarted(false);
@@ -852,9 +917,22 @@ const ShogiGame: React.FC = () => {
 
 			{/* Promotion Dialog */}
 			{gameState.pendingPromotion && (
-				<div className='fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50'>
-					<div className='glass-effect p-6 rounded-2xl border border-white border-opacity-30 max-w-sm mx-4'>
-						<h3 className='text-xl font-bold text-white mb-2 text-center'>
+				<div
+					className='fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50'
+					role='dialog'
+					aria-modal='true'
+					aria-labelledby='promotion-title'
+				>
+					<div
+						ref={modalRef}
+						tabIndex={-1}
+						onKeyDown={handleModalKeyDown}
+						className='glass-effect p-6 rounded-2xl border border-white border-opacity-30 max-w-sm mx-4'
+					>
+						<h3
+							id='promotion-title'
+							className='text-xl font-bold text-white mb-2 text-center'
+						>
 							成りますか？
 						</h3>
 						<p className='text-orange-200 text-center mb-4'>
@@ -864,12 +942,15 @@ const ShogiGame: React.FC = () => {
 						<div className='flex gap-4 justify-center'>
 							<button
 								onClick={() => handlePromotionChoice(true)}
+								autoFocus
+								aria-label='Promote piece'
 								className='bg-gradient-to-r from-orange-500 to-red-500 hover:from-red-500 hover:to-orange-500 px-6 py-2 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
 							>
 								✓ Promote
 							</button>
 							<button
 								onClick={() => handlePromotionChoice(false)}
+								aria-label='Decline promotion'
 								className='glass-effect px-6 py-2 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
 							>
 								✗ Decline
