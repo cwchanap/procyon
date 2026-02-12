@@ -370,14 +370,8 @@ test.describe('Shogi AI Integration', () => {
 		// This simulates a piece that can be promoted
 		await page.evaluate(() => {
 			const global = window as any;
-			if (global.__PROCYON_DEBUG_SHOGI_STATE__) {
-				const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
-				// Manually set pending promotion state
-				state.gameState.pendingPromotion = {
-					from: { file: 9, rank: 'd' },
-					to: { file: 9, rank: 'e' },
-					piece: { type: 'pawn', owner: 'sente' },
-				};
+			if (global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__) {
+				global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__(true);
 			}
 		});
 
@@ -410,13 +404,8 @@ test.describe('Shogi AI Integration', () => {
 		// Re-open dialog for Escape key test
 		await page.evaluate(() => {
 			const global = window as any;
-			if (global.__PROCYON_DEBUG_SHOGI_STATE__) {
-				const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
-				state.gameState.pendingPromotion = {
-					from: { file: 9, rank: 'd' },
-					to: { file: 9, rank: 'e' },
-					piece: { type: 'pawn', owner: 'sente' },
-				};
+			if (global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__) {
+				global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__(true);
 			}
 		});
 
@@ -430,13 +419,8 @@ test.describe('Shogi AI Integration', () => {
 		// Test focus trapping with Tab key
 		await page.evaluate(() => {
 			const global = window as any;
-			if (global.__PROCYON_DEBUG_SHOGI_STATE__) {
-				const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
-				state.gameState.pendingPromotion = {
-					from: { file: 9, rank: 'd' },
-					to: { file: 9, rank: 'e' },
-					piece: { type: 'pawn', owner: 'sente' },
-				};
+			if (global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__) {
+				global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__(true);
 			}
 		});
 
