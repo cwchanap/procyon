@@ -87,6 +87,52 @@ describe('Shogi Game Engine', () => {
 			newState = selectSquare(newState, { row: 6, col: 4 });
 			expect(newState.selectedSquare).toBeNull();
 		});
+
+		test('should execute hand piece drop when clicking valid position', () => {
+			// Set up a state with a gold general in sente's hand (gold has no nifu restriction)
+			const goldInHand: ShogiPiece = {
+				type: 'gold',
+				color: 'sente',
+				isPromoted: false,
+			};
+			const stateWithHand: ShogiGameState = {
+				...state,
+				senteHand: [goldInHand],
+				selectedHandPiece: goldInHand,
+			};
+
+			// Click on an empty square (e5 - row 4, col 4)
+			const dropResult = selectSquare(stateWithHand, { row: 4, col: 4 });
+
+			// Verify drop was executed
+			expect(dropResult.moveHistory).toHaveLength(1);
+			expect(dropResult.moveHistory[0]?.isDrop).toBe(true);
+			expect(dropResult.selectedHandPiece).toBeNull();
+			expect(dropResult.senteHand).toHaveLength(0); // Piece removed from hand
+			expect(dropResult.currentPlayer).toBe('gote'); // Player switched
+		});
+
+		test('should clear hand piece selection when clicking invalid drop position', () => {
+			// Set up a state with a pawn in sente's hand
+			const pawnInHand: ShogiPiece = {
+				type: 'pawn',
+				color: 'sente',
+				isPromoted: false,
+			};
+			const stateWithHand: ShogiGameState = {
+				...state,
+				senteHand: [pawnInHand],
+				selectedHandPiece: pawnInHand,
+			};
+
+			// Click on a square with a piece (invalid drop)
+			const dropResult = selectSquare(stateWithHand, { row: 6, col: 4 }); // Has sente pawn
+
+			// Verify selection was cleared but no move made
+			expect(dropResult.moveHistory).toHaveLength(0);
+			expect(dropResult.selectedHandPiece).toBeNull();
+			expect(dropResult.possibleMoves).toHaveLength(0);
+		});
 	});
 
 	describe('makeMove', () => {

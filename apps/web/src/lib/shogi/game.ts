@@ -47,12 +47,9 @@ export function selectSquare(
 
 	// If a hand piece is selected, try to drop it
 	if (gameState.selectedHandPiece) {
-		if (canDropAt(gameState.board, gameState.selectedHandPiece, position)) {
-			// Valid drop position - this will be handled by makeMove
-			return {
-				...gameState,
-				possibleMoves: [position],
-			};
+		const dropResult = makeMove(gameState, null, position);
+		if (dropResult) {
+			return dropResult; // Drop successful
 		}
 		// Invalid drop position, clear selection
 		return {
