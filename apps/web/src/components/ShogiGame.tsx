@@ -350,7 +350,8 @@ const ShogiGame: React.FC = () => {
 			gameStarted &&
 			gameState.currentPlayer === aiPlayer &&
 			gameState.status === 'playing' &&
-			!isAIThinking
+			!isAIThinking &&
+			!gameState.pendingPromotion
 		) {
 			const makeAIMove = async () => {
 				setIsAIThinking(true);
@@ -564,7 +565,11 @@ const ShogiGame: React.FC = () => {
 		(e: React.KeyboardEvent) => {
 			if (e.key === 'Enter') {
 				e.preventDefault();
-				handlePromotionChoice(true);
+				// Check which element is focused - if Decline button is focused, decline promotion
+				const activeElement = document.activeElement;
+				const isDeclineButtonFocused =
+					activeElement?.getAttribute('aria-label') === 'Decline promotion';
+				handlePromotionChoice(!isDeclineButtonFocused);
 			} else if (e.key === 'Escape') {
 				e.preventDefault();
 				handlePromotionChoice(false);
@@ -609,6 +614,7 @@ const ShogiGame: React.FC = () => {
 		}
 		const global = window as unknown as {
 			__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__?: () => void;
+			__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__?: (promote: boolean) => void;
 		};
 		// Helper for tests and manual debugging to force a human win
 		global.__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__ = () => {
@@ -616,6 +622,20 @@ const ShogiGame: React.FC = () => {
 			setHasGameEnded(false);
 			setShowDebugWinButton(true);
 			triggerDebugWin();
+		};
+
+		// Helper for tests to trigger promotion dialog
+		global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__ = (_promote: boolean) => {
+			setGameStarted(true);
+			setHasGameEnded(false);
+			setGameState(prev => ({
+				...prev,
+				pendingPromotion: {
+					piece: { type: 'pawn', color: 'sente' },
+					from: { row: 3, col: 8 },
+					to: { row: 2, col: 8 },
+				},
+			}));
 		};
 	}, [triggerDebugWin]);
 
@@ -633,6 +653,7 @@ const ShogiGame: React.FC = () => {
 				hasGameStarted: boolean;
 				currentPlayer: ShogiGameState['currentPlayer'];
 				status: ShogiGameState['status'];
+				pendingPromotion: ShogiGameState['pendingPromotion'];
 			};
 		};
 		global.__PROCYON_DEBUG_SHOGI_STATE__ = {
@@ -641,6 +662,7 @@ const ShogiGame: React.FC = () => {
 			hasGameStarted,
 			currentPlayer: gameState.currentPlayer,
 			status: gameState.status,
+			pendingPromotion: gameState.pendingPromotion,
 		};
 	}, [
 		gameMode,
@@ -648,6 +670,7 @@ const ShogiGame: React.FC = () => {
 		hasGameStarted,
 		gameState.currentPlayer,
 		gameState.status,
+		gameState.pendingPromotion,
 	]);
 
 	const handleStartOrReset = useCallback(() => {
