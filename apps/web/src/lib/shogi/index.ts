@@ -54,6 +54,7 @@ export {
 	selectHandPiece,
 	clearSelection,
 	makeMove,
+	confirmPromotion,
 	isKingInCheck,
 	getGameStatus,
 	makeAIMove,

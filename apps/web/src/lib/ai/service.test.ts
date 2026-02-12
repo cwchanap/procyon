@@ -139,4 +139,21 @@ describe('UniversalAIService.parseAIResponse (via integration)', () => {
 		expect(prompt).toContain('"to"');
 		expect(prompt).toContain('"move"');
 	});
+
+	test('response format should support pieceType for drop moves', () => {
+		const dropMoveResponse = `{
+			"move": {
+				"from": "*",
+				"to": "5e",
+				"pieceType": "pawn"
+			},
+			"reasoning": "Drop pawn to control center",
+			"confidence": 75
+		}`;
+
+		const parsed = JSON.parse(dropMoveResponse);
+		expect(parsed.move.from).toBe('*');
+		expect(parsed.move.to).toBe('5e');
+		expect(parsed.move.pieceType).toBe('pawn');
+	});
 });

@@ -366,6 +366,7 @@ export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 				move: {
 					from: moveFrom,
 					to: moveTo,
+					pieceType: parsed.move.pieceType, // Required for drop moves in Shogi
 					reasoning: parsed.reasoning,
 				},
 				confidence: parsed.confidence || 50,
