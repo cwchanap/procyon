@@ -396,8 +396,15 @@ test.describe('Shogi AI Integration', () => {
 			'Decline promotion'
 		);
 
-		// Test Enter key to promote
-		await page.keyboard.press('Enter');
+		// Test Enter key to promote - use evaluate to dispatch keyboard event
+		await page.evaluate(() => {
+			const event = new KeyboardEvent('keydown', {
+				key: 'Enter',
+				bubbles: true,
+				cancelable: true,
+			});
+			document.activeElement?.dispatchEvent(event);
+		});
 		// Dialog should close after pressing Enter
 		await expect(dialog).not.toBeVisible();
 
@@ -411,8 +418,15 @@ test.describe('Shogi AI Integration', () => {
 
 		await expect(dialog).toBeVisible();
 
-		// Test Escape key to decline
-		await page.keyboard.press('Escape');
+		// Test Escape key to decline - use evaluate to dispatch keyboard event
+		await page.evaluate(() => {
+			const event = new KeyboardEvent('keydown', {
+				key: 'Escape',
+				bubbles: true,
+				cancelable: true,
+			});
+			document.activeElement?.dispatchEvent(event);
+		});
 		// Dialog should close after pressing Escape
 		await expect(dialog).not.toBeVisible();
 
