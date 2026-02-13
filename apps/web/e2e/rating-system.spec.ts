@@ -164,19 +164,13 @@ test.describe('ELO Rating System', () => {
 				timeout: 15000,
 			});
 
-			// Wait for at least one game row to be present (not the empty state)
-			const tableRows = page.locator('tbody tr');
-			await expect(
-				tableRows
-					.filter({
-						hasNot: page.getByText('You have not recorded any games yet'),
-					})
-					.first()
-			).toBeVisible({ timeout: 10000 });
-
-			// Verify we have actual game data (not empty state or loading)
+			// Wait for empty state to not be visible (ensures we have data)
 			const emptyState = page.getByText('You have not recorded any games yet');
-			await expect(emptyState).not.toBeVisible();
+			await expect(emptyState).not.toBeVisible({ timeout: 5000 });
+
+			// Now get the table rows AFTER loading is complete
+			const tableRows = page.locator('tbody tr');
+			await expect(tableRows.first()).toBeVisible({ timeout: 10000 });
 
 			// Check for a positive rating change (green text with +)
 			// For a win, the rating change should be positive
