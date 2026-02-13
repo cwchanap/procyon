@@ -557,12 +557,18 @@ const ShogiGame: React.FC = () => {
 			// Store the currently focused element
 			previousActiveElementRef.current = document.activeElement as HTMLElement;
 
-			// Focus the Promote button directly (it has autoFocus but we ensure it here)
-			const promoteButton = modalRef.current.querySelector<HTMLButtonElement>(
-				'[aria-label="Promote piece"]'
-			);
-			if (promoteButton) {
-				promoteButton.focus();
+			// Only move focus if no element inside the modal is already focused
+			// This prevents stealing focus from elements with autoFocus
+			if (
+				!modalRef.current.contains(document.activeElement) ||
+				document.activeElement === document.body
+			) {
+				const promoteButton = modalRef.current.querySelector<HTMLButtonElement>(
+					'[aria-label="Promote piece"]'
+				);
+				if (promoteButton) {
+					promoteButton.focus();
+				}
 			}
 
 			// Focus trap: ensure Tab key cycles within the dialog
@@ -983,16 +989,14 @@ const ShogiGame: React.FC = () => {
 
 			{/* Promotion Dialog */}
 			{gameState.pendingPromotion && (
-				<div
-					className='fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50'
-					role='dialog'
-					aria-modal='true'
-					aria-labelledby='promotion-title'
-				>
+				<div className='fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50'>
 					<div
 						ref={modalRef}
 						tabIndex={-1}
 						onKeyDown={handleModalKeyDown}
+						role='dialog'
+						aria-modal='true'
+						aria-labelledby='promotion-title'
 						className='glass-effect p-6 rounded-2xl border border-white border-opacity-30 max-w-sm mx-4'
 					>
 						<h3
@@ -1008,6 +1012,12 @@ const ShogiGame: React.FC = () => {
 						<div className='flex gap-4 justify-center'>
 							<button
 								onClick={() => handlePromotionChoice(true)}
+								onKeyDown={e => {
+									if (e.key === 'Enter') {
+										e.preventDefault();
+										handlePromotionChoice(true);
+									}
+								}}
 								autoFocus
 								aria-label='Promote piece'
 								className='bg-gradient-to-r from-orange-500 to-red-500 hover:from-red-500 hover:to-orange-500 px-6 py-2 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
@@ -1016,6 +1026,12 @@ const ShogiGame: React.FC = () => {
 							</button>
 							<button
 								onClick={() => handlePromotionChoice(false)}
+								onKeyDown={e => {
+									if (e.key === 'Enter') {
+										e.preventDefault();
+										handlePromotionChoice(false);
+									}
+								}}
 								aria-label='Decline promotion'
 								className='glass-effect px-6 py-2 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
 							>
