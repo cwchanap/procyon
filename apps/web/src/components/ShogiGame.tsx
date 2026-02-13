@@ -387,21 +387,59 @@ const ShogiGame: React.FC = () => {
 								}
 								// Explicit no-op: state remains unchanged, error is logged
 							} else {
-								// Apply drop move using makeShogiAIMove
-								const moveResult = makeShogiAIMove(
-									gameState,
-									'*',
-									to,
-									false,
-									pieceType
-								);
-								if (moveResult) {
-									setGameState(moveResult);
-								} else {
-									// eslint-disable-next-line no-console
-									console.warn(
-										`Failed to apply AI drop move: pieceType=${pieceType}, to=${to}`
+								// Validate pieceType is a valid Shogi drop piece type
+								const validDropPieceTypes = [
+									'pawn',
+									'lance',
+									'knight',
+									'silver',
+									'gold',
+									'bishop',
+									'rook',
+								] as const;
+								type ValidDropPieceType = (typeof validDropPieceTypes)[number];
+
+								if (
+									!pieceType ||
+									!validDropPieceTypes.includes(pieceType as ValidDropPieceType)
+								) {
+									// Log detailed error with aiResponse for debugging
+									console.error(
+										'[Shogi AI] Invalid drop move: invalid pieceType',
+										{ aiResponse, move: aiResponse.move }
 									);
+
+									// Add to debug moves if debug mode is enabled
+									if (isDebugMode) {
+										setAIDebugMoves(prev => [
+											...prev,
+											createAIMove(
+												`Invalid drop (invalid pieceType): ${aiResponse.move.to}`,
+												true,
+												undefined,
+												`Invalid pieceType in AI response: ${JSON.stringify(
+													aiResponse.move
+												)}`
+											),
+										]);
+									}
+								} else {
+									// Apply drop move using makeShogiAIMove
+									const moveResult = makeShogiAIMove(
+										gameState,
+										'*',
+										to,
+										false,
+										pieceType as ValidDropPieceType
+									);
+									if (moveResult) {
+										setGameState(moveResult);
+									} else {
+										// eslint-disable-next-line no-console
+										console.warn(
+											`Failed to apply AI drop move: pieceType=${pieceType}, to=${to}`
+										);
+									}
 								}
 							}
 						} else {
