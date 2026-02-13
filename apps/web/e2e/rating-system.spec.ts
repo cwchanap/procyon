@@ -159,10 +159,21 @@ test.describe('ELO Rating System', () => {
 				page.getByRole('heading', { name: 'Play History' })
 			).toBeVisible();
 
-			// Wait for loading to complete (loading text should disappear)
-			await expect(page.getByText('Loading your games...')).not.toBeVisible({
-				timeout: 15000,
-			});
+			// Wait for either loading to complete OR error to appear
+			// This prevents hanging forever if API fails
+			await Promise.race([
+				expect(page.getByText('Loading your games...')).not.toBeVisible({
+					timeout: 15000,
+				}),
+				expect(page.getByText('Retry').first()).toBeVisible({ timeout: 15000 }),
+			]);
+
+			// Check if there's an error - fail fast with helpful message
+			const retryButton = page.locator('button:has-text("Retry")');
+			if (await retryButton.isVisible()) {
+				const errorText = await page.locator('.text-red-200').textContent();
+				throw new Error(`API Error: ${errorText}`);
+			}
 
 			// Wait for empty state to not be visible (ensures we have data)
 			const emptyState = page.getByText('You have not recorded any games yet');
