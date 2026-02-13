@@ -557,8 +557,13 @@ const ShogiGame: React.FC = () => {
 			// Store the currently focused element
 			previousActiveElementRef.current = document.activeElement as HTMLElement;
 
-			// Move focus into the dialog
-			modalRef.current.focus();
+			// Focus the Promote button directly (it has autoFocus but we ensure it here)
+			const promoteButton = modalRef.current.querySelector<HTMLButtonElement>(
+				'[aria-label="Promote piece"]'
+			);
+			if (promoteButton) {
+				promoteButton.focus();
+			}
 
 			// Focus trap: ensure Tab key cycles within the dialog
 			const handleTabKey = (e: KeyboardEvent) => {
