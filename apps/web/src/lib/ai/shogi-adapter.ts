@@ -90,8 +90,14 @@ export class ShogiAdapter implements GameVariantAdapter<ShogiGameState> {
 				for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
 					const dropPos = { row, col };
 					if (!board[row]?.[col] && canDropAt(board, handPiece, dropPos)) {
-						const to = this.positionToAlgebraic(dropPos);
-						validMoves.push(`*${to} (${pieceSymbol} drop)`);
+						// Validate drop doesn't leave king in check
+						const testBoard = copyBoard(board);
+						setPieceAt(testBoard, dropPos, handPiece);
+						const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
+						if (!wouldBeInCheck) {
+							const to = this.positionToAlgebraic(dropPos);
+							validMoves.push(`*${to} (${pieceSymbol} drop)`);
+						}
 					}
 				}
 			}
