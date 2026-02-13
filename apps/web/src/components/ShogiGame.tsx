@@ -571,18 +571,30 @@ const ShogiGame: React.FC = () => {
 				}
 			}
 
-			// Focus trap: ensure Tab key cycles within the dialog
-			const handleTabKey = (e: KeyboardEvent) => {
-				if (!modalRef.current) return;
+			// Handle Enter and Escape keys at document level for reliable keyboard handling
+			const handleKeyDown = (e: KeyboardEvent) => {
+				if (e.key === 'Enter' || e.key === 'Escape') {
+					e.preventDefault();
+					const activeElement = document.activeElement;
+					const isDeclineButtonFocused =
+						activeElement?.getAttribute('aria-label') === 'Decline promotion';
+					if (e.key === 'Escape') {
+						handlePromotionChoice(false);
+					} else {
+						// Enter key - promote unless decline button is focused
+						handlePromotionChoice(!isDeclineButtonFocused);
+					}
+				}
 
-				const focusableElements =
-					modalRef.current.querySelectorAll<HTMLElement>(
-						'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-					);
-				const firstElement = focusableElements[0];
-				const lastElement = focusableElements[focusableElements.length - 1];
+				// Focus trap: ensure Tab key cycles within the dialog
+				if (e.key === 'Tab' && modalRef.current) {
+					const focusableElements =
+						modalRef.current.querySelectorAll<HTMLElement>(
+							'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+						);
+					const firstElement = focusableElements[0];
+					const lastElement = focusableElements[focusableElements.length - 1];
 
-				if (e.key === 'Tab') {
 					if (e.shiftKey) {
 						// Shift+Tab
 						if (document.activeElement === firstElement) {
@@ -599,33 +611,15 @@ const ShogiGame: React.FC = () => {
 				}
 			};
 
-			document.addEventListener('keydown', handleTabKey);
+			document.addEventListener('keydown', handleKeyDown);
 
 			return () => {
-				document.removeEventListener('keydown', handleTabKey);
+				document.removeEventListener('keydown', handleKeyDown);
 				// Restore focus to the previously focused element when dialog closes
 				previousActiveElementRef.current?.focus();
 			};
 		}
-	}, [gameState.pendingPromotion]);
-
-	// Keyboard event handler for promotion modal
-	const handleModalKeyDown = useCallback(
-		(e: React.KeyboardEvent) => {
-			if (e.key === 'Enter') {
-				e.preventDefault();
-				// Check which element is focused - if Decline button is focused, decline promotion
-				const activeElement = document.activeElement;
-				const isDeclineButtonFocused =
-					activeElement?.getAttribute('aria-label') === 'Decline promotion';
-				handlePromotionChoice(!isDeclineButtonFocused);
-			} else if (e.key === 'Escape') {
-				e.preventDefault();
-				handlePromotionChoice(false);
-			}
-		},
-		[handlePromotionChoice]
-	);
+	}, [gameState.pendingPromotion, handlePromotionChoice]);
 
 	const resetGame = useCallback(() => {
 		setGameState(createInitialGameState());
@@ -993,7 +987,6 @@ const ShogiGame: React.FC = () => {
 					<div
 						ref={modalRef}
 						tabIndex={-1}
-						onKeyDown={handleModalKeyDown}
 						role='dialog'
 						aria-modal='true'
 						aria-labelledby='promotion-title'
@@ -1011,13 +1004,8 @@ const ShogiGame: React.FC = () => {
 						</p>
 						<div className='flex gap-4 justify-center'>
 							<button
+								type='button'
 								onClick={() => handlePromotionChoice(true)}
-								onKeyDown={e => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										handlePromotionChoice(true);
-									}
-								}}
 								autoFocus
 								aria-label='Promote piece'
 								className='bg-gradient-to-r from-orange-500 to-red-500 hover:from-red-500 hover:to-orange-500 px-6 py-2 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
@@ -1025,13 +1013,8 @@ const ShogiGame: React.FC = () => {
 								✓ Promote
 							</button>
 							<button
+								type='button'
 								onClick={() => handlePromotionChoice(false)}
-								onKeyDown={e => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										handlePromotionChoice(false);
-									}
-								}}
 								aria-label='Decline promotion'
 								className='glass-effect px-6 py-2 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
 							>
