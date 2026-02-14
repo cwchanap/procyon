@@ -396,8 +396,20 @@ test.describe('Shogi AI Integration', () => {
 			'Decline promotion'
 		);
 
-		// Test button click works - directly evaluate the click handler
-		// This is more reliable than trying to click in the test environment
+		// Debug: check button properties
+		const buttonInfo = await page.evaluate(() => {
+			const btn = document.querySelector(
+				'[aria-label="Promote piece"]'
+			) as HTMLButtonElement;
+			return {
+				exists: !!btn,
+				onclick: !!btn?.onclick,
+				outerHTML: btn?.outerHTML?.substring(0, 200),
+			};
+		});
+		console.log('Button info:', buttonInfo);
+
+		// Test button click works
 		await page.evaluate(() => {
 			const promoteBtn = document.querySelector(
 				'[aria-label="Promote piece"]'
@@ -406,6 +418,10 @@ test.describe('Shogi AI Integration', () => {
 				promoteBtn.click();
 			}
 		});
+
+		// Wait a bit for any state changes
+		await page.waitForTimeout(500);
+
 		// Dialog should close after clicking Promote
 		await expect(dialog).not.toBeVisible();
 
