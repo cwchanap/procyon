@@ -433,13 +433,54 @@ function hasAnyLegalMoves(gameState: ShogiGameState): boolean {
 			if (piece && piece.color === gameState.currentPlayer) {
 				const moves = getPossibleMoves(gameState.board, piece, { row, col });
 				for (const move of moves) {
-					// Check if this move would leave the king in check
-					const testBoard = copyBoard(gameState.board);
-					setPieceAt(testBoard, { row, col }, null);
-					setPieceAt(testBoard, move, piece);
+					const fromPos = { row, col };
+					const forcedPromotion = mustPromote(piece, move);
+					const canPromotePiece = canPromote(piece, fromPos, move);
 
-					if (!isKingInCheck(testBoard, gameState.currentPlayer)) {
-						return true;
+					// Test move variants based on promotion requirements
+					const testVariants: Array<{
+						promote: boolean;
+						testPiece: ShogiPiece;
+					}> = [];
+
+					if (forcedPromotion) {
+						// Must promote - test only promoted version
+						testVariants.push({
+							promote: true,
+							testPiece: {
+								...piece,
+								type: getPromotedType(piece.type),
+								isPromoted: true,
+							},
+						});
+					} else if (canPromotePiece) {
+						// Optional promotion - test both versions
+						testVariants.push(
+							{
+								promote: true,
+								testPiece: {
+									...piece,
+									type: getPromotedType(piece.type),
+									isPromoted: true,
+								},
+							},
+							{ promote: false, testPiece: piece }
+						);
+					} else {
+						// No promotion possible
+						testVariants.push({ promote: false, testPiece: piece });
+					}
+
+					// Test each variant
+					for (const variant of testVariants) {
+						// Check if this move would leave the king in check
+						const testBoard = copyBoard(gameState.board);
+						setPieceAt(testBoard, fromPos, null);
+						setPieceAt(testBoard, move, variant.testPiece);
+
+						if (!isKingInCheck(testBoard, gameState.currentPlayer)) {
+							return true;
+						}
 					}
 				}
 			}

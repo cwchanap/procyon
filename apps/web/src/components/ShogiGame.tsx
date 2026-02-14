@@ -8,8 +8,6 @@ import {
 	confirmPromotion,
 	makeAIMove as makeShogiAIMove,
 	SHOGI_BOARD_SIZE,
-	SHOGI_FILES,
-	SHOGI_RANKS,
 } from '../lib/shogi';
 import { createShogiAI, defaultAIConfig, loadAIConfig } from '../lib/ai';
 import type { AIConfig, AIProvider } from '../lib/ai/types';
@@ -444,14 +442,23 @@ const ShogiGame: React.FC = () => {
 							}
 						} else {
 							// Regular move
-							const fromPos = algebraicToPosition(aiResponse.move.from);
-							const toPos = algebraicToPosition(aiResponse.move.to);
+							const promote = aiResponse.move.promote ?? false;
 
-							// Apply move using shogi game logic
-							const moveResult = selectSquare(gameState, fromPos);
-							if (moveResult.selectedSquare) {
-								const finalResult = selectSquare(moveResult, toPos);
-								setGameState(finalResult);
+							// Apply move directly using makeShogiAIMove (bypasses pendingPromotion UI)
+							const moveResult = makeShogiAIMove(
+								gameState,
+								aiResponse.move.from,
+								aiResponse.move.to,
+								promote
+							);
+
+							if (moveResult) {
+								setGameState(moveResult);
+							} else {
+								// eslint-disable-next-line no-console
+								console.warn(
+									`Failed to apply AI move: from=${aiResponse.move.from}, to=${aiResponse.move.to}, promote=${promote}`
+								);
 							}
 						}
 					}
@@ -475,18 +482,6 @@ const ShogiGame: React.FC = () => {
 		isDebugMode,
 		createAIMove,
 	]);
-
-	const algebraicToPosition = useCallback(
-		(algebraic: string): ShogiPosition => {
-			const file = algebraic[0];
-			const rank = algebraic[1];
-			return {
-				col: SHOGI_FILES.indexOf(file),
-				row: SHOGI_RANKS.indexOf(rank),
-			};
-		},
-		[]
-	);
 
 	const handleSquareClick = useCallback(
 		(position: ShogiPosition) => {
