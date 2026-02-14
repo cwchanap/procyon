@@ -35,6 +35,15 @@ export function usePlayHistory({
 	const { isAuthenticated } = useAuth();
 	const savedRef = useRef(false);
 
+	const getOpponentLlmId = useCallback((): 'gpt-4o' | 'gemini-2.5-flash' => {
+		const providerModel =
+			`${aiConfig.provider}/${aiConfig.model}`.toLowerCase();
+		if (providerModel.includes('gpt-4o')) {
+			return 'gpt-4o';
+		}
+		return 'gemini-2.5-flash';
+	}, [aiConfig.provider, aiConfig.model]);
+
 	const savePlayHistory = useCallback(async () => {
 		if (
 			!isAuthenticated ||
@@ -75,6 +84,7 @@ export function usePlayHistory({
 		savedRef.current = true;
 
 		try {
+			const opponentLlmId = getOpponentLlmId();
 			const authHeaders = await getAuthHeaders();
 			const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 				method: 'POST',
@@ -83,11 +93,10 @@ export function usePlayHistory({
 					...authHeaders,
 				},
 				body: JSON.stringify({
-					gameVariant,
-					aiProvider: aiConfig.provider,
-					aiModel: aiConfig.model,
-					result,
-					moveCount,
+					chessId: gameVariant,
+					status: result,
+					date: new Date().toISOString(),
+					opponentLlmId,
 				}),
 			});
 
@@ -109,6 +118,7 @@ export function usePlayHistory({
 		aiConfig,
 		gameStatus,
 		gameVariant,
+		getOpponentLlmId,
 		moveCount,
 		getWinnerColor,
 	]);
