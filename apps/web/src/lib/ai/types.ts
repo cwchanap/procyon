@@ -54,6 +54,7 @@ export interface AIMove {
 	from: string;
 	to: string;
 	pieceType?: string; // Required for drop moves in Shogi (e.g., 'pawn', 'lance')
+	promote?: boolean; // For Shogi promotion (true = promote, false or omitted = don't promote)
 	reasoning?: string;
 }
 

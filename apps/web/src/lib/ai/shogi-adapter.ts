@@ -184,6 +184,17 @@ IMPORTANT: You must respond in exactly this JSON format:
     "confidence": 85
 }
 
+For promoted moves, include promote: true:
+{
+    "move": {
+        "from": "7g",
+        "to": "7f",
+        "promote": true
+    },
+    "reasoning": "Detailed explanation of your strategic thinking in shogi context",
+    "confidence": 85
+}
+
 For drop moves, include pieceType:
 {
     "move": {
@@ -196,6 +207,8 @@ For drop moves, include pieceType:
 }
 
  IMPORTANT: For drop moves, you MUST include "pieceType" with one of: 'pawn', 'lance', 'knight', 'silver', 'gold', 'bishop', 'rook'
+
+For promoted moves in the valid moves list (marked with +), you MUST include "promote": true in your response. Only include promote if the move notation has a + suffix.
 
 
 🚨 ABSOLUTE REQUIREMENT: You MUST choose ONLY from the valid moves listed above.
@@ -294,12 +307,12 @@ Your move:`;
 			!Number.isInteger(position.row) ||
 			!Number.isInteger(position.col) ||
 			position.row < 0 ||
-			position.row > 8 ||
+			position.row >= SHOGI_BOARD_SIZE ||
 			position.col < 0 ||
-			position.col > 8
+			position.col >= SHOGI_BOARD_SIZE
 		) {
 			throw new RangeError(
-				`positionToAlgebraic: Invalid position - row: ${position.row}, col: ${position.col}. Expected integers in range 0-8.`
+				`positionToAlgebraic: Invalid position - row: ${position.row}, col: ${position.col}. Expected integers in range 0-${SHOGI_BOARD_SIZE - 1}.`
 			);
 		}
 		const file = SHOGI_FILES[position.col];
