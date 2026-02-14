@@ -54,21 +54,21 @@ export function usePlayHistory({
 			return;
 		}
 
-		const winnerColor = getWinnerColor();
-
-		// Guard against null winnerColor - bail out if we can't determine the winner
-		if (winnerColor === null) {
-			return;
-		}
-
 		let result: 'win' | 'loss' | 'draw';
 
 		if (gameStatus === 'draw' || gameStatus === 'stalemate') {
 			result = 'draw';
-		} else if (winnerColor === aiPlayer) {
-			result = 'loss'; // AI won, player lost
 		} else {
-			result = 'win'; // Player won
+			// For checkmate, we need to determine the winner
+			const winnerColor = getWinnerColor();
+			if (winnerColor === null) {
+				return; // Bail out if we can't determine the winner for checkmate
+			}
+			if (winnerColor === aiPlayer) {
+				result = 'loss'; // AI won, player lost
+			} else {
+				result = 'win'; // Player won
+			}
 		}
 
 		// Set savedRef optimistically before the fetch to prevent race conditions

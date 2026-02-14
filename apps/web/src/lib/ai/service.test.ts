@@ -156,4 +156,38 @@ describe('UniversalAIService.parseAIResponse (via integration)', () => {
 		expect(parsed.move.to).toBe('5e');
 		expect(parsed.move.pieceType).toBe('pawn');
 	});
+
+	test('response format should support promote flag for Shogi moves', () => {
+		const promotionMoveResponse = `{
+			"move": {
+				"from": "7g",
+				"to": "7f",
+				"promote": true
+			},
+			"reasoning": "Advance pawn and promote for more power",
+			"confidence": 80
+		}`;
+
+		const parsed = JSON.parse(promotionMoveResponse);
+		expect(parsed.move.from).toBe('7g');
+		expect(parsed.move.to).toBe('7f');
+		expect(parsed.move.promote).toBe(true);
+	});
+
+	test('response format should support promote false for Shogi moves', () => {
+		const noPromotionMoveResponse = `{
+			"move": {
+				"from": "7g",
+				"to": "7f",
+				"promote": false
+			},
+			"reasoning": "Advance pawn without promotion to maintain options",
+			"confidence": 70
+		}`;
+
+		const parsed = JSON.parse(noPromotionMoveResponse);
+		expect(parsed.move.from).toBe('7g');
+		expect(parsed.move.to).toBe('7f');
+		expect(parsed.move.promote).toBe(false);
+	});
 });
