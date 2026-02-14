@@ -169,9 +169,10 @@ test.describe('ELO Rating System', () => {
 			]);
 
 			// Check if there's an error - fail fast with helpful message
-			const retryButton = page.locator('button:has-text("Retry")');
+			const retryButton = page.getByText('Retry').first();
 			if (await retryButton.isVisible()) {
-				const errorText = await page.locator('.text-red-200').textContent();
+				const errorElement = page.getByTestId('api-error');
+				const errorText = (await errorElement.textContent()) ?? 'unknown error';
 				throw new Error(`API Error: ${errorText}`);
 			}
 

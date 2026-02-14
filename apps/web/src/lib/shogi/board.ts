@@ -158,8 +158,9 @@ export function positionToAlgebraic(pos: ShogiPosition): string {
 export function algebraicToPosition(algebraic: string): ShogiPosition | null {
 	if (!algebraic || algebraic.length !== 2) return null;
 
-	const file = algebraic[0];
-	const rank = algebraic[1]?.toLowerCase();
+	// Normalize both file and rank to match SHOGI_FILES (numeric) and SHOGI_RANKS (lowercase)
+	const file = algebraic[0]; // Files are numeric, no case normalization needed
+	const rank = algebraic[1]?.toLowerCase(); // Ranks are lowercase letters
 
 	if (!file || !rank) return null;
 

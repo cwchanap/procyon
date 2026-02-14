@@ -55,6 +55,12 @@ export function usePlayHistory({
 		}
 
 		const winnerColor = getWinnerColor();
+
+		// Guard against null winnerColor - bail out if we can't determine the winner
+		if (winnerColor === null) {
+			return;
+		}
+
 		let result: 'win' | 'loss' | 'draw';
 
 		if (gameStatus === 'draw' || gameStatus === 'stalemate') {
@@ -64,6 +70,9 @@ export function usePlayHistory({
 		} else {
 			result = 'win'; // Player won
 		}
+
+		// Set savedRef optimistically before the fetch to prevent race conditions
+		savedRef.current = true;
 
 		try {
 			const authHeaders = await getAuthHeaders();
@@ -82,12 +91,11 @@ export function usePlayHistory({
 				}),
 			});
 
-			if (response.ok) {
-				// Only mark as saved if the request was successful
-				savedRef.current = true;
-			} else {
+			if (!response.ok) {
 				// eslint-disable-next-line no-console
 				console.error('Failed to save play history:', response.statusText);
+				// Reset savedRef to allow retry on failure
+				savedRef.current = false;
 			}
 		} catch (error) {
 			// Reset savedRef to allow retry

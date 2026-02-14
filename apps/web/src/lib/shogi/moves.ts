@@ -404,6 +404,12 @@ export function canDropAt(
 				return false;
 			}
 		}
+
+		// TODO: enforce uchifuzume (打ち歩詰め) — illegal pawn-drop mate.
+		// A pawn drop that delivers immediate checkmate to the opponent is illegal.
+		// Implementation requires: simulate the pawn drop on a copied board, then check
+		// if the opponent's king is in checkmate using isKingInCheck and isCheckmate helpers.
+		// If the drop results in checkmate, return false to reject the move.
 	}
 
 	// Lance cannot be dropped on last rank

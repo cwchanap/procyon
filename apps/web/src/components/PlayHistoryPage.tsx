@@ -273,7 +273,12 @@ export default function PlayHistoryPage() {
 									<tr>
 										<td colSpan={5} className='py-12 text-center'>
 											<div className='space-y-4'>
-												<p className='text-red-200 font-medium'>{error}</p>
+												<p
+													data-testid='api-error'
+													className='text-red-200 font-medium'
+												>
+													{error}
+												</p>
 												<button
 													type='button'
 													onClick={() => window.location.reload()}

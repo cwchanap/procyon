@@ -225,7 +225,7 @@ export function useGameAI({
 				}
 			}
 		},
-		[isAuthenticated, getAuthHeaders, gameVariant, onConfigChange]
+		[isAuthenticated, gameVariant, onConfigChange]
 	);
 
 	const handleConfigChange = useCallback(
