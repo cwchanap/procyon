@@ -189,7 +189,7 @@ const JungleGame: React.FC = () => {
 			gameMode === 'ai' &&
 			gameStarted &&
 			gameState.currentPlayer === aiPlayer &&
-			gameState.status === 'playing' &&
+			(gameState.status === 'playing' || gameState.status === 'check') &&
 			!isAIThinking
 		) {
 			const makeAIMove = async () => {
