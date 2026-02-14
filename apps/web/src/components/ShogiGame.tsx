@@ -398,7 +398,6 @@ const ShogiGame: React.FC = () => {
 								type ValidDropPieceType = (typeof validDropPieceTypes)[number];
 
 								if (
-									!pieceType ||
 									!validDropPieceTypes.includes(pieceType as ValidDropPieceType)
 								) {
 									// Log detailed error with aiResponse for debugging
@@ -652,7 +651,7 @@ const ShogiGame: React.FC = () => {
 		}
 		const global = window as unknown as {
 			__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__?: () => void;
-			__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__?: (promote: boolean) => void;
+			__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__?: () => void;
 		};
 		// Helper for tests and manual debugging to force a human win
 		global.__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__ = () => {
@@ -663,7 +662,7 @@ const ShogiGame: React.FC = () => {
 		};
 
 		// Helper for tests to trigger promotion dialog
-		global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__ = (_promote: boolean) => {
+		global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__ = () => {
 			setGameStarted(true);
 			setHasGameEnded(false);
 			setGameState(prev => ({
@@ -1001,13 +1000,6 @@ const ShogiGame: React.FC = () => {
 							<button
 								type='button'
 								onClick={() => handlePromotionChoice(true)}
-								onKeyDown={e => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										e.stopPropagation();
-										handlePromotionChoice(true);
-									}
-								}}
 								autoFocus
 								aria-label='Promote piece'
 								className='bg-gradient-to-r from-orange-500 to-red-500 hover:from-red-500 hover:to-orange-500 px-6 py-2 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
@@ -1017,13 +1009,6 @@ const ShogiGame: React.FC = () => {
 							<button
 								type='button'
 								onClick={() => handlePromotionChoice(false)}
-								onKeyDown={e => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										e.stopPropagation();
-										handlePromotionChoice(false);
-									}
-								}}
 								aria-label='Decline promotion'
 								className='glass-effect px-6 py-2 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
 							>
