@@ -195,9 +195,11 @@ export function useGameAI({
 				const fullConfig = await fullConfigResponse.json();
 				const fallbackModel =
 					providerInfo.models[0] || providerInfo.defaultModel || 'gpt-4o-mini';
+				const resolvedModel =
+					fullConfig.modelName || fullConfig.model || fallbackModel;
 				const newConfig = {
 					provider: newProvider,
-					model: fullConfig.model || fallbackModel,
+					model: resolvedModel,
 					apiKey: fullConfig.apiKey || '',
 					enabled: true,
 					gameVariant,
