@@ -144,8 +144,59 @@ export const aiOpponentRatings = sqliteTable(
 	})
 );
 
+// Chess puzzles - static content seeded once
+export const puzzles = sqliteTable(
+	'puzzles',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		slug: text('slug').notNull(),
+		title: text('title').notNull(),
+		description: text('description').notNull(),
+		difficulty: text('difficulty').notNull(), // 'beginner' | 'intermediate' | 'advanced'
+		playerColor: text('player_color').notNull(), // 'white' | 'black'
+		// JSON-serialized (ChessPiece | null)[][] — 8x8 array
+		initialBoard: text('initial_board').notNull(),
+		// JSON-serialized PuzzleMove[] — ordered solution steps
+		solution: text('solution').notNull(),
+		// JSON-serialized { pieceSquare: Position, targetSquare: Position }
+		hint: text('hint').notNull(),
+		createdAt: text('created_at')
+			.default(sql`CURRENT_TIMESTAMP`)
+			.notNull(),
+	},
+	table => ({
+		slugIdx: uniqueIndex('puzzles_slug_idx').on(table.slug),
+		difficultyIdx: index('puzzles_difficulty_idx').on(table.difficulty),
+	})
+);
+
+// Per-user progress on each puzzle
+export const userPuzzleProgress = sqliteTable(
+	'user_puzzle_progress',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		userId: text('user_id').notNull(),
+		puzzleId: integer('puzzle_id').notNull(),
+		solved: integer('solved', { mode: 'boolean' }).default(false).notNull(),
+		failedAttempts: integer('failed_attempts').default(0).notNull(),
+		solvedAt: text('solved_at'), // ISO timestamp, nullable
+		updatedAt: text('updated_at')
+			.default(sql`CURRENT_TIMESTAMP`)
+			.notNull(),
+	},
+	table => ({
+		userPuzzleIdx: uniqueIndex('user_puzzle_progress_user_puzzle_idx').on(
+			table.userId,
+			table.puzzleId
+		),
+		userIdIdx: index('user_puzzle_progress_user_id_idx').on(table.userId),
+	})
+);
+
 export type AiConfiguration = typeof aiConfigurations.$inferSelect;
 export type PlayHistory = typeof playHistory.$inferSelect;
 export type PlayerRating = typeof playerRatings.$inferSelect;
 export type RatingHistory = typeof ratingHistory.$inferSelect;
 export type AiOpponentRating = typeof aiOpponentRatings.$inferSelect;
+export type Puzzle = typeof puzzles.$inferSelect;
+export type UserPuzzleProgress = typeof userPuzzleProgress.$inferSelect;

@@ -1,0 +1,10 @@
+---
+import Layout from '../layouts/Layout.astro';
+import PuzzlesPage from '../components/PuzzlesPage.tsx';
+
+export const prerender = false;
+---
+
+<Layout title='Chess Puzzles - Procyon'>
+  <PuzzlesPage client:load />
+</Layout>
