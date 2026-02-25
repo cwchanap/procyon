@@ -57,6 +57,13 @@
       "when": 1767928937000,
       "tag": "0007_rating_history_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1769000000000,
+      "tag": "0008_chess_puzzles",
+      "breakpoints": true
     }
   ]
 }
