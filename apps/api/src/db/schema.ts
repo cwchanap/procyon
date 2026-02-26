@@ -152,8 +152,10 @@ export const puzzles = sqliteTable(
 		slug: text('slug').notNull(),
 		title: text('title').notNull(),
 		description: text('description').notNull(),
-		difficulty: text('difficulty').notNull(), // 'beginner' | 'intermediate' | 'advanced'
-		playerColor: text('player_color').notNull(), // 'white' | 'black'
+		difficulty: text('difficulty')
+			.notNull()
+			.$type<'beginner' | 'intermediate' | 'advanced'>(), // 'beginner' | 'intermediate' | 'advanced'
+		playerColor: text('player_color').notNull().$type<'white' | 'black'>(), // 'white' | 'black'
 		// JSON-serialized (ChessPiece | null)[][] — 8x8 array
 		initialBoard: text('initial_board').notNull(),
 		// JSON-serialized PuzzleMove[] — ordered solution steps
@@ -176,7 +178,9 @@ export const userPuzzleProgress = sqliteTable(
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
 		userId: text('user_id').notNull(),
-		puzzleId: integer('puzzle_id').notNull(),
+		puzzleId: integer('puzzle_id')
+			.notNull()
+			.references(() => puzzles.id),
 		solved: integer('solved', { mode: 'boolean' }).default(false).notNull(),
 		failedAttempts: integer('failed_attempts').default(0).notNull(),
 		solvedAt: text('solved_at'), // ISO timestamp, nullable

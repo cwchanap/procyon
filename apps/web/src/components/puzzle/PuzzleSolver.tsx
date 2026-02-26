@@ -10,9 +10,14 @@ import {
 interface PuzzleSolverProps {
 	puzzle: PuzzleData;
 	onBack: () => void;
+	onNextPuzzle?: () => void;
 }
 
-export default function PuzzleSolver({ puzzle, onBack }: PuzzleSolverProps) {
+export default function PuzzleSolver({
+	puzzle,
+	onBack,
+	onNextPuzzle,
+}: PuzzleSolverProps) {
 	const {
 		state,
 		startPuzzle,
@@ -121,7 +126,7 @@ export default function PuzzleSolver({ puzzle, onBack }: PuzzleSolverProps) {
 			{/* Failed attempts indicator */}
 			{phase === 'playing' && (
 				<div className='flex gap-2'>
-					{[0, 1, 2].map(i => (
+					{Array.from({ length: MAX_FAILED_ATTEMPTS }, (_, i) => i).map(i => (
 						<div
 							key={i}
 							className={`w-3 h-3 rounded-full transition-colors duration-300 ${
@@ -155,7 +160,7 @@ export default function PuzzleSolver({ puzzle, onBack }: PuzzleSolverProps) {
 
 				{phase === 'solved' && (
 					<button
-						onClick={onBack}
+						onClick={onNextPuzzle ?? onBack}
 						className='px-6 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white font-semibold text-sm transition-all duration-200'
 					>
 						Next Puzzle

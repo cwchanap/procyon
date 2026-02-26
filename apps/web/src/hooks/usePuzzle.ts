@@ -95,9 +95,16 @@ export function usePuzzle() {
 		) => {
 			// Always write to localStorage first
 			const local = readLocalPuzzleProgress();
-			local[puzzleId] = { solved, failedAttempts, solvedAt };
+			const existing = local[puzzleId];
+			// Preserve solved: true — only upgrade, never downgrade
+			const mergedSolved = existing?.solved === true ? true : solved;
+			const mergedSolvedAt = existing?.solvedAt ?? solvedAt;
+			local[puzzleId] = {
+				solved: mergedSolved,
+				failedAttempts,
+				solvedAt: mergedSolvedAt,
+			};
 			writeLocalProgress(local);
-
 			// If authenticated and solving for the first time, POST to API
 			if (isAuthenticated && solved && !savedRef.current.has(puzzleId)) {
 				savedRef.current.add(puzzleId);

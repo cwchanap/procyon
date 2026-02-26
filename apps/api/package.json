@@ -16,6 +16,7 @@
     "db:push": "drizzle-kit push --config=drizzle.config.dev.ts",
     "db:studio": "drizzle-kit studio --config=drizzle.config.dev.ts",
     "db:seed": "bun src/seed/puzzles.ts",
+    "db:seed:d1": "wrangler d1 execute procyon-db --file=src/seed/puzzles.sql --remote",
     "deploy": "wrangler deploy",
     "deploy:staging": "wrangler deploy --env staging",
     "cf:dev": "wrangler dev",
