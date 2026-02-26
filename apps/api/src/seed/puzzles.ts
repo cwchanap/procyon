@@ -27,9 +27,11 @@ const wQ = w('queen');
 const wR = w('rook');
 const wB = w('bishop');
 const wN = w('knight');
+const _wP = w('pawn');
 const bK = b('king');
 const bQ = b('queen');
 const bR = b('rook');
+const _bB = b('bishop');
 const bN = b('knight');
 const bP = b('pawn');
 

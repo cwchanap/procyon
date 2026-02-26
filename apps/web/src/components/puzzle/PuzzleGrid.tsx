@@ -22,7 +22,7 @@ export default function PuzzleGrid({
 	onSelectPuzzle,
 }: PuzzleGridProps) {
 	const isSolved = (id: number): boolean =>
-		serverProgress[id]?.solved || localProgress[id]?.solved || false;
+		serverProgress[id]?.solved ?? localProgress[id]?.solved ?? false;
 
 	return (
 		<div className='w-full max-w-5xl mx-auto'>

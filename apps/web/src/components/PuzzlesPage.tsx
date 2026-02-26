@@ -52,7 +52,10 @@ export default function PuzzlesPage() {
 
 	// Load server progress when authenticated
 	useEffect(() => {
-		if (!isAuthenticated) return;
+		if (!isAuthenticated) {
+			setServerProgress({});
+			return;
+		}
 
 		const controller = new AbortController();
 
@@ -97,6 +100,17 @@ export default function PuzzlesPage() {
 		setLocalProgress(readLocalPuzzleProgress());
 	}, []);
 
+	const handleNextPuzzle = useCallback(() => {
+		if (!activePuzzle) return;
+		const idx = puzzleList.findIndex(p => p.id === activePuzzle.id);
+		if (idx >= 0 && idx < puzzleList.length - 1) {
+			void handleSelectPuzzle(puzzleList[idx + 1].id);
+		} else {
+			setActivePuzzle(null);
+		}
+		setLocalProgress(readLocalPuzzleProgress());
+	}, [activePuzzle, puzzleList, handleSelectPuzzle]);
+
 	if (isLoadingList) {
 		return (
 			<div className='min-h-[60vh] flex items-center justify-center text-purple-100/60 animate-pulse text-lg'>
@@ -124,7 +138,11 @@ export default function PuzzlesPage() {
 	if (activePuzzle) {
 		return (
 			<div className='container mx-auto px-4 py-8'>
-				<PuzzleSolver puzzle={activePuzzle} onBack={handleBack} />
+				<PuzzleSolver
+					puzzle={activePuzzle}
+					onBack={handleBack}
+					onNextPuzzle={handleNextPuzzle}
+				/>
 				{!isAuthenticated && (
 					<p className='text-center text-purple-300/60 text-sm mt-6'>
 						<a
