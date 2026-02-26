@@ -11,13 +11,15 @@
 import { initializeLocalDB } from '../db/local';
 import { puzzles } from '../db/schema';
 
-type P = { type: string; color: string; hasMoved?: boolean } | null;
+type PieceType = 'pawn' | 'knight' | 'bishop' | 'rook' | 'queen' | 'king';
+type Color = 'white' | 'black';
+type P = { type: PieceType; color: Color; hasMoved?: boolean } | null;
 const _ = null;
 
-function w(type: string): P {
+function w(type: PieceType): P {
 	return { type, color: 'white', hasMoved: true };
 }
-function b(type: string): P {
+function b(type: PieceType): P {
 	return { type, color: 'black', hasMoved: true };
 }
 
@@ -266,7 +268,7 @@ const PUZZLE_DATA = [
 
 	// ─────────────────────────────────────────────
 	// 10. Pin and Win (Intermediate)
-	//     wB f1 → b5+  pins bN c6 to bK e8, winning the knight
+	//     wB f1 → b5  pins bN c6 to bK e8, winning the knight
 	// ─────────────────────────────────────────────
 	{
 		slug: 'pin-and-win-1',
@@ -306,9 +308,15 @@ async function seed() {
 		hint: JSON.stringify(puzzle.hint),
 	}));
 
-	await db.insert(puzzles).values(puzzleValues).onConflictDoNothing();
+	const result = await db
+		.insert(puzzles)
+		.values(puzzleValues)
+		.onConflictDoNothing()
+		.returning();
 
-	console.log(`Done. Seeded ${PUZZLE_DATA.length} puzzles.`);
+	console.log(
+		`Done. Seeded ${result.length} new puzzles (${PUZZLE_DATA.length} total).`
+	);
 	process.exit(0);
 }
 
