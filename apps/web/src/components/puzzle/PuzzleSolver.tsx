@@ -31,7 +31,7 @@ export default function PuzzleSolver({
 	// Start / restart when puzzle changes
 	useEffect(() => {
 		startPuzzle(puzzle);
-	}, [puzzle.id]);
+	}, [puzzle.id, startPuzzle]);
 
 	const {
 		phase,
@@ -163,7 +163,7 @@ export default function PuzzleSolver({
 						onClick={onNextPuzzle ?? onBack}
 						className='px-6 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white font-semibold text-sm transition-all duration-200'
 					>
-						Next Puzzle
+						{onNextPuzzle ? 'Next Puzzle' : 'Back'}
 					</button>
 				)}
 			</div>

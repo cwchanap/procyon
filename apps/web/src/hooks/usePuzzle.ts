@@ -99,9 +99,13 @@ export function usePuzzle() {
 			// Preserve solved: true — only upgrade, never downgrade
 			const mergedSolved = existing?.solved === true ? true : solved;
 			const mergedSolvedAt = existing?.solvedAt ?? solvedAt;
+			const mergedFailedAttempts = Math.max(
+				existing?.failedAttempts || 0,
+				failedAttempts
+			);
 			local[puzzleId] = {
 				solved: mergedSolved,
-				failedAttempts,
+				failedAttempts: mergedFailedAttempts,
 				solvedAt: mergedSolvedAt,
 			};
 			writeLocalProgress(local);
