@@ -294,22 +294,19 @@ async function seed() {
 	const db = initializeLocalDB();
 	console.log('Seeding chess puzzles...');
 
-	for (const puzzle of PUZZLE_DATA) {
-		await db
-			.insert(puzzles)
-			.values({
-				slug: puzzle.slug,
-				title: puzzle.title,
-				description: puzzle.description,
-				difficulty: puzzle.difficulty,
-				playerColor: puzzle.playerColor,
-				initialBoard: JSON.stringify(puzzle.board),
-				solution: JSON.stringify(puzzle.solution),
-				hint: JSON.stringify(puzzle.hint),
-			})
-			.onConflictDoNothing();
-		console.log(`  ✓ ${puzzle.slug}`);
-	}
+	type PuzzleValues = typeof puzzles.$inferInsert;
+	const puzzleValues: PuzzleValues[] = PUZZLE_DATA.map(puzzle => ({
+		slug: puzzle.slug,
+		title: puzzle.title,
+		description: puzzle.description,
+		difficulty: puzzle.difficulty as PuzzleValues['difficulty'],
+		playerColor: puzzle.playerColor as PuzzleValues['playerColor'],
+		initialBoard: JSON.stringify(puzzle.board),
+		solution: JSON.stringify(puzzle.solution),
+		hint: JSON.stringify(puzzle.hint),
+	}));
+
+	await db.insert(puzzles).values(puzzleValues).onConflictDoNothing();
 
 	console.log(`Done. Seeded ${PUZZLE_DATA.length} puzzles.`);
 	process.exit(0);
