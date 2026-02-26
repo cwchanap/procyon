@@ -43,4 +43,4 @@ test-results/
 playwright-report/
 playwright/.cache/
 
-specs/
+specs/.claude/settings.local.json
