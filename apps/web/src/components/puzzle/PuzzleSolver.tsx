@@ -2,16 +2,57 @@ import React, { useEffect } from 'react';
 import ChessBoard from '../ChessBoard';
 import type { PuzzleData } from '../../lib/puzzle/types';
 import { usePuzzle, MAX_FAILED_ATTEMPTS } from '../../hooks/usePuzzle';
-import {
-	DIFFICULTY_BADGE_STYLES,
-	DIFFICULTY_BADGE_FALLBACK,
-} from '../../lib/puzzle/utils';
+import { cn } from '../../lib/utils';
+import { cva } from 'class-variance-authority';
 
 interface PuzzleSolverProps {
 	puzzle: PuzzleData;
 	onBack: () => void;
 	onNextPuzzle?: () => void;
 }
+
+const statusBanner = cva(
+	'w-full text-center py-2 px-4 rounded-xl text-sm font-medium transition-colors duration-300',
+	{
+		variants: {
+			phase: {
+				idle: 'bg-white/5 text-purple-100',
+				playing: 'bg-white/5 text-purple-100',
+				opponent: 'bg-white/5 text-purple-100',
+				solved: 'bg-emerald-500/20 text-emerald-200',
+				failed: 'bg-red-500/20 text-red-200',
+			},
+		},
+	}
+);
+
+const difficultyBadge = cva(
+	'text-xs px-2 py-1 rounded-full border font-semibold uppercase tracking-wider',
+	{
+		variants: {
+			difficulty: {
+				beginner: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30',
+				intermediate: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/30',
+				advanced: 'bg-red-500/20 text-red-200 border-red-400/30',
+			},
+		},
+		defaultVariants: {
+			difficulty: 'beginner',
+		},
+	}
+);
+
+const failedAttemptDot = cva(
+	'w-3 h-3 rounded-full transition-colors duration-300',
+	{
+		variants: {
+			filled: {
+				true: 'bg-red-400',
+				false: 'bg-white/20',
+			},
+		},
+	}
+);
 
 export default function PuzzleSolver({
 	puzzle,
@@ -64,9 +105,6 @@ export default function PuzzleSolver({
 
 	const highlightSquares = showSolution ? solutionHighlights : hintHighlights;
 
-	const difficultyStyle =
-		DIFFICULTY_BADGE_STYLES[puzzle.difficulty] ?? DIFFICULTY_BADGE_FALLBACK;
-
 	return (
 		<div className='flex flex-col items-center gap-5 w-full max-w-2xl mx-auto'>
 			{/* Header */}
@@ -93,7 +131,7 @@ export default function PuzzleSolver({
 				<div className='flex items-center gap-3 mb-1'>
 					<h2 className='text-2xl font-bold text-white'>{puzzle.title}</h2>
 					<span
-						className={`text-xs px-2 py-1 rounded-full border font-semibold uppercase tracking-wider ${difficultyStyle}`}
+						className={cn(difficultyBadge({ difficulty: puzzle.difficulty }))}
 					>
 						{puzzle.difficulty}
 					</span>
@@ -102,17 +140,7 @@ export default function PuzzleSolver({
 			</div>
 
 			{/* Status Banner */}
-			<div
-				className={`w-full text-center py-2 px-4 rounded-xl text-sm font-medium transition-colors duration-300 ${
-					phase === 'solved'
-						? 'bg-emerald-500/20 text-emerald-200'
-						: phase === 'failed'
-							? 'bg-red-500/20 text-red-200'
-							: 'bg-white/5 text-purple-100'
-				}`}
-			>
-				{statusMessage()}
-			</div>
+			<div className={cn(statusBanner({ phase }))}>{statusMessage()}</div>
 
 			{/* Board */}
 			<ChessBoard
@@ -129,9 +157,7 @@ export default function PuzzleSolver({
 					{Array.from({ length: MAX_FAILED_ATTEMPTS }, (_, i) => i).map(i => (
 						<div
 							key={i}
-							className={`w-3 h-3 rounded-full transition-colors duration-300 ${
-								i < failedAttempts ? 'bg-red-400' : 'bg-white/20'
-							}`}
+							className={cn(failedAttemptDot({ filled: i < failedAttempts }))}
 						/>
 					))}
 				</div>

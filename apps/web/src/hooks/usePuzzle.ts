@@ -66,7 +66,7 @@ function wrongMoveState(prev: PuzzleState): PuzzleState {
 
 export function usePuzzle() {
 	const { isAuthenticated } = useAuth();
-	const savedRef = useRef<Set<number>>(new Set());
+	const savedRef = useRef<Set<string>>(new Set());
 
 	const [state, setState] = useState<PuzzleState>({
 		phase: 'idle',
@@ -105,9 +105,10 @@ export function usePuzzle() {
 				solvedAt: mergedSolvedAt,
 			};
 			writeLocalProgress(local);
-			// If authenticated and solving for the first time, POST to API
-			if (isAuthenticated && solved && !savedRef.current.has(puzzleId)) {
-				savedRef.current.add(puzzleId);
+			// If authenticated and haven't posted this specific progress state, POST to API
+			const progressKey = `${puzzleId}:${failedAttempts}`;
+			if (isAuthenticated && !savedRef.current.has(progressKey)) {
+				savedRef.current.add(progressKey);
 				try {
 					const headers = await getAuthHeaders();
 					const response = await fetch(
@@ -119,10 +120,10 @@ export function usePuzzle() {
 						}
 					);
 					if (!response.ok) {
-						savedRef.current.delete(puzzleId);
+						savedRef.current.delete(progressKey);
 					}
 				} catch {
-					savedRef.current.delete(puzzleId);
+					savedRef.current.delete(progressKey);
 				}
 			}
 		},
