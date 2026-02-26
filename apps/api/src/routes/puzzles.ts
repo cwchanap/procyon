@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
 import { puzzles, userPuzzleProgress } from '../db/schema';
@@ -101,23 +101,42 @@ app.post(
 				return c.json({ error: 'Puzzle not found' }, 404);
 			}
 
+			const [existing] = await db
+				.select()
+				.from(userPuzzleProgress)
+				.where(
+					and(
+						eq(userPuzzleProgress.userId, user.userId),
+						eq(userPuzzleProgress.puzzleId, puzzleId)
+					)
+				);
+
 			const updatedAt = new Date().toISOString();
+
+			// Server-side enforcement: keep solved monotonic, preserve first solvedAt, clamp failedAttempts
+			const mergedSolved = existing?.solved === true ? true : body.solved;
+			const mergedSolvedAt = existing?.solvedAt ?? body.solvedAt ?? null;
+			const mergedFailedAttempts = Math.min(
+				(existing?.failedAttempts ?? 0) + body.failedAttempts,
+				3
+			);
+
 			await db
 				.insert(userPuzzleProgress)
 				.values({
 					userId: user.userId,
 					puzzleId,
-					solved: body.solved,
-					failedAttempts: body.failedAttempts,
-					solvedAt: body.solvedAt ?? null,
+					solved: mergedSolved,
+					failedAttempts: mergedFailedAttempts,
+					solvedAt: mergedSolvedAt,
 					updatedAt,
 				})
 				.onConflictDoUpdate({
 					target: [userPuzzleProgress.userId, userPuzzleProgress.puzzleId],
 					set: {
-						solved: body.solved,
-						failedAttempts: body.failedAttempts,
-						solvedAt: body.solvedAt ?? null,
+						solved: mergedSolved,
+						failedAttempts: mergedFailedAttempts,
+						solvedAt: mergedSolvedAt,
 						updatedAt,
 					},
 				});
