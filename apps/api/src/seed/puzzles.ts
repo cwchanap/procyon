@@ -178,7 +178,7 @@ const PUZZLE_DATA = [
 		playerColor: 'white',
 		board: [
 			[bK, _, _, _, _, _, _, wR], // rank 8: bK a8, wR h8
-			[bP, bP, _, _, _, _, _, _], // rank 7: bP a7/b7
+			[bP, _, _, _, _, _, _, _], // rank 7: bP a7 (b-file clear for rook)
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, _, _],
