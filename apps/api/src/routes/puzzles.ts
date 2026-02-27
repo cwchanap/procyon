@@ -117,7 +117,7 @@ app.post(
 			const mergedSolved = existing?.solved === true ? true : body.solved;
 			const mergedSolvedAt = existing?.solvedAt ?? body.solvedAt ?? null;
 			const mergedFailedAttempts = Math.min(
-				(existing?.failedAttempts ?? 0) + body.failedAttempts,
+				Math.max(existing?.failedAttempts ?? 0, body.failedAttempts),
 				3
 			);
 
