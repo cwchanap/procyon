@@ -106,7 +106,7 @@ export function usePuzzle() {
 			};
 			writeLocalProgress(local);
 			// If authenticated and haven't posted this specific progress state, POST to API
-			const progressKey = `${puzzleId}:${failedAttempts}`;
+			const progressKey = `${puzzleId}:${failedAttempts}:${solved}`;
 			if (isAuthenticated && !savedRef.current.has(progressKey)) {
 				savedRef.current.add(progressKey);
 				try {
