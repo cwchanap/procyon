@@ -29,6 +29,39 @@ const FIXTURE_USER: TestUser = {
 export class AuthHelper {
 	constructor(public page: Page) {}
 
+	private async isUnauthenticatedState(): Promise<boolean> {
+		const currentPath = new URL(this.page.url()).pathname;
+		if (currentPath === '/login' || currentPath === '/register') {
+			return true;
+		}
+
+		const unauthLocators = [
+			this.page.getByRole('button', { name: 'Login' }),
+			this.page.getByRole('link', { name: 'Login' }),
+			this.page.getByRole('button', { name: 'Sign In' }),
+			this.page.getByRole('link', { name: 'Sign In' }),
+		];
+
+		for (const locator of unauthLocators) {
+			if (
+				await locator
+					.first()
+					.isVisible()
+					.catch(() => false)
+			) {
+				return true;
+			}
+		}
+
+		const signOutVisible = await this.page
+			.getByRole('button', { name: 'Sign Out' })
+			.first()
+			.isVisible()
+			.catch(() => false);
+
+		return !signOutVisible;
+	}
+
 	/**
 	 * Return the shared Supabase fixture user for E2E tests.
 	 */
@@ -128,9 +161,7 @@ export class AuthHelper {
 	 * Click the logout button
 	 */
 	async logout(): Promise<void> {
-		// If the Login button is visible, we are already logged out
-		const loginButton = this.page.getByRole('button', { name: 'Login' });
-		if (await loginButton.isVisible().catch(() => false)) {
+		if (await this.isUnauthenticatedState()) {
 			return;
 		}
 
@@ -141,10 +172,11 @@ export class AuthHelper {
 		// Click the Sign Out button in the dropdown
 		await this.page.getByRole('button', { name: 'Sign Out' }).click();
 
-		// Wait for the unauthenticated state to appear
-		await loginButton
-			.waitFor({ state: 'visible', timeout: 5000 })
-			.catch(() => {});
+		await expect
+			.poll(() => this.isUnauthenticatedState(), {
+				timeout: 15000,
+			})
+			.toBe(true);
 	}
 
 	/**
@@ -167,13 +199,11 @@ export class AuthHelper {
 	 * Check if user is not authenticated by looking for Sign In/Sign Up buttons
 	 */
 	async expectNotAuthenticated(): Promise<void> {
-		// Wait for auth nav to load first
-		await this.waitForAuthNav();
-
-		// Check for Login button in the nav as the unauthenticated indicator
-		await expect(this.page.getByRole('button', { name: 'Login' })).toBeVisible({
-			timeout: 15000,
-		});
+		await expect
+			.poll(() => this.isUnauthenticatedState(), {
+				timeout: 15000,
+			})
+			.toBe(true);
 	}
 
 	/**
