@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { eq, and } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
 import { puzzles, userPuzzleProgress } from '../db/schema';
@@ -101,42 +101,28 @@ app.post(
 				return c.json({ error: 'Puzzle not found' }, 404);
 			}
 
-			const [existing] = await db
-				.select()
-				.from(userPuzzleProgress)
-				.where(
-					and(
-						eq(userPuzzleProgress.userId, user.userId),
-						eq(userPuzzleProgress.puzzleId, puzzleId)
-					)
-				);
-
 			const updatedAt = new Date().toISOString();
 
-			// Server-side enforcement: keep solved monotonic, preserve first solvedAt, clamp failedAttempts
-			const mergedSolved = existing?.solved === true ? true : body.solved;
-			const mergedSolvedAt = existing?.solvedAt ?? body.solvedAt ?? null;
-			const mergedFailedAttempts = Math.min(
-				Math.max(existing?.failedAttempts ?? 0, body.failedAttempts),
-				3
-			);
-
+			// Atomic upsert: merge logic runs inside SQLite, not from a stale pre-read.
+			// - solved: monotonically increases (once true, stays true)
+			// - solvedAt: preserves the earliest recorded timestamp
+			// - failedAttempts: takes the max of stored vs incoming, capped at 3
 			await db
 				.insert(userPuzzleProgress)
 				.values({
 					userId: user.userId,
 					puzzleId,
-					solved: mergedSolved,
-					failedAttempts: mergedFailedAttempts,
-					solvedAt: mergedSolvedAt,
+					solved: body.solved,
+					failedAttempts: Math.min(body.failedAttempts, 3),
+					solvedAt: body.solvedAt ?? null,
 					updatedAt,
 				})
 				.onConflictDoUpdate({
 					target: [userPuzzleProgress.userId, userPuzzleProgress.puzzleId],
 					set: {
-						solved: mergedSolved,
-						failedAttempts: mergedFailedAttempts,
-						solvedAt: mergedSolvedAt,
+						solved: sql`CASE WHEN ${userPuzzleProgress.solved} = 1 THEN 1 ELSE excluded.solved END`,
+						solvedAt: sql`COALESCE(${userPuzzleProgress.solvedAt}, excluded.solved_at)`,
+						failedAttempts: sql`MIN(MAX(${userPuzzleProgress.failedAttempts}, excluded.failed_attempts), 3)`,
 						updatedAt,
 					},
 				});
