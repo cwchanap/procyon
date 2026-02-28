@@ -95,3 +95,50 @@ describe('puzzle routes - auth guards', () => {
 		expect(body.error).toBe('Invalid puzzle id');
 	});
 });
+
+const MAX_FAILED_ATTEMPTS = 3;
+
+interface FakePuzzleState {
+	phase: string;
+	failedAttempts: number;
+	showSolution: boolean;
+}
+
+function wrongMoveState(prev: FakePuzzleState): FakePuzzleState {
+	const newFailed = prev.failedAttempts + 1;
+	return {
+		...prev,
+		failedAttempts: newFailed,
+		showSolution: newFailed >= MAX_FAILED_ATTEMPTS,
+		phase: newFailed >= MAX_FAILED_ATTEMPTS ? 'failed' : 'playing',
+	};
+}
+
+describe('wrongMoveState - attempt counter boundary', () => {
+	const base: FakePuzzleState = {
+		phase: 'playing',
+		failedAttempts: 0,
+		showSolution: false,
+	};
+
+	test('1st wrong move: phase stays playing, showSolution false', () => {
+		const next = wrongMoveState(base);
+		expect(next.phase).toBe('playing');
+		expect(next.failedAttempts).toBe(1);
+		expect(next.showSolution).toBe(false);
+	});
+
+	test('2nd wrong move: phase stays playing, showSolution false', () => {
+		const next = wrongMoveState(wrongMoveState(base));
+		expect(next.phase).toBe('playing');
+		expect(next.failedAttempts).toBe(2);
+		expect(next.showSolution).toBe(false);
+	});
+
+	test('3rd wrong move: phase becomes failed, showSolution true', () => {
+		const next = wrongMoveState(wrongMoveState(wrongMoveState(base)));
+		expect(next.phase).toBe('failed');
+		expect(next.failedAttempts).toBe(3);
+		expect(next.showSolution).toBe(true);
+	});
+});
