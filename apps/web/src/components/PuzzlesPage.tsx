@@ -65,7 +65,9 @@ export default function PuzzlesPage() {
 				headers,
 				signal: controller.signal,
 			});
-			if (!r.ok) return;
+			if (!r.ok) {
+				throw new Error(`HTTP ${r.status}`);
+			}
 			const data = (await r.json()) as { progress: ServerPuzzleProgress[] };
 			const map: Record<number, { solved: boolean }> = {};
 			for (const p of data.progress) {
@@ -74,7 +76,13 @@ export default function PuzzlesPage() {
 			setServerProgress(map);
 		};
 
-		load().catch(() => {});
+		load().catch((err: unknown) => {
+			if (err instanceof Error && err.name === 'AbortError') return;
+			console.error(
+				'[PuzzlesPage] Failed to load server puzzle progress:',
+				err
+			);
+		});
 
 		return () => controller.abort();
 	}, [isAuthenticated]);
@@ -87,7 +95,11 @@ export default function PuzzlesPage() {
 			if (!r.ok) throw new Error(`HTTP ${r.status}`);
 			const data = (await r.json()) as { puzzle: PuzzleData };
 			setActivePuzzle(data.puzzle);
-		} catch {
+		} catch (err: unknown) {
+			console.error('[PuzzlesPage] Failed to load puzzle', {
+				id,
+				error: err instanceof Error ? err.message : String(err),
+			});
 			setPuzzleError('Failed to load puzzle. Please try again.');
 		} finally {
 			setIsLoadingPuzzle(false);
