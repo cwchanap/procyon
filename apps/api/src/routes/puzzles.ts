@@ -5,6 +5,7 @@ import { eq, sql } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
 import { puzzles, userPuzzleProgress } from '../db/schema';
+import { logger } from '../logger';
 
 const app = new Hono();
 
@@ -25,7 +26,9 @@ app.get('/', async c => {
 			.orderBy(puzzles.id);
 		return c.json({ puzzles: list });
 	} catch (error) {
-		console.error('Error fetching puzzles:', error);
+		logger.error('Failed to list puzzles', {
+			error: error instanceof Error ? error.message : String(error),
+		});
 		return c.json({ error: 'Failed to fetch puzzles' }, 500);
 	}
 });
@@ -41,7 +44,10 @@ app.get('/progress', authMiddleware, async c => {
 			.where(eq(userPuzzleProgress.userId, user.userId));
 		return c.json({ progress });
 	} catch (error) {
-		console.error('Error fetching puzzle progress:', error);
+		logger.error('Failed to fetch user puzzle progress', {
+			userId: user.userId,
+			error: error instanceof Error ? error.message : String(error),
+		});
 		return c.json({ error: 'Failed to fetch progress' }, 500);
 	}
 });
@@ -53,11 +59,21 @@ app.get('/:id', async c => {
 	if (isNaN(id)) {
 		return c.json({ error: 'Invalid puzzle id' }, 400);
 	}
+	let puzzle: typeof puzzles.$inferSelect | undefined;
 	try {
-		const [puzzle] = await db.select().from(puzzles).where(eq(puzzles.id, id));
-		if (!puzzle) {
-			return c.json({ error: 'Puzzle not found' }, 404);
-		}
+		const [row] = await db.select().from(puzzles).where(eq(puzzles.id, id));
+		puzzle = row;
+	} catch (error) {
+		logger.error('Failed to fetch puzzle from DB', {
+			puzzleId: id,
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return c.json({ error: 'Failed to fetch puzzle' }, 500);
+	}
+	if (!puzzle) {
+		return c.json({ error: 'Puzzle not found' }, 404);
+	}
+	try {
 		return c.json({
 			puzzle: {
 				...puzzle,
@@ -67,7 +83,10 @@ app.get('/:id', async c => {
 			},
 		});
 	} catch (error) {
-		console.error('Error fetching puzzle:', error);
+		logger.error('Corrupt puzzle data in database', {
+			puzzleId: id,
+			error: error instanceof Error ? error.message : String(error),
+		});
 		return c.json({ error: 'Failed to fetch puzzle' }, 500);
 	}
 });
@@ -129,7 +148,11 @@ app.post(
 
 			return c.json({ message: 'Progress saved' }, 200);
 		} catch (error) {
-			console.error('Error saving puzzle progress:', error);
+			logger.error('Failed to save puzzle progress', {
+				puzzleId,
+				userId: user.userId,
+				error: error instanceof Error ? error.message : String(error),
+			});
 			return c.json({ error: 'Failed to save progress' }, 500);
 		}
 	}
