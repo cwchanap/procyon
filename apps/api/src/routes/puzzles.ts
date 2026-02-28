@@ -9,6 +9,27 @@ import { logger } from '../logger';
 
 const app = new Hono();
 
+// Schemas
+const paramSchema = z.object({
+	id: z.coerce.number().int().positive(),
+});
+
+const progressSchema = z
+	.object({
+		solved: z.boolean(),
+		failedAttempts: z.number().int().min(0),
+		solvedAt: z.string().datetime().optional(),
+	})
+	.refine(
+		data =>
+			data.solved ? data.solvedAt !== undefined : data.solvedAt === undefined,
+		{
+			message:
+				'solvedAt must be provided when solved is true, and absent when false',
+			path: ['solvedAt'],
+		}
+	);
+
 // GET /api/puzzles - public, returns list without board/solution data
 app.get('/', async c => {
 	const db = getDB();
@@ -53,12 +74,9 @@ app.get('/progress', authMiddleware, async c => {
 });
 
 // GET /api/puzzles/:id - public, returns full puzzle data
-app.get('/:id', async c => {
+app.get('/:id', zValidator('param', paramSchema), async c => {
 	const db = getDB();
-	const id = parseInt(c.req.param('id'), 10);
-	if (isNaN(id)) {
-		return c.json({ error: 'Invalid puzzle id' }, 400);
-	}
+	const { id } = c.req.valid('param');
 	let puzzle: typeof puzzles.$inferSelect | undefined;
 	try {
 		const [row] = await db.select().from(puzzles).where(eq(puzzles.id, id));
@@ -91,24 +109,16 @@ app.get('/:id', async c => {
 	}
 });
 
-const progressSchema = z.object({
-	solved: z.boolean(),
-	failedAttempts: z.number().int().min(0),
-	solvedAt: z.string().optional(),
-});
-
 // POST /api/puzzles/:id/progress - auth required
 app.post(
 	'/:id/progress',
 	authMiddleware,
+	zValidator('param', paramSchema),
 	zValidator('json', progressSchema),
 	async c => {
 		const db = getDB();
 		const user = getUser(c);
-		const puzzleId = parseInt(c.req.param('id'), 10);
-		if (isNaN(puzzleId)) {
-			return c.json({ error: 'Invalid puzzle id' }, 400);
-		}
+		const { id: puzzleId } = c.req.valid('param');
 		const body = c.req.valid('json');
 
 		try {
