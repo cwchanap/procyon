@@ -45,8 +45,13 @@ export function readLocalPuzzleProgress(): LocalPuzzleProgress {
 function writeLocalProgress(progress: LocalPuzzleProgress): void {
 	try {
 		localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(progress));
-	} catch {
-		// Silently ignore storage errors
+	} catch (err) {
+		// Most likely QuotaExceededError — log so developers can see it in devtools.
+		// Progress is saved server-side for authenticated users as a fallback.
+		console.error(
+			'[usePuzzle] Failed to write puzzle progress to localStorage:',
+			err
+		);
 	}
 }
 
