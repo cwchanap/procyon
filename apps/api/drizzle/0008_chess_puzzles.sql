@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS `puzzles_difficulty_idx` ON `puzzles` (`difficulty`);
 CREATE TABLE IF NOT EXISTS `user_puzzle_progress` (
   `id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
   `user_id` text NOT NULL,
-  `puzzle_id` integer NOT NULL,
+  `puzzle_id` integer NOT NULL REFERENCES `puzzles`(`id`),
   `solved` integer DEFAULT false NOT NULL,
   `failed_attempts` integer DEFAULT 0 NOT NULL,
   `solved_at` text,
