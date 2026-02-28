@@ -1,6 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
 import puzzleRoutes from './puzzles';
-import { initializeDB } from '../db';
 
 // Mock Supabase: reject any token that isn't 'test-token'
 function mockSupabaseFetch() {
@@ -36,7 +35,6 @@ describe('puzzle routes - auth guards', () => {
 			process.env.SUPABASE_URL ?? 'http://localhost:54321';
 		process.env.SUPABASE_ANON_KEY =
 			process.env.SUPABASE_ANON_KEY ?? 'test-anon-key';
-		initializeDB();
 		originalFetch = mockSupabaseFetch();
 	});
 
@@ -91,8 +89,12 @@ describe('puzzle routes - auth guards', () => {
 		);
 		// authMiddleware passes (valid token), then id validation runs
 		expect(res.status).toBe(400);
-		const body = (await res.json()) as { error?: string };
-		expect(body.error).toBe('Invalid puzzle id');
+		const body = (await res.json()) as {
+			success?: boolean;
+			error?: { name?: string };
+		};
+		expect(body.success).toBe(false);
+		expect(body.error?.name).toBe('ZodError');
 	});
 });
 
