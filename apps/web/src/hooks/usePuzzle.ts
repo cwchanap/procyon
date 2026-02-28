@@ -21,10 +21,23 @@ export const MAX_FAILED_ATTEMPTS = 3;
 const OPPONENT_MOVE_DELAY_MS = 600;
 
 export function readLocalPuzzleProgress(): LocalPuzzleProgress {
+	let raw: string | null = null;
 	try {
-		const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-		return raw ? (JSON.parse(raw) as LocalPuzzleProgress) : {};
-	} catch {
+		raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+	} catch (err) {
+		// localStorage unavailable (e.g. blocked in private browsing)
+		console.warn('[usePuzzle] localStorage unavailable:', err);
+		return {};
+	}
+	if (!raw) return {};
+	try {
+		return JSON.parse(raw) as LocalPuzzleProgress;
+	} catch (err) {
+		// Stored data is corrupt JSON — log and return empty so next write starts fresh
+		console.error(
+			'[usePuzzle] Corrupt puzzle progress in localStorage, discarding:',
+			err
+		);
 		return {};
 	}
 }
