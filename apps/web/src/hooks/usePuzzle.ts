@@ -139,9 +139,21 @@ export function usePuzzle() {
 					);
 					if (!response.ok) {
 						savedRef.current.delete(progressKey);
+						console.error('[usePuzzle] Progress POST returned non-OK status', {
+							puzzleId,
+							solved,
+							failedAttempts,
+							status: response.status,
+						});
 					}
-				} catch {
+				} catch (err) {
 					savedRef.current.delete(progressKey);
+					console.error('[usePuzzle] Failed to POST puzzle progress to API', {
+						puzzleId,
+						solved,
+						failedAttempts,
+						error: err instanceof Error ? err.message : String(err),
+					});
 				}
 			}
 		},
