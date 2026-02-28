@@ -189,21 +189,49 @@ export function usePuzzle() {
 	const applyOpponentMove = useCallback(
 		(puzzle: PuzzleData, board: typeof state.board, step: number) => {
 			const opponentMove = puzzle.solution[step];
-			if (!opponentMove) return;
+			if (!opponentMove) {
+				console.error('[usePuzzle] applyOpponentMove: no move at step', {
+					step,
+					puzzleId: puzzle.id,
+				});
+				setState(prev => ({ ...prev, phase: 'failed', showSolution: true }));
+				return;
+			}
 
 			const fromPos = algebraicToPosition(opponentMove.from);
 			const toPos = algebraicToPosition(opponentMove.to);
-			if (!fromPos || !toPos) return;
+			if (!fromPos || !toPos) {
+				console.error(
+					'[usePuzzle] applyOpponentMove: invalid algebraic notation',
+					{ step, move: opponentMove, puzzleId: puzzle.id }
+				);
+				setState(prev => ({ ...prev, phase: 'failed', showSolution: true }));
+				return;
+			}
 
 			const piece = getPieceAt(board, fromPos);
-			if (!piece) return;
+			if (!piece) {
+				console.error(
+					'[usePuzzle] applyOpponentMove: no piece at from position',
+					{ step, fromPos, puzzleId: puzzle.id }
+				);
+				setState(prev => ({ ...prev, phase: 'failed', showSolution: true }));
+				return;
+			}
 
 			const next = makeMove(
 				makePuzzleGameState(board, piece.color),
 				fromPos,
 				toPos
 			);
-			if (!next) return;
+			if (!next) {
+				console.error(
+					'[usePuzzle] applyOpponentMove: illegal move rejected by engine',
+					{ step, move: opponentMove, puzzleId: puzzle.id }
+				);
+				setState(prev => ({ ...prev, phase: 'failed', showSolution: true }));
+				return;
+			}
 
 			setState(prev => {
 				const nextStep = prev.solutionStep + 1;
