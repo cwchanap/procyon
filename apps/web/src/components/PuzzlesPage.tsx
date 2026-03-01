@@ -50,6 +50,25 @@ export default function PuzzlesPage() {
 		return () => controller.abort();
 	}, []);
 
+	// Refreshes server progress from API
+	const refreshServerProgress = useCallback(async () => {
+		if (!isAuthenticated) return;
+
+		const headers = await getAuthHeaders();
+		const r = await fetch(`${env.PUBLIC_API_URL}/puzzles/progress`, {
+			headers,
+		});
+		if (!r.ok) {
+			throw new Error(`HTTP ${r.status}`);
+		}
+		const data = (await r.json()) as { progress: ServerPuzzleProgress[] };
+		const map: Record<number, { solved: boolean }> = {};
+		for (const p of data.progress) {
+			map[p.puzzleId] = { solved: p.solved };
+		}
+		setServerProgress(map);
+	}, [isAuthenticated]);
+
 	// Load server progress when authenticated
 	useEffect(() => {
 		if (!isAuthenticated) {
@@ -110,18 +129,37 @@ export default function PuzzlesPage() {
 		setActivePuzzle(null);
 		// Refresh local progress to reflect any updates from solving
 		setLocalProgress(readLocalPuzzleProgress());
-	}, []);
+		// Refresh server progress for authenticated users (handles localStorage failures)
+		if (isAuthenticated) {
+			refreshServerProgress().catch((err: unknown) => {
+				console.error('[PuzzlesPage] Failed to refresh server progress:', err);
+			});
+		}
+	}, [isAuthenticated, refreshServerProgress]);
 
 	const handleNextPuzzle = useCallback(() => {
 		if (!activePuzzle) return;
 		const idx = puzzleList.findIndex(p => p.id === activePuzzle.id);
-		if (idx >= 0 && idx < puzzleList.length - 1) {
-			void handleSelectPuzzle(puzzleList[idx + 1].id);
+		const nextPuzzle = puzzleList[idx + 1];
+		if (idx >= 0 && nextPuzzle) {
+			void handleSelectPuzzle(nextPuzzle.id);
 		} else {
 			setActivePuzzle(null);
 		}
 		setLocalProgress(readLocalPuzzleProgress());
-	}, [activePuzzle, puzzleList, handleSelectPuzzle]);
+		// Refresh server progress for authenticated users (handles localStorage failures)
+		if (isAuthenticated) {
+			refreshServerProgress().catch((err: unknown) => {
+				console.error('[PuzzlesPage] Failed to refresh server progress:', err);
+			});
+		}
+	}, [
+		activePuzzle,
+		puzzleList,
+		handleSelectPuzzle,
+		isAuthenticated,
+		refreshServerProgress,
+	]);
 
 	if (isLoadingList) {
 		return (
