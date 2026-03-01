@@ -53,13 +53,7 @@ export class AuthHelper {
 			}
 		}
 
-		const signOutVisible = await this.page
-			.getByRole('button', { name: 'Sign Out' })
-			.first()
-			.isVisible()
-			.catch(() => false);
-
-		return !signOutVisible;
+		return false;
 	}
 
 	/**
