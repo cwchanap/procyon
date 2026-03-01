@@ -12,9 +12,12 @@ CREATE TABLE IF NOT EXISTS `puzzles` (
   `hint` text NOT NULL,
   `created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX IF NOT EXISTS `puzzles_slug_idx` ON `puzzles` (`slug`);
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `puzzles_difficulty_idx` ON `puzzles` (`difficulty`);
+--> statement-breakpoint
 
 CREATE TABLE IF NOT EXISTS `user_puzzle_progress` (
   `id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -25,9 +28,11 @@ CREATE TABLE IF NOT EXISTS `user_puzzle_progress` (
   `solved_at` text,
   `updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX IF NOT EXISTS `user_puzzle_progress_user_puzzle_idx`
   ON `user_puzzle_progress` (`user_id`, `puzzle_id`);
+--> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS `user_puzzle_progress_user_id_idx`
   ON `user_puzzle_progress` (`user_id`);
