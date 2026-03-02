@@ -86,6 +86,13 @@ export function usePuzzle() {
 	const { isAuthenticated } = useAuth();
 	const savedRef = useRef<Set<string>>(new Set());
 
+	// Reset dedupe cache when auth changes to avoid blocking requests for new session
+	useEffect(() => {
+		if (!isAuthenticated) {
+			savedRef.current.clear();
+		}
+	}, [isAuthenticated]);
+
 	const [state, setState] = useState<PuzzleState>({
 		phase: 'idle',
 		puzzle: null,
@@ -124,7 +131,8 @@ export function usePuzzle() {
 			};
 			writeLocalProgress(local);
 			// If authenticated and haven't posted this specific progress state, POST to API
-			const progressKey = `${puzzleId}:${failedAttempts}:${solved}`;
+			// Use canonical merged values for consistency with localStorage state
+			const progressKey = `${puzzleId}:${mergedFailedAttempts}:${mergedSolved}`;
 			if (isAuthenticated && !savedRef.current.has(progressKey)) {
 				savedRef.current.add(progressKey);
 				try {
@@ -134,7 +142,11 @@ export function usePuzzle() {
 						{
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json', ...headers },
-							body: JSON.stringify({ solved, failedAttempts, solvedAt }),
+							body: JSON.stringify({
+								solved: mergedSolved,
+								failedAttempts: mergedFailedAttempts,
+								solvedAt: mergedSolvedAt,
+							}),
 						}
 					);
 					if (!response.ok) {

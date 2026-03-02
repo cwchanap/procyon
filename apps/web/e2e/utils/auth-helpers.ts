@@ -35,11 +35,13 @@ export class AuthHelper {
 			return true;
 		}
 
+		// Scope to nav element to avoid matching unrelated CTAs elsewhere on the page
+		const navLocator = this.page.locator('nav');
 		const unauthLocators = [
-			this.page.getByRole('button', { name: 'Login' }),
-			this.page.getByRole('link', { name: 'Login' }),
-			this.page.getByRole('button', { name: 'Sign In' }),
-			this.page.getByRole('link', { name: 'Sign In' }),
+			navLocator.getByRole('button', { name: 'Login' }),
+			navLocator.getByRole('link', { name: 'Login' }),
+			navLocator.getByRole('button', { name: 'Sign In' }),
+			navLocator.getByRole('link', { name: 'Sign In' }),
 		];
 
 		for (const locator of unauthLocators) {

@@ -50,39 +50,15 @@ export default function PuzzlesPage() {
 		return () => controller.abort();
 	}, []);
 
-	// Refreshes server progress from API
-	const refreshServerProgress = useCallback(async () => {
-		if (!isAuthenticated) return;
+	// Helper to fetch server progress (shared between refreshServerProgress and useEffect)
+	const fetchServerProgress = useCallback(
+		async (signal?: AbortSignal): Promise<void> => {
+			if (!isAuthenticated) return;
 
-		const headers = await getAuthHeaders();
-		const r = await fetch(`${env.PUBLIC_API_URL}/puzzles/progress`, {
-			headers,
-		});
-		if (!r.ok) {
-			throw new Error(`HTTP ${r.status}`);
-		}
-		const data = (await r.json()) as { progress: ServerPuzzleProgress[] };
-		const map: Record<number, { solved: boolean }> = {};
-		for (const p of data.progress) {
-			map[p.puzzleId] = { solved: p.solved };
-		}
-		setServerProgress(map);
-	}, [isAuthenticated]);
-
-	// Load server progress when authenticated
-	useEffect(() => {
-		if (!isAuthenticated) {
-			setServerProgress({});
-			return;
-		}
-
-		const controller = new AbortController();
-
-		const load = async () => {
 			const headers = await getAuthHeaders();
 			const r = await fetch(`${env.PUBLIC_API_URL}/puzzles/progress`, {
 				headers,
-				signal: controller.signal,
+				signal,
 			});
 			if (!r.ok) {
 				throw new Error(`HTTP ${r.status}`);
@@ -93,9 +69,25 @@ export default function PuzzlesPage() {
 				map[p.puzzleId] = { solved: p.solved };
 			}
 			setServerProgress(map);
-		};
+		},
+		[isAuthenticated]
+	);
 
-		load().catch((err: unknown) => {
+	// Refreshes server progress from API
+	const refreshServerProgress = useCallback(async () => {
+		return fetchServerProgress();
+	}, [fetchServerProgress]);
+
+	// Load server progress when authenticated
+	useEffect(() => {
+		if (!isAuthenticated) {
+			setServerProgress({});
+			return;
+		}
+
+		const controller = new AbortController();
+
+		fetchServerProgress(controller.signal).catch((err: unknown) => {
 			if (err instanceof Error && err.name === 'AbortError') return;
 			console.error(
 				'[PuzzlesPage] Failed to load server puzzle progress:',
@@ -104,7 +96,7 @@ export default function PuzzlesPage() {
 		});
 
 		return () => controller.abort();
-	}, [isAuthenticated]);
+	}, [isAuthenticated, fetchServerProgress]);
 
 	const handleSelectPuzzle = useCallback(async (id: number) => {
 		setIsLoadingPuzzle(true);
