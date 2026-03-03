@@ -16,14 +16,23 @@ import type {
 	GameState,
 } from '../lib/chess/types';
 
-const LOCAL_STORAGE_KEY = 'procyon_puzzle_progress';
+const LOCAL_STORAGE_KEY_PREFIX = 'procyon_puzzle_progress';
 export const MAX_FAILED_ATTEMPTS = 3;
 const OPPONENT_MOVE_DELAY_MS = 600;
 
-export function readLocalPuzzleProgress(): LocalPuzzleProgress {
+function getStorageKey(userId: string | null): string {
+	return userId
+		? `${LOCAL_STORAGE_KEY_PREFIX}_${userId}`
+		: `${LOCAL_STORAGE_KEY_PREFIX}_guest`;
+}
+
+export function readLocalPuzzleProgress(
+	userId?: string | null
+): LocalPuzzleProgress {
+	const key = getStorageKey(userId ?? null);
 	let raw: string | null = null;
 	try {
-		raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+		raw = localStorage.getItem(key);
 	} catch (err) {
 		// localStorage unavailable (e.g. blocked in private browsing)
 		console.warn('[usePuzzle] localStorage unavailable:', err);
@@ -42,9 +51,13 @@ export function readLocalPuzzleProgress(): LocalPuzzleProgress {
 	}
 }
 
-function writeLocalProgress(progress: LocalPuzzleProgress): void {
+function writeLocalProgress(
+	progress: LocalPuzzleProgress,
+	userId: string | null
+): void {
+	const key = getStorageKey(userId);
 	try {
-		localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(progress));
+		localStorage.setItem(key, JSON.stringify(progress));
 	} catch (err) {
 		// Most likely QuotaExceededError — log so developers can see it in devtools.
 		// Progress is saved server-side for authenticated users as a fallback.
@@ -83,7 +96,7 @@ function wrongMoveState(prev: PuzzleState): PuzzleState {
 }
 
 export function usePuzzle() {
-	const { isAuthenticated } = useAuth();
+	const { isAuthenticated, user } = useAuth();
 	const savedRef = useRef<Set<string>>(new Set());
 
 	// Reset dedupe cache when auth changes to avoid blocking requests for new session
@@ -114,8 +127,9 @@ export function usePuzzle() {
 			failedAttempts: number,
 			solvedAt?: string
 		) => {
-			// Always write to localStorage first
-			const local = readLocalPuzzleProgress();
+			// Always write to localStorage first (scoped to user)
+			const userId = user?.id ?? null;
+			const local = readLocalPuzzleProgress(userId);
 			const existing = local[puzzleId];
 			// Preserve solved: true — only upgrade, never downgrade
 			const mergedSolved = existing?.solved === true ? true : solved;
@@ -129,7 +143,7 @@ export function usePuzzle() {
 				failedAttempts: mergedFailedAttempts,
 				solvedAt: mergedSolvedAt,
 			};
-			writeLocalProgress(local);
+			writeLocalProgress(local, userId);
 			// If authenticated and haven't posted this specific progress state, POST to API
 			// Use canonical merged values for consistency with localStorage state
 			const progressKey = `${puzzleId}:${mergedFailedAttempts}:${mergedSolved}`;
