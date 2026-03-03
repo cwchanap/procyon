@@ -306,6 +306,16 @@ export function usePuzzle() {
 			const fromAlg = positionToAlgebraic(selectedSquare);
 			const toAlg = positionToAlgebraic(position);
 
+			// Check if this is a legal move first - illegal moves should be ignored
+			const isLegalMove = prev.possibleMoves.some(
+				move => move.row === position.row && move.col === position.col
+			);
+
+			if (!isLegalMove) {
+				// Illegal move - just clear selection, don't penalize
+				return { ...prev, selectedSquare: null, possibleMoves: [] };
+			}
+
 			const expectedMove = puzzle.solution[solutionStep];
 			const isCorrect =
 				expectedMove != null &&
