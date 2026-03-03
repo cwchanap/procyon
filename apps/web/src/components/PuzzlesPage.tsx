@@ -12,7 +12,7 @@ import type {
 import { readLocalPuzzleProgress } from '../hooks/usePuzzle';
 
 export default function PuzzlesPage() {
-	const { isAuthenticated } = useAuth();
+	const { isAuthenticated, user } = useAuth();
 
 	const [puzzleList, setPuzzleList] = useState<PuzzleListItem[]>([]);
 	const [activePuzzle, setActivePuzzle] = useState<PuzzleData | null>(null);
@@ -45,10 +45,10 @@ export default function PuzzlesPage() {
 			})
 			.finally(() => setIsLoadingList(false));
 
-		setLocalProgress(readLocalPuzzleProgress());
+		setLocalProgress(readLocalPuzzleProgress(user?.id));
 
 		return () => controller.abort();
-	}, []);
+	}, [user?.id]);
 
 	// Helper to fetch server progress (shared between refreshServerProgress and useEffect)
 	const fetchServerProgress = useCallback(
@@ -120,7 +120,7 @@ export default function PuzzlesPage() {
 	const handleBack = useCallback(() => {
 		setActivePuzzle(null);
 		// Refresh local progress to reflect any updates from solving
-		setLocalProgress(readLocalPuzzleProgress());
+		setLocalProgress(readLocalPuzzleProgress(user?.id));
 		// Refresh server progress for authenticated users (handles localStorage failures)
 		if (isAuthenticated) {
 			refreshServerProgress().catch((err: unknown) => {
@@ -138,7 +138,7 @@ export default function PuzzlesPage() {
 		} else {
 			setActivePuzzle(null);
 		}
-		setLocalProgress(readLocalPuzzleProgress());
+		setLocalProgress(readLocalPuzzleProgress(user?.id));
 		// Refresh server progress for authenticated users (handles localStorage failures)
 		if (isAuthenticated) {
 			refreshServerProgress().catch((err: unknown) => {
