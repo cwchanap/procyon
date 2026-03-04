@@ -99,12 +99,10 @@ export function usePuzzle() {
 	const { isAuthenticated, user } = useAuth();
 	const savedRef = useRef<Set<string>>(new Set());
 
-	// Reset dedupe cache when auth changes to avoid blocking requests for new session
+	// Reset dedupe cache when auth or user changes to avoid blocking requests for new session
 	useEffect(() => {
-		if (!isAuthenticated) {
-			savedRef.current.clear();
-		}
-	}, [isAuthenticated]);
+		savedRef.current.clear();
+	}, [isAuthenticated, user?.id]);
 
 	const [state, setState] = useState<PuzzleState>({
 		phase: 'idle',
@@ -183,7 +181,7 @@ export function usePuzzle() {
 				}
 			}
 		},
-		[isAuthenticated]
+		[isAuthenticated, user?.id]
 	);
 
 	const startPuzzle = useCallback((puzzle: PuzzleData) => {
