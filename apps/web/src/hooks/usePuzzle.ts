@@ -343,7 +343,8 @@ export function usePuzzle() {
 					position
 				);
 				if (!nextGameState) {
-					return wrongMoveState(prev);
+					// Move is pseudo-legal but leaves king in check - ignore, don't penalize
+					return { ...prev, selectedSquare: null, possibleMoves: [] };
 				}
 
 				const nextStep = solutionStep + 1;
