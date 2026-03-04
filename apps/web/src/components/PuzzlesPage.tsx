@@ -70,7 +70,7 @@ export default function PuzzlesPage() {
 			}
 			setServerProgress(map);
 		},
-		[isAuthenticated]
+		[isAuthenticated, user?.id]
 	);
 
 	// Refreshes server progress from API
