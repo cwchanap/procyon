@@ -22,7 +22,10 @@ export function initializeLocalDB() {
 		drizzleModule
 	) as typeof import('drizzle-orm/bun-sqlite');
 
-	const dbPath = join(import.meta.dir, '..', '..', 'dev.db');
+	const isTest = process.env.NODE_ENV === 'test';
+	const dbPath = isTest
+		? ':memory:'
+		: join(import.meta.dir, '..', '..', 'dev.db');
 	const sqlite = new Database(dbPath);
 	localDB = drizzle(sqlite, { schema });
 
