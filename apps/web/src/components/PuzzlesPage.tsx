@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth, getAuthHeaders } from '../lib/auth';
 import { env } from '../lib/env';
 import PuzzleGrid from './puzzle/PuzzleGrid';
@@ -25,9 +25,13 @@ export default function PuzzlesPage() {
 	const [listError, setListError] = useState<string | null>(null);
 	const [puzzleError, setPuzzleError] = useState<string | null>(null);
 
+	// Track latest request ID to prevent race conditions in puzzle selection
+	const puzzleRequestIdRef = useRef(0);
+
 	// Load puzzle list
 	useEffect(() => {
 		const controller = new AbortController();
+		setListError(null);
 		setIsLoadingList(true);
 
 		fetch(`${env.PUBLIC_API_URL}/puzzles`, { signal: controller.signal })
@@ -89,6 +93,7 @@ export default function PuzzlesPage() {
 
 		fetchServerProgress(controller.signal).catch((err: unknown) => {
 			if (err instanceof Error && err.name === 'AbortError') return;
+			setServerProgress({});
 			console.error(
 				'[PuzzlesPage] Failed to load server puzzle progress:',
 				err
@@ -99,21 +104,29 @@ export default function PuzzlesPage() {
 	}, [isAuthenticated, fetchServerProgress]);
 
 	const handleSelectPuzzle = useCallback(async (id: number) => {
+		const requestId = ++puzzleRequestIdRef.current;
 		setIsLoadingPuzzle(true);
 		setPuzzleError(null);
 		try {
 			const r = await fetch(`${env.PUBLIC_API_URL}/puzzles/${id}`);
 			if (!r.ok) throw new Error(`HTTP ${r.status}`);
 			const data = (await r.json()) as { puzzle: PuzzleData };
+			// Ignore if a newer request was made
+			if (requestId !== puzzleRequestIdRef.current) return;
 			setActivePuzzle(data.puzzle);
 		} catch (err: unknown) {
+			// Ignore if a newer request was made
+			if (requestId !== puzzleRequestIdRef.current) return;
 			console.error('[PuzzlesPage] Failed to load puzzle', {
 				id,
 				error: err instanceof Error ? err.message : String(err),
 			});
 			setPuzzleError('Failed to load puzzle. Please try again.');
 		} finally {
-			setIsLoadingPuzzle(false);
+			// Only clear loading state if this is still the latest request
+			if (requestId === puzzleRequestIdRef.current) {
+				setIsLoadingPuzzle(false);
+			}
 		}
 	}, []);
 
