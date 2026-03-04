@@ -1,15 +1,30 @@
-import { join } from 'node:path';
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import * as schema from './schema';
 
-let localDB: ReturnType<typeof drizzle<typeof schema>> | undefined;
+import { join } from 'node:path';
+
+// Keep Bun-only imports inside initializeLocalDB so Cloudflare Worker bundles
+// don't try to resolve bun:sqlite at build time.
+let localDB:
+	| ReturnType<typeof import('drizzle-orm/bun-sqlite').drizzle<typeof schema>>
+	| undefined;
 
 export function initializeLocalDB() {
 	if (localDB) {
 		return localDB;
 	}
+	const bunSqliteModule = 'bun:sqlite';
+	// eslint-disable-next-line @typescript-eslint/no-require-imports
+	const { Database } = require(bunSqliteModule) as typeof import('bun:sqlite');
+	const drizzleModule = 'drizzle-orm/bun-sqlite';
+	// eslint-disable-next-line @typescript-eslint/no-require-imports
+	const { drizzle } = require(
+		drizzleModule
+	) as typeof import('drizzle-orm/bun-sqlite');
+	const migratorModule = 'drizzle-orm/bun-sqlite/migrator';
+	// eslint-disable-next-line @typescript-eslint/no-require-imports
+	const { migrate } = require(
+		migratorModule
+	) as typeof import('drizzle-orm/bun-sqlite/migrator');
 
 	const isTest = process.env.NODE_ENV === 'test';
 	const dbPath = isTest
