@@ -5,6 +5,9 @@ import { initializeDB } from './db';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import aiConfigRoutes from './routes/ai-config';
+import playHistoryRoutes from './routes/play-history';
+import ratingsRoutes from './routes/ratings';
+import puzzleRoutes from './routes/puzzles';
 
 // Cloudflare Workers environment bindings
 type Bindings = {
@@ -54,6 +57,9 @@ app.get('/health', c => {
 app.route('/api/auth', authRoutes);
 app.route('/api/users', userRoutes);
 app.route('/api/ai-config', aiConfigRoutes);
+app.route('/api/play-history', playHistoryRoutes);
+app.route('/api/ratings', ratingsRoutes);
+app.route('/api/puzzles', puzzleRoutes);
 
 // Legacy hello endpoint
 app.get('/api/hello', c => {
