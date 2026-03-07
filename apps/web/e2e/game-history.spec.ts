@@ -12,8 +12,7 @@ test.describe('Game history saving flow', () => {
 
 		await authHelper.register(testUser);
 		// Give the auth client time to hydrate session state across the app
-		await page.waitForTimeout(2000);
-		await page.waitForTimeout(1000); // wait briefly for auth state to settle
+		await authHelper.expectAuthenticated(testUser.username, testUser.email);
 	});
 
 	// Note: We intentionally skip logout here to avoid flakiness from

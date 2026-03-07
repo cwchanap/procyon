@@ -123,9 +123,11 @@ export class AuthHelper {
 		await this.page.getByRole('button', { name: 'Create Account' }).click();
 
 		// Wait briefly for any client-side redirect to occur
-		await this.page.waitForTimeout(500);
-		const currentUrl = this.page.url();
-		if (currentUrl.includes('/register')) {
+		await this.page
+			.waitForURL(url => url.pathname !== '/register', { timeout: 5000 })
+			.catch(() => null);
+		const currentPath = new URL(this.page.url()).pathname;
+		if (currentPath === '/register') {
 			// If we're still on the register page (with or without query params),
 			// navigate explicitly to home. On successful registration the session
 			// cookie should already be set, so the navbar will reflect auth state.
