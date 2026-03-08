@@ -85,6 +85,11 @@ export default function PlayHistoryPage() {
 	const [history, setHistory] = useState<ServerPlayHistory[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [isHydrated, setIsHydrated] = useState(false);
+
+	useEffect(() => {
+		setIsHydrated(true);
+	}, []);
 
 	useEffect(() => {
 		if (!isAuthenticated) {
@@ -174,7 +179,11 @@ export default function PlayHistoryPage() {
 
 	if (!isAuthenticated) {
 		return (
-			<div className='min-h-[70vh] flex items-center justify-center'>
+			<div
+				data-testid='play-history-guest'
+				data-hydrated={isHydrated ? 'true' : 'false'}
+				className='min-h-[70vh] flex items-center justify-center'
+			>
 				<div className='glass-effect rounded-3xl px-10 py-14 text-center space-y-4 max-w-md w-full'>
 					<h1 className='text-3xl font-semibold text-white'>
 						Sign in to view your play history
