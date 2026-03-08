@@ -15,6 +15,28 @@ const waitForLoginFormReady = async (page: Page) => {
 		.waitFor({ state: 'visible', timeout: 15000 });
 };
 
+const waitForPuzzleListReady = async (page: Page) => {
+	await expect(
+		page.getByRole('heading', { name: 'Chess Puzzles' })
+	).toBeVisible();
+	await expect(page.getByText('Loading puzzles…')).not.toBeVisible({
+		timeout: 15000,
+	});
+};
+
+const waitForConfiguredAIProviders = async (page: Page) => {
+	const noProvidersMessage = page.getByText('⚠️ No AI providers configured');
+	const providerSelect = page
+		.locator('label', { hasText: 'AI Provider' })
+		.locator('xpath=..')
+		.locator('select');
+
+	await expect(providerSelect).toBeVisible({ timeout: 15000 });
+	await expect(noProvidersMessage).not.toBeVisible({ timeout: 15000 });
+
+	return providerSelect;
+};
+
 test.describe('Critical user journeys', () => {
 	test('homepage routes users to puzzles and core game pages', async ({
 		page,
@@ -84,15 +106,13 @@ test.describe('Critical user journeys', () => {
 		page,
 	}) => {
 		await page.goto('/puzzles');
-		await expect(
-			page.getByRole('heading', { name: 'Chess Puzzles' })
-		).toBeVisible();
+		await waitForPuzzleListReady(page);
 		await expect(
 			page.getByRole('button', { name: /Back Rank Mate/i })
-		).toBeVisible();
+		).toBeVisible({ timeout: 15000 });
 		await expect(
 			page.getByRole('button', { name: /Smothered Mate/i })
-		).toBeVisible();
+		).toBeVisible({ timeout: 15000 });
 
 		await page.getByRole('button', { name: /Back Rank Mate/i }).click();
 		await expect(
@@ -159,15 +179,8 @@ test.describe('Critical user journeys', () => {
 		).toBeVisible();
 		await expect(page.getByText('AI Player')).toBeVisible();
 		await expect(page.getByText('AI Provider')).toBeVisible();
-		await expect(
-			page.getByText('⚠️ No AI providers configured')
-		).not.toBeVisible();
-		await expect(
-			page
-				.locator('label', { hasText: 'AI Provider' })
-				.locator('xpath=..')
-				.locator('select')
-		).toHaveValue('openai');
+		const providerSelect = await waitForConfiguredAIProviders(page);
+		await expect(providerSelect).toHaveValue('openai');
 		await expect(page.getByText('AI plays Gote (後手)')).toBeVisible();
 	});
 });
