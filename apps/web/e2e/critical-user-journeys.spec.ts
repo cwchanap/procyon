@@ -15,6 +15,15 @@ const waitForLoginFormReady = async (page: Page) => {
 		.waitFor({ state: 'visible', timeout: 15000 });
 };
 
+const waitForModelOption = async (page: Page, label: string) => {
+	await page
+		.getByRole('combobox')
+		.nth(1)
+		.locator('option', { hasText: label })
+		.first()
+		.waitFor({ state: 'attached', timeout: 15000 });
+};
+
 const waitForPuzzleListReady = async (page: Page) => {
 	await expect(
 		page.getByRole('heading', { name: 'Chess Puzzles' })
@@ -35,6 +44,18 @@ const waitForConfiguredAIProviders = async (page: Page) => {
 	await expect(noProvidersMessage).not.toBeVisible({ timeout: 15000 });
 
 	return providerSelect;
+};
+
+const waitForShogiReady = async (page: Page) => {
+	await page.waitForFunction(() => {
+		const global = window as unknown as {
+			__PROCYON_DEBUG_SHOGI_STATE__?: unknown;
+		};
+		return !!global.__PROCYON_DEBUG_SHOGI_STATE__;
+	});
+	await expect(
+		page.getByRole('button', { name: '⚙️ AI Settings' })
+	).toBeVisible({ timeout: 15000 });
 };
 
 test.describe('Critical user journeys', () => {
@@ -163,6 +184,7 @@ test.describe('Critical user journeys', () => {
 		await waitForProfileReady(page);
 
 		await page.getByRole('combobox').first().selectOption({ label: 'OpenAI' });
+		await waitForModelOption(page, 'GPT-4o');
 		await page.getByRole('combobox').nth(1).selectOption({ label: 'GPT-4o' });
 		await page
 			.getByPlaceholder('Enter your API key')
@@ -173,10 +195,11 @@ test.describe('Critical user journeys', () => {
 		).toBeVisible();
 
 		await page.goto('/shogi');
+		await waitForShogiReady(page);
 		await page.getByRole('button', { name: '⚙️ AI Settings' }).click();
 		await expect(
 			page.getByRole('heading', { name: 'AI Settings' })
-		).toBeVisible();
+		).toBeVisible({ timeout: 15000 });
 		await expect(page.getByText('AI Player')).toBeVisible();
 		await expect(page.getByText('AI Provider')).toBeVisible();
 		const providerSelect = await waitForConfiguredAIProviders(page);

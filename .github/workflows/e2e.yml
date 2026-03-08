@@ -82,13 +82,13 @@ jobs:
         run: |
           node scripts/create-e2e-supabase-user.js
 
-      - name: Install Playwright browsers
-        working-directory: apps/web
-        run: npx playwright install --with-deps
-
       - name: Run API database migrations
         working-directory: apps/api
         run: bun run db:migrate
+
+      - name: Seed puzzle data
+        working-directory: apps/api
+        run: bun run db:seed
 
       - name: Start API server
         env:
