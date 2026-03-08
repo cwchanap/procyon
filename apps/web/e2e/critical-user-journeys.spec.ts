@@ -15,12 +15,26 @@ const waitForLoginFormReady = async (page: Page) => {
 		.waitFor({ state: 'visible', timeout: 15000 });
 };
 
+const waitForHomepageGameCardsReady = async (page: Page) => {
+	await expect(
+		page.getByRole('button', { name: /Play Standard Chess/i })
+	).toBeVisible({ timeout: 15000 });
+	await page.waitForFunction(() => {
+		const buttons = Array.from(document.querySelectorAll('button'));
+		return buttons.some(button =>
+			button.textContent?.includes('Play Chinese Chess')
+		);
+	});
+	await page
+		.locator('[data-testid="game-cards"][data-hydrated="true"]')
+		.waitFor({ state: 'visible', timeout: 15000 });
+};
+
 const waitForModelOption = async (page: Page, label: string) => {
 	await page
 		.getByRole('combobox')
 		.nth(1)
 		.locator('option', { hasText: label })
-		.first()
 		.waitFor({ state: 'attached', timeout: 15000 });
 };
 
@@ -63,6 +77,7 @@ test.describe('Critical user journeys', () => {
 		page,
 	}) => {
 		await page.goto('/');
+		await waitForHomepageGameCardsReady(page);
 		await expect(
 			page.getByRole('heading', { name: 'Procyon Chess' })
 		).toBeVisible();
@@ -82,8 +97,9 @@ test.describe('Critical user journeys', () => {
 
 		for (const route of routes) {
 			await page.goto('/');
+			await waitForHomepageGameCardsReady(page);
 			await page.getByRole('button', { name: route.buttonName }).click();
-			await expect(page).toHaveURL(route.path);
+			await expect(page).toHaveURL(route.path, { timeout: 15000 });
 			await expect(
 				page.getByRole('button', { name: '▶️ Start' })
 			).toBeVisible();
@@ -202,8 +218,16 @@ test.describe('Critical user journeys', () => {
 		).toBeVisible({ timeout: 15000 });
 		await expect(page.getByText('AI Player')).toBeVisible();
 		await expect(page.getByText('AI Provider')).toBeVisible();
+		const aiPlayerSelect = page.getByRole('combobox').first();
 		const providerSelect = await waitForConfiguredAIProviders(page);
+		await aiPlayerSelect
+			.locator('option', { hasText: 'AI plays Gote (後手)' })
+			.first()
+			.waitFor({
+				state: 'attached',
+				timeout: 15000,
+			});
+		await expect(aiPlayerSelect).toHaveValue('gote');
 		await expect(providerSelect).toHaveValue('openai');
-		await expect(page.getByText('AI plays Gote (後手)')).toBeVisible();
 	});
 });
