@@ -31,11 +31,22 @@ const waitForHomepageGameCardsReady = async (page: Page) => {
 };
 
 const waitForModelOption = async (page: Page, label: string) => {
+	await page.waitForFunction(targetLabel => {
+		const modelSelect = document.querySelectorAll('select').item(1);
+		if (!(modelSelect instanceof HTMLSelectElement)) {
+			return false;
+		}
+
+		return Array.from(modelSelect.options).some(
+			option => option.text.trim() === targetLabel
+		);
+	}, label);
+};
+
+const waitForPlayHistoryGuestReady = async (page: Page) => {
 	await page
-		.getByRole('combobox')
-		.nth(1)
-		.locator('option', { hasText: label })
-		.waitFor({ state: 'attached', timeout: 15000 });
+		.locator('[data-testid="play-history-guest"][data-hydrated="true"]')
+		.waitFor({ state: 'visible', timeout: 15000 });
 };
 
 const waitForPuzzleListReady = async (page: Page) => {
@@ -133,9 +144,10 @@ test.describe('Critical user journeys', () => {
 				'Your recent games and results will appear here once you are logged in.'
 			)
 		).toBeVisible();
+		await waitForPlayHistoryGuestReady(page);
 
 		await page.getByRole('button', { name: 'Go to Login' }).click();
-		await expect(page).toHaveURL('/login');
+		await expect(page).toHaveURL('/login', { timeout: 15000 });
 		await waitForLoginFormReady(page);
 	});
 
