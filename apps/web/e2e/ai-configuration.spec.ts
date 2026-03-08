@@ -1,6 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 import { AuthHelper, type TestUser } from './utils/auth-helpers';
 
+const escapeRegex = (value: string) =>
+	value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const waitForProfileReady = async (page: Page) => {
 	await page
 		.locator(
@@ -10,10 +13,15 @@ const waitForProfileReady = async (page: Page) => {
 };
 
 const waitForModelOption = async (page: Page, label: string) => {
-	await page
-		.getByRole('combobox')
-		.nth(1)
-		.locator('option', { hasText: label })
+	const modelSelect = page
+		.locator('label', { hasText: 'Model' })
+		.locator('xpath=..')
+		.locator('select');
+
+	await expect(modelSelect).toBeVisible({ timeout: 15000 });
+	await modelSelect
+		.locator('option')
+		.filter({ hasText: new RegExp(`^${escapeRegex(label)}$`) })
 		.first()
 		.waitFor({ state: 'attached', timeout: 15000 });
 };
