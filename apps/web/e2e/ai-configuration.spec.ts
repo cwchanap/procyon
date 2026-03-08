@@ -9,6 +9,15 @@ const waitForProfileReady = async (page: Page) => {
 		.waitFor({ state: 'visible', timeout: 15000 });
 };
 
+const waitForModelOption = async (page: Page, label: string) => {
+	await page
+		.getByRole('combobox')
+		.nth(1)
+		.locator('option', { hasText: label })
+		.first()
+		.waitFor({ state: 'attached', timeout: 15000 });
+};
+
 test.describe('AI Configuration Management', () => {
 	let authHelper: AuthHelper;
 	let testUser: TestUser;
@@ -171,6 +180,7 @@ test.describe('AI Configuration Management', () => {
 
 			// Select OpenAI model
 			const modelDropdown = page.getByRole('combobox').nth(1);
+			await waitForModelOption(page, 'GPT-4o');
 			await modelDropdown.selectOption({ label: 'GPT-4o' });
 
 			// Save OpenAI configuration
