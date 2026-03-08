@@ -9,6 +9,33 @@ const waitForProfileReady = async (page: Page) => {
 		.waitFor({ state: 'visible', timeout: 15000 });
 };
 
+const waitForPlayHistoryData = async (page: Page) => {
+	await expect(
+		page.getByRole('heading', { name: 'Play History' })
+	).toBeVisible();
+
+	const loadingRow = page.getByText('Loading your games...');
+	await expect(loadingRow).not.toBeVisible({ timeout: 15000 });
+
+	const retryButton = page.getByText('Retry').first();
+	if (await retryButton.isVisible().catch(() => false)) {
+		const errorElement = page.getByTestId('api-error');
+		const errorText = (await errorElement.textContent()) ?? 'unknown error';
+		throw new Error(`API Error: ${errorText}`);
+	}
+
+	const emptyState = page.getByText('You have not recorded any games yet');
+	await expect(emptyState).not.toBeVisible({ timeout: 10000 });
+
+	const dataRow = page
+		.locator('tbody tr')
+		.filter({ hasNot: loadingRow })
+		.first();
+	await expect(dataRow).toBeVisible({ timeout: 10000 });
+
+	return dataRow;
+};
+
 /**
  * Helper function to play a game and win using debug function
  * @param page - Playwright Page object
@@ -154,39 +181,11 @@ test.describe('ELO Rating System', () => {
 			// Go to play history
 			await page.goto('/play-history');
 
-			// Wait for the page heading to appear
-			await expect(
-				page.getByRole('heading', { name: 'Play History' })
-			).toBeVisible();
-
-			// Wait for either loading to complete OR error to appear
-			// This prevents hanging forever if API fails
-			await Promise.race([
-				expect(page.getByText('Loading your games...')).not.toBeVisible({
-					timeout: 15000,
-				}),
-				expect(page.getByText('Retry').first()).toBeVisible({ timeout: 15000 }),
-			]);
-
-			// Check if there's an error - fail fast with helpful message
-			const retryButton = page.getByText('Retry').first();
-			if (await retryButton.isVisible()) {
-				const errorElement = page.getByTestId('api-error');
-				const errorText = (await errorElement.textContent()) ?? 'unknown error';
-				throw new Error(`API Error: ${errorText}`);
-			}
-
-			// Wait for empty state to not be visible (ensures we have data)
-			const emptyState = page.getByText('You have not recorded any games yet');
-			await expect(emptyState).not.toBeVisible({ timeout: 5000 });
-
-			// Now get the table rows AFTER loading is complete
-			const tableRows = page.locator('tbody tr');
-			await expect(tableRows.first()).toBeVisible({ timeout: 10000 });
+			const historyRow = await waitForPlayHistoryData(page);
 
 			// Check for a positive rating change (green text with +)
 			// For a win, the rating change should be positive
-			const ratingCell = tableRows.first().locator('td').last();
+			const ratingCell = historyRow.locator('td').last();
 			await expect(ratingCell).toBeVisible();
 
 			// Verify rating change shows positive indicator (+)
