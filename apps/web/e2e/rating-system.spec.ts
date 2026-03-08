@@ -10,9 +10,9 @@ const waitForProfileReady = async (page: Page) => {
 };
 
 const waitForPlayHistoryData = async (page: Page) => {
-	await expect(
-		page.getByRole('heading', { name: 'Play History' })
-	).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Play History' })).toBeVisible(
+		{ timeout: 15000 }
+	);
 
 	const loadingRow = page.getByText('Loading your games...');
 	await expect(loadingRow).not.toBeVisible({ timeout: 15000 });

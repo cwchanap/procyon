@@ -1,6 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 import { AuthHelper } from './utils/auth-helpers';
 
+const escapeRegex = (value: string) =>
+	value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const waitForProfileReady = async (page: Page, authenticated = true) => {
 	const selector = authenticated
 		? '[data-testid="profile-page"][data-auth-ready="true"][data-authenticated="true"]'
@@ -19,28 +22,26 @@ const waitForHomepageGameCardsReady = async (page: Page) => {
 	await expect(
 		page.getByRole('button', { name: /Play Standard Chess/i })
 	).toBeVisible({ timeout: 15000 });
-	await page.waitForFunction(() => {
-		const buttons = Array.from(document.querySelectorAll('button'));
-		return buttons.some(button =>
-			button.textContent?.includes('Play Chinese Chess')
-		);
-	});
+	await expect(
+		page.getByRole('button', { name: /Play Chinese Chess/i })
+	).toBeVisible({ timeout: 15000 });
 	await page
 		.locator('[data-testid="game-cards"][data-hydrated="true"]')
 		.waitFor({ state: 'visible', timeout: 15000 });
 };
 
 const waitForModelOption = async (page: Page, label: string) => {
-	await page.waitForFunction(targetLabel => {
-		const modelSelect = document.querySelectorAll('select').item(1);
-		if (!(modelSelect instanceof HTMLSelectElement)) {
-			return false;
-		}
+	const modelSelect = page
+		.locator('label', { hasText: 'Model' })
+		.locator('xpath=..')
+		.locator('select');
 
-		return Array.from(modelSelect.options).some(
-			option => option.text.trim() === targetLabel
-		);
-	}, label);
+	await expect(modelSelect).toBeVisible({ timeout: 15000 });
+	await modelSelect
+		.locator('option')
+		.filter({ hasText: new RegExp(`^${escapeRegex(label)}$`) })
+		.first()
+		.waitFor({ state: 'attached', timeout: 15000 });
 };
 
 const waitForPlayHistoryGuestReady = async (page: Page) => {
@@ -111,9 +112,9 @@ test.describe('Critical user journeys', () => {
 			await waitForHomepageGameCardsReady(page);
 			await page.getByRole('button', { name: route.buttonName }).click();
 			await expect(page).toHaveURL(route.path, { timeout: 15000 });
-			await expect(
-				page.getByRole('button', { name: '▶️ Start' })
-			).toBeVisible();
+			await expect(page.getByRole('button', { name: '▶️ Start' })).toBeVisible({
+				timeout: 15000,
+			});
 		}
 	});
 
