@@ -52,12 +52,22 @@ packages/         # Shared packages (currently empty)
   - Routes: `src/routes/auth.ts` (registration/login via Supabase)
   - Supabase Client: `src/auth/supabase.ts` (service role + anon key clients)
   - Rate Limiting: `src/auth/rate-limit.ts` (in-memory rate limiting for login attempts)
-- **Schema**: `src/db/schema.ts` defines ai_configurations and play_history tables (user data in Supabase)
+- **Dual entry points**:
+  - `src/index.ts` - Node.js server for local development (uses `@hono/node-server`)
+  - `src/worker.ts` - Cloudflare Workers entry point for production (uses D1 binding)
+- **Schema**: `src/db/schema.ts` defines application tables (user data lives in Supabase):
+  - `ai_configurations`, `play_history` - AI provider settings and game records
+  - `player_ratings`, `rating_history` - ELO-based per-variant ratings
+  - `ai_opponent_ratings` - Configurable AI opponent rating presets
+  - `puzzles`, `user_puzzle_progress` - Chess puzzle content and per-user progress
 - **Routes**:
   - `/api/auth` - Registration, login, session management (Supabase Auth)
   - `/api/users` - User management
   - `/api/ai-config` - AI provider settings per user
   - `/api/play-history` - Game history tracking
+  - `/api/ratings` - Player ratings and leaderboards
+  - `/api/puzzles` - Chess puzzles and per-user progress
+  - `/health` - Health check endpoint
 
 ## Development Commands
 
@@ -106,6 +116,18 @@ bun run db:generate     # Generate migration files from schema changes
 bun run db:migrate      # Apply migrations to local SQLite database
 bun run db:push         # Push schema changes (dev only, no migrations)
 bun run db:studio       # Open Drizzle Studio for database inspection
+bun run db:seed         # Seed puzzles data into local SQLite database
+```
+
+### Cloudflare deployment (from apps/api)
+
+```bash
+cd apps/api
+bun run deploy                    # Deploy to Cloudflare Workers (production)
+bun run deploy:staging            # Deploy to staging environment
+bun run cf:dev                    # Run with Wrangler for local D1 testing
+bun run cf:d1:migrations:apply    # Apply migrations to Cloudflare D1
+bun run db:seed:d1                # Seed puzzles into D1 (production)
 ```
 
 ## Code Standards
@@ -198,7 +220,7 @@ Dual database configuration using Drizzle ORM:
   - Use `drizzle.config.ts` for production migrations
   - Accessed via Cloudflare bindings
 
-Database initialization checks `NODE_ENV` to determine which database to use. Schema defined in `apps/api/src/db/schema.ts` with tables for ai_configurations and play_history. User data is stored in Supabase (not D1).
+Database initialization checks `NODE_ENV` (and whether a D1 binding is present) to determine which database to use. Schema defined in `apps/api/src/db/schema.ts`. User identity/auth data lives in Supabase; all application data (AI configs, play history, ratings, puzzles) lives in D1/SQLite. Game variant IDs, result statuses, and supported AI opponent IDs are defined as enums in `apps/api/src/constants/game.ts`.
 
 ### Authentication Flow (Dual Database Architecture)
 
@@ -245,10 +267,20 @@ await page.route('**/generativelanguage.googleapis.com/**', async route => {
 
 ### Unit Testing
 
-Web app uses Bun's built-in test runner:
+Both apps use Bun's built-in test runner:
 
-- Game logic tests in `apps/web/src/lib/{game}/*.test.ts`
-- Run with `bun test` or `bun run test:chess` for specific files
+```bash
+# Web app (game logic tests)
+cd apps/web && bun test                    # Run all unit tests
+cd apps/web && bun run test:chess          # Run chess game tests only
+
+# API (route and service tests)
+cd apps/api && bun test                    # Run all API unit tests
+cd apps/api && bun test --watch           # Watch mode
+```
+
+Game logic tests: `apps/web/src/lib/{game}/*.test.ts`
+API tests: `apps/api/src/routes/*.test.ts`, `apps/api/src/services/*.test.ts`
 
 ## Common Workflows
 
@@ -279,5 +311,5 @@ Web app uses Bun's built-in test runner:
 2. Add Zod validation schemas with `@hono/zod-validator`
 3. Update database schema in `apps/api/src/db/schema.ts` if needed
 4. Generate and apply migrations: `bun run db:generate && bun run db:migrate`
-5. Register route in `apps/api/src/index.ts`
+5. Register route in both `apps/api/src/index.ts` (Node.js) and `apps/api/src/worker.ts` (Cloudflare Workers)
 6. Add E2E tests including auth flows if protected
