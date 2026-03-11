@@ -5,8 +5,8 @@ import { authMiddleware, getUser } from './middleware';
 const SUPABASE_URL = 'http://localhost:54321';
 
 function setupEnv() {
-	process.env.SUPABASE_URL = SUPABASE_URL;
-	process.env.SUPABASE_ANON_KEY = 'test-anon-key';
+	process.env.SUPABASE_URL ??= SUPABASE_URL;
+	process.env.SUPABASE_ANON_KEY ??= 'test-anon-key';
 }
 
 type FetchMockRestore = () => void;

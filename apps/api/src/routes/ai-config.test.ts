@@ -50,8 +50,8 @@ describe('ai-config routes - auth guards (no token)', () => {
 	let restore: FetchMockRestore = () => {};
 
 	beforeEach(() => {
-		process.env.SUPABASE_URL = SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+		process.env.SUPABASE_URL ??= SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
 		restore = mockSupabaseFetch();
 	});
 
@@ -103,8 +103,8 @@ describe('ai-config routes - Zod validation (with valid token)', () => {
 	let restore: FetchMockRestore = () => {};
 
 	beforeEach(() => {
-		process.env.SUPABASE_URL = SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+		process.env.SUPABASE_URL ??= SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
 		restore = mockSupabaseFetch();
 	});
 
@@ -187,8 +187,8 @@ describe('ai-config routes - success path with API key masking', () => {
 	let restore: FetchMockRestore = () => {};
 
 	beforeEach(async () => {
-		process.env.SUPABASE_URL = SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+		process.env.SUPABASE_URL ??= SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
 		restore = mockSupabaseFetch();
 
 		// Initialize test database
