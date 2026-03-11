@@ -192,7 +192,7 @@ describe('ai-config routes - success path with API key masking', () => {
 		restore = mockSupabaseFetch();
 
 		// Initialize test database
-		initializeDB();
+		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 		const db = (await import('../db')).getDB();
 
 		// Clean up any existing test data
