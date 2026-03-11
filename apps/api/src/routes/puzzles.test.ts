@@ -18,6 +18,10 @@ function mockSupabaseFetch() {
 		const pathname = new URL(url).pathname;
 		if (pathname.endsWith('/auth/v1/user')) {
 			const auth =
+				(input instanceof Request
+					? (input.headers.get('authorization') ??
+						input.headers.get('Authorization'))
+					: null) ??
 				(init?.headers as Record<string, string> | undefined)?.Authorization ??
 				(init?.headers as Record<string, string> | undefined)?.authorization;
 			if (auth === 'Bearer test-token') {
