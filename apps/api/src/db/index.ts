@@ -12,14 +12,9 @@ interface InitializeDBOptions {
 }
 
 function shouldUseLocalDB() {
-	const nodeEnv = typeof process !== 'undefined' ? process.env.NODE_ENV : '';
-	return (
-		isDevelopment ||
-		isTest ||
-		!nodeEnv ||
-		nodeEnv === 'development' ||
-		nodeEnv === 'test'
-	);
+	const nodeEnv =
+		typeof process !== 'undefined' ? process.env.NODE_ENV : undefined;
+	return isDevelopment || isTest || !nodeEnv;
 }
 
 export function initializeDB(
