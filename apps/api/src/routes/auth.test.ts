@@ -27,10 +27,16 @@ function mockFetch(
 					: input.toString();
 		for (const [pattern, response] of Object.entries(handlers)) {
 			if (url.includes(pattern)) {
-				return new Response(JSON.stringify(response.body), {
-					status: response.status,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				const isNoContentStatus = [204, 205, 304].includes(response.status);
+				return new Response(
+					isNoContentStatus ? null : JSON.stringify(response.body),
+					isNoContentStatus
+						? { status: response.status }
+						: {
+								status: response.status,
+								headers: { 'Content-Type': 'application/json' },
+							}
+				);
 			}
 		}
 		return new Response(JSON.stringify({ error: 'mock: unmatched URL' }), {
@@ -44,13 +50,17 @@ function mockFetch(
 
 describe('POST /login', () => {
 	let restore: FetchMockRestore = () => {};
+	let originalEnv: NodeJS.ProcessEnv;
 
 	beforeEach(() => {
-		process.env.SUPABASE_URL ??= SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		originalEnv = { ...process.env };
+		process.env.SUPABASE_URL = process.env.SUPABASE_URL ?? SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY =
+			process.env.SUPABASE_ANON_KEY ?? SUPABASE_ANON_KEY;
 	});
 
 	afterEach(() => {
+		process.env = originalEnv;
 		restore();
 	});
 
@@ -182,13 +192,17 @@ describe('POST /login', () => {
 
 describe('POST /logout', () => {
 	let restore: FetchMockRestore = () => {};
+	let originalEnv: NodeJS.ProcessEnv;
 
 	beforeEach(() => {
-		process.env.SUPABASE_URL ??= SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		originalEnv = { ...process.env };
+		process.env.SUPABASE_URL = process.env.SUPABASE_URL ?? SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY =
+			process.env.SUPABASE_ANON_KEY ?? SUPABASE_ANON_KEY;
 	});
 
 	afterEach(() => {
+		process.env = originalEnv;
 		restore();
 	});
 
@@ -251,13 +265,17 @@ describe('POST /logout', () => {
 
 describe('GET /session', () => {
 	let restore: FetchMockRestore = () => {};
+	let originalEnv: NodeJS.ProcessEnv;
 
 	beforeEach(() => {
-		process.env.SUPABASE_URL ??= SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		originalEnv = { ...process.env };
+		process.env.SUPABASE_URL = process.env.SUPABASE_URL ?? SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY =
+			process.env.SUPABASE_ANON_KEY ?? SUPABASE_ANON_KEY;
 	});
 
 	afterEach(() => {
+		process.env = originalEnv;
 		restore();
 	});
 
@@ -316,13 +334,17 @@ describe('GET /session', () => {
 
 describe('POST /register', () => {
 	let restore: FetchMockRestore = () => {};
+	let originalEnv: NodeJS.ProcessEnv;
 
 	beforeEach(() => {
-		process.env.SUPABASE_URL ??= SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		originalEnv = { ...process.env };
+		process.env.SUPABASE_URL = process.env.SUPABASE_URL ?? SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY =
+			process.env.SUPABASE_ANON_KEY ?? SUPABASE_ANON_KEY;
 	});
 
 	afterEach(() => {
+		process.env = originalEnv;
 		restore();
 	});
 
