@@ -9,7 +9,12 @@ import puzzleRoutes from './puzzles';
 function mockSupabaseFetch() {
 	const original = globalThis.fetch;
 	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = typeof input === 'string' ? input : input.toString();
+		const url =
+			typeof input === 'string'
+				? input
+				: input instanceof Request
+					? input.url
+					: input.toString();
 		const pathname = new URL(url).pathname;
 		if (pathname.endsWith('/auth/v1/user')) {
 			const auth =

@@ -41,9 +41,9 @@ describe('extractBearerToken', () => {
 		expect(extractBearerToken(`Bearer ${jwt}`)).toBe(jwt);
 	});
 
-	test('returns first token only when multiple parts present', () => {
-		// split on whitespace, takes parts[1]
-		expect(extractBearerToken('Bearer token extra')).toBe('token');
+	test('returns null when multiple parts present', () => {
+		// Malformed header with extra parts should be rejected
+		expect(extractBearerToken('Bearer token extra')).toBeNull();
 	});
 });
 

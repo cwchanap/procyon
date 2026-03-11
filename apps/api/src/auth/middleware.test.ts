@@ -17,7 +17,12 @@ function mockSupabaseFetch(userResponse: {
 }): FetchMockRestore {
 	const original = globalThis.fetch;
 	globalThis.fetch = (async (input: RequestInfo | URL, _init?: RequestInit) => {
-		const url = typeof input === 'string' ? input : input.toString();
+		const url =
+			typeof input === 'string'
+				? input
+				: input instanceof Request
+					? input.url
+					: input.toString();
 		if (url.includes('/auth/v1/user')) {
 			return new Response(JSON.stringify(userResponse.body), {
 				status: userResponse.status,
@@ -33,7 +38,7 @@ function mockSupabaseFetch(userResponse: {
 
 function mockSupabaseFetchServerError(): FetchMockRestore {
 	const original = globalThis.fetch;
-	globalThis.fetch = (async () => {
+	globalThis.fetch = (async (_input: RequestInfo | URL) => {
 		return new Response(JSON.stringify({ error: 'internal server error' }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },

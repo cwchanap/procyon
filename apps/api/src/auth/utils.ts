@@ -3,7 +3,7 @@ export function extractBearerToken(header: string): string | null {
 	if (!trimmed) return null;
 
 	const parts = trimmed.split(/\s+/);
-	if (parts.length < 2) return null;
+	if (parts.length !== 2) return null;
 
 	const scheme = parts[0];
 	const value = parts[1];

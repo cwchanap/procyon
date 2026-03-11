@@ -1,4 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { initializeDB } from '../db';
+import { aiConfigurations } from '../db/schema';
+import { sql } from 'drizzle-orm';
 import aiConfigRoutes from './ai-config';
 
 const SUPABASE_URL = 'http://localhost:54321';
@@ -12,7 +15,12 @@ type FetchMockRestore = () => void;
 function mockSupabaseFetch(): FetchMockRestore {
 	const original = globalThis.fetch;
 	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = typeof input === 'string' ? input : input.toString();
+		const url =
+			typeof input === 'string'
+				? input
+				: input instanceof Request
+					? input.url
+					: input.toString();
 		if (url.includes('/auth/v1/user')) {
 			const auth =
 				(init?.headers as Record<string, string> | undefined)?.Authorization ??
@@ -173,4 +181,59 @@ describe('ai-config routes - Zod validation (with valid token)', () => {
 	// Note: GET /:id/full and DELETE /:id call getDB() before the parseInt/isNaN check,
 	// so non-numeric id validation (400) can only be tested with a live database.
 	// Those behaviours are covered by E2E tests.
+});
+
+describe('ai-config routes - success path with API key masking', () => {
+	let restore: FetchMockRestore = () => {};
+
+	beforeEach(async () => {
+		process.env.SUPABASE_URL = SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+		restore = mockSupabaseFetch();
+
+		// Initialize test database
+		initializeDB();
+		const db = (await import('../db')).getDB();
+
+		// Clean up any existing test data
+		await db
+			.delete(aiConfigurations)
+			.where(sql`${aiConfigurations.userId} = 'user-uuid-1'`);
+	});
+
+	afterEach(() => {
+		restore();
+	});
+
+	test('POST / creates config and GET / returns masked API key', async () => {
+		const originalKey = 'test-key-1234';
+		const maskedKey = '***' + originalKey.slice(-4);
+
+		// Create a configuration
+		const createRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			body: JSON.stringify({
+				provider: 'gemini',
+				modelName: 'gemini-pro',
+				apiKey: originalKey,
+			}),
+		});
+		expect(createRes.status).toBe(200);
+		const createBody = (await createRes.json()) as {
+			configuration: { id: number };
+		};
+		expect(createBody.configuration).toBeDefined();
+
+		// Get all configurations and verify API key is masked
+		const getRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
+			headers: AUTH_HEADER,
+		});
+		expect(getRes.status).toBe(200);
+		const getBody = (await getRes.json()) as {
+			configurations: Array<{ apiKey: string }>;
+		};
+		expect(getBody.configurations).toHaveLength(1);
+		expect(getBody.configurations[0]!.apiKey).toBe(maskedKey);
+	});
 });
