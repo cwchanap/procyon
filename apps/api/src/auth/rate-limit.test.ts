@@ -64,10 +64,6 @@ describe('recordLoginAttempt - basic counting', () => {
 });
 
 describe('recordLoginAttempt - window expiry', () => {
-	afterEach(() => {
-		// Restore Date.now in case a test left it mocked
-	});
-
 	test('attempt after window expiry resets counter and is allowed', () => {
 		const email = uniqueEmail('expiry');
 		const baseTime = 1_700_000_000_000; // fixed large epoch (Nov 2023)
