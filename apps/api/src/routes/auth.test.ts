@@ -19,7 +19,12 @@ function mockFetch(
 ): FetchMockRestore {
 	const original = globalThis.fetch;
 	globalThis.fetch = (async (input: RequestInfo | URL, _init?: RequestInit) => {
-		const url = typeof input === 'string' ? input : input.toString();
+		const url =
+			typeof input === 'string'
+				? input
+				: input instanceof Request
+					? input.url
+					: input.toString();
 		for (const [pattern, response] of Object.entries(handlers)) {
 			if (url.includes(pattern)) {
 				return new Response(JSON.stringify(response.body), {
