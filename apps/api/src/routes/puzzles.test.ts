@@ -207,7 +207,7 @@ describe('puzzle routes - with database', () => {
 		originalFetch = mockSupabaseFetch();
 
 		// Initialize test database
-		initializeDB();
+		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 		const db = (await import('../db')).getDB();
 
 		// Clean up any existing test data

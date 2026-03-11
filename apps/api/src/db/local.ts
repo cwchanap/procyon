@@ -7,8 +7,15 @@ import { join } from 'node:path';
 let localDB:
 	| ReturnType<typeof import('drizzle-orm/bun-sqlite').drizzle<typeof schema>>
 	| undefined;
+let sqliteConnection:
+	| InstanceType<typeof import('bun:sqlite').Database>
+	| undefined;
 
-export function initializeLocalDB() {
+interface InitializeLocalDBOptions {
+	dbPath?: string;
+}
+
+export function initializeLocalDB(options: InitializeLocalDBOptions = {}) {
 	if (localDB) {
 		return localDB;
 	}
@@ -27,11 +34,11 @@ export function initializeLocalDB() {
 	) as typeof import('drizzle-orm/bun-sqlite/migrator');
 
 	const isTest = process.env.NODE_ENV === 'test';
-	const dbPath = isTest
-		? ':memory:'
-		: join(import.meta.dir, '..', '..', 'dev.db');
-	const sqlite = new Database(dbPath);
-	localDB = drizzle(sqlite, { schema });
+	const dbPath =
+		options.dbPath ??
+		(isTest ? ':memory:' : join(import.meta.dir, '..', '..', 'dev.db'));
+	sqliteConnection = new Database(dbPath);
+	localDB = drizzle(sqliteConnection, { schema });
 
 	// Keep schema up to date for local SQLite usage in both development and tests.
 	const migrationsFolder = join(import.meta.dir, '..', '..', 'drizzle');
@@ -47,4 +54,12 @@ export function getLocalDB() {
 		);
 	}
 	return localDB;
+}
+
+export function resetLocalDB() {
+	if (sqliteConnection) {
+		sqliteConnection.close();
+		sqliteConnection = undefined;
+	}
+	localDB = undefined;
 }
