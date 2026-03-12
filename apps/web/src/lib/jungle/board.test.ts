@@ -29,7 +29,9 @@ describe('Jungle Board Utilities', () => {
 		test('should create a 9x7 board', () => {
 			const board = createInitialBoard();
 			expect(board.length).toBe(JUNGLE_ROWS);
-			board.forEach(row => expect(row.length).toBe(JUNGLE_COLS));
+			board.forEach(row => {
+				expect(row.length).toBe(JUNGLE_COLS);
+			});
 		});
 
 		test('should place red pieces on bottom rows', () => {
@@ -323,7 +325,12 @@ describe('Jungle Board Utilities', () => {
 
 			const copy = copyGameState(state);
 
-			// Modify original
+			// Record pre-mutation values from the copy
+			const originalBoardCell = copy.board[8]?.[0]?.type;
+			const originalTerrainCell = copy.terrain[8]?.[3]?.type;
+			const originalPossibleMoves = [...copy.possibleMoves];
+
+			// Mutate primitives
 			state.currentPlayer = 'blue';
 			state.moveHistory.push({
 				from: { row: 1, col: 2 },
@@ -331,11 +338,23 @@ describe('Jungle Board Utilities', () => {
 				piece: { type: 'cat', color: 'red', rank: 2 },
 			});
 			state.selectedSquare = null;
+			// Mutate board
+			state.board[8]![0] = null;
+			// Mutate terrain
+			state.terrain[8]![3] = { type: 'water' };
+			// Mutate possibleMoves
+			state.possibleMoves.push({ row: 3, col: 3 });
 
-			// Copy should be unchanged
+			// Copy scalars should be unchanged
 			expect(copy.currentPlayer).toBe('red');
 			expect(copy.moveHistory).toHaveLength(0);
 			expect(copy.selectedSquare).toEqual({ row: 1, col: 2 });
+			// Copy board should be unchanged
+			expect(copy.board[8]?.[0]?.type).toBe(originalBoardCell);
+			// Copy terrain should be unchanged
+			expect(copy.terrain[8]?.[3]?.type).toBe(originalTerrainCell);
+			// Copy possibleMoves should be unchanged
+			expect(copy.possibleMoves).toHaveLength(originalPossibleMoves.length);
 		});
 	});
 });
