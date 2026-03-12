@@ -367,7 +367,7 @@ describe('Shogi Move Generation', () => {
 			setPieceAt(
 				board,
 				{ row: 5, col: 4 },
-				{ type: 'pawn', color: 'sente', isPromoted: true }
+				{ type: 'promoted_pawn', color: 'sente' }
 			);
 
 			// Can drop unpromoted pawn if existing pawn is promoted
