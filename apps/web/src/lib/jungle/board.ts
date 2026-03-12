@@ -173,14 +173,14 @@ export function findPiecePosition(
 export function copyBoard(
 	board: (JunglePiece | null)[][]
 ): (JunglePiece | null)[][] {
-	return board.map(row => [...row]);
+	return board.map(row => row.map(piece => (piece ? { ...piece } : null)));
 }
 
 /**
  * Create a deep copy of the terrain
  */
 export function copyTerrain(terrain: JungleTerrain[][]): JungleTerrain[][] {
-	return terrain.map(row => [...row]);
+	return terrain.map(row => row.map(cell => ({ ...cell })));
 }
 
 /**
