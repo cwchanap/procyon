@@ -45,7 +45,12 @@ function mockSupabaseFetch(user?: Partial<MockUser>): FetchMockRestore {
 					? input.url
 					: input.toString();
 
-		const headers = new Headers(init?.headers as HeadersInit | undefined);
+		const method =
+			input instanceof Request ? input.method : (init?.method ?? 'GET');
+		const headers =
+			input instanceof Request
+				? new Headers(input.headers)
+				: new Headers(init?.headers as HeadersInit | undefined);
 		const auth =
 			headers.get('authorization') ?? headers.get('Authorization') ?? '';
 
@@ -66,7 +71,7 @@ function mockSupabaseFetch(user?: Partial<MockUser>): FetchMockRestore {
 		// Supabase admin - update user by ID (check PUT before GET)
 		if (
 			url.includes(`/auth/v1/admin/users/${TEST_USER_ID}`) &&
-			init?.method === 'PUT'
+			method === 'PUT'
 		) {
 			if (auth !== `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`) {
 				return new Response(JSON.stringify({ message: 'Unauthorized' }), {
@@ -295,7 +300,13 @@ describe('users routes - PUT /me validation', () => {
 			CF_ENV
 		);
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { message: string };
+		const body = (await res.json()) as {
+			message: string;
+			user: { id: string; email: string; username: string };
+		};
 		expect(body.message).toBe('Profile updated successfully');
+		expect(body.user).toBeDefined();
+		expect(body.user.id).toBe(TEST_USER_ID);
+		expect(body.user.email).toBe('test@example.com');
 	});
 });

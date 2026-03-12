@@ -161,10 +161,13 @@ describe('Shogi Board Utilities', () => {
 
 		test('should do nothing for invalid position', () => {
 			const board = createInitialBoard();
+			const copy = copyBoard(board);
 			const piece: ShogiPiece = { type: 'gold', color: 'sente' };
 			// Should not throw
 			setPieceAt(board, { row: -1, col: 0 }, piece);
 			setPieceAt(board, { row: 9, col: 0 }, piece);
+			// Board should be unchanged
+			expect(board).toEqual(copy);
 		});
 	});
 
@@ -242,6 +245,18 @@ describe('Shogi Board Utilities', () => {
 			const copy = copyBoard(board);
 			expect(copy[0]?.[4]?.type).toBe('king');
 			expect(copy[8]?.[4]?.type).toBe('king');
+		});
+
+		test('should deep-copy pieces so mutating a piece property on the original does not affect the copy', () => {
+			const board = createInitialBoard();
+			const copy = copyBoard(board);
+			const piece = getPieceAt(board, { row: 0, col: 4 })!;
+			// Mutate the piece object in-place
+			(piece as unknown as Record<string, unknown>)['type'] = 'gold';
+			// Copy should still have the original type
+			expect(getPieceAt(copy, { row: 0, col: 4 })?.type).toBe('king');
+			// Piece references must differ
+			expect(getPieceAt(copy, { row: 0, col: 4 })).not.toBe(piece);
 		});
 	});
 
@@ -336,6 +351,33 @@ describe('Shogi Board Utilities', () => {
 			expect(mustPromote(knight, { row: 7, col: 1 })).toBe(true);
 			expect(mustPromote(knight, { row: 8, col: 1 })).toBe(true);
 			expect(mustPromote(knight, { row: 6, col: 1 })).toBe(false);
+		});
+
+		test('gote lance must promote on row 8', () => {
+			const lance: ShogiPiece = { type: 'lance', color: 'gote' };
+			expect(mustPromote(lance, { row: 8, col: 0 })).toBe(true);
+			expect(mustPromote(lance, { row: 7, col: 0 })).toBe(false);
+		});
+
+		test('silver does not force promotion', () => {
+			const silverSente: ShogiPiece = { type: 'silver', color: 'sente' };
+			expect(mustPromote(silverSente, { row: 0, col: 0 })).toBe(false);
+			const silverGote: ShogiPiece = { type: 'silver', color: 'gote' };
+			expect(mustPromote(silverGote, { row: 8, col: 0 })).toBe(false);
+		});
+
+		test('bishop does not force promotion', () => {
+			const bishopSente: ShogiPiece = { type: 'bishop', color: 'sente' };
+			expect(mustPromote(bishopSente, { row: 0, col: 0 })).toBe(false);
+			const bishopGote: ShogiPiece = { type: 'bishop', color: 'gote' };
+			expect(mustPromote(bishopGote, { row: 8, col: 0 })).toBe(false);
+		});
+
+		test('rook does not force promotion', () => {
+			const rookSente: ShogiPiece = { type: 'rook', color: 'sente' };
+			expect(mustPromote(rookSente, { row: 0, col: 0 })).toBe(false);
+			const rookGote: ShogiPiece = { type: 'rook', color: 'gote' };
+			expect(mustPromote(rookGote, { row: 8, col: 0 })).toBe(false);
 		});
 
 		test('already promoted piece does not need to promote again', () => {

@@ -165,14 +165,18 @@ describe('Jungle Board Utilities', () => {
 			const board = createInitialBoard();
 			const redPieces = getPiecesByColor(board, 'red');
 			expect(redPieces).toHaveLength(8);
-			redPieces.forEach(p => expect(p.color).toBe('red'));
+			redPieces.forEach(p => {
+				expect(p.color).toBe('red');
+			});
 		});
 
 		test('should return all blue pieces', () => {
 			const board = createInitialBoard();
 			const bluePieces = getPiecesByColor(board, 'blue');
 			expect(bluePieces).toHaveLength(8);
-			bluePieces.forEach(p => expect(p.color).toBe('blue'));
+			bluePieces.forEach(p => {
+				expect(p.color).toBe('blue');
+			});
 		});
 	});
 
@@ -219,6 +223,18 @@ describe('Jungle Board Utilities', () => {
 			const copy = copyBoard(board);
 			expect(copy[8]?.[0]?.type).toBe('lion');
 			expect(copy[0]?.[6]?.type).toBe('lion');
+		});
+
+		test('should deep-copy pieces so mutating a piece property on the original does not affect the copy', () => {
+			const board = createInitialBoard();
+			const copy = copyBoard(board);
+			const piece = getPieceAt(board, { row: 8, col: 0 })!;
+			// Mutate the piece object in-place on the original
+			(piece as unknown as Record<string, unknown>)['type'] = 'wolf';
+			// Copy should still have the original type
+			expect(getPieceAt(copy, { row: 8, col: 0 })?.type).toBe('lion');
+			// Piece references must differ
+			expect(getPieceAt(copy, { row: 8, col: 0 })).not.toBe(piece);
 		});
 	});
 
@@ -309,6 +325,18 @@ describe('Jungle Board Utilities', () => {
 			// Copy should be unchanged
 			expect(copy[4]?.[3]?.type).toBe('normal');
 		});
+
+		test('should deep-copy terrain cells so mutating a cell property on the original does not affect the copy', () => {
+			const terrain = createInitialTerrain();
+			const copy = copyTerrain(terrain);
+			const cell = terrain[8]![3]!; // red den
+			// Mutate the cell object in-place
+			(cell as unknown as Record<string, unknown>)['type'] = 'normal';
+			// Copy should still have the original type
+			expect(copy[8]?.[3]?.type).toBe('den');
+			// Cell references must differ
+			expect(copy[8]?.[3]).not.toBe(cell);
+		});
 	});
 
 	describe('copyGameState', () => {
@@ -355,6 +383,33 @@ describe('Jungle Board Utilities', () => {
 			expect(copy.terrain[8]?.[3]?.type).toBe(originalTerrainCell);
 			// Copy possibleMoves should be unchanged
 			expect(copy.possibleMoves).toHaveLength(originalPossibleMoves.length);
+		});
+
+		test('should deep-copy nested piece and terrain objects', () => {
+			const state: JungleGameState = {
+				board: createInitialBoard(),
+				terrain: createInitialTerrain(),
+				currentPlayer: 'red',
+				status: 'playing',
+				moveHistory: [],
+				selectedSquare: null,
+				possibleMoves: [],
+			};
+			const copy = copyGameState(state);
+
+			// Mutate a piece property in-place on the original board
+			const piece = getPieceAt(state.board, { row: 8, col: 0 })!;
+			(piece as unknown as Record<string, unknown>)['rank'] = 0;
+			expect(getPieceAt(copy.board, { row: 8, col: 0 })?.rank).toBe(
+				PIECE_RANKS.lion
+			);
+			expect(getPieceAt(copy.board, { row: 8, col: 0 })).not.toBe(piece);
+
+			// Mutate a terrain cell property in-place on the original terrain
+			const cell = state.terrain[8]![3]!; // red den
+			(cell as unknown as Record<string, unknown>)['type'] = 'normal';
+			expect(copy.terrain[8]?.[3]?.type).toBe('den');
+			expect(copy.terrain[8]?.[3]).not.toBe(cell);
 		});
 	});
 });
