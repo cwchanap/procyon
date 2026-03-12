@@ -8,6 +8,10 @@ const BASE_URL = 'http://localhost';
 const AUTH_HEADER = { Authorization: 'Bearer test-token' };
 const TEST_USER_ID = 'user-uuid-1';
 
+// CF-style env bindings injected into every request so getSupabaseClientsFromContext
+// creates fresh clients and bypasses the module-level singleton.
+const CF_ENV = { SUPABASE_URL, SUPABASE_ANON_KEY };
+
 type FetchMockRestore = () => void;
 
 function mockSupabaseFetch(): FetchMockRestore {
@@ -42,178 +46,244 @@ function mockSupabaseFetch(): FetchMockRestore {
 
 describe('play-history routes - auth guards', () => {
 	let restore: FetchMockRestore = () => {};
+	let originalUrl: string | undefined;
+	let originalAnonKey: string | undefined;
 
 	beforeEach(() => {
-		process.env.SUPABASE_URL ??= SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		originalUrl = process.env.SUPABASE_URL;
+		originalAnonKey = process.env.SUPABASE_ANON_KEY;
+		process.env.SUPABASE_URL = SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 		restore = mockSupabaseFetch();
 	});
 
-	afterEach(() => restore());
+	afterEach(() => {
+		restore();
+		process.env.SUPABASE_URL = originalUrl;
+		process.env.SUPABASE_ANON_KEY = originalAnonKey;
+	});
 
 	test('GET / returns 401 without token', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`);
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			undefined,
+			CF_ENV
+		);
 		expect(res.status).toBe(401);
 	});
 
 	test('POST / returns 401 without token', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date: new Date().toISOString(),
-				opponentLlmId: 'gemini-2.5-flash',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(401);
 	});
 });
 
 describe('play-history routes - validation', () => {
 	let restore: FetchMockRestore = () => {};
+	let originalUrl: string | undefined;
+	let originalAnonKey: string | undefined;
 
 	beforeEach(() => {
-		process.env.SUPABASE_URL ??= SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		originalUrl = process.env.SUPABASE_URL;
+		originalAnonKey = process.env.SUPABASE_ANON_KEY;
+		process.env.SUPABASE_URL = SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 		restore = mockSupabaseFetch();
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 	});
 
-	afterEach(() => restore());
+	afterEach(() => {
+		restore();
+		process.env.SUPABASE_URL = originalUrl;
+		process.env.SUPABASE_ANON_KEY = originalAnonKey;
+	});
 
 	test('POST / returns 400 when no opponent specified', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date: new Date().toISOString(),
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(400);
 	});
 
 	test('POST / returns 400 when both opponentUserId and opponentLlmId are provided', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date: new Date().toISOString(),
-				opponentUserId: '00000000-0000-4000-8000-000000000002',
-				opponentLlmId: 'gemini-2.5-flash',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentUserId: '00000000-0000-4000-8000-000000000002',
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(400);
 	});
 
 	test('POST / returns 400 for invalid chessId', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'invalid-game',
-				status: 'win',
-				date: new Date().toISOString(),
-				opponentLlmId: 'gemini-2.5-flash',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'invalid-game',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(400);
 	});
 
 	test('POST / returns 400 for invalid status', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'invalid-status',
-				date: new Date().toISOString(),
-				opponentLlmId: 'gemini-2.5-flash',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'invalid-status',
+					date: new Date().toISOString(),
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(400);
 	});
 
 	test('POST / returns 400 for invalid date format', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date: 'not-a-date',
-				opponentLlmId: 'gemini-2.5-flash',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: 'not-a-date',
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(400);
 	});
 
 	test('POST / returns 400 for invalid opponentUserId format', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date: new Date().toISOString(),
-				opponentUserId: 'not-a-uuid-or-numeric',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentUserId: 'not-a-uuid-or-numeric',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(400);
 	});
 
 	test('POST / returns 403 for PvP match submission (UUID opponent)', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date: new Date().toISOString(),
-				opponentUserId: '00000000-0000-4000-8000-000000000002',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentUserId: '00000000-0000-4000-8000-000000000002',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(403);
 		const body = (await res.json()) as { error: string };
 		expect(body.error).toContain('PvP');
 	});
 
 	test('POST / returns 400 for invalid opponentLlmId', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date: new Date().toISOString(),
-				opponentLlmId: 'unknown-llm',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentLlmId: 'unknown-llm',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(400);
 	});
 });
 
 describe('play-history routes - GET and POST success', () => {
 	let restore: FetchMockRestore = () => {};
+	let originalUrl: string | undefined;
+	let originalAnonKey: string | undefined;
 
 	beforeEach(() => {
-		process.env.SUPABASE_URL ??= SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		originalUrl = process.env.SUPABASE_URL;
+		originalAnonKey = process.env.SUPABASE_ANON_KEY;
+		process.env.SUPABASE_URL = SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 		restore = mockSupabaseFetch();
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 	});
 
-	afterEach(() => restore());
+	afterEach(() => {
+		restore();
+		process.env.SUPABASE_URL = originalUrl;
+		process.env.SUPABASE_ANON_KEY = originalAnonKey;
+	});
 
 	test('GET / returns empty play history for new user', async () => {
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			headers: AUTH_HEADER,
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{ headers: AUTH_HEADER },
+			CF_ENV
+		);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { playHistory: unknown[] };
 		expect(body).toHaveProperty('playHistory');
@@ -223,16 +293,20 @@ describe('play-history routes - GET and POST success', () => {
 
 	test('POST / creates play history record for PvAI match', async () => {
 		const date = new Date().toISOString();
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date,
-				opponentLlmId: 'gemini-2.5-flash',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date,
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(201);
 		const body = (await res.json()) as {
 			message: string;
@@ -253,16 +327,20 @@ describe('play-history routes - GET and POST success', () => {
 
 	test('POST / win increases rating', async () => {
 		const date = new Date().toISOString();
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'win',
-				date,
-				opponentLlmId: 'gemini-2.5-flash',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date,
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(201);
 		const body = (await res.json()) as {
 			ratingUpdate: { ratingChange: number };
@@ -272,16 +350,20 @@ describe('play-history routes - GET and POST success', () => {
 
 	test('POST / loss decreases rating', async () => {
 		const date = new Date().toISOString();
-		const res = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'chess',
-				status: 'loss',
-				date,
-				opponentLlmId: 'gemini-2.5-flash',
-			}),
-		});
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'loss',
+					date,
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
 		expect(res.status).toBe(201);
 		const body = (await res.json()) as {
 			ratingUpdate: { ratingChange: number };
@@ -291,20 +373,26 @@ describe('play-history routes - GET and POST success', () => {
 
 	test('POST / creates record and GET / returns it', async () => {
 		const date = new Date().toISOString();
-		await playHistoryRoutes.request(`${BASE_URL}/`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-			body: JSON.stringify({
-				chessId: 'shogi',
-				status: 'draw',
-				date,
-				opponentLlmId: 'gemini-2.5-flash',
-			}),
-		});
+		await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'shogi',
+					status: 'draw',
+					date,
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
 
-		const getRes = await playHistoryRoutes.request(`${BASE_URL}/`, {
-			headers: AUTH_HEADER,
-		});
+		const getRes = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{ headers: AUTH_HEADER },
+			CF_ENV
+		);
 		expect(getRes.status).toBe(200);
 		const body = (await getRes.json()) as {
 			playHistory: Array<{ chessId: string; status: string }>;
