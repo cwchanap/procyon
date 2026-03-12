@@ -45,10 +45,9 @@ function mockSupabaseFetch(user?: Partial<MockUser>): FetchMockRestore {
 					? input.url
 					: input.toString();
 
+		const headers = new Headers(init?.headers as HeadersInit | undefined);
 		const auth =
-			(init?.headers as Record<string, string> | undefined)?.Authorization ??
-			(init?.headers as Record<string, string> | undefined)?.authorization ??
-			'';
+			headers.get('authorization') ?? headers.get('Authorization') ?? '';
 
 		// Supabase anon auth (middleware check)
 		if (url.includes('/auth/v1/user') && !url.includes('/admin/')) {
@@ -69,6 +68,12 @@ function mockSupabaseFetch(user?: Partial<MockUser>): FetchMockRestore {
 			url.includes(`/auth/v1/admin/users/${TEST_USER_ID}`) &&
 			init?.method === 'PUT'
 		) {
+			if (auth !== `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`) {
+				return new Response(JSON.stringify({ message: 'Unauthorized' }), {
+					status: 401,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
 			const body = JSON.parse((init.body as string) ?? '{}') as {
 				user_metadata?: { username?: string };
 			};
@@ -85,6 +90,12 @@ function mockSupabaseFetch(user?: Partial<MockUser>): FetchMockRestore {
 
 		// Supabase admin - get user by ID
 		if (url.includes(`/auth/v1/admin/users/${TEST_USER_ID}`)) {
+			if (auth !== `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`) {
+				return new Response(JSON.stringify({ message: 'Unauthorized' }), {
+					status: 401,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
 			return new Response(JSON.stringify({ user: { ...mockUser } }), {
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },

@@ -25,7 +25,9 @@ describe('Shogi Board Utilities', () => {
 		test('should create a 9x9 board', () => {
 			const board = createInitialBoard();
 			expect(board.length).toBe(SHOGI_BOARD_SIZE);
-			board.forEach(row => expect(row.length).toBe(SHOGI_BOARD_SIZE));
+			board.forEach(row => {
+				expect(row.length).toBe(SHOGI_BOARD_SIZE);
+			});
 		});
 
 		test('should place gote back row pieces on row 0', () => {

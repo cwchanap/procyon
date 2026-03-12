@@ -408,6 +408,51 @@ describe('Jungle Move Generation', () => {
 				isValidMove(board, terrain, { row: 0, col: 1 }, { row: 0, col: 2 })
 			).toBe(true);
 		});
+
+		test('rat in water cannot capture a piece on land', () => {
+			const board = emptyBoard();
+			const terrain = createInitialTerrain();
+			// Place a rat in water at row 4, col 1
+			const rat: JunglePiece = {
+				type: 'rat',
+				color: 'red',
+				rank: PIECE_RANKS.rat,
+			};
+			const cat: JunglePiece = {
+				type: 'cat',
+				color: 'blue',
+				rank: PIECE_RANKS.cat,
+			};
+			setPieceAt(board, { row: 4, col: 1 }, rat); // water square
+			setPieceAt(board, { row: 4, col: 0 }, cat); // land square
+
+			expect(
+				isValidMove(board, terrain, { row: 4, col: 1 }, { row: 4, col: 0 })
+			).toBe(false);
+		});
+
+		test('attacker in enemy trap cannot capture an adjacent piece', () => {
+			const board = emptyBoard();
+			const terrain = createInitialTerrain();
+			// Place a red cat inside a blue trap (row 0, col 2) — it is weakened
+			const cat: JunglePiece = {
+				type: 'cat',
+				color: 'red',
+				rank: PIECE_RANKS.cat,
+			};
+			const rat: JunglePiece = {
+				type: 'rat',
+				color: 'blue',
+				rank: PIECE_RANKS.rat,
+			};
+			setPieceAt(board, { row: 0, col: 2 }, cat); // inside blue trap
+			setPieceAt(board, { row: 0, col: 1 }, rat); // adjacent land
+
+			// Red cat in enemy trap cannot capture blue rat outside
+			expect(
+				isValidMove(board, terrain, { row: 0, col: 2 }, { row: 0, col: 1 })
+			).toBe(false);
+		});
 	});
 
 	describe('makeMove', () => {

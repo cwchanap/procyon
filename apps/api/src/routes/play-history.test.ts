@@ -20,9 +20,8 @@ function mockSupabaseFetch(): FetchMockRestore {
 					? input.url
 					: input.toString();
 		if (url.includes('/auth/v1/user')) {
-			const auth =
-				(init?.headers as Record<string, string> | undefined)?.Authorization ??
-				(init?.headers as Record<string, string> | undefined)?.authorization;
+			const headers = new Headers(init?.headers as HeadersInit | undefined);
+			const auth = headers.get('authorization') ?? headers.get('Authorization');
 			if (auth === 'Bearer test-token') {
 				return new Response(
 					JSON.stringify({ id: TEST_USER_ID, email: 'test@example.com' }),
