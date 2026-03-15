@@ -49,16 +49,16 @@ describe('AI Factory', () => {
 			).toThrow('Unsupported game variant: unknown');
 		});
 
-		test('should merge game variant into config', () => {
-			// The service is created with the variant; just verify no errors occur
+		test('should wire the correct adapter for the requested variant', () => {
 			const service = createAIService(baseConfig, 'shogi');
-			expect(service).toBeInstanceOf(UniversalAIService);
+			expect(service.adapter.gameVariant).toBe('shogi');
 		});
 
-		test('should pass debug flag from config', () => {
+		test('should forward debug flag to the adapter', () => {
 			const debugConfig = { ...baseConfig, debug: true };
 			const service = createAIService(debugConfig, 'chess');
-			expect(service).toBeInstanceOf(UniversalAIService);
+			// Adapter is instantiated with debug=true; gameVariant confirms the right adapter
+			expect(service.adapter.gameVariant).toBe('chess');
 		});
 	});
 

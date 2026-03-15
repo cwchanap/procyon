@@ -194,14 +194,19 @@ describe('GameExporter', () => {
 			expect(text).toContain('TOTAL MOVES: 0');
 		});
 
-		test('should reset start time on clear', () => {
-			const textBefore = exporter.exportToText('playing');
-			exporter.clear();
-			const textAfter = exporter.exportToText('playing');
+		test('should reset start time on clear', async () => {
+			const extract = (text: string) =>
+				text.split('\n').find(l => l.startsWith('Start Time:'))!;
 
-			// Both should have start times (the exact values may differ)
-			expect(textBefore).toContain('Start Time:');
-			expect(textAfter).toContain('Start Time:');
+			const timeBefore = extract(exporter.exportToText('playing'));
+			// Small delay so the new Date() in clear() produces a different timestamp
+			await new Promise(resolve => setTimeout(resolve, 5));
+			exporter.clear();
+			const timeAfter = extract(exporter.exportToText('playing'));
+
+			expect(timeBefore).toBeDefined();
+			expect(timeAfter).toBeDefined();
+			expect(timeAfter).not.toBe(timeBefore);
 		});
 	});
 

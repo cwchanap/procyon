@@ -45,10 +45,9 @@ describe('JungleAdapter', () => {
 			expect(adapter.positionToAlgebraic({ row: 4, col: 3 })).toBe('d5');
 		});
 
-		test('should return a1 for invalid positions', () => {
-			// Out of bounds - falls back to 'a1'
-			expect(adapter.positionToAlgebraic({ row: 0, col: 99 })).toBe('a1');
-			expect(adapter.positionToAlgebraic({ row: 99, col: 0 })).toBe('a1');
+		test('should throw RangeError for out-of-bounds positions', () => {
+			expect(() => adapter.positionToAlgebraic({ row: 0, col: 99 })).toThrow(RangeError);
+			expect(() => adapter.positionToAlgebraic({ row: 99, col: 0 })).toThrow(RangeError);
 		});
 	});
 
@@ -158,9 +157,14 @@ describe('JungleAdapter', () => {
 		});
 
 		test('should only return moves for current player', () => {
-			const moves = adapter.getAllValidMoves(gameState);
-			// All moves should be for red (initial player)
-			expect(moves.length).toBeGreaterThan(0);
+			const legalMoves = adapter.getLegalMoves(gameState);
+			expect(legalMoves.length).toBeGreaterThan(0);
+
+			for (const { from } of legalMoves) {
+				const piece = gameState.board[from.row]?.[from.col];
+				expect(piece).not.toBeNull();
+				expect(piece?.color).toBe(gameState.currentPlayer);
+			}
 		});
 	});
 

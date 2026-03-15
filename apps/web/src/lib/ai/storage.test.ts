@@ -9,6 +9,43 @@ mock.module('../auth', () => ({
 const { defaultAIConfig, saveAIConfig, clearAIConfig, loadAIConfig } = await import('./storage');
 import type { AIConfig } from './types';
 
+// ---------------------------------------------------------------------------
+// Helper: sets up a fake browser environment (window + localStorage) and
+// returns the backing store plus a cleanup function.
+// ---------------------------------------------------------------------------
+function setupBrowserMocks(): {
+	localStorageStore: Record<string, string>;
+	cleanup: () => void;
+} {
+	const localStorageStore: Record<string, string> = {};
+	const originalWindow = globalThis.window;
+
+	const ls = {
+		getItem: (key: string) => localStorageStore[key] ?? null,
+		setItem: (key: string, value: string) => {
+			localStorageStore[key] = value;
+		},
+		removeItem: (key: string) => {
+			delete localStorageStore[key];
+		},
+	};
+
+	// @ts-expect-error -- test-only override: simulate browser window in Node
+	globalThis.window = { localStorage: ls };
+	// @ts-expect-error -- test-only override: simulate browser localStorage in Node
+	globalThis.localStorage = ls;
+
+	return {
+		localStorageStore,
+		cleanup: () => {
+			// @ts-expect-error -- test-only restore: reset window to original value
+			globalThis.window = originalWindow;
+			// @ts-expect-error -- test-only restore: remove mocked localStorage
+			globalThis.localStorage = undefined;
+		},
+	};
+}
+
 describe('AI Storage', () => {
 	describe('defaultAIConfig', () => {
 		test('should have expected default values', () => {
@@ -53,33 +90,14 @@ describe('AI Storage', () => {
 
 	describe('saveAIConfig (browser-side)', () => {
 		let localStorageStore: Record<string, string>;
-		let originalWindow: unknown;
+		let cleanup: () => void;
 
 		beforeEach(() => {
-			localStorageStore = {};
-			originalWindow = globalThis.window;
-
-			const ls = {
-				getItem: (key: string) => localStorageStore[key] ?? null,
-				setItem: (key: string, value: string) => {
-					localStorageStore[key] = value;
-				},
-				removeItem: (key: string) => {
-					delete localStorageStore[key];
-				},
-			};
-
-			// @ts-expect-error - mocking window for browser-side test
-			globalThis.window = { localStorage: ls };
-			// @ts-expect-error
-			globalThis.localStorage = ls;
+			({ localStorageStore, cleanup } = setupBrowserMocks());
 		});
 
 		afterEach(() => {
-			// @ts-expect-error
-			globalThis.window = originalWindow;
-			// @ts-expect-error
-			globalThis.localStorage = undefined;
+			cleanup();
 		});
 
 		test('should save config to localStorage', () => {
@@ -128,12 +146,7 @@ describe('AI Storage', () => {
 		test('should save different providers correctly', () => {
 			const testCases: AIConfig[] = [
 				{ provider: 'gemini', apiKey: 'g-key', model: 'gemini-2.5-flash-lite', enabled: true },
-				{
-					provider: 'openrouter',
-					apiKey: 'or-key',
-					model: 'gpt-oss-120b',
-					enabled: false,
-				},
+				{ provider: 'openrouter', apiKey: 'or-key', model: 'gpt-oss-120b', enabled: false },
 				{
 					provider: 'chutes',
 					apiKey: 'ch-key',
@@ -154,33 +167,14 @@ describe('AI Storage', () => {
 
 	describe('clearAIConfig (browser-side)', () => {
 		let localStorageStore: Record<string, string>;
-		let originalWindow: unknown;
+		let cleanup: () => void;
 
 		beforeEach(() => {
-			localStorageStore = {};
-			originalWindow = globalThis.window;
-
-			const ls = {
-				getItem: (key: string) => localStorageStore[key] ?? null,
-				setItem: (key: string, value: string) => {
-					localStorageStore[key] = value;
-				},
-				removeItem: (key: string) => {
-					delete localStorageStore[key];
-				},
-			};
-
-			// @ts-expect-error - mocking window for browser-side test
-			globalThis.window = { localStorage: ls };
-			// @ts-expect-error
-			globalThis.localStorage = ls;
+			({ localStorageStore, cleanup } = setupBrowserMocks());
 		});
 
 		afterEach(() => {
-			// @ts-expect-error
-			globalThis.window = originalWindow;
-			// @ts-expect-error
-			globalThis.localStorage = undefined;
+			cleanup();
 		});
 
 		test('should remove config from localStorage', () => {
