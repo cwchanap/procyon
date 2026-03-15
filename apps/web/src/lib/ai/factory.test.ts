@@ -57,8 +57,9 @@ describe('AI Factory', () => {
 		test('should forward debug flag to the adapter', () => {
 			const debugConfig = { ...baseConfig, debug: true };
 			const service = createAIService(debugConfig, 'chess');
-			// Adapter is instantiated with debug=true; gameVariant confirms the right adapter
 			expect(service.adapter.gameVariant).toBe('chess');
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			expect((service.adapter as any).debugMode).toBe(true);
 		});
 	});
 

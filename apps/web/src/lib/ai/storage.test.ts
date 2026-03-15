@@ -19,6 +19,8 @@ function setupBrowserMocks(): {
 } {
 	const localStorageStore: Record<string, string> = {};
 	const originalWindow = globalThis.window;
+	// @ts-expect-error -- test-only: capture existing localStorage to restore later
+	const originalLocalStorage = globalThis.localStorage;
 
 	const ls = {
 		getItem: (key: string) => localStorageStore[key] ?? null,
@@ -40,8 +42,8 @@ function setupBrowserMocks(): {
 		cleanup: () => {
 			// @ts-expect-error -- test-only restore: reset window to original value
 			globalThis.window = originalWindow;
-			// @ts-expect-error -- test-only restore: remove mocked localStorage
-			globalThis.localStorage = undefined;
+			// @ts-expect-error -- test-only restore: reset localStorage to original value
+			globalThis.localStorage = originalLocalStorage;
 		},
 	};
 }
@@ -85,6 +87,109 @@ describe('AI Storage', () => {
 		test('should return defaultAIConfig when window is undefined', async () => {
 			const config = await loadAIConfig();
 			expect(config).toEqual(defaultAIConfig);
+		});
+	});
+
+	describe('loadAIConfig (browser-side)', () => {
+		let localStorageStore: Record<string, string>;
+		let cleanup: () => void;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		let originalFetch: any;
+
+		beforeEach(() => {
+			({ localStorageStore, cleanup } = setupBrowserMocks());
+			// @ts-expect-error -- test-only: capture existing fetch to restore later
+			originalFetch = globalThis.fetch;
+		});
+
+		afterEach(() => {
+			// @ts-expect-error -- test-only restore: reset fetch to original value
+			globalThis.fetch = originalFetch;
+			cleanup();
+		});
+
+		test('should fetch active config from API when available', async () => {
+			let callCount = 0;
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async (url: string) => {
+				callCount++;
+				if (callCount === 1) {
+					// First call: list of configurations
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [{ id: 'cfg-1', isActive: true, hasApiKey: true }],
+						}),
+					};
+				}
+				// Second call: full config for the active entry
+				expect(url).toContain('/cfg-1/full');
+				return {
+					ok: true,
+					json: async () => ({
+						provider: 'openai',
+						apiKey: 'sk-key',
+						modelName: 'gpt-4o',
+						gameVariant: 'chess',
+					}),
+				};
+			});
+
+			const result = await loadAIConfig();
+
+			expect(callCount).toBe(2);
+			expect(result.provider).toBe('openai');
+			expect(result.apiKey).toBe('sk-key');
+			expect(result.model).toBe('gpt-4o');
+			expect(result.enabled).toBe(true);
+			expect(result.gameVariant).toBe('chess');
+		});
+
+		test('should return defaultAIConfig when fetch throws', async () => {
+			// When fetch throws the catch block fires before the localStorage fallback
+			// (which lives inside the try), so the function returns defaultAIConfig.
+			// @ts-expect-error -- test-only: replace global fetch with failing mock
+			globalThis.fetch = mock(async () => {
+				throw new Error('Network error');
+			});
+
+			const result = await loadAIConfig();
+
+			expect(result).toEqual(defaultAIConfig);
+		});
+
+		test('should fall back to localStorage when API returns non-ok response', async () => {
+			const savedConfig: AIConfig = {
+				provider: 'openrouter',
+				apiKey: 'or-key',
+				model: 'gpt-oss-120b',
+				enabled: true,
+			};
+			localStorageStore['procyon_ai_config'] = JSON.stringify(savedConfig);
+
+			// @ts-expect-error -- test-only: replace global fetch with non-ok mock
+			globalThis.fetch = mock(async () => ({
+				ok: false,
+				json: async () => ({}),
+			}));
+
+			const result = await loadAIConfig();
+
+			expect(result.provider).toBe('openrouter');
+			expect(result.apiKey).toBe('or-key');
+		});
+
+		test('should return defaultAIConfig when no config is active and localStorage is empty', async () => {
+			// API returns a list with no active config → falls through to localStorage → nothing saved
+			// @ts-expect-error -- test-only: replace global fetch with empty-list mock
+			globalThis.fetch = mock(async () => ({
+				ok: true,
+				json: async () => ({ configurations: [] }),
+			}));
+
+			const result = await loadAIConfig();
+
+			expect(result).toEqual(defaultAIConfig);
 		});
 	});
 
