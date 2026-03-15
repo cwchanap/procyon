@@ -155,6 +155,8 @@ describe('ShogiAdapter', () => {
 			// Returns grouped moves as a single string in an array
 			expect(moves.length).toBeGreaterThan(0);
 			expect(typeof moves[0]).toBe('string');
+			// Distinguish from the "no moves" sentinel returned by the empty-board case
+			expect(moves[0]).not.toContain('No valid moves');
 		});
 
 		test('should indicate no valid moves for no-move state', () => {
