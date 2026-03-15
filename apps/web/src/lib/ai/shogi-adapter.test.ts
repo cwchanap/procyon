@@ -106,22 +106,22 @@ describe('ShogiAdapter', () => {
 		test('should return correct symbols for sente pieces', () => {
 			expect(
 				adapter.getPieceSymbol({ type: 'king', color: 'sente', isPromoted: false })
-			).toBeTruthy();
+			).toBe('玉');
 			expect(
 				adapter.getPieceSymbol({ type: 'rook', color: 'sente', isPromoted: false })
-			).toBeTruthy();
+			).toBe('飛');
 			expect(
 				adapter.getPieceSymbol({ type: 'pawn', color: 'sente', isPromoted: false })
-			).toBeTruthy();
+			).toBe('歩');
 		});
 
 		test('should return correct symbols for gote pieces', () => {
 			expect(
 				adapter.getPieceSymbol({ type: 'king', color: 'gote', isPromoted: false })
-			).toBeTruthy();
+			).toBe('王');
 			expect(
 				adapter.getPieceSymbol({ type: 'rook', color: 'gote', isPromoted: false })
-			).toBeTruthy();
+			).toBe('飛');
 		});
 
 		test('should return ? for unknown piece type', () => {

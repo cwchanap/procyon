@@ -87,7 +87,11 @@ export class JungleAdapter implements GameVariantAdapter<JungleGameState> {
 		const ranks = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
 		const file = files[position.col];
 		const rank = ranks[position.row];
-		if (!file || !rank) return 'a1';
+		if (!file || !rank) {
+			throw new RangeError(
+				`Position out of bounds: row=${position.row}, col=${position.col}`
+			);
+		}
 		return `${file}${rank}`;
 	}
 
