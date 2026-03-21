@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeEach } from 'bun:test';
+import { test, expect, describe, beforeEach, afterAll } from 'bun:test';
 import { readLocalPuzzleProgress, MAX_FAILED_ATTEMPTS } from './usePuzzle';
 
 // --- localStorage stub ---
@@ -21,8 +21,14 @@ const localStorageMock = {
 	key: (index: number): string | null => Object.keys(store)[index] ?? null,
 };
 
+const originalLocalStorage = globalThis.localStorage;
 // @ts-expect-error - replacing global localStorage in test environment
 globalThis.localStorage = localStorageMock;
+
+afterAll(() => {
+	// @ts-expect-error - restoring original localStorage after tests
+	globalThis.localStorage = originalLocalStorage;
+});
 
 describe('MAX_FAILED_ATTEMPTS constant', () => {
 	test('is exported and equals 3', () => {

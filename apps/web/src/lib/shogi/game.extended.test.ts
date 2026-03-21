@@ -273,7 +273,7 @@ describe('makeAIMove', () => {
 
 	test('returns null for drop when piece type not in hand', () => {
 		const state = createInitialGameState(); // empty hand
-		const result = makeAIMove(state, '*', 'e5', false, 'gold');
+		const result = makeAIMove(state, '*', '5e', false, 'gold');
 		expect(result).toBeNull();
 	});
 });
