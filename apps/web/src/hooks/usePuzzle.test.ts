@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeEach, afterEach } from 'bun:test';
+import { test, expect, describe, beforeEach } from 'bun:test';
 import { readLocalPuzzleProgress, MAX_FAILED_ATTEMPTS } from './usePuzzle';
 
 // --- localStorage stub ---
@@ -32,10 +32,6 @@ describe('MAX_FAILED_ATTEMPTS constant', () => {
 
 describe('readLocalPuzzleProgress', () => {
 	beforeEach(() => {
-		localStorageMock.clear();
-	});
-
-	afterEach(() => {
 		localStorageMock.clear();
 	});
 
@@ -88,6 +84,18 @@ describe('readLocalPuzzleProgress', () => {
 
 		const result = readLocalPuzzleProgress(null);
 		expect(result).toEqual({});
+	});
+
+	test('returns empty object when localStorage.getItem throws', () => {
+		const originalGetItem = localStorageMock.getItem;
+		localStorageMock.getItem = () => {
+			throw new Error('localStorage unavailable');
+		};
+
+		const result = readLocalPuzzleProgress(null);
+		expect(result).toEqual({});
+
+		localStorageMock.getItem = originalGetItem;
 	});
 
 	test('scopes data per user ID - different users have separate storage', () => {

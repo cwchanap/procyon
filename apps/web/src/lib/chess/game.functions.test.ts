@@ -184,18 +184,15 @@ describe('Chess Game - makeMove captures move history', () => {
 	test('capture is recorded in move history', () => {
 		const state = createInitialGameState();
 
-		// Clear board
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
-				state.board[row][col] = null;
-			}
-		}
+		state.board = Array.from({ length: 8 }, () => Array(8).fill(null));
 
 		const whiteKing: ChessPiece = { type: 'king', color: 'white' };
+		const blackKing: ChessPiece = { type: 'king', color: 'black' };
 		const whiteRook: ChessPiece = { type: 'rook', color: 'white' };
 		const blackPawn: ChessPiece = { type: 'pawn', color: 'black' };
 
 		setPieceAt(state.board, { row: 7, col: 0 }, whiteKing);
+		setPieceAt(state.board, { row: 0, col: 0 }, blackKing);
 		setPieceAt(state.board, { row: 4, col: 4 }, whiteRook);
 		setPieceAt(state.board, { row: 4, col: 6 }, blackPawn);
 
