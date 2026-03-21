@@ -46,10 +46,10 @@ describe('OpponentLlmId enum', () => {
 
 describe('ALL_CHESS_VARIANT_IDS', () => {
 	test('contains all chess variant strings', () => {
-		expect(ALL_CHESS_VARIANT_IDS).toContain('chess');
-		expect(ALL_CHESS_VARIANT_IDS).toContain('xiangqi');
-		expect(ALL_CHESS_VARIANT_IDS).toContain('shogi');
-		expect(ALL_CHESS_VARIANT_IDS).toContain('jungle');
+		expect(ALL_CHESS_VARIANT_IDS).toContain(ChessVariantId.Chess);
+		expect(ALL_CHESS_VARIANT_IDS).toContain(ChessVariantId.Xiangqi);
+		expect(ALL_CHESS_VARIANT_IDS).toContain(ChessVariantId.Shogi);
+		expect(ALL_CHESS_VARIANT_IDS).toContain(ChessVariantId.Jungle);
 	});
 
 	test('has the same length as ChessVariantId enum', () => {
@@ -61,9 +61,9 @@ describe('ALL_CHESS_VARIANT_IDS', () => {
 
 describe('ALL_GAME_RESULT_STATUSES', () => {
 	test('contains all result status strings', () => {
-		expect(ALL_GAME_RESULT_STATUSES).toContain('win');
-		expect(ALL_GAME_RESULT_STATUSES).toContain('loss');
-		expect(ALL_GAME_RESULT_STATUSES).toContain('draw');
+		expect(ALL_GAME_RESULT_STATUSES).toContain(GameResultStatus.Win);
+		expect(ALL_GAME_RESULT_STATUSES).toContain(GameResultStatus.Loss);
+		expect(ALL_GAME_RESULT_STATUSES).toContain(GameResultStatus.Draw);
 	});
 
 	test('has the same length as GameResultStatus enum', () => {
@@ -75,8 +75,8 @@ describe('ALL_GAME_RESULT_STATUSES', () => {
 
 describe('ALL_OPPONENT_LLM_IDS', () => {
 	test('contains all opponent LLM ID strings', () => {
-		expect(ALL_OPPONENT_LLM_IDS).toContain('gpt-4o');
-		expect(ALL_OPPONENT_LLM_IDS).toContain('gemini-2.5-flash');
+		expect(ALL_OPPONENT_LLM_IDS).toContain(OpponentLlmId.Gpt4o);
+		expect(ALL_OPPONENT_LLM_IDS).toContain(OpponentLlmId.Gemini25Flash);
 	});
 
 	test('has the same length as OpponentLlmId enum', () => {
