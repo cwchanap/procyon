@@ -128,7 +128,6 @@ describe('Xiangqi game status after move', () => {
 		const blackKing: XiangqiPiece = { type: 'king', color: 'black' };
 		const redChariot1: XiangqiPiece = { type: 'chariot', color: 'red' };
 		const redChariot2: XiangqiPiece = { type: 'chariot', color: 'red' };
-		const redChariot3: XiangqiPiece = { type: 'chariot', color: 'red' };
 
 		setPieceAt(state.board, { row: 9, col: 3 }, redKing); // Red king out of col 4
 		setPieceAt(state.board, { row: 0, col: 4 }, blackKing); // Black king
@@ -279,7 +278,7 @@ describe('Xiangqi isKingInCheck - additional coverage', () => {
 			.map(() => Array(9).fill(null));
 
 		setPieceAt(board, { row: 9, col: 4 }, { type: 'king', color: 'red' });
-		setPieceAt(board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
+		setPieceAt(board, { row: 0, col: 3 }, { type: 'king', color: 'black' });
 		// Kings in different columns (no flying general) – not checking each other
 		expect(isKingInCheck(board, 'red')).toBe(false);
 	});
