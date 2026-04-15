@@ -8,6 +8,10 @@ import {
 import { setPieceAt } from './board';
 import type { XiangqiPiece } from './types';
 
+function makeEmptyBoard(): (XiangqiPiece | null)[][] {
+	return Array.from({ length: 10 }, () => Array<XiangqiPiece | null>(9).fill(null));
+}
+
 // Helper to create a clean empty board state for red to move
 function makeEmptyState(currentPlayer: 'red' | 'black' = 'red') {
 	const state = createInitialXiangqiGameState();
@@ -194,9 +198,7 @@ describe('Xiangqi selectSquare - selection switching and deselection', () => {
 
 describe('Xiangqi isKingInCheck - additional coverage', () => {
 	test('should detect check from cannon with exactly one screen piece', () => {
-		const board: (XiangqiPiece | null)[][] = Array(10)
-			.fill(null)
-			.map(() => Array(9).fill(null));
+		const board = makeEmptyBoard();
 
 		setPieceAt(board, { row: 9, col: 4 }, { type: 'king', color: 'red' });
 		// Screen piece (any piece) between cannon and king
@@ -208,9 +210,7 @@ describe('Xiangqi isKingInCheck - additional coverage', () => {
 	});
 
 	test('should not detect check from cannon with no screen piece', () => {
-		const board: (XiangqiPiece | null)[][] = Array(10)
-			.fill(null)
-			.map(() => Array(9).fill(null));
+		const board = makeEmptyBoard();
 
 		setPieceAt(board, { row: 9, col: 4 }, { type: 'king', color: 'red' });
 		// Cannon with NO screen piece between it and the king cannot attack
@@ -220,9 +220,7 @@ describe('Xiangqi isKingInCheck - additional coverage', () => {
 	});
 
 	test('should detect check from horse in an L-shape', () => {
-		const board: (XiangqiPiece | null)[][] = Array(10)
-			.fill(null)
-			.map(() => Array(9).fill(null));
+		const board = makeEmptyBoard();
 
 		setPieceAt(board, { row: 9, col: 4 }, { type: 'king', color: 'red' });
 		// Horse at (7,3): can it reach (9,4)?
@@ -234,9 +232,7 @@ describe('Xiangqi isKingInCheck - additional coverage', () => {
 	});
 
 	test('should not detect check from black king when black king is not adjacent', () => {
-		const board: (XiangqiPiece | null)[][] = Array(10)
-			.fill(null)
-			.map(() => Array(9).fill(null));
+		const board = makeEmptyBoard();
 
 		setPieceAt(board, { row: 9, col: 4 }, { type: 'king', color: 'red' });
 		setPieceAt(board, { row: 0, col: 3 }, { type: 'king', color: 'black' });
