@@ -100,7 +100,7 @@ describe('Xiangqi game status after move', () => {
 		const state = makeEmptyState('red');
 
 		setPieceAt(state.board, { row: 9, col: 3 }, { type: 'king', color: 'red' });
-		setPieceAt(state.board, { row: 0, col: 3 }, { type: 'king', color: 'black' });
+		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
 		setPieceAt(state.board, { row: 6, col: 0 }, { type: 'soldier', color: 'red' });
 
 		// Move red soldier forward - no check
@@ -112,64 +112,25 @@ describe('Xiangqi game status after move', () => {
 	});
 
 	test('should detect checkmate when opponent has no legal moves after a move', () => {
-		// Black king at (0,4) surrounded:
-		//   - Red chariot at (0,0) blocks row 0 escape (covers 0,3 up to king)
-		//   - Red chariot at (0,8) blocks row 0 escape (covers 0,5 up to king)
-		//   - Red chariot at (5,4) moves to (1,4) to deliver final check;
-		//     black king cannot capture because (1,4) is also defended by...
-		//     Actually let's use a simpler approach: Red chariot slides to (1,4),
-		//     black king can go to (0,3) but that's covered by chariot at (0,0),
-		//     (0,5) covered by chariot at (0,8), (1,3)/(1,5) are palace squares.
-		//     We need to cover (1,3) and (1,5) too.
-		// Simpler: use two chariots to cover all escape squares.
 		const state = makeEmptyState('red');
 
-		const redKing: XiangqiPiece = { type: 'king', color: 'red' };
-		const blackKing: XiangqiPiece = { type: 'king', color: 'black' };
-		const redChariot1: XiangqiPiece = { type: 'chariot', color: 'red' };
-		const redChariot2: XiangqiPiece = { type: 'chariot', color: 'red' };
-
-		setPieceAt(state.board, { row: 9, col: 3 }, redKing); // Red king out of col 4
-		setPieceAt(state.board, { row: 0, col: 4 }, blackKing); // Black king
-		// Chariot on row 1 covering all of row 1 in palace area:
-		setPieceAt(state.board, { row: 1, col: 0 }, redChariot1); // Will cover row 1
-		// Chariot on row 2 also covering escape:
-		setPieceAt(state.board, { row: 2, col: 2 }, redChariot2); // Will deliver check via column
-		// Chariot at (5,4) to be moved to (0,3) for the check / alternate checkmate setup
-
-		// Actually use a known working checkmate position:
-		// Black king alone at (0,4). Red chariot at (1,0) covers row 1.
-		// Red chariot at (5,4) will move to (0,4)... that captures the king.
-		// Instead, use: Red chariot delivers rank-check and row-coverage.
-		//
-		// Clean simpler approach: two chariots on rows 1 and 2 of cols 3-5.
-		// Red chariot on col 3, row 1 covers (1,3): state.board[1][3]
-		// Red chariot on col 5, row 1 covers (1,5): state.board[1][5]
-		// Red chariot at col 4, row 2 will deliver check: state.board[2][4] -> move to (1,4)
-		// After the move: chariot at (1,4) checks black king at (0,4)
-		// Black king escapes: (0,3), (0,5), (1,3)[chariot covers], (1,5)[chariot covers]
-		// For (0,3) and (0,5) to be covered, need chariots on row 0.
-
-		// Let's build it cleanly:
-		// Clear and rebuild this test
-		for (let row = 0; row < 10; row++) {
-			for (let col = 0; col < 9; col++) {
-				state.board[row][col] = null;
-			}
-		}
-
-		setPieceAt(state.board, { row: 9, col: 3 }, { type: 'king', color: 'red' }); // Red king
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' }); // Black king
+		// Red king at (9,3), black king at (0,4). After chariot at (5,4) moves to (1,4):
+		//   - (0,3) covered by chariot at (0,0) sliding right
+		//   - (0,5) covered by chariot at (0,8) sliding left
+		//   - (1,3) covered by chariot at (1,0) sliding right
+		//   - (1,5) covered by chariot at (1,8) sliding left
+		//   - (1,4) occupied by checking chariot; capturing it still leaves king attacked by (1,0)
+		setPieceAt(state.board, { row: 9, col: 3 }, { type: 'king', color: 'red' });
+		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
 		// Chariot at (5,4) - will move to (1,4) to check black king
 		setPieceAt(state.board, { row: 5, col: 4 }, { type: 'chariot', color: 'red' });
 		// Chariot at (0,0) - covers (0,1), (0,2), (0,3) on row 0
 		setPieceAt(state.board, { row: 0, col: 0 }, { type: 'chariot', color: 'red' });
-		// Chariot at (1,3) - covers row 1 cols from 3 to right of (1,3), blocks (1,3)
+		// Chariot at (1,0) - covers (1,1), (1,2), (1,3) on row 1
 		setPieceAt(state.board, { row: 1, col: 0 }, { type: 'chariot', color: 'red' });
-		// We still need to cover (0,5) and (1,5)
-		// Add chariot at (0,8) to cover (0,5)-(0,7) on row 0
+		// Chariot at (0,8) - covers (0,5), (0,6), (0,7) on row 0
 		setPieceAt(state.board, { row: 0, col: 8 }, { type: 'chariot', color: 'red' });
-		// Add chariot at (1,8) to cover (1,5)-(1,7) on row 1
+		// Chariot at (1,8) - covers (1,5), (1,6), (1,7) on row 1
 		setPieceAt(state.board, { row: 1, col: 8 }, { type: 'chariot', color: 'red' });
 
 		// Move chariot from (5,4) to (1,4) for the check

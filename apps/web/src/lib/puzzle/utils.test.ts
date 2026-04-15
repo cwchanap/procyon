@@ -31,7 +31,7 @@ describe('DIFFICULTY_BADGE_STYLES', () => {
 		expect(Object.keys(DIFFICULTY_BADGE_STYLES).length).toBe(3);
 	});
 
-	test('unknown difficulty key returns undefined (type safety check)', () => {
+	test('unknown difficulty key returns undefined at runtime', () => {
 		expect(DIFFICULTY_BADGE_STYLES['unknown']).toBeUndefined();
 	});
 });
