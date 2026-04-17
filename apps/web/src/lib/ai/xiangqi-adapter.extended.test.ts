@@ -144,8 +144,7 @@ describe('XiangqiAdapter - generatePrompt edge cases', () => {
 	test('prompt includes board visualization', () => {
 		const state = makeState();
 		const prompt = adapter.generatePrompt(state);
-		const visual = adapter.createVisualBoard(state);
-		expect(prompt).toContain(visual.slice(0, 20));
+		expect(prompt).toContain('a  b  c  d  e  f  g  h  i');
 	});
 
 	test('prompt includes JSON format instruction', () => {
@@ -183,15 +182,13 @@ describe('XiangqiAdapter - getAllValidMoves', () => {
 		expect(moves.some(m => m.includes('-'))).toBe(true);
 	});
 
-	test('returns "No valid moves available" message for empty board with king', () => {
-		// Create a board with only kings (no moves available for generalized test)
+	test('returns placeholder when no moves are available', () => {
 		const emptyBoard: (XiangqiPiece | null)[][] = Array(10)
 			.fill(null)
 			.map(() => Array(9).fill(null));
-		// No pieces means no valid moves
 		const state = makeState({ board: emptyBoard });
 		const moves = adapter.getAllValidMoves(state);
-		expect(moves.length).toBeGreaterThan(0);
+		expect(moves.length).toBe(1);
 		expect(moves[0]).toContain('No valid moves');
 	});
 });
@@ -217,12 +214,11 @@ describe('XiangqiAdapter - createVisualBoard', () => {
 		expect(visual.length).toBeGreaterThan(0);
 	});
 
-	test('returns different output for black current player', () => {
+	test('renders successfully regardless of current player', () => {
 		const redState = makeState({ currentPlayer: 'red' });
 		const blackState = makeState({ currentPlayer: 'black' });
 		const redVisual = adapter.createVisualBoard(redState);
 		const blackVisual = adapter.createVisualBoard(blackState);
-		// Both should be valid boards
 		expect(redVisual.length).toBeGreaterThan(0);
 		expect(blackVisual.length).toBeGreaterThan(0);
 	});

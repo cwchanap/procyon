@@ -111,11 +111,12 @@ describe('ShogiAdapter - analyzeThreatsSafety extended', () => {
 		expect(analysis.length).toBeGreaterThan(0);
 	});
 
-	test('returns analysis for gote player', () => {
+	test('returns analysis for gote player that differs from sente', () => {
 		const goteState: ShogiGameState = { ...gameState, currentPlayer: 'gote' };
-		const analysis = adapter.analyzeThreatsSafety(goteState);
-		expect(typeof analysis).toBe('string');
-		expect(analysis.length).toBeGreaterThan(0);
+		const senteAnalysis = adapter.analyzeThreatsSafety(gameState);
+		const goteAnalysis = adapter.analyzeThreatsSafety(goteState);
+		expect(typeof goteAnalysis).toBe('string');
+		expect(goteAnalysis).not.toEqual(senteAnalysis);
 	});
 });
 
@@ -135,7 +136,7 @@ describe('ShogiAdapter - generatePrompt extended', () => {
 
 	test('prompt includes move number', () => {
 		const prompt = adapter.generatePrompt(gameState);
-		expect(prompt).toContain('1');
+		expect(prompt).toContain('Move number: 1');
 	});
 
 	test('prompt includes drop notation hint', () => {
