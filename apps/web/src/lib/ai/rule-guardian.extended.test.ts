@@ -172,11 +172,12 @@ describe('XiangqiRuleGuardian - cannon and other pieces', () => {
 	});
 
 	test('should reject advisor move outside palace', () => {
-		// Place red advisor outside palace
-		gameState.board[5]![5] = { type: 'advisor', color: 'red' };
+		// Place red advisor at e5 (row5, col4); move diagonally to f4 (row6, col5)
+		// f4 is outside red's palace (rows 7-9, cols 3-5)
+		gameState.board[5]![4] = { type: 'advisor', color: 'red' };
 
 		const response: AIResponse = {
-			move: { from: 'f5', to: 'g4' }, // Outside palace for red (rows 8-9, cols 3-5)
+			move: { from: 'e5', to: 'f4' },
 			confidence: 0.8,
 		};
 
@@ -293,18 +294,17 @@ describe('JungleRuleGuardian - notation edge cases', () => {
 		expect(result.isValid).toBe(false);
 	});
 
-	test('should validate all red pieces from initial position', () => {
+	test('should reject move from empty square in initial position', () => {
 		const gameState = createJungleState();
 
-		// Red tiger is at row 8, col 5 (g1)
+		// f1 is an empty square in the initial Jungle board
 		const response: AIResponse = {
-			move: { from: 'f1', to: 'f2' }, // Red tiger area
+			move: { from: 'f1', to: 'f2' },
 			confidence: 0.8,
 		};
 
-		// This tests that the guardian can handle any red piece position
 		const result = guardian.validateAIMove(gameState, response);
-		// It might be valid or invalid depending on exact board setup - we just need no crash
-		expect(typeof result.isValid).toBe('boolean');
+		expect(result.isValid).toBe(false);
+		expect(result.reason).toBeDefined();
 	});
 });

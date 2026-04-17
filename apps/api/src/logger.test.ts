@@ -168,15 +168,19 @@ describe('logger - fields handling', () => {
 
 describe('logger - special value serialization', () => {
 	let logSpy: SpyInstance;
+	let warnSpy: SpyInstance;
+	let errorSpy: SpyInstance;
 
 	beforeEach(() => {
 		logSpy = spyOn(console, 'log').mockImplementation(() => {});
-		spyOn(console, 'warn').mockImplementation(() => {});
-		spyOn(console, 'error').mockImplementation(() => {});
+		warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+		errorSpy = spyOn(console, 'error').mockImplementation(() => {});
 	});
 
 	afterEach(() => {
 		logSpy.mockRestore();
+		warnSpy.mockRestore();
+		errorSpy.mockRestore();
 	});
 
 	test('bigint values are serialized as strings', () => {
