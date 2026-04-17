@@ -6,7 +6,6 @@ import {
 	JungleRuleGuardian,
 } from './rule-guardian';
 import { createInitialBoard as createChessBoard } from '../chess/board';
-import { createInitialXiangqiBoard } from '../xiangqi/board';
 import { createInitialGameState as createJungleState } from '../jungle/game';
 import type { AIResponse } from './types';
 import type { XiangqiPiece } from '../xiangqi/types';
