@@ -247,7 +247,7 @@ describe('ChessRuleGuardian - additional coverage', () => {
 		const board = createChessBoard();
 		const gameState = { board, currentPlayer: 'white' };
 
-		// Place black pawn on e3 (where white can potentially capture with a pawn)
+		// Place black pawn on d3 (where white can potentially capture with a pawn)
 		board[5]![3] = { type: 'pawn', color: 'black' };
 
 		const response: AIResponse = {
