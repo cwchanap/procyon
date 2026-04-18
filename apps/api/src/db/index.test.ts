@@ -1,10 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { resetLocalDB } from './local';
 
-// We can't import db/index directly at module load time because drizzle-orm/d1
-// isn't available in the Node/Bun test environment (it's a Cloudflare-only
-// package). Instead we use dynamic imports so the module resolves at runtime and
-// the local SQLite path is taken because NODE_ENV=test.
+// Import db/index dynamically in tests so module initialization happens after
+// the test environment is set up and after each reset. This keeps the db
+// singleton and environment-dependent initialization path under test control.
 
 async function resetAll() {
 	resetLocalDB();
@@ -22,7 +21,7 @@ describe('db/index - initializeDB and getDB', () => {
 		// db is reset in beforeEach so getDB must throw here.
 		expect(() => getDB()).toThrow(/not initialized/i);
 
-		// Initialize so subsequent tests have a valid db singleton.
+		// Initialize only for the remainder of this test; other tests reset state in beforeEach.
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 	});
 

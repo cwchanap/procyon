@@ -4,7 +4,7 @@ import * as schema from './schema';
 import { isDevelopment, isTest } from '../env';
 
 // For development - you'll need to bind the D1 database in production
-let db: ReturnType<typeof drizzle<typeof schema>>;
+let db: ReturnType<typeof drizzle<typeof schema>> | undefined;
 
 interface InitializeDBOptions {
 	localDbPath?: string;
@@ -41,7 +41,7 @@ export function initializeDB(
 }
 
 export function getDB() {
-	if (!db) {
+	if (db === undefined) {
 		throw new Error('Database not initialized. Call initializeDB first.');
 	}
 	return db;
@@ -55,5 +55,5 @@ export function _resetDBForTest() {
 	if (!isTest) {
 		throw new Error('_resetDBForTest is only available in test environments');
 	}
-	db = undefined as unknown as ReturnType<typeof drizzle<typeof schema>>;
+	db = undefined;
 }
