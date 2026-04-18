@@ -11,8 +11,8 @@ describe('GAME_CONFIGS', () => {
 		}
 	});
 
-	test('has exactly 4 game variants', () => {
-		expect(Object.keys(GAME_CONFIGS)).toHaveLength(4);
+	test('has exactly the expected game variants', () => {
+		expect(Object.keys(GAME_CONFIGS).sort()).toEqual([...VARIANTS].sort());
 	});
 
 	describe('chess config', () => {
