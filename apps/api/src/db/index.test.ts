@@ -6,19 +6,20 @@ import { resetLocalDB } from './local';
 // package). Instead we use dynamic imports so the module resolves at runtime and
 // the local SQLite path is taken because NODE_ENV=test.
 
-describe('db/index - initializeDB and getDB', () => {
-	beforeEach(() => {
-		resetLocalDB();
-	});
+async function resetAll() {
+	resetLocalDB();
+	const { _resetDBForTest } = await import('./index');
+	_resetDBForTest();
+}
 
-	afterEach(() => {
-		resetLocalDB();
-	});
+describe('db/index - initializeDB and getDB', () => {
+	beforeEach(resetAll);
+	afterEach(resetAll);
 
 	test('getDB throws before any initialization', async () => {
 		const { getDB, initializeDB } = await import('./index');
 
-		// On first load the module-level db is undefined — getDB must throw.
+		// db is reset in beforeEach so getDB must throw here.
 		expect(() => getDB()).toThrow(/not initialized/i);
 
 		// Initialize so subsequent tests have a valid db singleton.
