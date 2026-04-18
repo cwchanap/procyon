@@ -48,3 +48,12 @@ export function getDB() {
 }
 
 export { schema };
+
+// Only available in test environments — resets the module-level db singleton
+// so tests can observe the uninitialized state.
+export function _resetDBForTest() {
+	if (!isTest) {
+		throw new Error('_resetDBForTest is only available in test environments');
+	}
+	db = undefined as unknown as ReturnType<typeof drizzle<typeof schema>>;
+}
