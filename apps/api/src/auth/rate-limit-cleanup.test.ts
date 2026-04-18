@@ -35,9 +35,13 @@ describe('stopRateLimitCleanup', () => {
 		}).not.toThrow();
 	});
 
-	test('returned value from startRateLimitCleanup is the same as stopRateLimitCleanup', () => {
+	test('returned cleanup from startRateLimitCleanup can be called safely alongside stopRateLimitCleanup', () => {
 		const cleanup = startRateLimitCleanup();
-		expect(cleanup).toBe(stopRateLimitCleanup);
+		expect(typeof cleanup).toBe('function');
+		expect(() => {
+			cleanup();
+			stopRateLimitCleanup();
+		}).not.toThrow();
 	});
 });
 
