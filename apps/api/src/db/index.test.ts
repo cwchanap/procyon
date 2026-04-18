@@ -16,13 +16,10 @@ describe('db/index - initializeDB and getDB', () => {
 	afterEach(resetAll);
 
 	test('getDB throws before any initialization', async () => {
-		const { getDB, initializeDB } = await import('./index');
+		const { getDB } = await import('./index');
 
 		// db is reset in beforeEach so getDB must throw here.
 		expect(() => getDB()).toThrow(/not initialized/i);
-
-		// Initialize only for the remainder of this test; other tests reset state in beforeEach.
-		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 	});
 
 	test('initializeDB returns a db instance in test environment', async () => {
