@@ -8,7 +8,7 @@ import {
 import { createInitialBoard as createChessBoard } from '../chess/board';
 import { createInitialGameState as createJungleState } from '../jungle/game';
 import type { AIResponse } from './types';
-import type { XiangqiPiece } from '../xiangqi/types';
+import type { XiangqiGameState, XiangqiPiece } from '../xiangqi/types';
 import type { ShogiPiece } from '../shogi';
 
 describe('ShogiRuleGuardian - uncovered paths', () => {
@@ -108,17 +108,21 @@ describe('ShogiRuleGuardian - uncovered paths', () => {
 
 describe('XiangqiRuleGuardian - cannon and other pieces', () => {
 	let guardian: XiangqiRuleGuardian;
-	let gameState: {
-		board: (XiangqiPiece | null)[][];
-		currentPlayer: string;
-	};
+	let gameState: XiangqiGameState;
 
 	beforeEach(() => {
 		guardian = new XiangqiRuleGuardian();
 		const emptyBoard: (XiangqiPiece | null)[][] = Array(10)
 			.fill(null)
 			.map(() => Array(9).fill(null));
-		gameState = { board: emptyBoard, currentPlayer: 'red' };
+		gameState = {
+			board: emptyBoard,
+			currentPlayer: 'red',
+			status: 'playing',
+			moveHistory: [],
+			selectedSquare: null,
+			possibleMoves: [],
+		};
 	});
 
 	test('should validate cannon move for red', () => {
