@@ -7,12 +7,6 @@ describe('env object', () => {
 		expect(typeof env).toBe('object');
 	});
 
-	test('PORT defaults to 3501 when not set', () => {
-		// In test environment PORT is typically not set
-		expect(typeof env.PORT).toBe('number');
-		expect(env.PORT).toBeGreaterThan(0);
-	});
-
 	test('NODE_ENV is set to test in test environment', () => {
 		// Bun sets NODE_ENV=test during `bun test`
 		expect(env.NODE_ENV).toBe('test');

@@ -16,25 +16,13 @@ describe('db/index - initializeDB and getDB', () => {
 	});
 
 	test('getDB throws before any initialization', async () => {
-		// This test must run first — before initializeDB is called — so the
-		// module-level `db` variable in index.ts is still undefined.
-		// We achieve isolation by doing a fresh dynamic import at the top of
-		// each test and resetting the local db state in beforeEach/afterEach.
-		//
-		// NOTE: Because JS module caches are process-wide, once initializeDB is
-		// called in a previous test the `db` singleton will be set. The
-		// "throws" behaviour can only be observed on a truly fresh import or
-		// before the first initialization call in this file.  We therefore place
-		// this test first and rely on the resetLocalDB() above to close the
-		// underlying connection (so subsequent tests don't reuse a stale handle).
 		const { getDB, initializeDB } = await import('./index');
 
-		// On a fresh module load (first test in file) db is unset — expect throw.
-		// After the first call to initializeDB across the file, db is set.
-		// We call initializeDB here to ensure getDB works for subsequent tests.
+		// On first load the module-level db is undefined — getDB must throw.
+		expect(() => getDB()).toThrow(/not initialized/i);
+
+		// Initialize so subsequent tests have a valid db singleton.
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
-		const db = getDB();
-		expect(db).toBeDefined();
 	});
 
 	test('initializeDB returns a db instance in test environment', async () => {
@@ -56,13 +44,19 @@ describe('db/index - initializeDB and getDB', () => {
 		expect(db1).toBe(db2);
 	});
 
-	test('accepts an explicit in-memory path', async () => {
+	test('resetLocal option discards the previous instance', async () => {
 		const { initializeDB } = await import('./index');
-		const db = initializeDB(undefined, {
+		const db1 = initializeDB(undefined, {
 			localDbPath: ':memory:',
 			resetLocal: true,
 		});
-		expect(db).toBeDefined();
+		resetLocalDB();
+		const db2 = initializeDB(undefined, {
+			localDbPath: ':memory:',
+			resetLocal: true,
+		});
+		expect(db2).toBeDefined();
+		expect(db1).not.toBe(db2);
 	});
 
 	test('getDB returns the same instance as initializeDB', async () => {
