@@ -7,9 +7,10 @@ describe('env object', () => {
 		expect(typeof env).toBe('object');
 	});
 
-	test('NODE_ENV is set to test in test environment', () => {
-		// Bun sets NODE_ENV=test during `bun test`
-		expect(env.NODE_ENV).toBe('test');
+	test('NODE_ENV is a test-like value when isTest is true', () => {
+		// The codebase treats both NODE_ENV=test and NODE_ENV=e2e as test-like
+		expect(isTest).toBe(true);
+		expect(['test', 'e2e']).toContain(env.NODE_ENV);
 	});
 
 	test('FRONTEND_URL defaults to localhost:3500', () => {
