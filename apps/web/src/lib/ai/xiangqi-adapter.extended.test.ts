@@ -210,8 +210,7 @@ describe('XiangqiAdapter - createVisualBoard', () => {
 	test('contains column headers', () => {
 		const state = makeState();
 		const visual = adapter.createVisualBoard(state);
-		// Should have some kind of coordinate system
-		expect(visual.length).toBeGreaterThan(0);
+		expect(visual).toContain('a  b  c  d  e  f  g  h  i');
 	});
 
 	test('renders successfully regardless of current player', () => {
