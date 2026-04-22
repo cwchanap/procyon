@@ -45,7 +45,7 @@ describe('makeMove - null returns', () => {
 		const state = emptyState();
 		const pawn: ChessPiece = { type: 'pawn', color: 'white' };
 		setPieceAt(state.board, { row: 6, col: 4 }, pawn);
-		expect(makeMove(state, { row: 6, col: 4 }, { row: 3, col: 4 })).toBeNull();
+		expect(makeMove(state, { row: 6, col: 4 }, { row: -1, col: 4 })).toBeNull();
 	});
 });
 
@@ -260,8 +260,9 @@ describe('algebraicToPosition - comprehensive', () => {
 		}
 	});
 
-	test('returns null for negative rank', () => {
-		expect(algebraicToPosition('a-1')).toBeNull();
+	test('returns null for ranks outside 1-8', () => {
+		expect(algebraicToPosition('a0')).toBeNull();
+		expect(algebraicToPosition('a9')).toBeNull();
 	});
 });
 

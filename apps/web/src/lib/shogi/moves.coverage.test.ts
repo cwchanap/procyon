@@ -206,7 +206,7 @@ describe('canDropAt - additional cases', () => {
 		expect(canDropAt(board, gold, { row: 4, col: 4 })).toBe(false);
 	});
 
-	test('gote lance cannot be dropped on row 0 (last rank)', () => {
+	test('gote lance cannot be dropped on row 8 (last rank)', () => {
 		const board = emptyBoard();
 		const lance: ShogiPiece = { type: 'lance', color: 'gote' };
 		expect(canDropAt(board, lance, { row: 8, col: 4 })).toBe(false);
