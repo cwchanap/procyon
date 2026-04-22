@@ -74,10 +74,13 @@ describe('isValidMove - elephant', () => {
 	test('elephant cannot cross the river', () => {
 		const board = emptyBoard();
 		const elephant: XiangqiPiece = { type: 'elephant', color: 'red' };
-		// Red elephant at row 5 (river boundary for red is row >= 5)
 		setPieceAt(board, { row: 7, col: 4 }, elephant);
-		// Try to move to row 5 (still red side) is fine, but row 3 crosses river
+		// Moving within red side (rows 5-9) is allowed
 		expect(isValidMove(board, { row: 7, col: 4 }, { row: 5, col: 2 })).toBe(true);
+		// Moving across the river to black side (rows 0-4) must be rejected
+		expect(isValidMove(board, { row: 7, col: 4 }, { row: 5, col: 6 })).toBe(true);
+		setPieceAt(board, { row: 5, col: 2 }, elephant);
+		expect(isValidMove(board, { row: 5, col: 2 }, { row: 3, col: 4 })).toBe(false);
 	});
 });
 
@@ -135,8 +138,8 @@ describe('isValidMove - cannon', () => {
 		setPieceAt(board, { row: 7, col: 1 }, cannon);
 		setPieceAt(board, { row: 7, col: 3 }, screen); // screen
 		setPieceAt(board, { row: 7, col: 5 }, target); // target to capture
-		// Cannot move to col 2 because screen is in the way to non-capture
-		expect(isValidMove(board, { row: 7, col: 1 }, { row: 7, col: 2 })).toBe(true);
+		// Non-capturing move past the screen is rejected (no jumping to empty squares)
+		expect(isValidMove(board, { row: 7, col: 1 }, { row: 7, col: 4 })).toBe(false);
 		// Can capture target at col 5 (exactly one screen)
 		expect(isValidMove(board, { row: 7, col: 1 }, { row: 7, col: 5 })).toBe(true);
 	});
@@ -222,11 +225,10 @@ describe('selectSquare - additional branches', () => {
 		expect(state.selectedSquare).toEqual({ row: 9, col: 1 });
 		// Click a valid destination for the horse
 		const dest = state.possibleMoves[0];
-		if (dest) {
-			state = selectSquare(state, dest);
-			expect(state.currentPlayer).toBe('black');
-			expect(state.moveHistory).toHaveLength(1);
-		}
+		expect(dest).toBeDefined();
+		state = selectSquare(state, dest!);
+		expect(state.currentPlayer).toBe('black');
+		expect(state.moveHistory).toHaveLength(1);
 	});
 
 	test('clicking invalid destination when piece selected clears selection', () => {

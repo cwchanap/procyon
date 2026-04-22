@@ -21,9 +21,9 @@ function emptyBoard(): (JunglePiece | null)[][] {
 }
 
 function emptyTerrain(): JungleTerrain[][] {
-	return Array(JUNGLE_ROWS)
-		.fill(null)
-		.map(() => Array(JUNGLE_COLS).fill({ type: 'normal' as const }));
+	return Array.from({ length: JUNGLE_ROWS }, () =>
+		Array.from({ length: JUNGLE_COLS }, (): JungleTerrain => ({ type: 'normal' }))
+	);
 }
 
 // ---------------------------------------------------------------------------
