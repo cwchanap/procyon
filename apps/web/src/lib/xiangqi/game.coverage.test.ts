@@ -77,7 +77,7 @@ describe('isValidMove - elephant', () => {
 		setPieceAt(board, { row: 7, col: 4 }, elephant);
 		// Moving within red side (rows 5-9) is allowed
 		expect(isValidMove(board, { row: 7, col: 4 }, { row: 5, col: 2 })).toBe(true);
-		// Moving across the river to black side (rows 0-4) must be rejected
+		// Another move within red side (rows 5-9) is also allowed
 		expect(isValidMove(board, { row: 7, col: 4 }, { row: 5, col: 6 })).toBe(true);
 		setPieceAt(board, { row: 5, col: 2 }, elephant);
 		expect(isValidMove(board, { row: 5, col: 2 }, { row: 3, col: 4 })).toBe(false);
