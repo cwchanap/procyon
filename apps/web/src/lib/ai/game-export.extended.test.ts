@@ -9,9 +9,14 @@ const originalURL = (globalThis as Record<string, unknown>).URL;
 const originalDocument = (globalThis as Record<string, unknown>).document;
 
 afterEach(() => {
-	(globalThis as Record<string, unknown>).Blob = originalBlob;
-	(globalThis as Record<string, unknown>).URL = originalURL;
-	(globalThis as Record<string, unknown>).document = originalDocument;
+	const g = globalThis as Record<string, unknown>;
+	const restore = (key: string, value: unknown) => {
+		if (value === undefined) delete g[key];
+		else g[key] = value;
+	};
+	restore('Blob', originalBlob);
+	restore('URL', originalURL);
+	restore('document', originalDocument);
 });
 
 describe('GameExporter - downloadAsFile', () => {
