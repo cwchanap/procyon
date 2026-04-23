@@ -76,6 +76,7 @@ describe('UniversalAIService - callGemini (via makeMove)', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(JSON.stringify(makeGeminiResponse(VALID_MOVE_JSON)), {
 				status: 200,
@@ -92,6 +93,7 @@ describe('UniversalAIService - callGemini (via makeMove)', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response('Unauthorized', { status: 401, statusText: 'Unauthorized' })
 		);
@@ -103,6 +105,7 @@ describe('UniversalAIService - callGemini (via makeMove)', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify({ promptFeedback: { blockReason: 'SAFETY' } }),
@@ -117,6 +120,7 @@ describe('UniversalAIService - callGemini (via makeMove)', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(JSON.stringify({ candidates: [] }), { status: 200 })
 		);
@@ -128,6 +132,7 @@ describe('UniversalAIService - callGemini (via makeMove)', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify({
@@ -144,6 +149,7 @@ describe('UniversalAIService - callGemini (via makeMove)', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify({
@@ -167,6 +173,7 @@ describe('UniversalAIService - callGemini (via makeMove)', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify({
@@ -188,6 +195,7 @@ describe('UniversalAIService - callGemini (via makeMove)', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify({
@@ -204,6 +212,7 @@ describe('UniversalAIService - callGemini (via makeMove)', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify({
@@ -239,6 +248,7 @@ describe('UniversalAIService - callOpenRouter (via makeMove)', () => {
 		const config = makeConfig({ provider: 'openrouter' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(JSON.stringify(makeOpenAIResponse(VALID_MOVE_JSON)), {
 				status: 200,
@@ -254,6 +264,7 @@ describe('UniversalAIService - callOpenRouter (via makeMove)', () => {
 		const config = makeConfig({ provider: 'openrouter' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response('Bad Request', { status: 400, statusText: 'Bad Request' })
 		);
@@ -275,6 +286,7 @@ describe('UniversalAIService - callOpenAI (via makeMove)', () => {
 		const config = makeConfig({ provider: 'openai' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(JSON.stringify(makeOpenAIResponse(VALID_MOVE_JSON)), {
 				status: 200,
@@ -290,6 +302,7 @@ describe('UniversalAIService - callOpenAI (via makeMove)', () => {
 		const config = makeConfig({ provider: 'openai' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response('Forbidden', { status: 403, statusText: 'Forbidden' })
 		);
@@ -311,6 +324,7 @@ describe('UniversalAIService - callChutes (via makeMove)', () => {
 		const config = makeConfig({ provider: 'chutes' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(JSON.stringify(makeOpenAIResponse(VALID_MOVE_JSON)), {
 				status: 200,
@@ -326,6 +340,7 @@ describe('UniversalAIService - callChutes (via makeMove)', () => {
 		const config = makeConfig({ provider: 'chutes' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify({
@@ -348,6 +363,7 @@ describe('UniversalAIService - callChutes (via makeMove)', () => {
 		const config = makeConfig({ provider: 'chutes' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response('Service Unavailable', {
 				status: 503,
@@ -384,6 +400,7 @@ describe('UniversalAIService - parseAIResponse edge cases (via makeMove)', () =>
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify(makeGeminiResponse('This is plain text, no JSON here')),
@@ -400,6 +417,7 @@ describe('UniversalAIService - parseAIResponse edge cases (via makeMove)', () =>
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify(
@@ -423,6 +441,7 @@ describe('UniversalAIService - parseAIResponse edge cases (via makeMove)', () =>
 			confidence: 75,
 		});
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify(makeGeminiResponse(responseWithExtras)),
@@ -445,6 +464,7 @@ describe('UniversalAIService - parseAIResponse edge cases (via makeMove)', () =>
 			reasoning: 'Opening move',
 		});
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify(makeGeminiResponse(responseNoConfidence)),
@@ -473,6 +493,7 @@ describe('UniversalAIService - debug mode', () => {
 		const debugEvents: string[] = [];
 		service.setDebugCallback((type) => debugEvents.push(type));
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(JSON.stringify(makeGeminiResponse(VALID_MOVE_JSON)), {
 				status: 200,
@@ -491,6 +512,7 @@ describe('UniversalAIService - debug mode', () => {
 		const debugEvents: string[] = [];
 		service.setDebugCallback((type) => debugEvents.push(type));
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(
 				JSON.stringify(makeGeminiResponse('no json here')),
@@ -506,6 +528,7 @@ describe('UniversalAIService - debug mode', () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
+		// @ts-expect-error -- test-only: replace global fetch with mock
 		globalThis.fetch = mock(async () =>
 			new Response(JSON.stringify(makeGeminiResponse(VALID_MOVE_JSON)), {
 				status: 200,

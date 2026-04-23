@@ -1,174 +1,300 @@
 /**
- * Targets uncovered lines in env.ts:
- *   36-41  isWorkersRuntime() detection
- *   60, 62-63  getEnvNumber() branches (empty value → default, invalid → default)
- *   89-97  production validation (throws when SUPABASE_* vars are missing)
+ * Tests for env.ts using fresh dynamic imports so each test evaluates the
+ * module-level code (isWorkersRuntime, getEnvNumber, getEnvBoolean, production
+ * validation) against a controlled process.env / globalThis state.
+ *
+ * Targeted uncovered lines in env.ts:
+ *   36-44  isWorkersRuntime() detection
+ *   56-64  getEnvNumber() branches (empty / invalid / valid)
+ *   66-68  getEnvBoolean()
+ *   88-98  production validation (throws when SUPABASE_* vars are missing)
  */
 import { describe, test, expect } from 'bun:test';
 
 // ---------------------------------------------------------------------------
-// isWorkersRuntime helper - tested via reimplementation (module-level code
-// cannot be re-executed, so we verify the logic directly)
+// Helpers
 // ---------------------------------------------------------------------------
-describe('isWorkersRuntime detection logic', () => {
-	test('returns false when WebSocketPair and caches are undefined', () => {
-		const g = globalThis as Record<string, unknown>;
-		const origWS = g['WebSocketPair'];
-		const origCaches = g['caches'];
-		delete g['WebSocketPair'];
-		delete g['caches'];
+
+function snapshotEnv(): Record<string, string | undefined> {
+	return { ...process.env };
+}
+
+function restoreEnv(saved: Record<string, string | undefined>): void {
+	for (const key of Object.keys(process.env)) {
+		if (!(key in saved)) delete process.env[key];
+	}
+	for (const [key, value] of Object.entries(saved)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+}
+
+function snapshotGlobals(keys: string[]): Record<string, unknown> {
+	const g = globalThis as Record<string, unknown>;
+	return Object.fromEntries(keys.map((k) => [k, g[k]]));
+}
+
+function restoreGlobals(saved: Record<string, unknown>): void {
+	const g = globalThis as Record<string, unknown>;
+	for (const [key, value] of Object.entries(saved)) {
+		if (value === undefined) delete g[key];
+		else g[key] = value;
+	}
+}
+
+/** Set a minimal safe env so production validation never throws unexpectedly. */
+function applySafeEnv(overrides: Record<string, string | undefined> = {}): void {
+	process.env.NODE_ENV = 'test';
+	process.env.SUPABASE_URL = 'https://example.supabase.co';
+	process.env.SUPABASE_ANON_KEY = 'test-anon-key';
+	process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+	for (const [key, value] of Object.entries(overrides)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+}
+
+/**
+ * Each call returns a freshly-evaluated copy of env.ts.
+ * Bun resolves the query string as a distinct module URL, bypassing the
+ * ES-module cache and re-running all module-level code against the current
+ * process.env / globalThis state.
+ */
+async function importFreshEnv() {
+	// Query string cache-busts Bun's ES module cache so each call gets a fresh evaluation
+	return import(`./env.ts?t=${Date.now()}-${Math.random()}`);
+}
+
+// ---------------------------------------------------------------------------
+// isWorkersRuntime — exercised indirectly via production validation
+// ---------------------------------------------------------------------------
+describe('isWorkersRuntime detection (via production validation)', () => {
+	test('production validation passes when WebSocketPair is present (Workers runtime)', async () => {
+		const savedEnv = snapshotEnv();
+		const savedGlobals = snapshotGlobals(['WebSocketPair', 'caches']);
 
 		try {
-			const result =
-				typeof (globalThis as Record<string, unknown>)['WebSocketPair'] !== 'undefined' ||
-				typeof (globalThis as Record<string, unknown>)['caches'] !== 'undefined';
-			expect(result).toBe(false);
+			// Simulate Cloudflare Workers environment
+			(globalThis as Record<string, unknown>).WebSocketPair = function MockWebSocketPair() {};
+			delete (globalThis as Record<string, unknown>).caches;
+
+			// In Workers runtime isWorkersRuntime() → true, so validation is skipped
+			// even when SUPABASE_* vars are absent
+			process.env.NODE_ENV = 'production';
+			delete process.env.SUPABASE_URL;
+			delete process.env.SUPABASE_ANON_KEY;
+			delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+			await expect(importFreshEnv()).resolves.toBeDefined();
 		} finally {
-			if (origWS !== undefined) g['WebSocketPair'] = origWS;
-			if (origCaches !== undefined) g['caches'] = origCaches;
+			restoreGlobals(savedGlobals);
+			restoreEnv(savedEnv);
 		}
 	});
 
-	test('returns true when WebSocketPair is present', () => {
-		const g = globalThis as Record<string, unknown>;
-		const orig = g['WebSocketPair'];
-		g['WebSocketPair'] = function MockWebSocketPair() {};
+	test('production validation throws when not on Workers runtime and SUPABASE_URL is missing', async () => {
+		const savedEnv = snapshotEnv();
+		const savedGlobals = snapshotGlobals(['WebSocketPair', 'caches']);
 
 		try {
-			const result =
-				typeof (globalThis as Record<string, unknown>)['WebSocketPair'] !== 'undefined';
-			expect(result).toBe(true);
+			delete (globalThis as Record<string, unknown>).WebSocketPair;
+			delete (globalThis as Record<string, unknown>).caches;
+
+			process.env.NODE_ENV = 'production';
+			delete process.env.SUPABASE_URL;
+			process.env.SUPABASE_ANON_KEY = 'anon';
+			process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
+
+			await expect(importFreshEnv()).rejects.toThrow('SUPABASE_URL is required in production.');
 		} finally {
-			if (orig === undefined) delete g['WebSocketPair'];
-			else g['WebSocketPair'] = orig;
+			restoreGlobals(savedGlobals);
+			restoreEnv(savedEnv);
+		}
+	});
+
+	test('production validation throws when SUPABASE_ANON_KEY is missing', async () => {
+		const savedEnv = snapshotEnv();
+		const savedGlobals = snapshotGlobals(['WebSocketPair', 'caches']);
+
+		try {
+			delete (globalThis as Record<string, unknown>).WebSocketPair;
+			delete (globalThis as Record<string, unknown>).caches;
+
+			process.env.NODE_ENV = 'production';
+			process.env.SUPABASE_URL = 'https://x.supabase.co';
+			delete process.env.SUPABASE_ANON_KEY;
+			process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
+
+			await expect(importFreshEnv()).rejects.toThrow('SUPABASE_ANON_KEY is required in production.');
+		} finally {
+			restoreGlobals(savedGlobals);
+			restoreEnv(savedEnv);
+		}
+	});
+
+	test('production validation throws when SUPABASE_SERVICE_ROLE_KEY is missing', async () => {
+		const savedEnv = snapshotEnv();
+		const savedGlobals = snapshotGlobals(['WebSocketPair', 'caches']);
+
+		try {
+			delete (globalThis as Record<string, unknown>).WebSocketPair;
+			delete (globalThis as Record<string, unknown>).caches;
+
+			process.env.NODE_ENV = 'production';
+			process.env.SUPABASE_URL = 'https://x.supabase.co';
+			process.env.SUPABASE_ANON_KEY = 'anon';
+			delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+			await expect(importFreshEnv()).rejects.toThrow(
+				'SUPABASE_SERVICE_ROLE_KEY is required in production.'
+			);
+		} finally {
+			restoreGlobals(savedGlobals);
+			restoreEnv(savedEnv);
+		}
+	});
+
+	test('production validation passes when all required vars are present', async () => {
+		const savedEnv = snapshotEnv();
+		const savedGlobals = snapshotGlobals(['WebSocketPair', 'caches']);
+
+		try {
+			delete (globalThis as Record<string, unknown>).WebSocketPair;
+			delete (globalThis as Record<string, unknown>).caches;
+
+			process.env.NODE_ENV = 'production';
+			process.env.SUPABASE_URL = 'https://x.supabase.co';
+			process.env.SUPABASE_ANON_KEY = 'anon';
+			process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
+
+			await expect(importFreshEnv()).resolves.toBeDefined();
+		} finally {
+			restoreGlobals(savedGlobals);
+			restoreEnv(savedEnv);
 		}
 	});
 });
 
 // ---------------------------------------------------------------------------
-// getEnvNumber() branches - reimplemented inline to cover the missing paths
+// getEnvNumber — exercised via env.PORT
 // ---------------------------------------------------------------------------
-describe('getEnvNumber equivalent logic', () => {
-	function getEnvNumber(rawValue: string | undefined, defaultValue: number): number {
-		const normalized = (rawValue ?? '').trim().replace(/^["']+|["']+$/g, '');
-		if (!normalized) return defaultValue;
-		const parsed = Number.parseInt(normalized, 10);
-		return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultValue;
-	}
-
-	test('returns default when value is undefined', () => {
-		expect(getEnvNumber(undefined, 42)).toBe(42);
-	});
-
-	test('returns default when value is empty string', () => {
-		expect(getEnvNumber('', 99)).toBe(99);
-	});
-
-	test('returns default when value is not a valid positive integer', () => {
-		expect(getEnvNumber('abc', 100)).toBe(100);
-		expect(getEnvNumber('-5', 100)).toBe(100);
-		expect(getEnvNumber('0', 100)).toBe(100);
-	});
-
-	test('returns parsed value when value is a valid positive integer', () => {
-		expect(getEnvNumber('3501', 3000)).toBe(3501);
-		expect(getEnvNumber('"8080"', 3000)).toBe(8080);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Production validation logic (env.ts lines 88-97)
-// Replicate the guard logic to test it without re-importing the module
-// ---------------------------------------------------------------------------
-describe('production env validation logic', () => {
-	function validateProductionEnv(
-		nodeEnv: string,
-		supabaseUrl: string,
-		supabaseAnonKey: string,
-		supabaseServiceKey: string,
-		isWorkers: boolean
-	) {
-		if (nodeEnv === 'production' && !isWorkers) {
-			if (!supabaseUrl) {
-				throw new Error('SUPABASE_URL is required in production.');
-			}
-			if (!supabaseAnonKey) {
-				throw new Error('SUPABASE_ANON_KEY is required in production.');
-			}
-			if (!supabaseServiceKey) {
-				throw new Error('SUPABASE_SERVICE_ROLE_KEY is required in production.');
-			}
+describe('getEnvNumber (via env.PORT)', () => {
+	test('uses default 3501 when PORT is undefined', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ PORT: undefined });
+			const mod = await importFreshEnv();
+			expect((mod as { env: { PORT: number } }).env.PORT).toBe(3501);
+		} finally {
+			restoreEnv(savedEnv);
 		}
-	}
-
-	test('does not throw in non-production environment', () => {
-		expect(() => validateProductionEnv('test', '', '', '', false)).not.toThrow();
-		expect(() => validateProductionEnv('development', '', '', '', false)).not.toThrow();
 	});
 
-	test('does not throw in production when running on Workers runtime', () => {
-		expect(() => validateProductionEnv('production', '', '', '', true)).not.toThrow();
+	test('uses default 3501 when PORT is empty string', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ PORT: '' });
+			const mod = await importFreshEnv();
+			expect((mod as { env: { PORT: number } }).env.PORT).toBe(3501);
+		} finally {
+			restoreEnv(savedEnv);
+		}
 	});
 
-	test('throws when SUPABASE_URL is missing in production', () => {
-		expect(() =>
-			validateProductionEnv('production', '', 'anon-key', 'service-key', false)
-		).toThrow('SUPABASE_URL is required in production.');
+	test('uses default 3501 when PORT is not a valid positive integer', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ PORT: 'abc' });
+			const mod = await importFreshEnv();
+			expect((mod as { env: { PORT: number } }).env.PORT).toBe(3501);
+		} finally {
+			restoreEnv(savedEnv);
+		}
 	});
 
-	test('throws when SUPABASE_ANON_KEY is missing in production', () => {
-		expect(() =>
-			validateProductionEnv('production', 'https://supabase.example.com', '', 'service-key', false)
-		).toThrow('SUPABASE_ANON_KEY is required in production.');
+	test('uses default 3501 when PORT is zero or negative', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ PORT: '0' });
+			const mod0 = await importFreshEnv();
+			expect((mod0 as { env: { PORT: number } }).env.PORT).toBe(3501);
+
+			applySafeEnv({ PORT: '-5' });
+			const modNeg = await importFreshEnv();
+			expect((modNeg as { env: { PORT: number } }).env.PORT).toBe(3501);
+		} finally {
+			restoreEnv(savedEnv);
+		}
 	});
 
-	test('throws when SUPABASE_SERVICE_ROLE_KEY is missing in production', () => {
-		expect(() =>
-			validateProductionEnv(
-				'production',
-				'https://supabase.example.com',
-				'anon-key',
-				'',
-				false
-			)
-		).toThrow('SUPABASE_SERVICE_ROLE_KEY is required in production.');
+	test('parses valid PORT value', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ PORT: '8080' });
+			const mod = await importFreshEnv();
+			expect((mod as { env: { PORT: number } }).env.PORT).toBe(8080);
+		} finally {
+			restoreEnv(savedEnv);
+		}
 	});
 
-	test('does not throw when all required vars are present in production', () => {
-		expect(() =>
-			validateProductionEnv(
-				'production',
-				'https://supabase.example.com',
-				'anon-key',
-				'service-key',
-				false
-			)
-		).not.toThrow();
+	test('parses quoted PORT value', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ PORT: '"3600"' });
+			const mod = await importFreshEnv();
+			expect((mod as { env: { PORT: number } }).env.PORT).toBe(3600);
+		} finally {
+			restoreEnv(savedEnv);
+		}
 	});
 });
 
 // ---------------------------------------------------------------------------
-// getEnvBoolean logic
+// getEnvBoolean — exercised via env.CI
 // ---------------------------------------------------------------------------
-describe('getEnvBoolean equivalent logic', () => {
-	function getEnvBoolean(rawValue: string | undefined): boolean {
-		return rawValue === 'true' || rawValue === '1';
-	}
-
-	test('returns true for "true"', () => {
-		expect(getEnvBoolean('true')).toBe(true);
+describe('getEnvBoolean (via env.CI)', () => {
+	test('returns true when CI=true', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ CI: 'true' });
+			const mod = await importFreshEnv();
+			expect((mod as { env: { CI: boolean } }).env.CI).toBe(true);
+		} finally {
+			restoreEnv(savedEnv);
+		}
 	});
 
-	test('returns true for "1"', () => {
-		expect(getEnvBoolean('1')).toBe(true);
+	test('returns true when CI=1', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ CI: '1' });
+			const mod = await importFreshEnv();
+			expect((mod as { env: { CI: boolean } }).env.CI).toBe(true);
+		} finally {
+			restoreEnv(savedEnv);
+		}
 	});
 
-	test('returns false for undefined', () => {
-		expect(getEnvBoolean(undefined)).toBe(false);
+	test('returns false when CI is undefined', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ CI: undefined });
+			const mod = await importFreshEnv();
+			expect((mod as { env: { CI: boolean } }).env.CI).toBe(false);
+		} finally {
+			restoreEnv(savedEnv);
+		}
 	});
 
-	test('returns false for other strings', () => {
-		expect(getEnvBoolean('false')).toBe(false);
-		expect(getEnvBoolean('yes')).toBe(false);
+	test('returns false when CI is any other string', async () => {
+		const savedEnv = snapshotEnv();
+		try {
+			applySafeEnv({ CI: 'yes' });
+			const mod = await importFreshEnv();
+			expect((mod as { env: { CI: boolean } }).env.CI).toBe(false);
+		} finally {
+			restoreEnv(savedEnv);
+		}
 	});
 });
