@@ -78,7 +78,7 @@ describe('maybeCleanup - full body execution', () => {
 		}
 	});
 
-	test('cleanup logs when entries are removed', () => {
+	test('cleanup log is emitted when entries are removed after a longer time advance', () => {
 		const dateSpy = spyOn(Date, 'now');
 		const consoleSpy = spyOn(console, 'log').mockImplementation(() => {});
 		const t0 = 1_600_000_000_000;
@@ -91,18 +91,18 @@ describe('maybeCleanup - full body execution', () => {
 			const expiredEmail = uniqueEmail('log-test');
 			recordLoginAttempt(expiredEmail);
 
-			// Advance past both window and cleanup interval
+			// Advance past both window and cleanup interval (larger advance than test 1)
 			dateSpy.mockReturnValue(t0 + WINDOW_MS + CLEANUP_INTERVAL_MS + 1000);
 
 			// Trigger cleanup by making any attempt
 			recordLoginAttempt(uniqueEmail('log-trigger'));
 
-			// The logger.info call (inside cleanup) outputs to console.log
-			expect(consoleSpy).toHaveBeenCalled();
-			const lastCall = consoleSpy.mock.calls[consoleSpy.mock.calls.length - 1];
-			const logged = lastCall?.[0];
-			// Verify the log line contains cleanup-related info
-			expect(logged).toContain('cleanup');
+			// Search all console.log calls for the specific cleanup log entry
+			// (avoids fragile dependence on ordering — works regardless of what else logs)
+			const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+			const cleanupLog = logCalls.find((l) => l.includes('Rate limit cleanup'));
+			expect(cleanupLog).toBeDefined();
+			expect(cleanupLog).toContain('"cleaned":1');
 		} finally {
 			dateSpy.mockRestore();
 			consoleSpy.mockRestore();

@@ -378,7 +378,7 @@ describe('UniversalAIService - callChutes (via makeMove)', () => {
 describe('UniversalAIService - unsupported provider', () => {
 	test('throws for unknown provider', async () => {
 		const adapter = new ChessAdapter();
-		const config = makeConfig({ provider: 'unknown-provider' as 'gemini' });
+		const config = makeConfig({ provider: 'unknown-provider' as unknown as AIConfig['provider'] });
 		const service = new UniversalAIService(config, adapter);
 
 		const gameState = makeGameState();
