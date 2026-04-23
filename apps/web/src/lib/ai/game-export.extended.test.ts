@@ -26,7 +26,7 @@ describe('GameExporter - downloadAsFile', () => {
 		};
 
 		(globalThis as Record<string, unknown>).URL = {
-			createObjectURL: (blob: unknown) => {
+			createObjectURL: (_blob: unknown) => {
 				const url = `blob:mock-url-${createdUrls.length}`;
 				createdUrls.push(url);
 				return url;
@@ -39,8 +39,11 @@ describe('GameExporter - downloadAsFile', () => {
 		const mockLink = {
 			href: '',
 			download: '',
-			click: () => {},
-		} as unknown as HTMLAnchorElement;
+			clickCount: 0,
+			click() {
+				this.clickCount += 1;
+			},
+		} as unknown as HTMLAnchorElement & { clickCount: number };
 
 		(globalThis as Record<string, unknown>).document = {
 			createElement: (_tag: string) => mockLink,
@@ -58,6 +61,8 @@ describe('GameExporter - downloadAsFile', () => {
 		expect(revokedUrls).toHaveLength(1);
 		expect(appendedChildren).toHaveLength(1);
 		expect(removedChildren).toHaveLength(1);
+		const clickedLink = appendedChildren[0] as HTMLAnchorElement & { clickCount: number };
+		expect(clickedLink.clickCount).toBe(1);
 	});
 
 	test('downloadAsFile sets the correct download filename', () => {

@@ -33,14 +33,13 @@ describe('logger safeStringify - error fallback path', () => {
 	});
 
 	test('safeStringify error branch is hit when JSON.stringify itself throws', () => {
-		// Patch JSON.stringify to throw so the catch block in safeStringify is reached
+		// Patch JSON.stringify so it throws only when called with a replacer function
+		// (the try-block call inside safeStringify) but passes through the catch-block
+		// call (which has no replacer) so the fallback JSON can be serialized.
 		const originalStringify = JSON.stringify;
-		let patchCalls = 0;
+		// eslint-disable-next-line no-global-assign -- Intentional mock to test safeStringify error handling
 		JSON.stringify = ((...args: Parameters<typeof JSON.stringify>) => {
-			patchCalls++;
-			// Let the first call (inside the replacer setup) through so safeStringify
-			// can set up its closure, then throw on the actual serialization call.
-			if (patchCalls === 1) {
+			if (typeof args[1] === 'function') {
 				throw new Error('forced stringify error');
 			}
 			return originalStringify(...args);
@@ -48,10 +47,12 @@ describe('logger safeStringify - error fallback path', () => {
 
 		try {
 			expect(() => logger.info('test')).not.toThrow();
-			// After the error, the fallback path constructs its own JSON via the
-			// re-thrown stringify, so console.log should still be called.
+			// The catch branch in safeStringify emits "Logger serialization failed"
 			expect(logSpy).toHaveBeenCalled();
+			const output = logSpy.mock.calls[0]?.[0] as string;
+			expect(output).toContain('Logger serialization failed');
 		} finally {
+			// eslint-disable-next-line no-global-assign -- Restore after test
 			JSON.stringify = originalStringify;
 		}
 	});
