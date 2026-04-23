@@ -1,5 +1,18 @@
-import { test, expect, describe, beforeEach } from 'bun:test';
+import { test, expect, describe, beforeEach, afterEach } from 'bun:test';
 import { GameExporter } from './game-export';
+
+// ---------------------------------------------------------------------------
+// Save original globals so each test can restore them after mutation
+// ---------------------------------------------------------------------------
+const originalBlob = (globalThis as Record<string, unknown>).Blob;
+const originalURL = (globalThis as Record<string, unknown>).URL;
+const originalDocument = (globalThis as Record<string, unknown>).document;
+
+afterEach(() => {
+	(globalThis as Record<string, unknown>).Blob = originalBlob;
+	(globalThis as Record<string, unknown>).URL = originalURL;
+	(globalThis as Record<string, unknown>).document = originalDocument;
+});
 
 describe('GameExporter - downloadAsFile', () => {
 	let exporter: GameExporter;

@@ -37,12 +37,13 @@ describe('maybeCleanup - full body execution', () => {
 	});
 
 	test('expired entries are removed when cleanup interval elapses', () => {
-		const spy = spyOn(Date, 'now');
+		const dateSpy = spyOn(Date, 'now');
+		const consoleSpy = spyOn(console, 'log').mockImplementation(() => {});
 		const t0 = 1_700_000_000_000; // fixed epoch far in the past
 
 		try {
 			// Phase 1: set lastCleanupAt to t0 via startRateLimitCleanup
-			spy.mockReturnValue(t0);
+			dateSpy.mockReturnValue(t0);
 			startRateLimitCleanup();
 
 			// Record an attempt at t0 — this entry will expire after WINDOW_MS
@@ -52,7 +53,7 @@ describe('maybeCleanup - full body execution', () => {
 			// Phase 2: advance time past WINDOW_MS and CLEANUP_INTERVAL_MS
 			// now - lastCleanupAt (t0) = WINDOW_MS + 1000 > CLEANUP_INTERVAL_MS (300 000)
 			const future = t0 + WINDOW_MS + 1000;
-			spy.mockReturnValue(future);
+			dateSpy.mockReturnValue(future);
 
 			// Recording any attempt at "future" triggers maybeCleanup.
 			// cutoff = future - WINDOW_MS = t0 + 1000.
@@ -63,15 +64,17 @@ describe('maybeCleanup - full body execution', () => {
 			// The new email's first attempt is allowed
 			expect(result.allowed).toBe(true);
 
-			// The old email should start fresh (its entry was cleaned up)
-			// If not cleaned, 1 attempt already exists; if cleaned, it restarts.
-			// We exhaust the limit on old email — if it was reset, we'd need 5 more attempts.
-			// Just verify a fresh attempt is allowed (remaining = MAX_ATTEMPTS - 1 = 4).
-			const oldAfterClean = recordLoginAttempt(oldEmail);
-			expect(oldAfterClean.allowed).toBe(true);
-			expect(oldAfterClean.remaining).toBe(4); // started fresh
+			// Verify that maybeCleanup actually ran and found entries to delete.
+			// The logger.info('Rate limit cleanup', { cleaned, ... }) call proves
+			// the deletion loop executed — window-reset alone doesn't emit this log.
+			expect(consoleSpy).toHaveBeenCalled();
+			const logCalls = consoleSpy.mock.calls.map((c) => c[0] as string);
+			const cleanupLog = logCalls.find((l) => l.includes('Rate limit cleanup'));
+			expect(cleanupLog).toBeDefined();
+			expect(cleanupLog).toContain('"cleaned":1');
 		} finally {
-			spy.mockRestore();
+			dateSpy.mockRestore();
+			consoleSpy.mockRestore();
 		}
 	});
 
