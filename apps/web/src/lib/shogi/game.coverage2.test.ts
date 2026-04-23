@@ -8,7 +8,7 @@ import {
 } from './game';
 import type { ShogiGameState, ShogiPiece } from './types';
 import { SHOGI_BOARD_SIZE } from './types';
-import { copyBoard, setPieceAt } from './board';
+import { setPieceAt } from './board';
 
 /**
  * Build a minimal empty board with sente king and gote king placed safely.

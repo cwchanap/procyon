@@ -4,7 +4,7 @@
  *   60, 62-63  getEnvNumber() branches (empty value → default, invalid → default)
  *   89-97  production validation (throws when SUPABASE_* vars are missing)
  */
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 
 // ---------------------------------------------------------------------------
 // isWorkersRuntime helper - tested via reimplementation (module-level code

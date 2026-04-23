@@ -1,9 +1,22 @@
-import { test, expect, describe, beforeEach, mock } from 'bun:test';
+import { test, expect, describe, beforeEach, afterEach, mock } from 'bun:test';
 import { UniversalAIService } from './service';
 import { ChessAdapter } from './chess-adapter';
 import type { AIConfig } from './types';
 import type { GameState } from '../chess/types';
 import { createInitialBoard } from '../chess/board';
+
+// Save original globals so each test can restore them after mutating
+const originalFetch = globalThis.fetch;
+const originalWindow = (globalThis as { window?: unknown }).window;
+
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+	if (originalWindow === undefined) {
+		delete (globalThis as { window?: unknown }).window;
+	} else {
+		(globalThis as { window?: unknown }).window = originalWindow;
+	}
+});
 
 function makeGameState(): GameState {
 	return {
@@ -367,7 +380,7 @@ describe('UniversalAIService - parseAIResponse edge cases (via makeMove)', () =>
 		gameState = makeGameState();
 	});
 
-	test('throws when AI response contains no JSON', async () => {
+	test('returns null when AI response contains no JSON', async () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
@@ -383,7 +396,7 @@ describe('UniversalAIService - parseAIResponse edge cases (via makeMove)', () =>
 		expect(result).toBeNull();
 	});
 
-	test('throws when AI response JSON lacks required move fields', async () => {
+	test('returns null when AI response JSON lacks required move fields', async () => {
 		const config = makeConfig({ provider: 'gemini' });
 		const service = new UniversalAIService(config, adapter);
 
