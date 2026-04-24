@@ -2,7 +2,7 @@
 
 **Product Requirements Document**
 
-Version 1.0 | January 2025
+Version 1.1 | January 2025 | _Status updated: April 2026_
 
 ---
 
@@ -12,19 +12,49 @@ This document outlines seven proposed features for the Procyon multi-variant che
 
 ### Feature Overview
 
-| Feature                       | Value Proposition               | Complexity  | Priority |
-| ----------------------------- | ------------------------------- | ----------- | -------- |
-| Leaderboards & Rankings       | Competition and motivation      | Low-Medium  | High     |
-| AI Difficulty & Personalities | Accessibility and variety       | Medium      | High     |
-| Achievements & Progression    | Gamification and goals          | Low-Medium  | High     |
-| Daily Puzzles & Trainer       | Skill development and retention | Medium      | Medium   |
-| Game Analysis & Review        | Learning from games             | Medium      | Medium   |
-| Real-Time Multiplayer         | Community and social play       | High        | Medium   |
-| Opening Explorer              | Educational content             | Medium-High | Low      |
+| Feature                       | Value Proposition               | Complexity  | Priority | Status                   |
+| ----------------------------- | ------------------------------- | ----------- | -------- | ------------------------ |
+| Leaderboards & Rankings       | Competition and motivation      | Low-Medium  | High     | 🟡 Partially Implemented |
+| AI Difficulty & Personalities | Accessibility and variety       | Medium      | High     | 🟡 Partially Implemented |
+| Achievements & Progression    | Gamification and goals          | Low-Medium  | High     | 🔴 Not Started           |
+| Daily Puzzles & Trainer       | Skill development and retention | Medium      | Medium   | 🟡 Partially Implemented |
+| Game Analysis & Review        | Learning from games             | Medium      | Medium   | 🔴 Not Started           |
+| Real-Time Multiplayer         | Community and social play       | High        | Medium   | 🔴 Not Started           |
+| Opening Explorer              | Educational content             | Medium-High | Low      | 🔴 Not Started           |
 
 ---
 
 # Feature 1: Leaderboards & Seasonal Rankings
+
+## Implementation Status
+
+**Status: 🟡 Partially Implemented (~35%)**
+
+### Implemented
+
+- Per-variant rating tracking (`playerRatings` table, `ratingHistory` table)
+- Tier/division system with 5 tiers (Beginner, Intermediate, Advanced, Expert, Master) via `getRankTier()` in `apps/api/src/services/rating-service.ts`
+- Rating display with tier badges (`apps/web/src/components/RatingBadge.tsx`)
+- Player statistics dashboard: wins/losses/draws, peak rating, games played, win rate (`apps/web/src/components/RatingsSection.tsx`, `ProfilePage.tsx`)
+- Rating history stored in DB and surfaced via `GET /api/ratings` endpoints
+
+### Missing
+
+- Global leaderboard page/component (top 100 per variant)
+- Leaderboard UI with variant tabs, period filter, sortable table
+- Seasonal rankings (soft rating reset, season-end rewards, season history)
+- Weekly/monthly rotating challenges
+- Promotion/demotion notifications
+- "Your rank" card for users outside top 100
+
+### Key Files
+
+- `apps/api/src/db/schema.ts` — `playerRatings`, `ratingHistory` tables
+- `apps/api/src/services/rating-service.ts` — `getRankTier()`, `getPlayerRatings()`
+- `apps/api/src/routes/ratings.ts` — `/api/ratings` endpoints
+- `apps/web/src/components/RatingBadge.tsx`, `RatingsSection.tsx`, `ProfilePage.tsx`
+
+---
 
 ## Overview
 
@@ -136,6 +166,36 @@ Surface the existing rating system through global leaderboards, division-based r
 
 # Feature 2: AI Difficulty Levels & Personality Modes
 
+## Implementation Status
+
+**Status: 🟡 Partially Implemented (~40%)**
+
+### Implemented
+
+- AI configuration management: provider, model, and API key storage (`aiConfigurations` table)
+- Support for 4 providers: Gemini, OpenAI, OpenRouter, Chutes (`apps/web/src/lib/ai/`)
+- AI opponent ratings table with per-variant difficulty config (`aiOpponentRatings` table)
+- Full CRUD API endpoints for AI config (`apps/api/src/routes/ai-config.ts`)
+- Active configuration selection and multiple model options per provider
+- AI settings UI (`apps/web/src/components/AIConfigPanel.tsx`, `AISettingsDialog.tsx`)
+
+### Missing
+
+- Named difficulty levels tied to target ELOs (Beginner ~600 → Grandmaster ~1900)
+- AI personality modes: Aggressive, Defensive, Teacher, Chaotic
+- Teacher mode: move explanations panel, threat highlighting, mistake suggestions, hint system
+- Difficulty recommendation based on player's current rating
+- In-game difficulty/personality badge display next to AI opponent name
+
+### Key Files
+
+- `apps/api/src/db/schema.ts` — `aiConfigurations`, `aiOpponentRatings` tables
+- `apps/api/src/routes/ai-config.ts` — AI config endpoints
+- `apps/web/src/lib/ai/types.ts` — `AIConfig` interface
+- `apps/web/src/components/AIConfigPanel.tsx`, `ai/AISettingsDialog.tsx`
+
+---
+
 ## Overview
 
 Enhance AI opponents with configurable difficulty levels and distinct personality modes, allowing players of all skill levels to find appropriately challenging and engaging opponents.
@@ -240,6 +300,34 @@ Enhance AI opponents with configurable difficulty levels and distinct personalit
 ---
 
 # Feature 3: Achievement & Progression System
+
+## Implementation Status
+
+**Status: 🔴 Not Started (0%)**
+
+### Implemented
+
+- Nothing — no achievement, XP, or level infrastructure exists in the codebase.
+
+### Missing
+
+- `achievements`, `user_achievements`, `challenges`, `user_challenge_progress` DB tables and schema
+- XP system (win/loss/draw/challenge XP rewards)
+- Level system (Levels 1–50, milestone titles)
+- Achievement categories: Gameplay, Variant Mastery, Rating, Learning
+- Rarity tiers: Common, Rare, Epic, Legendary
+- Daily (3×) and weekly (2×) rotating challenge generation
+- Achievement unlock notifications (slide-in popup)
+- Level-up celebration modal with confetti
+- Achievement page with category tabs and progress grid
+- Challenge widget (collapsible sidebar with progress bars and countdown)
+- XP/level indicator in page header
+
+### Key Files
+
+- _None exist yet_
+
+---
 
 ## Overview
 
@@ -368,6 +456,47 @@ Implement achievements, XP, leveling, and daily/weekly challenges to gamify the 
 
 # Feature 4: Daily Puzzles & Tactical Trainer
 
+## Implementation Status
+
+**Status: 🟡 Partially Implemented (~45%)**
+
+### Implemented
+
+- Puzzle DB schema: `puzzles` table (position, solution, difficulty, hints) and `userPuzzleProgress` table
+- Puzzle seeding infrastructure (`apps/api` seed scripts)
+- Puzzle API endpoints: list, get by ID, submit progress (`apps/api/src/routes/puzzles.ts`)
+- Puzzle grid/list UI (`apps/web/src/components/puzzle/PuzzleGrid.tsx`)
+- Puzzle solver component with board interaction (`apps/web/src/components/puzzle/PuzzleSolver.tsx`)
+- Difficulty levels: beginner, intermediate, advanced
+- Local and server-side progress persistence
+- `usePuzzle` hook (`apps/web/src/hooks/usePuzzle.ts`)
+
+### Missing
+
+- Daily featured puzzle system (one per variant per day with difficulty rotation)
+- Daily leaderboard by solve time
+- Puzzle streak tracking and break warning
+- Variant-specific puzzle categories (cannon batteries, Shogi drops, Jungle traps, etc.)
+- Adaptive difficulty matching based on player puzzle performance
+- Separate puzzle rating system (Glicko-2)
+- Hint system with rating cost (25% rating gain per hint)
+- Spaced repetition queue for failed puzzles
+- Puzzle bookmarking
+- Rating comparison display (your rating vs puzzle rating)
+- Solution explanation shown after solve or reveal
+- Timer display during solve
+- Comprehensive puzzle content (500+ per variant)
+
+### Key Files
+
+- `apps/api/src/db/schema.ts` — `puzzles`, `userPuzzleProgress` tables
+- `apps/api/src/routes/puzzles.ts` — puzzle endpoints
+- `apps/web/src/components/PuzzlesPage.tsx` — main puzzle page
+- `apps/web/src/components/puzzle/PuzzleSolver.tsx`, `PuzzleGrid.tsx`
+- `apps/web/src/hooks/usePuzzle.ts`
+
+---
+
 ## Overview
 
 Add a puzzle system with daily featured puzzles, a tactical trainer with categorized puzzles for all variants, and an adaptive rating system that matches puzzle difficulty to player skill.
@@ -492,6 +621,39 @@ Add a puzzle system with daily featured puzzles, a tactical trainer with categor
 ---
 
 # Feature 5: Game Analysis & Review System
+
+## Implementation Status
+
+**Status: 🔴 Not Started (~10% — infrastructure only)**
+
+### Implemented
+
+- `playHistory` table stores completed games with full metadata (variant, result, move history, opponent, date)
+- Basic play history list UI (`apps/web/src/components/PlayHistoryPage.tsx`) shows game metadata only
+- `GET /api/play-history` endpoint for retrieving stored games
+
+### Missing
+
+- Game replay page: move-by-move navigation (forward/back, jump to move, start/end)
+- Auto-play mode with adjustable speed
+- Keyboard navigation (arrow keys)
+- Captured pieces display at each board position
+- Last-move highlight on board
+- AI move evaluation engine (classify Best / Good / Inaccuracy / Mistake / Blunder)
+- Evaluation bar (advantage meter) with smooth animation
+- Best-move suggestion panel for critical positions
+- Critical moment detection and game summary
+- Shareable game links; public viewing without login; share-at-move position
+- Copy FEN / download game in standard format / social preview cards
+- Game library filtering (variant, result, date range), opponent search, favorites, delete
+
+### Key Files
+
+- `apps/api/src/db/schema.ts` — `playHistory` table
+- `apps/api/src/routes/play-history.ts` — play history API
+- `apps/web/src/components/PlayHistoryPage.tsx` — basic game list (no analysis)
+
+---
 
 ## Overview
 
@@ -626,6 +788,38 @@ Enable players to save completed games, review them move-by-move, receive AI-pow
 ---
 
 # Feature 6: Real-Time Multiplayer
+
+## Implementation Status
+
+**Status: 🔴 Not Started (~5% — schema stubs only)**
+
+### Implemented
+
+- `playHistory.opponentUserId` field exists — schema ready to record PvP games
+- PvP submission blocked at API level (prevents direct client-side PvP result submission)
+- `updatePvpRatings()` function stub exists in `apps/api/src/services/rating-service.ts` (not integrated)
+
+### Missing
+
+- WebSocket / real-time connection layer (no WS server exists)
+- Matchmaking queue: rating-based pairing (±200 ELO, expanding over time), queue status UI
+- Private room creation with invite codes and ready-check flow
+- Time control selection (Bullet / Blitz / Rapid / Classical / Custom)
+- Server-side move validation and state synchronization
+- Draw offer / resign / auto-forfeit on timeout
+- Reconnection handling (60-second window, resume on rejoin)
+- Clock display (both players' clocks, low-time warning)
+- Spectating: real-time move stream, spectator count, featured games lobby
+- In-game chat: pre-game, quick-chat, mute/report
+- Separate PvP rating track; rating updates and provisional ratings after game
+
+### Key Files
+
+- `apps/api/src/routes/play-history.ts` — PvP rejection guard
+- `apps/api/src/services/rating-service.ts` — `updatePvpRatings()` stub
+- `apps/api/src/db/schema.ts` — `playHistory.opponentUserId`
+
+---
 
 ## Overview
 
@@ -779,6 +973,28 @@ Enable players to compete against each other in live games with matchmaking, pri
 
 # Feature 7: Opening Explorer & Move Database
 
+## Implementation Status
+
+**Status: 🔴 Not Started (0%)**
+
+### Implemented
+
+- Nothing — no opening database, explorer UI, or trainer exists in the codebase.
+
+### Missing
+
+- Opening database schema: opening positions, move frequency, win/draw/loss stats, opening names
+- Opening explorer UI: interactive board, move table (frequency + win rates), opening name display, rating-range filter, search by name, forward/back navigation
+- Opening trainer: line selection, practice for both colors, spaced repetition, multiple-choice mode, progress tracking, custom repertoire building
+- In-game integration: current opening name badge, "leaving theory" indicator, post-game opening summary with book moves, link to explorer
+- Opening data for all 4 variants (Chess ECO, Xiangqi, Shogi joseki, Jungle patterns)
+
+### Key Files
+
+- _None exist yet_
+
+---
+
 ## Overview
 
 Build an opening explorer showing move frequency and win rates for all variants, with named opening recognition and a trainer mode for practicing specific repertoires.
@@ -905,6 +1121,18 @@ Build an opening explorer showing move frequency and win rates for all variants,
 
 # Implementation Roadmap
 
+## Current Progress (as of April 2026)
+
+| Feature                       | Status                   | Est. Completion |
+| ----------------------------- | ------------------------ | --------------- |
+| Leaderboards & Rankings       | 🟡 Partially Implemented | ~35%            |
+| AI Difficulty & Personalities | 🟡 Partially Implemented | ~40%            |
+| Achievements & Progression    | 🔴 Not Started           | 0%              |
+| Daily Puzzles & Trainer       | 🟡 Partially Implemented | ~45%            |
+| Game Analysis & Review        | 🔴 Not Started           | ~10%            |
+| Real-Time Multiplayer         | 🔴 Not Started           | ~5%             |
+| Opening Explorer              | 🔴 Not Started           | 0%              |
+
 ## Recommended Phases
 
 ### Phase 1: Foundation (Weeks 1-8)
@@ -913,11 +1141,15 @@ Build an opening explorer showing move frequency and win rates for all variants,
 
 These features leverage existing rating and play history data with relatively low complexity, providing immediate value.
 
+> **Current status:** Leaderboards 35% done (ratings/tiers exist, leaderboard UI missing). Achievements 0% — highest-priority gap given it's Phase 1 and marked High priority.
+
 ### Phase 2: AI Enhancement (Weeks 9-16)
 
 **Feature:** AI Difficulty & Personalities
 
 Improves the core AI gameplay experience, making the platform more accessible to all skill levels.
+
+> **Current status:** 40% done. Provider/model config works; difficulty levels and personality modes not yet implemented.
 
 ### Phase 3: Learning Features (Weeks 17-28)
 
@@ -925,11 +1157,15 @@ Improves the core AI gameplay experience, making the platform more accessible to
 
 Strong retention mechanics and educational value that help players improve.
 
+> **Current status:** Puzzles 45% done (solver + DB exist; daily system, streaks, adaptive rating missing). Analysis 10% — play history stored but no review UI or AI evaluation.
+
 ### Phase 4: Advanced Features (Weeks 29-44)
 
 **Features:** Opening Explorer, Real-Time Multiplayer
 
 More complex features that add significant depth. Multiplayer is transformative but requires substantial infrastructure.
+
+> **Current status:** Both 0–5% done. Multiplayer requires WebSocket infrastructure not yet in place.
 
 ## Feature Dependencies
 
