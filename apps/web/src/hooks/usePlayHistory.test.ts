@@ -200,19 +200,20 @@ describe('save deduplication guard', () => {
 
 	test('resets savedRef to false on fetch failure to allow retry', () => {
 		let savedRef = false;
-		let fetchFailed = false;
 
-		const trySaveWithFailure = () => {
-			savedRef = true;
-			// Simulate fetch failure
-			fetchFailed = true;
-			savedRef = false; // reset to allow retry
+		const trySave = (ok: boolean) => {
+			if (savedRef) return;
+			savedRef = true; // optimistic set before fetch
+			if (!ok) {
+				savedRef = false; // reset on failure so retry is possible
+			}
 		};
 
-		trySaveWithFailure();
+		trySave(false);
+		expect(savedRef).toBe(false); // retry allowed after failure
 
-		expect(savedRef).toBe(false); // reset after failure
-		expect(fetchFailed).toBe(true);
+		trySave(true);
+		expect(savedRef).toBe(true); // stays set after success
 	});
 });
 

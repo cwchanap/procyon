@@ -2,51 +2,15 @@ import { useEffect, useState } from 'react';
 import { env } from './env';
 import { supabaseClient } from './supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
+import {
+	mapSupabaseUser,
+	resolveApiBaseUrl,
+	parseLoginBodyText,
+	parseRegisterBodyText,
+} from './auth-helpers';
+import type { AuthUser, LoginResult, RegisterResult } from './auth-helpers';
 
-type AuthUser = {
-	id: string;
-	email: string;
-	username: string;
-	createdAt: string;
-	user_metadata?: Record<string, unknown>;
-};
-
-function mapSupabaseUser(user: SupabaseUser | null): AuthUser | null {
-	if (!user) return null;
-
-	const metadata = user.user_metadata as
-		| ({ username?: string } & Record<string, unknown>)
-		| null;
-	const rawUsername =
-		metadata && typeof metadata.username === 'string'
-			? metadata.username
-			: undefined;
-	const username =
-		rawUsername && rawUsername.trim().length > 0
-			? rawUsername
-			: user.email?.split('@')[0] || 'Player';
-
-	return {
-		id: user.id,
-		email: user.email ?? '',
-		username,
-		createdAt: user.created_at,
-		user_metadata: user.user_metadata as Record<string, unknown> | undefined,
-	};
-}
-
-type LoginResult =
-	| { success: true }
-	| { success: false; error: string; retryAfterMs?: number };
-
-type RegisterResult = { success: boolean; error?: string };
-
-function resolveApiBaseUrl(): string {
-	const base = env.PUBLIC_API_URL || '/api';
-	return base.replace(/\/$/, '') || '/api';
-}
-
-const API_BASE_URL = resolveApiBaseUrl();
+const API_BASE_URL = resolveApiBaseUrl(env.PUBLIC_API_URL);
 
 export async function getAuthHeaders(): Promise<Record<string, string>> {
 	try {
@@ -77,36 +41,9 @@ async function apiLogin(email: string, password: string): Promise<LoginResult> {
 
 		clearTimeout(timeoutId);
 
-		if (res.status === 429) {
+		if (res.status === 429 || !res.ok) {
 			const bodyText = await res.text();
-			let data: { error?: string; retryAfterMs?: number } = {};
-			try {
-				data = JSON.parse(bodyText) as typeof data;
-			} catch {
-				// ignore parse errors
-			}
-			return {
-				success: false,
-				error:
-					data.error ||
-					bodyText ||
-					'Too many attempts. Please wait before retrying.',
-				retryAfterMs: data.retryAfterMs,
-			};
-		}
-
-		if (!res.ok) {
-			const bodyText = await res.text();
-			let data: { error?: string; message?: string } = {};
-			try {
-				data = JSON.parse(bodyText) as typeof data;
-			} catch {
-				// ignore parse errors
-			}
-			return {
-				success: false,
-				error: data.error || data.message || bodyText || 'Login failed',
-			};
+			return parseLoginBodyText(res.status, bodyText);
 		}
 
 		const data = (await res.json()) as {
@@ -164,16 +101,7 @@ async function apiRegister(
 
 		if (!res.ok) {
 			const bodyText = await res.text();
-			let data: { error?: string; message?: string } = {};
-			try {
-				data = JSON.parse(bodyText) as typeof data;
-			} catch {
-				// ignore parse errors
-			}
-			return {
-				success: false,
-				error: data.error || data.message || bodyText || 'Registration failed',
-			};
+			return parseRegisterBodyText(res.status, bodyText);
 		}
 
 		const loginResult = await apiLogin(email, password);
@@ -255,7 +183,11 @@ export function useAuth() {
 	const syncUserFromSession = async () => {
 		try {
 			const { data } = await supabaseClient.auth.getSession();
-			setUser(mapSupabaseUser(data.session?.user ?? null));
+			setUser(
+				mapSupabaseUser(
+					(data.session?.user as SupabaseUser | undefined) ?? null
+				)
+			);
 		} catch {
 			setUser(null);
 		} finally {
@@ -269,7 +201,11 @@ export function useAuth() {
 			.getSession()
 			.then(({ data }) => {
 				if (!mounted) return;
-				setUser(mapSupabaseUser(data.session?.user ?? null));
+				setUser(
+					mapSupabaseUser(
+						(data.session?.user as SupabaseUser | undefined) ?? null
+					)
+				);
 				setLoading(false);
 			})
 			.catch(() => {
@@ -281,7 +217,9 @@ export function useAuth() {
 		const { data: subscription } = supabaseClient.auth.onAuthStateChange(
 			(_event, session) => {
 				if (!mounted) return;
-				setUser(mapSupabaseUser(session?.user ?? null));
+				setUser(
+					mapSupabaseUser((session?.user as SupabaseUser | undefined) ?? null)
+				);
 				setLoading(false);
 			}
 		);
