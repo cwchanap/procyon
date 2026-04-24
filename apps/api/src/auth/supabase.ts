@@ -14,7 +14,10 @@ function getProcessEnvVar(key: string): string {
 
 function normalizeEnvValue(value: string | undefined): string {
 	if (!value) return '';
-	return value.trim().replace(/^["']+|["']+$/g, '');
+	return value
+		.trim()
+		.replace(/^["']+|["']+$/g, '')
+		.trim();
 }
 
 export function createSupabaseClients(

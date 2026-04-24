@@ -110,6 +110,18 @@ describe('createSupabaseClients', () => {
 		expect(clients.supabaseAnon).not.toBeNull();
 	});
 
+	test('throws when URL is whitespace wrapped in double quotes (normalization then empty check)', () => {
+		expect(() => createSupabaseClients('"   "', TEST_ANON_KEY)).toThrow(
+			'Supabase configuration missing'
+		);
+	});
+
+	test('throws when anon key is whitespace wrapped in single quotes', () => {
+		expect(() => createSupabaseClients(TEST_URL, "'   '")).toThrow(
+			'Supabase configuration missing'
+		);
+	});
+
 	test('returned clients object has correct shape', () => {
 		const clients = createSupabaseClients(TEST_URL, TEST_ANON_KEY);
 		expect(clients).toHaveProperty('supabaseAdmin');
@@ -150,6 +162,30 @@ describe('getSupabaseClientsFromContext', () => {
 		};
 		const clients = getSupabaseClientsFromContext(context);
 		expect(clients.supabaseAdmin).not.toBeNull();
+	});
+
+	test('returns null admin when context service role key is empty string', () => {
+		const context = {
+			env: {
+				SUPABASE_URL: TEST_URL,
+				SUPABASE_ANON_KEY: TEST_ANON_KEY,
+				SUPABASE_SERVICE_ROLE_KEY: '',
+			},
+		};
+		const clients = getSupabaseClientsFromContext(context);
+		expect(clients.supabaseAdmin).toBeNull();
+	});
+
+	test('returns null admin when context service role key is whitespace only', () => {
+		const context = {
+			env: {
+				SUPABASE_URL: TEST_URL,
+				SUPABASE_ANON_KEY: TEST_ANON_KEY,
+				SUPABASE_SERVICE_ROLE_KEY: '   ',
+			},
+		};
+		const clients = getSupabaseClientsFromContext(context);
+		expect(clients.supabaseAdmin).toBeNull();
 	});
 
 	test('context with empty env object falls back to process env', () => {
