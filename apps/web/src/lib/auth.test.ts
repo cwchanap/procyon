@@ -245,25 +245,36 @@ describe('parseLoginBodyText', () => {
 		}
 	});
 
-	test('preserves string retryAfterMs as-is (no coercion)', () => {
+	test('omits retryAfterMs when value is a non-numeric string', () => {
 		const result = parseLoginBodyText(
 			429,
 			JSON.stringify({ error: 'Rate limited', retryAfterMs: 'soon' })
 		);
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.retryAfterMs).toBe('soon' as unknown as number);
+			expect(result.retryAfterMs).toBeUndefined();
 		}
 	});
 
-	test('preserves negative retryAfterMs as-is (no validation)', () => {
+	test('omits retryAfterMs when value is negative', () => {
 		const result = parseLoginBodyText(
 			429,
 			JSON.stringify({ error: 'Rate limited', retryAfterMs: -1 })
 		);
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.retryAfterMs).toBe(-1);
+			expect(result.retryAfterMs).toBeUndefined();
+		}
+	});
+
+	test('omits retryAfterMs when value is Infinity', () => {
+		const result = parseLoginBodyText(
+			429,
+			JSON.stringify({ error: 'Rate limited', retryAfterMs: null })
+		);
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.retryAfterMs).toBeUndefined();
 		}
 	});
 });

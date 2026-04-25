@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { env } from './env';
 import { supabaseClient } from './supabase';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
 import {
 	mapSupabaseUser,
 	resolveApiBaseUrl,
@@ -183,11 +182,7 @@ export function useAuth() {
 	const syncUserFromSession = async () => {
 		try {
 			const { data } = await supabaseClient.auth.getSession();
-			setUser(
-				mapSupabaseUser(
-					(data.session?.user as SupabaseUser | undefined) ?? null
-				)
-			);
+			setUser(mapSupabaseUser(data.session?.user ?? null));
 		} catch {
 			setUser(null);
 		} finally {
@@ -201,11 +196,7 @@ export function useAuth() {
 			.getSession()
 			.then(({ data }) => {
 				if (!mounted) return;
-				setUser(
-					mapSupabaseUser(
-						(data.session?.user as SupabaseUser | undefined) ?? null
-					)
-				);
+				setUser(mapSupabaseUser(data.session?.user ?? null));
 				setLoading(false);
 			})
 			.catch(() => {
@@ -217,9 +208,7 @@ export function useAuth() {
 		const { data: subscription } = supabaseClient.auth.onAuthStateChange(
 			(_event, session) => {
 				if (!mounted) return;
-				setUser(
-					mapSupabaseUser((session?.user as SupabaseUser | undefined) ?? null)
-				);
+				setUser(mapSupabaseUser(session?.user ?? null));
 				setLoading(false);
 			}
 		);

@@ -188,6 +188,11 @@ describe('getSupabaseClientsFromContext', () => {
 		expect(clients.supabaseAdmin).toBeNull();
 	});
 
+	// Note: the two tests below exercise the `getDefaultClients()` singleton path.
+	// They both use the same TEST_URL/TEST_ANON_KEY, so the module-level
+	// `defaultClients` cache populated by the first test is reused by the second
+	// and still produces a correct result.  Bun isolates test files in separate
+	// processes, so the singleton does not leak across other test files.
 	test('context with empty env object falls back to process env', () => {
 		const originalUrl = process.env.SUPABASE_URL;
 		const originalKey = process.env.SUPABASE_ANON_KEY;
