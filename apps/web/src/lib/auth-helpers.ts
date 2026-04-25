@@ -53,19 +53,26 @@ export function parseLoginBodyText(
 	bodyText: string
 ): LoginResult {
 	if (status === 429) {
-		let data: { error?: string; retryAfterMs?: number } = {};
+		let data: { error?: string; retryAfterMs?: unknown } = {};
 		try {
 			data = JSON.parse(bodyText) as typeof data;
 		} catch {
 			// ignore parse errors
 		}
+		const rawRetryAfter = data.retryAfterMs;
+		const retryAfterMs =
+			typeof rawRetryAfter === 'number' &&
+			isFinite(rawRetryAfter) &&
+			rawRetryAfter >= 0
+				? rawRetryAfter
+				: undefined;
 		return {
 			success: false,
 			error:
-				data.error ||
+				(data.error as string | undefined) ||
 				bodyText ||
 				'Too many attempts. Please wait before retrying.',
-			retryAfterMs: data.retryAfterMs,
+			retryAfterMs,
 		};
 	}
 
