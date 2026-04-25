@@ -20,7 +20,7 @@ describe('getOpponentLlmId mapping logic', () => {
 		expect(getOpponentLlmId('openai', 'gpt-4o')).toBe('gpt-4o');
 	});
 
-	test('returns gpt-4o when model contains gpt-4o-mini (case insensitive)', () => {
+	test('returns gpt-4o for gpt-4o-mini variant', () => {
 		expect(getOpponentLlmId('openai', 'gpt-4o-mini')).toBe('gpt-4o');
 	});
 

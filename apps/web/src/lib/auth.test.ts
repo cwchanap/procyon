@@ -267,11 +267,19 @@ describe('parseLoginBodyText', () => {
 		}
 	});
 
-	test('omits retryAfterMs when value is Infinity', () => {
+	test('omits retryAfterMs when value is null (e.g. Infinity serialized via JSON)', () => {
 		const result = parseLoginBodyText(
 			429,
 			JSON.stringify({ error: 'Rate limited', retryAfterMs: null })
 		);
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.retryAfterMs).toBeUndefined();
+		}
+	});
+
+	test('omits retryAfterMs when raw body has Infinity (invalid JSON)', () => {
+		const result = parseLoginBodyText(429, '{"retryAfterMs": Infinity}');
 		expect(result.success).toBe(false);
 		if (!result.success) {
 			expect(result.retryAfterMs).toBeUndefined();
