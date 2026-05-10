@@ -12,7 +12,7 @@ import {
 	GameResultStatus,
 	OpponentLlmId,
 } from '../constants/game';
-import { updatePlayerRating } from '../services/rating-service';
+import { updatePlayerRating, RATING_CONFIG } from '../services/rating-service';
 import ratingsRoutes from './ratings';
 
 const SUPABASE_URL = 'http://localhost:54321';
@@ -314,13 +314,15 @@ describe('ratings routes - GET /:variant', () => {
 			};
 		};
 		expect(body.rating.variantId).toBe(ChessVariantId.Chess);
-		expect(body.rating.rating).toBeGreaterThan(1200);
+		expect(body.rating.rating).toBeGreaterThan(
+			RATING_CONFIG.defaultPlayerRating
+		);
 		expect(body.rating.tier).toBeDefined();
 		expect(typeof body.rating.tier.tier).toBe('string');
 		expect(typeof body.rating.tier.color).toBe('string');
 	});
 
-	test('GET /xiangqi returns 1200 default for new user', async () => {
+	test('GET /xiangqi returns default rating for new user', async () => {
 		const res = await ratingsRoutes.request(
 			`${BASE_URL}/xiangqi`,
 			{ headers: AUTH_HEADER },
@@ -328,7 +330,7 @@ describe('ratings routes - GET /:variant', () => {
 		);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { rating: { rating: number } };
-		expect(body.rating.rating).toBe(1200);
+		expect(body.rating.rating).toBe(RATING_CONFIG.defaultPlayerRating);
 	});
 
 	test('GET /invalid-variant returns 400', async () => {
