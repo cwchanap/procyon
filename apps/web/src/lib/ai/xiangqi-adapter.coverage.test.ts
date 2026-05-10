@@ -27,7 +27,9 @@ describe('XiangqiAdapter - formatMoveHistory (via generatePrompt)', () => {
 			moveHistory: [redMove],
 		};
 		const prompt = adapter.generatePrompt(stateWithHistory);
-		expect(prompt).toContain('e4-e5');
+		// Red (index 0) gets move-number prefix: "1. <symbol><from>-<to>"
+		// soldier red symbol: '兵'
+		expect(prompt).toContain('1. 兵e4-e5');
 	});
 
 	test('prompt includes black move history without move number', () => {
@@ -46,9 +48,11 @@ describe('XiangqiAdapter - formatMoveHistory (via generatePrompt)', () => {
 			moveHistory: [redMove, blackMove],
 		};
 		const prompt = adapter.generatePrompt(stateWithHistory);
-		expect(prompt).toContain('e4-e5');
-		// Both move notations should appear
-		expect(prompt).toContain('e7-e6');
+		// Red move with prefix, black move (index 1) without number prefix
+		// soldier black symbol: '卒'
+		expect(prompt).toContain('1. 兵e4-e5'); // red move has prefix
+		expect(prompt).toContain('卒e7-e6'); // black move without prefix
+		expect(prompt).not.toContain('2. 卒e7-e6'); // black should NOT have number prefix
 	});
 
 	test('prompt with no history contains game start', () => {

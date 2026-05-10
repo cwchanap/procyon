@@ -168,6 +168,7 @@ describe('jungle moves - isNearWater returns false', () => {
 		const moves = getPossibleMoves(board, terrain, { row: 0, col: 3 });
 		// No river jumps from this position - just normal moves
 		// All moves should be adjacent (distance 1)
+		expect(moves.length).toBeGreaterThan(0);
 		for (const move of moves) {
 			const dist = Math.abs(move.row - 0) + Math.abs(move.col - 3);
 			expect(dist).toBe(1);
@@ -181,6 +182,7 @@ describe('jungle moves - isNearWater returns false', () => {
 		place(board, 6, 3, tiger);
 
 		const moves = getPossibleMoves(board, terrain, { row: 6, col: 3 });
+		expect(moves.length).toBeGreaterThan(0);
 		for (const move of moves) {
 			const dist = Math.abs(move.row - 6) + Math.abs(move.col - 3);
 			expect(dist).toBe(1);

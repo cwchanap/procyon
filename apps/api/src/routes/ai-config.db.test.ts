@@ -329,10 +329,13 @@ describe('ai-config routes - full CRUD operations', () => {
 			configurations: Array<{ apiKey: string; hasApiKey: boolean }>;
 		};
 		expect(body.configurations).toHaveLength(2);
-		for (const config of body.configurations) {
-			expect(config.apiKey.startsWith('***')).toBe(true);
-			expect(config.hasApiKey).toBe(true);
-		}
+		// Masking format: "***" + last 4 chars of apiKey
+		const geminiConfig = body.configurations.find(c => c.apiKey === '***abcd');
+		const openaiConfig = body.configurations.find(c => c.apiKey === '***efgh');
+		expect(geminiConfig).toBeDefined();
+		expect(openaiConfig).toBeDefined();
+		expect(geminiConfig!.hasApiKey).toBe(true);
+		expect(openaiConfig!.hasApiKey).toBe(true);
 	});
 
 	test('GET /:id/full returns 404 for config belonging to different user', async () => {

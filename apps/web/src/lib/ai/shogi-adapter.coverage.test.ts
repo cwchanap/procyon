@@ -60,7 +60,9 @@ describe('ShogiAdapter - formatMoveHistory (via generatePrompt)', () => {
 	});
 
 	test('prompt formats gote (non-sente) moves without move number prefix', () => {
-		// Two moves: sente then gote
+		// sente pawn {row:6, col:4}: FILES[4]='5', RANKS[6]='g' => from='5g', RANKS[5]='f' => to='5f'
+		// gote pawn {row:2, col:4}: FILES[4]='5', RANKS[2]='c' => from='5c', RANKS[3]='d' => to='5d'
+		// pawn symbol: '歩' for both colors
 		const sentMove: ShogiMove = {
 			from: { row: 6, col: 4 },
 			to: { row: 5, col: 4 },
@@ -78,9 +80,9 @@ describe('ShogiAdapter - formatMoveHistory (via generatePrompt)', () => {
 			moveHistory: [sentMove, goteMove],
 		};
 		const prompt = adapter.generatePrompt(stateWithHistory);
-		// Should include move history with numbering
-		expect(prompt).toBeDefined();
-		expect(typeof prompt).toBe('string');
+		expect(prompt).toContain('1. 歩5g-5f'); // sente move has number prefix
+		expect(prompt).toContain('歩5c-5d'); // gote move follows without number prefix
+		expect(prompt).not.toContain('2. 歩5c-5d'); // gote should NOT have a number prefix
 	});
 });
 
@@ -93,7 +95,8 @@ describe('ShogiAdapter - mustPromote (via getAllValidMoves)', () => {
 
 	test('gote pawn at row 8 must promote (getAllValidMoves shows promotion)', () => {
 		const state = createInitialGameState();
-		// Place a gote pawn at row 7 (one step from row 8 = must-promote zone for gote)
+		// Place a gote pawn at row 7, col 3; it can only move to row 8 which is must-promote zone
+		// SHOGI_FILES[3]='6', SHOGI_RANKS[7]='h', SHOGI_RANKS[8]='i' => from='6h', to='6i'
 		const board = state.board.map(row => [...row]);
 		const gotePawn: ShogiPiece = {
 			type: 'pawn',
@@ -109,12 +112,19 @@ describe('ShogiAdapter - mustPromote (via getAllValidMoves)', () => {
 		};
 
 		const moves = adapter.getAllValidMoves(testState);
-		// When gote pawn moves to row 8, it must promote - the adapter should handle this
 		expect(Array.isArray(moves)).toBe(true);
+		const moveStr = moves[0] ?? '';
+		// mustPromote=true: only promoted version should appear, not the undecorated move
+		expect(moveStr).toContain('6h-6i+'); // must promote at row 8
+		expect(moveStr).not.toContain('6h-6i ('); // no non-promoted alternative
 	});
 
 	test('gote knight at row 7 must promote (beyond last rank)', () => {
 		const state = createInitialGameState();
+		// Gote knight at row 6, col 3; can jump to row 8 (col 2 or col 4) — both must promote
+		// SHOGI_FILES[3]='6', SHOGI_RANKS[6]='g' => from='6g'
+		// to row 8, col 2: FILES[2]='7', RANKS[8]='i' => '7i'
+		// to row 8, col 4: FILES[4]='5', RANKS[8]='i' => '5i'
 		const board = state.board.map(row => [...row]);
 		const goteKnight: ShogiPiece = {
 			type: 'knight',
@@ -131,5 +141,9 @@ describe('ShogiAdapter - mustPromote (via getAllValidMoves)', () => {
 
 		const moves = adapter.getAllValidMoves(testState);
 		expect(Array.isArray(moves)).toBe(true);
+		const moveStr = moves[0] ?? '';
+		// mustPromote=true for gote knight landing on row 8: only promoted versions
+		expect(moveStr).toContain('6g-7i+'); // must promote
+		expect(moveStr).not.toContain('6g-7i ('); // no non-promoted version
 	});
 });

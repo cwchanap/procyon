@@ -31,6 +31,9 @@ describe('JungleAdapter - formatMoveHistory (via generatePrompt)', () => {
 	});
 
 	test('prompt includes capture notation when piece is captured', () => {
+		// from: {row:2, col:0} => ranks[2]='7', files[0]='a' => 'a7'
+		// to: {row:3, col:1} => ranks[3]='6', files[1]='b' => 'b6'
+		// lion red => '獅', cat blue => '貓'
 		const move: JungleMove = {
 			from: { row: 2, col: 0 },
 			to: { row: 3, col: 1 },
@@ -42,8 +45,8 @@ describe('JungleAdapter - formatMoveHistory (via generatePrompt)', () => {
 			moveHistory: [move],
 		};
 		const prompt = adapter.generatePrompt(stateWithHistory);
-		// Move history section should exist
-		expect(prompt).toContain('Move History');
+		// Format: "N. <pieceSymbol> <from><to> x <capturedSymbol>"
+		expect(prompt).toContain('獅 a7b6 x 貓');
 	});
 
 	test('prompt with no move history shows 0 moves', () => {

@@ -48,8 +48,12 @@ function mockSupabaseFetch() {
 
 describe('puzzle routes - corrupt data error paths', () => {
 	let restoreFetch: () => void;
+	let originalSupabaseUrl: string | undefined;
+	let originalSupabaseAnonKey: string | undefined;
 
 	beforeEach(() => {
+		originalSupabaseUrl = process.env.SUPABASE_URL;
+		originalSupabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 		process.env.SUPABASE_URL = SUPABASE_URL;
 		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
@@ -58,6 +62,8 @@ describe('puzzle routes - corrupt data error paths', () => {
 
 	afterEach(async () => {
 		restoreFetch();
+		process.env.SUPABASE_URL = originalSupabaseUrl;
+		process.env.SUPABASE_ANON_KEY = originalSupabaseAnonKey;
 		const db = getDB();
 		await db.delete(puzzles).where(sql`1=1`);
 	});
