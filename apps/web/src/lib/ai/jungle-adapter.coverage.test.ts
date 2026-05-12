@@ -26,8 +26,8 @@ describe('JungleAdapter - formatMoveHistory (via generatePrompt)', () => {
 			moveHistory: [move],
 		};
 		const prompt = adapter.generatePrompt(stateWithHistory);
-		expect(prompt).toContain('a7');
-		expect(prompt).toContain('a6');
+		// Format: "N. <pieceSymbol> <from><to>" — cat red = '貓'
+		expect(prompt).toContain('1. 貓 a7a6');
 	});
 
 	test('prompt includes capture notation when piece is captured', () => {
