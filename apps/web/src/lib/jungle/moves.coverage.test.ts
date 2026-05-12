@@ -159,9 +159,7 @@ describe('jungle moves - isValidRiverJump edge cases', () => {
 describe('jungle moves - isNearWater returns false', () => {
 	test('position in center of board far from water returns no river jumps', () => {
 		const board = emptyBoard();
-		// Col 3 is between rivers at rows 3-5 — it is normal terrain, not near water
-		// But its neighbors at col 2 and col 4 ARE water. Actually col 3 is adjacent to water.
-		// Use row 0, col 3 (blue den area, far from river) for lion
+		// Row 0, col 3 is the blue den — far from the river (rows 3-5). No river jumps expected.
 		const lion: JunglePiece = { type: 'lion', color: 'red', rank: 7 };
 		place(board, 0, 3, lion);
 

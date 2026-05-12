@@ -68,7 +68,7 @@ describe('ai-config routes - full CRUD operations', () => {
 			body: JSON.stringify({
 				provider: 'openai',
 				modelName: 'gpt-4o',
-				apiKey: 'sk-new-key-5678',
+				apiKey: 'test-key-5678',
 			}),
 		});
 		expect(res.status).toBe(200);
