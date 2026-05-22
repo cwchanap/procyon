@@ -12,9 +12,21 @@ import {
 	OpponentLlmId,
 } from '../constants/game';
 
-// Note: User authentication is now handled by Supabase.
-// The user, session, account, and verification tables have been removed.
-// User IDs (Supabase UUIDs) are stored as TEXT in application data tables.
+// Application-owned user identity (replaces Supabase Auth).
+// `id` is the canonical user UUID referenced by all user-keyed tables.
+export const users = sqliteTable('users', {
+	id: text('id').primaryKey(),
+	googleSub: text('google_sub').notNull().unique(),
+	email: text('email').notNull().unique(),
+	username: text('username').notNull().unique(),
+	name: text('name'),
+	picture: text('picture'),
+	createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+	updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
 
 export const aiConfigurations = sqliteTable(
 	'ai_configurations',
