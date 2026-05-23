@@ -21,8 +21,12 @@ export const users = sqliteTable('users', {
 	username: text('username').notNull().unique(),
 	name: text('name'),
 	picture: text('picture'),
-	createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-	updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+	updatedAt: integer('updated_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
 });
 
 export type User = typeof users.$inferSelect;
