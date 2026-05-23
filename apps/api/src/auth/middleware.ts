@@ -1,11 +1,12 @@
 import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { getSupabaseClientsFromContext } from './supabase';
 import { extractBearerToken } from './utils';
+import { verifyAppJwt } from './jwt';
 
 interface AuthUser {
 	userId: string;
 	email?: string;
+	username?: string;
 }
 
 export async function authMiddleware(c: Context, next: Next) {
@@ -19,22 +20,19 @@ export async function authMiddleware(c: Context, next: Next) {
 			});
 		}
 
-		const { supabaseAnon } = getSupabaseClientsFromContext({
-			env: c.env as Record<string, string | undefined>,
-		});
-
-		const { data, error } = await supabaseAnon.auth.getUser(token);
-
-		if (error || !data?.user) {
+		let payload;
+		try {
+			payload = await verifyAppJwt(token);
+		} catch {
 			throw new HTTPException(401, {
 				message: 'Unauthorized: Invalid or expired token',
 			});
 		}
 
-		const user = data.user;
 		c.set('user', {
-			userId: user.id,
-			email: user.email ?? undefined,
+			userId: payload.sub,
+			email: payload.email,
+			username: payload.username,
 		});
 		await next();
 	} catch (error) {
@@ -42,9 +40,7 @@ export async function authMiddleware(c: Context, next: Next) {
 			throw error;
 		}
 		console.error('authMiddleware unexpected error:', error);
-		throw new HTTPException(500, {
-			message: 'Internal server error',
-		});
+		throw new HTTPException(500, { message: 'Internal server error' });
 	}
 }
 
