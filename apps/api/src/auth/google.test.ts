@@ -40,6 +40,7 @@ mock.module('jose', () => ({
 }));
 
 const { verifyGoogleIdToken } = await import('./google');
+const { env: apiEnv } = await import('../env');
 
 beforeAll(() => {
 	process.env.GOOGLE_CLIENT_ID = CLIENT_ID;
@@ -117,4 +118,47 @@ describe('verifyGoogleIdToken', () => {
 
 		await expect(verifyGoogleIdToken('fake-token')).rejects.toThrow(/issuer/i);
 	});
+
+	test('rejects a token missing the email claim', async () => {
+		nextPayload = {
+			iss: 'https://accounts.google.com',
+			aud: CLIENT_ID,
+			sub: 'google-user-no-email',
+			// email omitted intentionally
+			email_verified: true,
+			exp: Math.floor(Date.now() / 1000) + 3600,
+		};
+
+		await expect(verifyGoogleIdToken('fake-token')).rejects.toThrow(/email/i);
+	});
+
+	test('rejects a token with a missing or non-string sub claim', async () => {
+		nextPayload = {
+			iss: 'https://accounts.google.com',
+			aud: CLIENT_ID,
+			// sub omitted intentionally
+			email: 'user@example.com',
+			email_verified: true,
+			exp: Math.floor(Date.now() / 1000) + 3600,
+		};
+
+		await expect(verifyGoogleIdToken('fake-token')).rejects.toThrow(/subject/i);
+	});
+
+	test.skipIf(Boolean(apiEnv.GOOGLE_CLIENT_ID))(
+		'throws when GOOGLE_CLIENT_ID is not configured',
+		async () => {
+			const original = process.env.GOOGLE_CLIENT_ID;
+			delete process.env.GOOGLE_CLIENT_ID;
+			try {
+				await expect(verifyGoogleIdToken('fake-token')).rejects.toThrow(
+					/GOOGLE_CLIENT_ID/
+				);
+			} finally {
+				if (original !== undefined) {
+					process.env.GOOGLE_CLIENT_ID = original;
+				}
+			}
+		}
+	);
 });
