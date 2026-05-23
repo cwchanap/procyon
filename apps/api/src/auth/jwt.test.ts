@@ -23,14 +23,12 @@ describe('jwt helpers', () => {
 	});
 
 	test('rejects a token signed with the wrong secret', async () => {
-		const token = await signAppJwt({
-			sub: 'user-2',
-			email: 'b@example.com',
-			username: 'bob',
-		});
-		const originalSecret = process.env.JWT_SECRET;
-		process.env.JWT_SECRET = 'different-secret-32-chars-aaaaaaaa';
-		await expect(verifyAppJwt(token)).rejects.toThrow();
-		process.env.JWT_SECRET = originalSecret;
+		const token = await signAppJwt(
+			{ sub: 'user-2', email: 'b@example.com', username: 'bob' },
+			{ secret: 'first-secret-32-chars-aaaaaaaaaaaaa' }
+		);
+		await expect(
+			verifyAppJwt(token, { secret: 'second-secret-32-chars-aaaaaaaaa' })
+		).rejects.toThrow();
 	});
 });
