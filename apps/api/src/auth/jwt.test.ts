@@ -31,4 +31,12 @@ describe('jwt helpers', () => {
 			verifyAppJwt(token, { secret: 'second-secret-32-chars-aaaaaaaaa' })
 		).rejects.toThrow();
 	});
+
+	test('rejects an expired token', async () => {
+		const token = await signAppJwt(
+			{ sub: 'user-3', email: 'c@example.com', username: 'carol' },
+			{ expiresIn: '-1s' }
+		);
+		await expect(verifyAppJwt(token)).rejects.toThrow();
+	});
 });
