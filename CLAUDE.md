@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Procyon is a monorepo multi-variant chess platform built with TypeScript, featuring:
 
 - **Web app** (Astro SSR + React + Tailwind CSS) - Frontend interface for Chess, Xiangqi, Shogi, and Jungle
-- **API server** (Hono) - Backend services with Supabase Auth and database
+- **API server** (Hono) - Backend services with Google sign-in and database
 - **AI Integration** - Universal AI system supporting multiple providers (Gemini, OpenAI, Anthropic, OpenRouter, Chutes)
 - **Turbo** - Monorepo build system and task orchestration
 - **Bun** - Package manager and runtime (prefer over npm/node/yarn/pnpm)
@@ -45,24 +45,26 @@ packages/         # Shared packages (currently empty)
 
 - **Framework**: Hono with Node.js adapter
 - **Database**: Drizzle ORM with dual setup:
-  - **Development**: Local SQLite via better-sqlite3 (`dev.db`)
+  - **Development**: Local SQLite via `bun:sqlite` (`dev.db`)
   - **Production**: Cloudflare D1 via bindings
-- **Authentication**: Supabase Auth with JWT-based authentication
-  - Middleware: `src/auth/middleware.ts` (`authMiddleware` for protected routes, validates Supabase JWT)
-  - Routes: `src/routes/auth.ts` (registration/login via Supabase)
-  - Supabase Client: `src/auth/supabase.ts` (service role + anon key clients)
-  - Rate Limiting: `src/auth/rate-limit.ts` (in-memory rate limiting for login attempts)
+- **Authentication**: Google Identity Services + self-signed HS256 JWT
+  - Middleware: `src/auth/middleware.ts` (`authMiddleware`, verifies the app JWT)
+  - Google verifier: `src/auth/google.ts` (validates Google ID tokens against JWKS via `jose`)
+  - App JWT helpers: `src/auth/jwt.ts` (HS256 sign + verify; secret in `JWT_SECRET`)
+  - User upsert / username derivation: `src/auth/users.ts`
+  - Routes: `src/routes/auth.ts` exposes `POST /google`, `POST /logout`, `GET /session`
 - **Dual entry points**:
   - `src/index.ts` - Node.js server for local development (uses `@hono/node-server`)
   - `src/worker.ts` - Cloudflare Workers entry point for production (uses D1 binding)
-- **Schema**: `src/db/schema.ts` defines application tables (user data lives in Supabase):
+- **Schema**: `src/db/schema.ts` defines all application tables:
+  - `users` - identity (id, google_sub, email, username, name, picture, timestamps)
   - `ai_configurations`, `play_history` - AI provider settings and game records
   - `player_ratings`, `rating_history` - ELO-based per-variant ratings
   - `ai_opponent_ratings` - Configurable AI opponent rating presets
   - `puzzles`, `user_puzzle_progress` - Chess puzzle content and per-user progress
 - **Routes**:
-  - `/api/auth` - Registration, login, session management (Supabase Auth)
-  - `/api/users` - User management
+  - `/api/auth` - Google sign-in (`POST /google`), logout, session
+  - `/api/users` - User profile (GET/PUT `/me`)
   - `/api/ai-config` - AI provider settings per user
   - `/api/play-history` - Game history tracking
   - `/api/ratings` - Player ratings and leaderboards
@@ -188,15 +190,15 @@ AI responses must follow strict JSON format with move notation and reasoning. Th
 - **React 18** - UI library
 - **Tailwind CSS** - Utility-first CSS framework
 - **class-variance-authority**, **clsx**, **tailwind-merge** - Styling utilities
-- **@supabase/supabase-js**, **@supabase/ssr** - Supabase client for authentication
+- **Google Identity Services** - sign-in script loaded from `accounts.google.com/gsi/client`
 
 ### API Server
 
 - **Hono** - Fast web framework with Zod validation
 - **Drizzle ORM** - TypeScript ORM for SQLite/D1
-- **better-sqlite3** - Local SQLite driver (development)
+- **bun:sqlite** - Local SQLite driver (development)
 - **@cloudflare/d1** - Cloudflare D1 bindings (production)
-- **@supabase/supabase-js**, **@supabase/ssr** - Supabase authentication
+- **jose** - JWT signing/verification and JWKS-based Google ID token validation
 
 ### Development Tools
 
@@ -220,25 +222,18 @@ Dual database configuration using Drizzle ORM:
   - Use `drizzle.config.ts` for production migrations
   - Accessed via Cloudflare bindings
 
-Database initialization checks `NODE_ENV` (and whether a D1 binding is present) to determine which database to use. Schema defined in `apps/api/src/db/schema.ts`. User identity/auth data lives in Supabase; all application data (AI configs, play history, ratings, puzzles) lives in D1/SQLite. Game variant IDs, result statuses, and supported AI opponent IDs are defined as enums in `apps/api/src/constants/game.ts`.
+Database initialization checks `NODE_ENV` (and whether a D1 binding is present) to determine which database to use. Schema defined in `apps/api/src/db/schema.ts`. User identity lives in the `users` table in D1/SQLite, keyed by `google_sub`. Game variant IDs, result statuses, and supported AI opponent IDs are defined as enums in `apps/api/src/constants/game.ts`.
 
-### Authentication Flow (Dual Database Architecture)
+### Authentication Flow
 
-**Supabase** handles all user authentication; **D1** stores application data.
+Google sign-in is the only authentication method. The web app uses Google Identity Services (GIS) to obtain a Google ID token and POSTs it to `/api/auth/google`. The API verifies the ID token against Google's JWKS (`jose`), upserts a row in the `users` table keyed by `google_sub`, derives a username from the email prefix, and returns an HS256 app JWT. The Bearer middleware (`apps/api/src/auth/middleware.ts`) verifies that JWT for protected routes.
 
-Supabase Auth-based authentication with JWT tokens:
-
-1. **Registration/Login**: Routes in `apps/api/src/routes/auth.ts`
-   - `/register` endpoint uses Supabase `signUp` with username in user_metadata
-   - `/login` endpoint uses Supabase `signInWithPassword` with rate limiting
-   - JWT tokens issued on successful auth (access_token + refresh_token)
-2. **Protected Routes**: Use `authMiddleware` from `apps/api/src/auth/middleware.ts`
-   - Validates Supabase JWT via `supabaseAdmin.auth.getUser(token)`
-   - Sets `user.userId` in Hono context for downstream routes
-3. **Frontend Context**: `apps/web/src/lib/auth.ts` provides `useAuth()` hook
-   - JWT-based authentication with Supabase client (`apps/web/src/lib/supabase.ts`)
-   - `login`, `register`, `logout` methods
-   - Session state managed by Supabase client with `onAuthStateChange`
+1. **Google sign-in**: `POST /api/auth/google` in `apps/api/src/routes/auth.ts`
+   - Verifies the Google ID token (`apps/api/src/auth/google.ts`)
+   - Upserts the user (`apps/api/src/auth/users.ts`) using `google_sub` as the lookup key
+   - Returns `{ access_token, user }` where `access_token` is an HS256 JWT signed with `JWT_SECRET`
+2. **Protected routes**: `authMiddleware` validates the Bearer token via `verifyAppJwt` and sets `c.get('user') = { userId, email, username }`
+3. **Frontend**: `apps/web/src/lib/auth.ts` exposes `useAuth()` with `signInWithGoogle`, `logout`, and a `/api/auth/session` rehydrate; the access token is stored in `localStorage` under `procyon_access_token`
 
 API keys for AI providers are masked in responses (`***${key.slice(-4)}`) for security.
 
