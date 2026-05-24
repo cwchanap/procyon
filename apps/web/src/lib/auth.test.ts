@@ -1,10 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import {
-	mapSupabaseUser,
-	resolveApiBaseUrl,
-	parseLoginBodyText,
-	parseRegisterBodyText,
-} from './auth-helpers';
+import { resolveApiBaseUrl, parseGoogleLoginBody } from './auth-helpers';
 
 describe('resolveApiBaseUrl', () => {
 	test('returns /api when no URL is configured', () => {
@@ -36,289 +31,69 @@ describe('resolveApiBaseUrl', () => {
 			'http://localhost:3501/api'
 		);
 	});
-
-	test('strips trailing slash from localhost URL', () => {
-		expect(resolveApiBaseUrl('http://localhost:3501/')).toBe(
-			'http://localhost:3501'
-		);
-	});
 });
 
-describe('mapSupabaseUser', () => {
-	test('returns null when user is null', () => {
-		expect(mapSupabaseUser(null)).toBeNull();
-	});
-
-	test('maps basic user fields correctly', () => {
-		const user = {
-			id: 'user-123',
-			email: 'test@example.com',
-			created_at: '2026-01-01T00:00:00Z',
-		};
-		const result = mapSupabaseUser(user);
-		expect(result).not.toBeNull();
-		expect(result!.id).toBe('user-123');
-		expect(result!.email).toBe('test@example.com');
-		expect(result!.createdAt).toBe('2026-01-01T00:00:00Z');
-	});
-
-	test('uses username from user_metadata when available', () => {
-		const user = {
-			id: 'user-123',
-			email: 'test@example.com',
-			created_at: '2026-01-01T00:00:00Z',
-			user_metadata: { username: 'coolplayer' },
-		};
-		expect(mapSupabaseUser(user)!.username).toBe('coolplayer');
-	});
-
-	test('falls back to email prefix when no username in metadata', () => {
-		const user = {
-			id: 'user-123',
-			email: 'john.doe@example.com',
-			created_at: '2026-01-01T00:00:00Z',
-			user_metadata: {},
-		};
-		expect(mapSupabaseUser(user)!.username).toBe('john.doe');
-	});
-
-	test('falls back to Player when no username and no email', () => {
-		const user = {
-			id: 'user-123',
-			email: undefined,
-			created_at: '2026-01-01T00:00:00Z',
-		};
-		expect(mapSupabaseUser(user)!.username).toBe('Player');
-	});
-
-	test('falls back to email prefix when username in metadata is empty string', () => {
-		const user = {
-			id: 'user-123',
-			email: 'alice@example.com',
-			created_at: '2026-01-01T00:00:00Z',
-			user_metadata: { username: '' },
-		};
-		expect(mapSupabaseUser(user)!.username).toBe('alice');
-	});
-
-	test('falls back to email prefix when username in metadata is whitespace only', () => {
-		const user = {
-			id: 'user-123',
-			email: 'bob@example.com',
-			created_at: '2026-01-01T00:00:00Z',
-			user_metadata: { username: '   ' },
-		};
-		expect(mapSupabaseUser(user)!.username).toBe('bob');
-	});
-
-	test('falls back to Player when username and email are both missing', () => {
-		const user = {
-			id: 'user-123',
-			email: undefined,
-			created_at: '2026-01-01T00:00:00Z',
-			user_metadata: { username: '' },
-		};
-		expect(mapSupabaseUser(user)!.username).toBe('Player');
-	});
-
-	test('email field is empty string when user has no email', () => {
-		const user = {
-			id: 'user-123',
-			email: undefined,
-			created_at: '2026-01-01T00:00:00Z',
-		};
-		expect(mapSupabaseUser(user)!.email).toBe('');
-	});
-
-	test('ignores non-string username (number) in metadata', () => {
-		const user = {
-			id: 'user-123',
-			email: 'test@example.com',
-			created_at: '2026-01-01T00:00:00Z',
-			user_metadata: { username: 42 as unknown as string },
-		};
-		expect(mapSupabaseUser(user)!.username).toBe('test');
-	});
-
-	test('ignores null username in metadata', () => {
-		const user = {
-			id: 'user-123',
-			email: 'test@example.com',
-			created_at: '2026-01-01T00:00:00Z',
-			user_metadata: { username: null as unknown as string },
-		};
-		expect(mapSupabaseUser(user)!.username).toBe('test');
-	});
-
-	test('ignores array username in metadata', () => {
-		const user = {
-			id: 'user-123',
-			email: 'test@example.com',
-			created_at: '2026-01-01T00:00:00Z',
-			user_metadata: { username: ['x'] as unknown as string },
-		};
-		expect(mapSupabaseUser(user)!.username).toBe('test');
-	});
-});
-
-describe('parseLoginBodyText', () => {
-	test('returns success for 200 status', () => {
-		expect(parseLoginBodyText(200, '{}')).toEqual({ success: true });
-	});
-
-	test('returns rate limit error for 429 status', () => {
-		const result = parseLoginBodyText(
-			429,
-			JSON.stringify({ error: 'Too many requests', retryAfterMs: 60000 })
-		);
-		expect(result.success).toBe(false);
-		if (!result.success) {
-			expect(result.error).toBe('Too many requests');
-			expect(result.retryAfterMs).toBe(60000);
+describe('parseGoogleLoginBody', () => {
+	test('returns success when 200 with access_token and user', () => {
+		const body = JSON.stringify({
+			access_token: 'tok',
+			user: {
+				id: 'u1',
+				email: 'a@example.com',
+				username: 'alice',
+			},
+		});
+		const result = parseGoogleLoginBody(200, body);
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.accessToken).toBe('tok');
+			expect(result.user.username).toBe('alice');
 		}
 	});
 
-	test('returns raw body text as error for 429 with non-JSON body', () => {
-		const result = parseLoginBodyText(429, 'Rate limited');
-		expect(result.success).toBe(false);
-		if (!result.success) {
-			expect(result.error).toBe('Rate limited');
-		}
-	});
-
-	test('returns default rate limit message when body is empty for 429', () => {
-		const result = parseLoginBodyText(429, '');
-		expect(result.success).toBe(false);
-		if (!result.success) {
-			expect(result.error).toBe(
-				'Too many attempts. Please wait before retrying.'
-			);
-		}
-	});
-
-	test('returns error from JSON body for non-200 status', () => {
-		const result = parseLoginBodyText(
+	test('returns failure for non-2xx status with JSON error', () => {
+		const result = parseGoogleLoginBody(
 			401,
-			JSON.stringify({ error: 'Invalid credentials' })
+			JSON.stringify({ error: 'Invalid Google token' })
 		);
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.error).toBe('Invalid credentials');
+			expect(result.error).toBe('Invalid Google token');
 		}
 	});
 
-	test('returns message from JSON body when error field missing', () => {
-		const result = parseLoginBodyText(
-			400,
-			JSON.stringify({ message: 'Bad request' })
+	test('returns raw body when non-2xx body is not JSON', () => {
+		const result = parseGoogleLoginBody(500, 'Boom');
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBe('Boom');
+		}
+	});
+
+	test('returns default error when non-2xx body is empty', () => {
+		const result = parseGoogleLoginBody(403, '');
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBe('Sign-in failed');
+		}
+	});
+
+	test('returns failure when 200 body is missing access_token', () => {
+		const result = parseGoogleLoginBody(
+			200,
+			JSON.stringify({ user: { id: 'u1', email: 'a@x', username: 'a' } })
 		);
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.error).toBe('Bad request');
+			expect(result.error).toBe('Unexpected response from server.');
 		}
 	});
 
-	test('returns raw body when JSON parsing fails for non-200', () => {
-		const result = parseLoginBodyText(500, 'Internal Server Error');
+	test('returns failure when 200 body is unparseable JSON', () => {
+		const result = parseGoogleLoginBody(200, '<<not-json>>');
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.error).toBe('Internal Server Error');
+			expect(result.error).toBe('Unexpected response from server.');
 		}
-	});
-
-	test('returns Login failed fallback when body is empty for non-200', () => {
-		const result = parseLoginBodyText(500, '');
-		expect(result.success).toBe(false);
-		if (!result.success) {
-			expect(result.error).toBe('Login failed');
-		}
-	});
-
-	test('retryAfterMs is undefined when not provided in 429 response', () => {
-		const result = parseLoginBodyText(
-			429,
-			JSON.stringify({ error: 'Rate limited' })
-		);
-		expect(result.success).toBe(false);
-		if (!result.success) {
-			expect(result.retryAfterMs).toBeUndefined();
-		}
-	});
-
-	test('omits retryAfterMs when value is a non-numeric string', () => {
-		const result = parseLoginBodyText(
-			429,
-			JSON.stringify({ error: 'Rate limited', retryAfterMs: 'soon' })
-		);
-		expect(result.success).toBe(false);
-		if (!result.success) {
-			expect(result.retryAfterMs).toBeUndefined();
-		}
-	});
-
-	test('omits retryAfterMs when value is negative', () => {
-		const result = parseLoginBodyText(
-			429,
-			JSON.stringify({ error: 'Rate limited', retryAfterMs: -1 })
-		);
-		expect(result.success).toBe(false);
-		if (!result.success) {
-			expect(result.retryAfterMs).toBeUndefined();
-		}
-	});
-
-	test('omits retryAfterMs when value is null (e.g. Infinity serialized via JSON)', () => {
-		const result = parseLoginBodyText(
-			429,
-			JSON.stringify({ error: 'Rate limited', retryAfterMs: null })
-		);
-		expect(result.success).toBe(false);
-		if (!result.success) {
-			expect(result.retryAfterMs).toBeUndefined();
-		}
-	});
-
-	test('omits retryAfterMs when raw body has Infinity (invalid JSON)', () => {
-		const result = parseLoginBodyText(429, '{"retryAfterMs": Infinity}');
-		expect(result.success).toBe(false);
-		if (!result.success) {
-			expect(result.retryAfterMs).toBeUndefined();
-		}
-	});
-});
-
-describe('parseRegisterBodyText', () => {
-	test('returns success for 200 status', () => {
-		expect(parseRegisterBodyText(200, '{}')).toEqual({ success: true });
-	});
-
-	test('returns error from JSON body on failure', () => {
-		const result = parseRegisterBodyText(
-			409,
-			JSON.stringify({ error: 'Username already taken' })
-		);
-		expect(result.success).toBe(false);
-		expect(result.error).toBe('Username already taken');
-	});
-
-	test('returns message from JSON body when error field missing', () => {
-		const result = parseRegisterBodyText(
-			400,
-			JSON.stringify({ message: 'Invalid email format' })
-		);
-		expect(result.success).toBe(false);
-		expect(result.error).toBe('Invalid email format');
-	});
-
-	test('returns raw body when JSON parsing fails', () => {
-		const result = parseRegisterBodyText(500, 'Server exploded');
-		expect(result.success).toBe(false);
-		expect(result.error).toBe('Server exploded');
-	});
-
-	test('returns Registration failed fallback when body is empty', () => {
-		const result = parseRegisterBodyText(422, '');
-		expect(result.success).toBe(false);
-		expect(result.error).toBe('Registration failed');
 	});
 });

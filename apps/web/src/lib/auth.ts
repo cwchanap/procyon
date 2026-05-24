@@ -1,177 +1,68 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { env } from './env';
-import { supabaseClient } from './supabase';
 import {
-	mapSupabaseUser,
 	resolveApiBaseUrl,
-	parseLoginBodyText,
-	parseRegisterBodyText,
+	parseGoogleLoginBody,
+	ACCESS_TOKEN_KEY,
+	type AuthUser,
+	type GoogleLoginResult,
 } from './auth-helpers';
-import type { AuthUser, LoginResult, RegisterResult } from './auth-helpers';
 
 const API_BASE_URL = resolveApiBaseUrl(env.PUBLIC_API_URL);
 
-export async function getAuthHeaders(): Promise<Record<string, string>> {
+function getStoredToken(): string | null {
 	try {
-		const { data } = await supabaseClient.auth.getSession();
-		const accessToken = data.session?.access_token;
-		if (!accessToken) {
-			return {};
-		}
-		return {
-			Authorization: `Bearer ${accessToken}`,
-		};
+		return globalThis.localStorage?.getItem(ACCESS_TOKEN_KEY) ?? null;
 	} catch {
-		return {};
+		return null;
 	}
 }
 
-async function apiLogin(email: string, password: string): Promise<LoginResult> {
+function setStoredToken(token: string | null): void {
 	try {
-		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-		const res = await fetch(`${API_BASE_URL}/auth/login`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ email, password }),
-			signal: controller.signal,
-		});
-
-		clearTimeout(timeoutId);
-
-		if (res.status === 429 || !res.ok) {
-			const bodyText = await res.text();
-			return parseLoginBodyText(res.status, bodyText);
+		if (token) {
+			globalThis.localStorage?.setItem(ACCESS_TOKEN_KEY, token);
+		} else {
+			globalThis.localStorage?.removeItem(ACCESS_TOKEN_KEY);
 		}
-
-		const data = (await res.json()) as {
-			access_token: string;
-			refresh_token: string;
-			user: AuthUser;
-		};
-
-		const { error: setSessionError } = await supabaseClient.auth.setSession({
-			access_token: data.access_token,
-			refresh_token: data.refresh_token,
-		});
-
-		if (setSessionError) {
-			return { success: false, error: setSessionError.message };
-		}
-
-		return { success: true };
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.name === 'AbortError') {
-				return {
-					success: false,
-					error: 'Login request timed out. Please try again.',
-				};
-			}
-			if (error.message.includes('fetch')) {
-				return {
-					success: false,
-					error: 'Network error. Please check your connection.',
-				};
-			}
-		}
-		return { success: false, error: 'Login failed. Please try again.' };
+	} catch {
+		// ignore storage errors
 	}
 }
 
-async function apiRegister(
-	email: string,
-	username: string,
-	password: string
-): Promise<RegisterResult> {
-	const controller = new AbortController();
-	const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-	try {
-		const res = await fetch(`${API_BASE_URL}/auth/register`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ email, username, password }),
-			signal: controller.signal,
-		});
-
-		clearTimeout(timeoutId);
-
-		if (!res.ok) {
-			const bodyText = await res.text();
-			return parseRegisterBodyText(res.status, bodyText);
-		}
-
-		const loginResult = await apiLogin(email, password);
-
-		if (!loginResult.success) {
-			return {
-				success: false,
-				error:
-					loginResult.error ||
-					'Registration succeeded, but automatic login failed. Please log in manually.',
-			};
-		}
-
-		return { success: true };
-	} catch (error) {
-		clearTimeout(timeoutId);
-
-		if (error instanceof Error) {
-			if (error.name === 'AbortError') {
-				return {
-					success: false,
-					error: 'Registration request timed out. Please try again.',
-				};
-			}
-			if (error instanceof SyntaxError) {
-				return {
-					success: false,
-					error: 'Unexpected response from server. Please try again.',
-				};
-			}
-			if (error.message.includes('fetch')) {
-				return {
-					success: false,
-					error: 'Network error. Please check your connection.',
-				};
-			}
-		}
-
-		return { success: false, error: 'Registration failed. Please try again.' };
-	}
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+	const token = getStoredToken();
+	return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function apiLogout(): Promise<void> {
-	const controller = new AbortController();
-	const timeoutId = setTimeout(() => controller.abort(), 10000);
+async function fetchSession(): Promise<AuthUser | null> {
+	const headers = await getAuthHeaders();
+	if (!headers.Authorization) return null;
+	const res = await fetch(`${API_BASE_URL}/auth/session`, { headers });
+	if (!res.ok) {
+		if (res.status === 401) setStoredToken(null);
+		return null;
+	}
+	const data = (await res.json()) as { user: AuthUser };
+	return data.user;
+}
 
+async function postGoogleLogin(idToken: string): Promise<GoogleLoginResult> {
+	const res = await fetch(`${API_BASE_URL}/auth/google`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ id_token: idToken }),
+	});
+	const bodyText = await res.text();
+	return parseGoogleLoginBody(res.status, bodyText);
+}
+
+async function postLogout(): Promise<void> {
 	try {
 		const headers = await getAuthHeaders();
-		if (Object.keys(headers).length === 0) {
-			clearTimeout(timeoutId);
-			return;
-		}
-		const res = await fetch(`${API_BASE_URL}/auth/logout`, {
-			method: 'POST',
-			headers,
-			credentials: 'include',
-			signal: controller.signal,
-		});
-
-		clearTimeout(timeoutId);
-
-		if (!res.ok) {
-			const data = await res.json().catch(() => ({}));
-			globalThis.console?.error?.('API logout failed', {
-				status: res.status,
-				error: data.error,
-			});
-		}
-	} catch (error) {
-		clearTimeout(timeoutId);
-		globalThis.console?.error?.('API logout error', { error });
+		await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', headers });
+	} catch {
+		// best-effort
 	}
 }
 
@@ -179,73 +70,43 @@ export function useAuth() {
 	const [user, setUser] = useState<AuthUser | null>(null);
 	const [loading, setLoading] = useState(true);
 
-	const syncUserFromSession = async () => {
-		try {
-			const { data } = await supabaseClient.auth.getSession();
-			setUser(mapSupabaseUser(data.session?.user ?? null));
-		} catch {
-			setUser(null);
-		} finally {
-			setLoading(false);
-		}
-	};
-
 	useEffect(() => {
 		let mounted = true;
-		supabaseClient.auth
-			.getSession()
-			.then(({ data }) => {
-				if (!mounted) return;
-				setUser(mapSupabaseUser(data.session?.user ?? null));
-				setLoading(false);
+		fetchSession()
+			.then(u => {
+				if (mounted) setUser(u);
 			})
-			.catch(() => {
-				if (!mounted) return;
-				setUser(null);
-				setLoading(false);
+			.finally(() => {
+				if (mounted) setLoading(false);
 			});
-
-		const { data: subscription } = supabaseClient.auth.onAuthStateChange(
-			(_event, session) => {
-				if (!mounted) return;
-				setUser(mapSupabaseUser(session?.user ?? null));
-				setLoading(false);
-			}
-		);
-
 		return () => {
 			mounted = false;
-			subscription?.subscription.unsubscribe();
 		};
+	}, []);
+
+	const signInWithGoogle = useCallback(
+		async (idToken: string): Promise<GoogleLoginResult> => {
+			const result = await postGoogleLogin(idToken);
+			if (result.success) {
+				setStoredToken(result.accessToken);
+				setUser(result.user);
+			}
+			return result;
+		},
+		[]
+	);
+
+	const logout = useCallback(async () => {
+		await postLogout();
+		setStoredToken(null);
+		setUser(null);
 	}, []);
 
 	return {
 		user,
 		loading,
-		login: async (email: string, password: string) => {
-			const result = await apiLogin(email, password);
-			if (result.success) {
-				await syncUserFromSession();
-			}
-			return result;
-		},
-		register: async (email: string, username: string, password: string) => {
-			const result = await apiRegister(email, username, password);
-			if (result.success) {
-				await syncUserFromSession();
-			}
-			return result;
-		},
-		logout: async () => {
-			await apiLogout();
-			const { error } = await supabaseClient.auth.signOut();
-			if (error) {
-				globalThis.console?.error?.('Supabase signOut failed', {
-					error: error.message,
-				});
-			}
-			setUser(null);
-		},
+		signInWithGoogle,
+		logout,
 		isAuthenticated: !!user,
 	};
 }
