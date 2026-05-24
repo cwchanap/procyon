@@ -19,16 +19,12 @@ describe('env object', () => {
 		expect(env.FRONTEND_URL).toContain('localhost');
 	});
 
-	test('SUPABASE_URL is a string (may be empty in test)', () => {
-		expect(typeof env.SUPABASE_URL).toBe('string');
+	test('GOOGLE_CLIENT_ID is a string (may be empty in test)', () => {
+		expect(typeof env.GOOGLE_CLIENT_ID).toBe('string');
 	});
 
-	test('SUPABASE_ANON_KEY is a string (may be empty in test)', () => {
-		expect(typeof env.SUPABASE_ANON_KEY).toBe('string');
-	});
-
-	test('SUPABASE_SERVICE_ROLE_KEY is a string (may be empty in test)', () => {
-		expect(typeof env.SUPABASE_SERVICE_ROLE_KEY).toBe('string');
+	test('JWT_SECRET is a string (may be empty in test)', () => {
+		expect(typeof env.JWT_SECRET).toBe('string');
 	});
 
 	test('CI is a boolean', () => {
