@@ -20,9 +20,11 @@ export async function authMiddleware(c: Context, next: Next) {
 			});
 		}
 
+		const jwtSecret = (c.get('jwtSecret') as string) || undefined;
+
 		let payload;
 		try {
-			payload = await verifyAppJwt(token);
+			payload = await verifyAppJwt(token, { secret: jwtSecret });
 		} catch {
 			throw new HTTPException(401, {
 				message: 'Unauthorized: Invalid or expired token',

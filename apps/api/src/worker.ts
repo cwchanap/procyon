@@ -25,6 +25,8 @@ app.use('*', async (c, next) => {
 		initializeDB(c.env.DB);
 	}
 	c.set('db', getDB());
+	c.set('googleClientId', c.env.GOOGLE_CLIENT_ID || '');
+	c.set('jwtSecret', c.env.JWT_SECRET || '');
 	await next();
 });
 

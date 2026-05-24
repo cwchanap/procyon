@@ -74,9 +74,11 @@ if (proc && typeof proc.on === 'function') {
 
 const app = new Hono();
 
-// Bind shared DB instance to request context so routes can `c.get('db')`
+// Bind shared DB instance and auth secrets to request context
 app.use('*', async (c, next) => {
 	c.set('db', getDB());
+	c.set('googleClientId', env.GOOGLE_CLIENT_ID || '');
+	c.set('jwtSecret', env.JWT_SECRET || '');
 	await next();
 });
 
