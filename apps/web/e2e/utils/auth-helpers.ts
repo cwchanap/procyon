@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { SignJWT } from 'jose';
 
 export interface TestUser {
 	id: string;
@@ -7,6 +8,31 @@ export interface TestUser {
 }
 
 const ACCESS_TOKEN_KEY = 'procyon_access_token';
+
+/**
+ * JWT secret used by the API server in E2E / CI environments.
+ * Must match the `JWT_SECRET` env var set in `.github/workflows/e2e.yml`
+ * and any local E2E test setup.
+ */
+const E2E_JWT_SECRET = process.env.JWT_SECRET || 'e2e-test-jwt-secret-key';
+
+/**
+ * Generate a real HS256 JWT that the API's `authMiddleware` will accept.
+ * This replaces the previous `'e2e-token'` literal string which was not a
+ * valid JWT and caused 401s on every protected endpoint.
+ */
+async function generateTestJwt(user: TestUser): Promise<string> {
+	const secret = new TextEncoder().encode(E2E_JWT_SECRET);
+	return await new SignJWT({
+		email: user.email,
+		username: user.username,
+	})
+		.setProtectedHeader({ alg: 'HS256' })
+		.setSubject(user.id)
+		.setIssuedAt()
+		.setExpirationTime('1h')
+		.sign(secret);
+}
 
 export class AuthHelper {
 	constructor(public page: Page) {}
@@ -23,14 +49,19 @@ export class AuthHelper {
 	/**
 	 * Intercept /api/auth/google and /api/auth/session so the GIS callback can
 	 * be simulated without involving Google Identity Services.
+	 *
+	 * The Google login stub returns a real HS256 JWT so that subsequent requests
+	 * to protected API endpoints (ai-config, play-history, ratings) pass the
+	 * `authMiddleware` verification.
 	 */
-	async stubGoogleLogin(user: TestUser, accessToken = 'e2e-token') {
+	async stubGoogleLogin(user: TestUser, accessToken?: string) {
+		const token = accessToken ?? (await generateTestJwt(user));
 		await this.page.route('**/api/auth/google', async route => {
 			await route.fulfill({
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify({
-					access_token: accessToken,
+					access_token: token,
 					user: {
 						id: user.id,
 						email: user.email,
@@ -54,20 +85,22 @@ export class AuthHelper {
 				}),
 			});
 		});
+		return token;
 	}
 
 	/**
 	 * Stub auth endpoints, plant the access token in localStorage, and land
 	 * authenticated on the home page.
 	 */
-	async loginAsTestUser(user: TestUser, accessToken = 'e2e-token') {
-		await this.stubGoogleLogin(user, accessToken);
+	async loginAsTestUser(user: TestUser, accessToken?: string) {
+		const token = accessToken ?? (await generateTestJwt(user));
+		await this.stubGoogleLogin(user, token);
 		await this.page.goto('/');
 		await this.page.evaluate(
-			({ token, key }) => {
-				window.localStorage.setItem(key, token);
+			({ token: t, key }) => {
+				window.localStorage.setItem(key, t);
 			},
-			{ token: accessToken, key: ACCESS_TOKEN_KEY }
+			{ token, key: ACCESS_TOKEN_KEY }
 		);
 		await this.page.reload();
 	}
