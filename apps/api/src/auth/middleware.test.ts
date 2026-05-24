@@ -1,10 +1,20 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { Hono } from 'hono';
 import { authMiddleware, getUser } from './middleware';
 import { signAppJwt } from './jwt';
 
+const originalJwtSecret = process.env.JWT_SECRET;
+
 beforeAll(() => {
 	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+});
+
+afterAll(() => {
+	if (originalJwtSecret === undefined) {
+		delete process.env.JWT_SECRET;
+	} else {
+		process.env.JWT_SECRET = originalJwtSecret;
+	}
 });
 
 function makeApp() {

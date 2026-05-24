@@ -28,8 +28,9 @@ if (import.meta.env.PROD) {
 		console.warn('PUBLIC_API_URL points at localhost in production build.');
 	}
 	if (!PUBLIC_GOOGLE_CLIENT_ID) {
-		// eslint-disable-next-line no-console
-		console.error('PUBLIC_GOOGLE_CLIENT_ID is required in production.');
+		throw new Error(
+			'PUBLIC_GOOGLE_CLIENT_ID is required in production but is not set.'
+		);
 	}
 }
 

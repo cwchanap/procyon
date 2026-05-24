@@ -28,14 +28,33 @@ mock.module('jose', () => ({
 		nextPayload
 			? () => Promise.resolve({} as never)
 			: realCreateRemoteJWKSet(...args),
-	jwtVerify: ((...args: Parameters<typeof realJwtVerify>) => {
+	jwtVerify: (async (
+		token: string,
+		key: Parameters<typeof realJwtVerify>[1],
+		options?: Parameters<typeof realJwtVerify>[2]
+	) => {
 		if (nextPayload) {
-			return Promise.resolve({
+			// Simulate jose's audience validation when options.audience is provided
+			if (options?.audience) {
+				const aud = nextPayload.aud;
+				const expected =
+					typeof options.audience === 'string'
+						? options.audience
+						: Array.isArray(options.audience)
+							? options.audience[0]
+							: undefined;
+				if (aud !== expected) {
+					const err = new Error('Unexpected "aud" claim value');
+					(err as Error & { code?: string }).code = 'ERR_JWT_CLAIM_VALIDATION';
+					throw err;
+				}
+			}
+			return {
 				payload: nextPayload,
 				protectedHeader: { alg: 'RS256' },
-			});
+			};
 		}
-		return realJwtVerify(...args);
+		return realJwtVerify(token, key, options);
 	}) as typeof realJwtVerify,
 }));
 
@@ -101,9 +120,7 @@ describe('verifyGoogleIdToken', () => {
 			exp: Math.floor(Date.now() / 1000) + 3600,
 		};
 
-		await expect(verifyGoogleIdToken('fake-token')).rejects.toThrow(
-			/audience/i
-		);
+		await expect(verifyGoogleIdToken('fake-token')).rejects.toThrow(/aud/i);
 	});
 
 	test('rejects a token whose issuer is not a Google issuer', async () => {

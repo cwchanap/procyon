@@ -62,13 +62,14 @@ export class AuthHelper {
 	 */
 	async loginAsTestUser(user: TestUser, accessToken = 'e2e-token') {
 		await this.stubGoogleLogin(user, accessToken);
-		await this.page.addInitScript(
+		await this.page.goto('/');
+		await this.page.evaluate(
 			({ token, key }) => {
 				window.localStorage.setItem(key, token);
 			},
 			{ token: accessToken, key: ACCESS_TOKEN_KEY }
 		);
-		await this.page.goto('/');
+		await this.page.reload();
 	}
 
 	/** Backwards-compatible alias used by older specs. */
