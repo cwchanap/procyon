@@ -2,111 +2,49 @@ export type AuthUser = {
 	id: string;
 	email: string;
 	username: string;
-	createdAt: string;
-	user_metadata?: Record<string, unknown>;
+	name?: string | null;
+	picture?: string | null;
 };
 
-export type LoginResult =
-	| { success: true }
-	| { success: false; error: string; retryAfterMs?: number };
-
-export type RegisterResult = { success: boolean; error?: string };
-
-interface UserInput {
-	id: string;
-	email?: string;
-	created_at: string;
-	user_metadata?: Record<string, unknown>;
-}
-
-export function mapSupabaseUser(user: UserInput | null): AuthUser | null {
-	if (!user) return null;
-
-	const metadata = user.user_metadata as
-		| ({ username?: string } & Record<string, unknown>)
-		| null;
-	const rawUsername =
-		metadata && typeof metadata.username === 'string'
-			? metadata.username
-			: undefined;
-	const username =
-		rawUsername && rawUsername.trim().length > 0
-			? rawUsername
-			: user.email?.split('@')[0] || 'Player';
-
-	return {
-		id: user.id,
-		email: user.email ?? '',
-		username,
-		createdAt: user.created_at,
-		user_metadata: user.user_metadata,
-	};
-}
+export type GoogleLoginResult =
+	| { success: true; user: AuthUser; accessToken: string }
+	| { success: false; error: string };
 
 export function resolveApiBaseUrl(publicApiUrl: string | undefined): string {
 	const base = publicApiUrl || '/api';
 	return base.replace(/\/$/, '') || '/api';
 }
 
-export function parseLoginBodyText(
+export function parseGoogleLoginBody(
 	status: number,
 	bodyText: string
-): LoginResult {
-	if (status === 429) {
-		let data: { error?: string; retryAfterMs?: unknown } = {};
-		try {
-			data = JSON.parse(bodyText) as typeof data;
-		} catch {
-			// ignore parse errors
-		}
-		const rawRetryAfter = data.retryAfterMs;
-		const retryAfterMs =
-			typeof rawRetryAfter === 'number' &&
-			isFinite(rawRetryAfter) &&
-			rawRetryAfter >= 0
-				? rawRetryAfter
-				: undefined;
-		return {
-			success: false,
-			error:
-				(data.error as string | undefined) ||
-				bodyText ||
-				'Too many attempts. Please wait before retrying.',
-			retryAfterMs,
-		};
-	}
-
+): GoogleLoginResult {
 	if (status < 200 || status >= 300) {
-		let data: { error?: string; message?: string } = {};
+		let data: { error?: string } = {};
 		try {
 			data = JSON.parse(bodyText) as typeof data;
 		} catch {
-			// ignore parse errors
+			// ignore
 		}
 		return {
 			success: false,
-			error: data.error || data.message || bodyText || 'Login failed',
+			error: data.error || bodyText || 'Sign-in failed',
 		};
 	}
-
-	return { success: true };
+	let data: { access_token?: string; user?: AuthUser } = {};
+	try {
+		data = JSON.parse(bodyText) as typeof data;
+	} catch {
+		return { success: false, error: 'Unexpected response from server.' };
+	}
+	if (!data.access_token || !data.user) {
+		return { success: false, error: 'Unexpected response from server.' };
+	}
+	return {
+		success: true,
+		user: data.user,
+		accessToken: data.access_token,
+	};
 }
 
-export function parseRegisterBodyText(
-	status: number,
-	bodyText: string
-): RegisterResult {
-	if (status < 200 || status >= 300) {
-		let data: { error?: string; message?: string } = {};
-		try {
-			data = JSON.parse(bodyText) as typeof data;
-		} catch {
-			// ignore parse errors
-		}
-		return {
-			success: false,
-			error: data.error || data.message || bodyText || 'Registration failed',
-		};
-	}
-	return { success: true };
-}
+export const ACCESS_TOKEN_KEY = 'procyon_access_token';
