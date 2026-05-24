@@ -1,44 +1,24 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
+import { describe, expect, test, beforeAll, beforeEach } from 'bun:test';
 import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import { initializeDB } from '../db';
 import { puzzles, userPuzzleProgress } from '../db/schema';
+import { signAppJwt } from '../auth/jwt';
 import puzzleRoutes from './puzzles';
 
-// Mock Supabase: reject any token that isn't 'test-token'
-function mockSupabaseFetch() {
-	const original = globalThis.fetch;
-	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url =
-			typeof input === 'string'
-				? input
-				: input instanceof Request
-					? input.url
-					: input.toString();
-		const pathname = new URL(url).pathname;
-		if (pathname.endsWith('/auth/v1/user')) {
-			const auth =
-				(input instanceof Request
-					? (input.headers.get('authorization') ??
-						input.headers.get('Authorization'))
-					: null) ??
-				(init?.headers as Record<string, string> | undefined)?.Authorization ??
-				(init?.headers as Record<string, string> | undefined)?.authorization;
-			if (auth === 'Bearer test-token') {
-				return new Response(
-					JSON.stringify({ id: 'user-uuid-1', email: 'test@example.com' }),
-					{ status: 200, headers: { 'Content-Type': 'application/json' } }
-				);
-			}
-			return new Response(JSON.stringify({ message: 'Unauthorized' }), {
-				status: 401,
-				headers: { 'Content-Type': 'application/json' },
-			});
-		}
-		return new Response('Not Found', { status: 404 });
-	}) as typeof fetch;
-	return original;
-}
+const TEST_USER_ID = 'user-uuid-1';
+
+let authHeader: Record<string, string> = {};
+
+beforeAll(async () => {
+	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+	const token = await signAppJwt({
+		sub: TEST_USER_ID,
+		email: 'test@example.com',
+		username: 'testuser',
+	});
+	authHeader = { Authorization: `Bearer ${token}` };
+});
 
 // Test data
 const testPuzzle = {
@@ -82,20 +62,6 @@ const secondTestPuzzle = {
 };
 
 describe('puzzle routes - auth guards', () => {
-	let originalFetch: typeof globalThis.fetch;
-
-	beforeEach(() => {
-		process.env.SUPABASE_URL =
-			process.env.SUPABASE_URL ?? 'http://localhost:54321';
-		process.env.SUPABASE_ANON_KEY =
-			process.env.SUPABASE_ANON_KEY ?? 'test-anon-key';
-		originalFetch = mockSupabaseFetch();
-	});
-
-	afterEach(() => {
-		globalThis.fetch = originalFetch;
-	});
-
 	test('GET /progress returns 401 without auth token', async () => {
 		const res = await puzzleRoutes.request('http://localhost/progress');
 		expect(res.status).toBe(401);
@@ -136,7 +102,7 @@ describe('puzzle routes - auth guards', () => {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					Authorization: 'Bearer test-token',
+					...authHeader,
 				},
 				body: JSON.stringify({ solved: false, failedAttempts: 1 }),
 			}
@@ -200,16 +166,9 @@ describe('wrongMoveState - attempt counter boundary', () => {
 });
 
 describe('puzzle routes - with database', () => {
-	let originalFetch: typeof globalThis.fetch;
 	let app: Hono;
 
 	beforeEach(async () => {
-		process.env.SUPABASE_URL =
-			process.env.SUPABASE_URL ?? 'http://localhost:54321';
-		process.env.SUPABASE_ANON_KEY =
-			process.env.SUPABASE_ANON_KEY ?? 'test-anon-key';
-		originalFetch = mockSupabaseFetch();
-
 		// Initialize test database
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 		const db = (await import('../db')).getDB();
@@ -227,10 +186,6 @@ describe('puzzle routes - with database', () => {
 		// Create app with routes mounted
 		app = new Hono();
 		app.route('/api/puzzles', puzzleRoutes);
-	});
-
-	afterEach(() => {
-		globalThis.fetch = originalFetch;
 	});
 
 	describe('GET /api/puzzles', () => {
@@ -284,7 +239,7 @@ describe('puzzle routes - with database', () => {
 	describe('GET /api/puzzles/progress', () => {
 		test('returns user progress when authenticated', async () => {
 			const res = await app.request('http://localhost/api/puzzles/progress', {
-				headers: { Authorization: 'Bearer test-token' },
+				headers: authHeader,
 			});
 			expect(res.status).toBe(200);
 
@@ -371,7 +326,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						...authHeader,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -401,7 +356,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						...authHeader,
 					},
 					body: JSON.stringify({
 						solved: true,
@@ -423,7 +378,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						...authHeader,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -450,7 +405,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						...authHeader,
 					},
 					body: JSON.stringify({
 						solved: true,
@@ -475,7 +430,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						...authHeader,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -500,7 +455,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						...authHeader,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -524,7 +479,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						...authHeader,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -549,7 +504,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: 'Bearer test-token',
+						...authHeader,
 					},
 					body: JSON.stringify({
 						solved: true,
