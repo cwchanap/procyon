@@ -84,4 +84,74 @@ describe('upsertGoogleUser', () => {
 		const rows = db.select().from(users).where(eq(users.googleSub, 'g1')).all();
 		expect(rows.length).toBe(1);
 	});
+
+	test('returns existing user on unique-constraint collision', async () => {
+		const db = makeDb();
+		const now = new Date();
+
+		// Pre-insert a user that will cause a UNIQUE violation on the second insert.
+		db.insert(users)
+			.values({
+				id: 'existing-id',
+				googleSub: 'g1',
+				email: 'race@example.com',
+				username: 'race',
+				name: 'Racer',
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+
+		// Wrap the db to simulate the race: the first SELECT finds nothing
+		// (simulating that the concurrent insert hasn't committed yet), but
+		// the real INSERT will fail with a unique error, triggering the
+		// re-SELECT path which DOES see the row.
+		let selectCount = 0;
+		const originalSelect = db.select.bind(db);
+		const proxiedDb = new Proxy(db, {
+			get(target, prop) {
+				if (prop === 'select') {
+					return (...args: unknown[]) => {
+						selectCount++;
+						// First call is the initial lookup — return empty to
+						// force the insert path.
+						if (selectCount === 1) {
+							const builder = originalSelect(...args);
+							return {
+								...builder,
+								from: (...a: unknown[]) => {
+									const fromBuilder = builder.from(...a);
+									return {
+										...fromBuilder,
+										where: (...b: unknown[]) => {
+											const whereBuilder = fromBuilder.where(...b);
+											return {
+												...whereBuilder,
+												get: async () => undefined,
+											};
+										},
+									};
+								},
+							};
+						}
+						// Subsequent selects (re-SELECT after race) hit the real DB.
+						return originalSelect(...args);
+					};
+				}
+				const value = (target as Record<string, unknown>)[prop as string];
+				return typeof value === 'function' ? value.bind(target) : value;
+			},
+		});
+
+		const user = await upsertGoogleUser(proxiedDb, {
+			sub: 'g1',
+			email: 'race@example.com',
+			emailVerified: true,
+			name: 'Racer',
+		});
+
+		// Should return the existing row instead of throwing.
+		expect(user.id).toBe('existing-id');
+		expect(user.googleSub).toBe('g1');
+	});
 });

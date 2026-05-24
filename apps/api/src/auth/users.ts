@@ -118,15 +118,25 @@ export async function upsertGoogleUser(
 			break;
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			if (
-				msg.includes('username') &&
-				/unique/i.test(msg) &&
-				attempt < MAX_INSERT_RETRIES - 1
-			) {
-				username = await deriveUsername(db, input.email);
-			} else {
-				throw err;
+			const isUnique = /unique/i.test(msg);
+
+			if (isUnique) {
+				// Concurrent insert may have already created this user via
+				// google_sub or email unique constraint — return it.
+				const raced = (await db
+					.select()
+					.from(users)
+					.where(eq(users.googleSub, input.sub))
+					.get()) as User | undefined;
+				if (raced) return raced;
+
+				// Otherwise it's a username collision — derive a fresh one.
+				if (attempt < MAX_INSERT_RETRIES - 1) {
+					username = await deriveUsername(db, input.email);
+					continue;
+				}
 			}
+			throw err;
 		}
 	}
 
