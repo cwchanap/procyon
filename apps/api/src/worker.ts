@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
-import { initializeDB } from './db';
+import { getDB, initializeDB } from './db';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import aiConfigRoutes from './routes/ai-config';
@@ -19,12 +19,12 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// Initialize database with D1 binding
+// Initialize database with D1 binding and bind to request context
 app.use('*', async (c, next) => {
-	// Initialize DB with Cloudflare D1 binding for production
 	if (c.env.DB) {
 		initializeDB(c.env.DB);
 	}
+	c.set('db', getDB());
 	await next();
 });
 
