@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeAll, beforeEach } from 'bun:test';
 import { initializeDB, getDB } from '../db';
 import {
 	playerRatings,
@@ -13,47 +13,23 @@ import {
 	OpponentLlmId,
 } from '../constants/game';
 import { updatePlayerRating, RATING_CONFIG } from '../services/rating-service';
+import { signAppJwt } from '../auth/jwt';
 import ratingsRoutes from './ratings';
 
-const SUPABASE_URL = 'http://localhost:54321';
-const SUPABASE_ANON_KEY = 'test-anon-key';
 const BASE_URL = 'http://localhost';
-const AUTH_HEADER = { Authorization: 'Bearer test-token' };
 const TEST_USER_ID = 'ratings-test-user';
 
-const CF_ENV = { SUPABASE_URL, SUPABASE_ANON_KEY };
+let authHeader: Record<string, string> = {};
 
-type FetchMockRestore = () => void;
-
-function mockSupabaseFetch(): FetchMockRestore {
-	const original = globalThis.fetch;
-	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url =
-			typeof input === 'string'
-				? input
-				: input instanceof Request
-					? input.url
-					: input.toString();
-		if (url.includes('/auth/v1/user')) {
-			const headers = new Headers(init?.headers as HeadersInit | undefined);
-			const auth = headers.get('authorization') ?? headers.get('Authorization');
-			if (auth === 'Bearer test-token') {
-				return new Response(
-					JSON.stringify({ id: TEST_USER_ID, email: 'test@example.com' }),
-					{ status: 200, headers: { 'Content-Type': 'application/json' } }
-				);
-			}
-			return new Response(JSON.stringify({ message: 'Unauthorized' }), {
-				status: 401,
-				headers: { 'Content-Type': 'application/json' },
-			});
-		}
-		return new Response('Not Found', { status: 404 });
-	}) as typeof fetch;
-	return () => {
-		globalThis.fetch = original;
-	};
-}
+beforeAll(async () => {
+	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+	const token = await signAppJwt({
+		sub: TEST_USER_ID,
+		email: 'test@example.com',
+		username: 'testuser',
+	});
+	authHeader = { Authorization: `Bearer ${token}` };
+});
 
 async function cleanDB() {
 	const db = getDB();
@@ -84,26 +60,15 @@ async function insertPlayHistoryRecord(
 }
 
 describe('ratings routes - GET / returns all ratings', () => {
-	let restore: FetchMockRestore = () => {};
-
 	beforeEach(async () => {
-		process.env.SUPABASE_URL = SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
-		restore = mockSupabaseFetch();
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 		await cleanDB();
 	});
 
-	afterEach(() => {
-		restore();
-	});
-
 	test('GET / returns empty ratings list for new user', async () => {
-		const res = await ratingsRoutes.request(
-			`${BASE_URL}/`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await ratingsRoutes.request(`${BASE_URL}/`, {
+			headers: authHeader,
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { ratings: unknown[] };
 		expect(Array.isArray(body.ratings)).toBe(true);
@@ -125,11 +90,9 @@ describe('ratings routes - GET / returns all ratings', () => {
 			opponentLlmId: OpponentLlmId.Gemini25Flash,
 		});
 
-		const res = await ratingsRoutes.request(
-			`${BASE_URL}/`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await ratingsRoutes.request(`${BASE_URL}/`, {
+			headers: authHeader,
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			ratings: Array<{
@@ -164,29 +127,18 @@ describe('ratings routes - GET / returns all ratings', () => {
 			});
 		}
 
-		const res = await ratingsRoutes.request(
-			`${BASE_URL}/`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await ratingsRoutes.request(`${BASE_URL}/`, {
+			headers: authHeader,
+		});
 		const body = (await res.json()) as { ratings: unknown[] };
 		expect(body.ratings).toHaveLength(3);
 	});
 });
 
 describe('ratings routes - GET /history/:variant', () => {
-	let restore: FetchMockRestore = () => {};
-
 	beforeEach(async () => {
-		process.env.SUPABASE_URL = SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
-		restore = mockSupabaseFetch();
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 		await cleanDB();
-	});
-
-	afterEach(() => {
-		restore();
 	});
 
 	test('GET /history/chess returns history records after games', async () => {
@@ -203,11 +155,9 @@ describe('ratings routes - GET /history/:variant', () => {
 			opponentLlmId: OpponentLlmId.Gemini25Flash,
 		});
 
-		const res = await ratingsRoutes.request(
-			`${BASE_URL}/history/chess`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await ratingsRoutes.request(`${BASE_URL}/history/chess`, {
+			headers: authHeader,
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			history: Array<{
@@ -249,11 +199,9 @@ describe('ratings routes - GET /history/:variant', () => {
 			opponentLlmId: OpponentLlmId.Gemini25Flash,
 		});
 
-		const res = await ratingsRoutes.request(
-			`${BASE_URL}/history/shogi`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await ratingsRoutes.request(`${BASE_URL}/history/shogi`, {
+			headers: authHeader,
+		});
 		const body = (await res.json()) as {
 			history: Array<{ variantId: string }>;
 		};
@@ -264,26 +212,18 @@ describe('ratings routes - GET /history/:variant', () => {
 	test('GET /history/invalid-variant returns 400', async () => {
 		const res = await ratingsRoutes.request(
 			`${BASE_URL}/history/invalid-game`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
+			{
+				headers: authHeader,
+			}
 		);
 		expect(res.status).toBe(400);
 	});
 });
 
 describe('ratings routes - GET /:variant', () => {
-	let restore: FetchMockRestore = () => {};
-
 	beforeEach(async () => {
-		process.env.SUPABASE_URL = SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
-		restore = mockSupabaseFetch();
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 		await cleanDB();
-	});
-
-	afterEach(() => {
-		restore();
 	});
 
 	test('GET /chess returns rating with tier for existing user', async () => {
@@ -300,11 +240,9 @@ describe('ratings routes - GET /:variant', () => {
 			opponentLlmId: OpponentLlmId.Gemini25Flash,
 		});
 
-		const res = await ratingsRoutes.request(
-			`${BASE_URL}/chess`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await ratingsRoutes.request(`${BASE_URL}/chess`, {
+			headers: authHeader,
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			rating: {
@@ -323,31 +261,25 @@ describe('ratings routes - GET /:variant', () => {
 	});
 
 	test('GET /xiangqi returns default rating for new user', async () => {
-		const res = await ratingsRoutes.request(
-			`${BASE_URL}/xiangqi`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await ratingsRoutes.request(`${BASE_URL}/xiangqi`, {
+			headers: authHeader,
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { rating: { rating: number } };
 		expect(body.rating.rating).toBe(RATING_CONFIG.defaultPlayerRating);
 	});
 
 	test('GET /invalid-variant returns 400', async () => {
-		const res = await ratingsRoutes.request(
-			`${BASE_URL}/invalid`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await ratingsRoutes.request(`${BASE_URL}/invalid`, {
+			headers: authHeader,
+		});
 		expect(res.status).toBe(400);
 	});
 
 	test('GET /jungle returns rating with tier info', async () => {
-		const res = await ratingsRoutes.request(
-			`${BASE_URL}/jungle`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await ratingsRoutes.request(`${BASE_URL}/jungle`, {
+			headers: authHeader,
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { rating: { tier: unknown } };
 		expect(body.rating.tier).toBeDefined();

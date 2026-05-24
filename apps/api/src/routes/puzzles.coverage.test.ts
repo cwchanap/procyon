@@ -1,69 +1,38 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
+import {
+	describe,
+	expect,
+	test,
+	beforeAll,
+	beforeEach,
+	afterEach,
+} from 'bun:test';
 import { sql } from 'drizzle-orm';
 import { initializeDB, getDB } from '../db';
 import { puzzles } from '../db/schema';
+import { signAppJwt } from '../auth/jwt';
 import puzzleRoutes from './puzzles';
 
 const BASE_URL = 'http://localhost';
-const AUTH_HEADER = { Authorization: 'Bearer test-token' };
-const SUPABASE_URL = 'http://localhost:54321';
-const SUPABASE_ANON_KEY = 'test-anon-key';
-const CF_ENV = { SUPABASE_URL, SUPABASE_ANON_KEY };
+const TEST_USER_ID = 'user-uuid-1';
 
-function mockSupabaseFetch() {
-	const original = globalThis.fetch;
-	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url =
-			typeof input === 'string'
-				? input
-				: input instanceof Request
-					? input.url
-					: input.toString();
-		const pathname = new URL(url).pathname;
-		if (pathname.endsWith('/auth/v1/user')) {
-			const auth =
-				(input instanceof Request
-					? (input.headers.get('authorization') ??
-						input.headers.get('Authorization'))
-					: null) ??
-				(init?.headers as Record<string, string> | undefined)?.Authorization ??
-				(init?.headers as Record<string, string> | undefined)?.authorization;
-			if (auth === 'Bearer test-token') {
-				return new Response(
-					JSON.stringify({ id: 'user-uuid-1', email: 'test@example.com' }),
-					{ status: 200, headers: { 'Content-Type': 'application/json' } }
-				);
-			}
-			return new Response(JSON.stringify({ message: 'Unauthorized' }), {
-				status: 401,
-				headers: { 'Content-Type': 'application/json' },
-			});
-		}
-		return new Response('Not Found', { status: 404 });
-	}) as typeof fetch;
-	return () => {
-		globalThis.fetch = original;
-	};
-}
+let authHeader: Record<string, string> = {};
+
+beforeAll(async () => {
+	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+	const token = await signAppJwt({
+		sub: TEST_USER_ID,
+		email: 'test@example.com',
+		username: 'testuser',
+	});
+	authHeader = { Authorization: `Bearer ${token}` };
+});
 
 describe('puzzle routes - corrupt data error paths', () => {
-	let restoreFetch: () => void;
-	let originalSupabaseUrl: string | undefined;
-	let originalSupabaseAnonKey: string | undefined;
-
 	beforeEach(() => {
-		originalSupabaseUrl = process.env.SUPABASE_URL;
-		originalSupabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-		process.env.SUPABASE_URL = SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
-		restoreFetch = mockSupabaseFetch();
 	});
 
 	afterEach(async () => {
-		restoreFetch();
-		process.env.SUPABASE_URL = originalSupabaseUrl;
-		process.env.SUPABASE_ANON_KEY = originalSupabaseAnonKey;
 		const db = getDB();
 		await db.delete(puzzles).where(sql`1=1`);
 	});
@@ -86,11 +55,7 @@ describe('puzzle routes - corrupt data error paths', () => {
 		});
 
 		const [inserted] = await db.select({ id: puzzles.id }).from(puzzles);
-		const res = await puzzleRoutes.request(
-			`${BASE_URL}/${inserted!.id}`,
-			{},
-			CF_ENV
-		);
+		const res = await puzzleRoutes.request(`${BASE_URL}/${inserted!.id}`);
 		expect(res.status).toBe(500);
 		const body = (await res.json()) as { error: string };
 		expect(body.error).toContain('Failed to fetch puzzle');
@@ -109,18 +74,16 @@ describe('puzzle routes - corrupt data error paths', () => {
 			hint: JSON.stringify({}),
 		});
 
-		const res = await puzzleRoutes.request(`${BASE_URL}/`, {}, CF_ENV);
+		const res = await puzzleRoutes.request(`${BASE_URL}/`);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { puzzles: unknown[] };
 		expect(body.puzzles.length).toBeGreaterThan(0);
 	});
 
 	test('GET /progress returns empty array when user has no progress', async () => {
-		const res = await puzzleRoutes.request(
-			`${BASE_URL}/progress`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await puzzleRoutes.request(`${BASE_URL}/progress`, {
+			headers: authHeader,
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { progress: unknown[] };
 		expect(Array.isArray(body.progress)).toBe(true);

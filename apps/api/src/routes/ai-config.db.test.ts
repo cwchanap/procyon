@@ -1,55 +1,27 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeAll, beforeEach } from 'bun:test';
 import { initializeDB } from '../db';
 import { aiConfigurations } from '../db/schema';
 import { sql } from 'drizzle-orm';
+import { signAppJwt } from '../auth/jwt';
 import aiConfigRoutes from './ai-config';
 
-const SUPABASE_URL = 'http://localhost:54321';
-const SUPABASE_ANON_KEY = 'test-anon-key';
 const BASE_URL = 'http://localhost';
-const AUTH_HEADER = { Authorization: 'Bearer test-token' };
 const TEST_USER_ID = 'user-uuid-1';
 
-type FetchMockRestore = () => void;
+let authHeader: Record<string, string> = {};
 
-function mockSupabaseFetch(): FetchMockRestore {
-	const original = globalThis.fetch;
-	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url =
-			typeof input === 'string'
-				? input
-				: input instanceof Request
-					? input.url
-					: input.toString();
-		if (url.includes('/auth/v1/user')) {
-			const auth =
-				(init?.headers as Record<string, string> | undefined)?.Authorization ??
-				(init?.headers as Record<string, string> | undefined)?.authorization;
-			if (auth === 'Bearer test-token') {
-				return new Response(
-					JSON.stringify({ id: TEST_USER_ID, email: 'test@example.com' }),
-					{ status: 200, headers: { 'Content-Type': 'application/json' } }
-				);
-			}
-			return new Response(JSON.stringify({ message: 'Unauthorized' }), {
-				status: 401,
-				headers: { 'Content-Type': 'application/json' },
-			});
-		}
-		return new Response('Not Found', { status: 404 });
-	}) as typeof fetch;
-	return () => {
-		globalThis.fetch = original;
-	};
-}
+beforeAll(async () => {
+	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+	const token = await signAppJwt({
+		sub: TEST_USER_ID,
+		email: 'test@example.com',
+		username: 'testuser',
+	});
+	authHeader = { Authorization: `Bearer ${token}` };
+});
 
 describe('ai-config routes - full CRUD operations', () => {
-	let restore: FetchMockRestore = () => {};
-
 	beforeEach(async () => {
-		process.env.SUPABASE_URL ??= SUPABASE_URL;
-		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
-		restore = mockSupabaseFetch();
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 		const { getDB } = await import('../db');
 		await getDB()
@@ -57,14 +29,10 @@ describe('ai-config routes - full CRUD operations', () => {
 			.where(sql`1=1`);
 	});
 
-	afterEach(() => {
-		restore();
-	});
-
 	test('POST / creates a new config (no existing record)', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'openai',
 				modelName: 'gpt-4o',
@@ -91,7 +59,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		// Create initial config
 		await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'gemini',
 				modelName: 'gemini-pro',
@@ -102,7 +70,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		// Update with new API key
 		const res = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'gemini',
 				modelName: 'gemini-pro',
@@ -113,7 +81,7 @@ describe('ai-config routes - full CRUD operations', () => {
 
 		// Verify only one config exists (update, not duplicate)
 		const listRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
-			headers: AUTH_HEADER,
+			headers: authHeader,
 		});
 		const listBody = (await listRes.json()) as { configurations: unknown[] };
 		expect(listBody.configurations).toHaveLength(1);
@@ -123,7 +91,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		// Create first config as active
 		await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'gemini',
 				modelName: 'gemini-pro',
@@ -135,7 +103,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		// Create second config as active
 		await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'openai',
 				modelName: 'gpt-4o',
@@ -146,7 +114,7 @@ describe('ai-config routes - full CRUD operations', () => {
 
 		// List configs and verify only one is active
 		const listRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
-			headers: AUTH_HEADER,
+			headers: authHeader,
 		});
 		const listBody = (await listRes.json()) as {
 			configurations: Array<{ provider: string; isActive: boolean }>;
@@ -160,7 +128,7 @@ describe('ai-config routes - full CRUD operations', () => {
 	test('GET /:id/full returns full config including API key', async () => {
 		const createRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'openrouter',
 				modelName: 'llama-3',
@@ -175,7 +143,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		const fullRes = await aiConfigRoutes.request(
 			`${BASE_URL}/${configId}/full`,
 			{
-				headers: AUTH_HEADER,
+				headers: authHeader,
 			}
 		);
 		expect(fullRes.status).toBe(200);
@@ -193,14 +161,14 @@ describe('ai-config routes - full CRUD operations', () => {
 
 	test('GET /:id/full returns 404 for non-existent config', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/99999/full`, {
-			headers: AUTH_HEADER,
+			headers: authHeader,
 		});
 		expect(res.status).toBe(404);
 	});
 
 	test('GET /:id/full returns 400 for non-numeric id', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/not-a-number/full`, {
-			headers: AUTH_HEADER,
+			headers: authHeader,
 		});
 		expect(res.status).toBe(400);
 	});
@@ -208,7 +176,7 @@ describe('ai-config routes - full CRUD operations', () => {
 	test('DELETE /:id removes the config', async () => {
 		const createRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'chutes',
 				modelName: 'deepseek-r1',
@@ -222,7 +190,7 @@ describe('ai-config routes - full CRUD operations', () => {
 
 		const deleteRes = await aiConfigRoutes.request(`${BASE_URL}/${configId}`, {
 			method: 'DELETE',
-			headers: AUTH_HEADER,
+			headers: authHeader,
 		});
 		expect(deleteRes.status).toBe(200);
 		const deleteBody = (await deleteRes.json()) as { message: string };
@@ -230,7 +198,7 @@ describe('ai-config routes - full CRUD operations', () => {
 
 		// Verify config is gone
 		const listRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
-			headers: AUTH_HEADER,
+			headers: authHeader,
 		});
 		const listBody = (await listRes.json()) as { configurations: unknown[] };
 		expect(listBody.configurations).toHaveLength(0);
@@ -239,7 +207,7 @@ describe('ai-config routes - full CRUD operations', () => {
 	test('DELETE /:id returns 404 for non-existent config', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/99999`, {
 			method: 'DELETE',
-			headers: AUTH_HEADER,
+			headers: authHeader,
 		});
 		expect(res.status).toBe(404);
 	});
@@ -247,7 +215,7 @@ describe('ai-config routes - full CRUD operations', () => {
 	test('DELETE /:id returns 400 for non-numeric id', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/abc`, {
 			method: 'DELETE',
-			headers: AUTH_HEADER,
+			headers: authHeader,
 		});
 		expect(res.status).toBe(400);
 	});
@@ -256,7 +224,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		// Create two configs
 		await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'gemini',
 				modelName: 'gemini-pro',
@@ -266,7 +234,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		});
 		await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'openai',
 				modelName: 'gpt-4o',
@@ -278,7 +246,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		// Set gemini as active
 		const res = await aiConfigRoutes.request(`${BASE_URL}/set-active`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({ provider: 'gemini', modelName: 'gemini-pro' }),
 		});
 		expect(res.status).toBe(200);
@@ -292,7 +260,7 @@ describe('ai-config routes - full CRUD operations', () => {
 	test('POST /set-active returns 404 when config not found', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/set-active`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'openai',
 				modelName: 'nonexistent-model',
@@ -304,7 +272,7 @@ describe('ai-config routes - full CRUD operations', () => {
 	test('GET / returns all configs with masked API keys', async () => {
 		await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'gemini',
 				modelName: 'gemini-1',
@@ -313,7 +281,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		});
 		await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'openai',
 				modelName: 'gpt-4o',
@@ -322,7 +290,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		});
 
 		const res = await aiConfigRoutes.request(`${BASE_URL}/`, {
-			headers: AUTH_HEADER,
+			headers: authHeader,
 		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
@@ -342,7 +310,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		// Create a config as user-1
 		const createRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			headers: { 'Content-Type': 'application/json', ...authHeader },
 			body: JSON.stringify({
 				provider: 'gemini',
 				modelName: 'gemini-pro',
@@ -354,7 +322,7 @@ describe('ai-config routes - full CRUD operations', () => {
 		};
 		const configId = createBody.configuration.id;
 
-		// Use a different token (non-existent user) — returns 401
+		// Use an invalid token — middleware rejects with 401
 		const res = await aiConfigRoutes.request(`${BASE_URL}/${configId}/full`, {
 			headers: { Authorization: 'Bearer other-token' },
 		});
