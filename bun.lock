@@ -60,6 +60,7 @@
         "@testing-library/jest-dom": "^6.9.1",
         "@testing-library/react": "^16.3.2",
         "happy-dom": "^20.5.3",
+        "jose": "^6.2.3",
         "tailwindcss": "^3.4.10",
       },
     },

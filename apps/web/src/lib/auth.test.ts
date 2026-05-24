@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { resolveApiBaseUrl, parseGoogleLoginBody } from './auth-helpers';
+import { AUTH_CHANGE_EVENT } from './auth';
 
 describe('resolveApiBaseUrl', () => {
 	test('returns /api when no URL is configured', () => {
@@ -139,5 +140,43 @@ describe('parseGoogleLoginBody', () => {
 			})
 		);
 		expect(result.success).toBe(false);
+	});
+});
+
+describe('AUTH_CHANGE_EVENT', () => {
+	test('is a non-empty string constant', () => {
+		expect(typeof AUTH_CHANGE_EVENT).toBe('string');
+		expect(AUTH_CHANGE_EVENT.length).toBeGreaterThan(0);
+	});
+
+	test('CustomEvent with auth change detail can be dispatched and received', () => {
+		const received: Array<{ user: unknown }> = [];
+		const handler = (e: Event) => {
+			const detail = (e as CustomEvent).detail as { user: unknown };
+			received.push(detail);
+		};
+
+		globalThis.addEventListener(AUTH_CHANGE_EVENT, handler);
+
+		globalThis.dispatchEvent(
+			new CustomEvent(AUTH_CHANGE_EVENT, {
+				detail: { user: null },
+			})
+		);
+		globalThis.dispatchEvent(
+			new CustomEvent(AUTH_CHANGE_EVENT, {
+				detail: { user: { id: 'u1', email: 'a@b.com', username: 'alice' } },
+			})
+		);
+
+		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
+
+		expect(received).toHaveLength(2);
+		expect(received[0].user).toBeNull();
+		expect(received[1].user).toEqual({
+			id: 'u1',
+			email: 'a@b.com',
+			username: 'alice',
+		});
 	});
 });

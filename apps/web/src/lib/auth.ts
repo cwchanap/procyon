@@ -10,6 +10,28 @@ import {
 
 const API_BASE_URL = resolveApiBaseUrl(env.PUBLIC_API_URL);
 
+/**
+ * Custom event name used to synchronise auth state across independent React
+ * islands in Astro's island architecture.  Each `useAuth()` hook instance
+ * dispatches this event on login/logout and listens for it so that all
+ * mounted islands stay in sync without a shared React context.
+ */
+export const AUTH_CHANGE_EVENT = 'procyon-auth-change';
+
+interface AuthChangeDetail {
+	user: AuthUser | null;
+}
+
+function dispatchAuthChange(user: AuthUser | null): void {
+	try {
+		globalThis.dispatchEvent(
+			new CustomEvent<AuthChangeDetail>(AUTH_CHANGE_EVENT, { detail: { user } })
+		);
+	} catch {
+		// ignore (SSR / test environments without DOM)
+	}
+}
+
 function getStoredToken(): string | null {
 	try {
 		return globalThis.localStorage?.getItem(ACCESS_TOKEN_KEY) ?? null;
@@ -80,6 +102,7 @@ export function useAuth() {
 
 	useEffect(() => {
 		let mounted = true;
+
 		fetchSession()
 			.then(u => {
 				if (mounted) setUser(u);
@@ -87,8 +110,20 @@ export function useAuth() {
 			.finally(() => {
 				if (mounted) setLoading(false);
 			});
+
+		// Listen for auth state changes from other React island instances
+		// so that login/logout in one island updates all mounted islands.
+		const handleAuthChange = (e: Event) => {
+			if (!mounted) return;
+			const { user: newUser } = (e as CustomEvent<AuthChangeDetail>).detail;
+			setUser(newUser);
+		};
+
+		globalThis.addEventListener(AUTH_CHANGE_EVENT, handleAuthChange);
+
 		return () => {
 			mounted = false;
+			globalThis.removeEventListener(AUTH_CHANGE_EVENT, handleAuthChange);
 		};
 	}, []);
 
@@ -98,6 +133,7 @@ export function useAuth() {
 			if (result.success) {
 				setStoredToken(result.accessToken);
 				setUser(result.user);
+				dispatchAuthChange(result.user);
 			}
 			return result;
 		},
@@ -108,6 +144,7 @@ export function useAuth() {
 		await postLogout();
 		setStoredToken(null);
 		setUser(null);
+		dispatchAuthChange(null);
 	}, []);
 
 	return {
