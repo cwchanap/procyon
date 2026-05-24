@@ -21,7 +21,7 @@ async function usernameExists(
 	db: any,
 	candidate: string
 ): Promise<boolean> {
-	const row = db
+	const row = await db
 		.select()
 		.from(users)
 		.where(eq(users.username, candidate))
@@ -68,16 +68,16 @@ export async function upsertGoogleUser(
 	db: any,
 	input: GoogleUserInput
 ): Promise<User> {
-	const existing = db
+	const existing = (await db
 		.select()
 		.from(users)
 		.where(eq(users.googleSub, input.sub))
-		.get() as User | undefined;
+		.get()) as User | undefined;
 
 	const now = new Date();
 
 	if (existing) {
-		const updated = db
+		const updated = (await db
 			.update(users)
 			.set({
 				email: input.email,
@@ -87,7 +87,7 @@ export async function upsertGoogleUser(
 			})
 			.where(eq(users.googleSub, input.sub))
 			.returning()
-			.all() as User[];
+			.all()) as User[];
 		const row = updated[0];
 		if (!row) {
 			throw new Error('Failed to update user');
@@ -97,7 +97,7 @@ export async function upsertGoogleUser(
 
 	const username = await deriveUsername(db, input.email);
 
-	const inserted = db
+	const inserted = (await db
 		.insert(users)
 		.values({
 			id: crypto.randomUUID(),
@@ -110,7 +110,7 @@ export async function upsertGoogleUser(
 			updatedAt: now,
 		})
 		.returning()
-		.all() as User[];
+		.all()) as User[];
 
 	const row = inserted[0];
 	if (!row) {

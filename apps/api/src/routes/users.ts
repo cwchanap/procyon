@@ -33,7 +33,11 @@ app.get('/me', authMiddleware, async c => {
 	try {
 		const user = getUser(c);
 		const db = getDb(c);
-		const row = db.select().from(users).where(eq(users.id, user.userId)).get();
+		const row = await db
+			.select()
+			.from(users)
+			.where(eq(users.id, user.userId))
+			.get();
 		if (!row) {
 			return c.json({ error: 'User not found' }, 404);
 		}
@@ -93,7 +97,8 @@ app.put('/me', authMiddleware, async c => {
 			}
 
 			try {
-				db.update(users)
+				await db
+					.update(users)
 					.set({ username: normalized, updatedAt: new Date() })
 					.where(eq(users.id, user.userId))
 					.run();
@@ -109,7 +114,11 @@ app.put('/me', authMiddleware, async c => {
 			}
 		}
 
-		const row = db.select().from(users).where(eq(users.id, user.userId)).get();
+		const row = await db
+			.select()
+			.from(users)
+			.where(eq(users.id, user.userId))
+			.get();
 		if (!row) {
 			return c.json({ error: 'User not found' }, 404);
 		}
