@@ -12,9 +12,10 @@ const ACCESS_TOKEN_KEY = 'procyon_access_token';
 /**
  * JWT secret used by the API server in E2E / CI environments.
  * Must match the `JWT_SECRET` env var set in `.github/workflows/e2e.yml`
- * and any local E2E test setup.
+ * and the default in `playwright.config.ts` webServer config.
  */
-const E2E_JWT_SECRET = process.env.JWT_SECRET || 'e2e-test-jwt-secret-key';
+const E2E_JWT_SECRET =
+	process.env.JWT_SECRET || 'e2e-jwt-secret-must-be-at-least-32-chars-long';
 
 /**
  * Generate a real HS256 JWT that the API's `authMiddleware` will accept.
