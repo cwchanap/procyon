@@ -29,6 +29,12 @@ app.post('/google', zValidator('json', googleSchema), async c => {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : 'Invalid Google token';
+			const isConfigError =
+				/configured/i.test(message) || /missing/i.test(message);
+			if (isConfigError) {
+				logger.error('Google auth configuration error', { error });
+				return c.json({ error: 'Internal server error' }, 500);
+			}
 			const isEmailUnverified =
 				/email/i.test(message) && /verif/i.test(message);
 			return c.json(

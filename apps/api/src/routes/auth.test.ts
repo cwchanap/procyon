@@ -102,6 +102,32 @@ describe('POST /auth/google', () => {
 		expect(res.status).toBe(401);
 	});
 
+	test('returns 500 on configuration errors (e.g. missing client ID)', async () => {
+		nextGoogleError = new Error('GOOGLE_CLIENT_ID is not configured');
+		const app = mountAuth();
+		const res = await app.request('/auth/google', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ id_token: 'some-token' }),
+		});
+		expect(res.status).toBe(500);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toBe('Internal server error');
+	});
+
+	test('returns 401 for email not verified error', async () => {
+		nextGoogleError = new Error('Email not verified with Google');
+		const app = mountAuth();
+		const res = await app.request('/auth/google', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ id_token: 'some-token' }),
+		});
+		expect(res.status).toBe(401);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toBe('Email not verified with Google');
+	});
+
 	test('returns 400 when id_token missing', async () => {
 		const app = mountAuth();
 		const res = await app.request('/auth/google', {
