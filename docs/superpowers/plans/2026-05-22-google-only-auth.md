@@ -23,7 +23,7 @@
 
 Set these in `apps/api/.env` and `apps/api/.env.test` (or shell) so unit tests pass:
 
-```
+```env
 JWT_SECRET=test-jwt-secret-must-be-at-least-32-chars-long
 GOOGLE_CLIENT_ID=test-google-client-id.apps.googleusercontent.com
 ```
@@ -174,7 +174,7 @@ export const isTest = env.NODE_ENV === 'test' || env.NODE_ENV === 'e2e';
 
 Open `apps/api/.env.example`. Remove any `SUPABASE_*` lines. Add:
 
-```
+```env
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 JWT_SECRET=generate-a-32+-char-random-string
 ```
@@ -1474,7 +1474,7 @@ export const env: EnvConfig = {
 
 Edit `apps/web/.env.example` (create if missing):
 
-```
+```env
 PUBLIC_API_URL=http://localhost:3501/api
 PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 ```

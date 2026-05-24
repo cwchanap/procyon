@@ -38,23 +38,31 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
 async function fetchSession(): Promise<AuthUser | null> {
 	const headers = await getAuthHeaders();
 	if (!headers.Authorization) return null;
-	const res = await fetch(`${API_BASE_URL}/auth/session`, { headers });
-	if (!res.ok) {
-		if (res.status === 401) setStoredToken(null);
+	try {
+		const res = await fetch(`${API_BASE_URL}/auth/session`, { headers });
+		if (!res.ok) {
+			if (res.status === 401) setStoredToken(null);
+			return null;
+		}
+		const data = (await res.json()) as { user: AuthUser };
+		return data.user;
+	} catch {
 		return null;
 	}
-	const data = (await res.json()) as { user: AuthUser };
-	return data.user;
 }
 
 async function postGoogleLogin(idToken: string): Promise<GoogleLoginResult> {
-	const res = await fetch(`${API_BASE_URL}/auth/google`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ id_token: idToken }),
-	});
-	const bodyText = await res.text();
-	return parseGoogleLoginBody(res.status, bodyText);
+	try {
+		const res = await fetch(`${API_BASE_URL}/auth/google`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ id_token: idToken }),
+		});
+		const bodyText = await res.text();
+		return parseGoogleLoginBody(res.status, bodyText);
+	} catch {
+		return { success: false, error: 'Network error. Please try again.' };
+	}
 }
 
 async function postLogout(): Promise<void> {

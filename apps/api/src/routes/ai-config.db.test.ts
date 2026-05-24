@@ -7,8 +7,10 @@ import aiConfigRoutes from './ai-config';
 
 const BASE_URL = 'http://localhost';
 const TEST_USER_ID = 'user-uuid-1';
+const TEST_USER_ID_2 = 'user-uuid-2';
 
 let authHeader: Record<string, string> = {};
+let authHeaderUser2: Record<string, string> = {};
 
 beforeAll(async () => {
 	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
@@ -18,6 +20,13 @@ beforeAll(async () => {
 		username: 'testuser',
 	});
 	authHeader = { Authorization: `Bearer ${token}` };
+
+	const token2 = await signAppJwt({
+		sub: TEST_USER_ID_2,
+		email: 'test2@example.com',
+		username: 'testuser2',
+	});
+	authHeaderUser2 = { Authorization: `Bearer ${token2}` };
 });
 
 describe('ai-config routes - full CRUD operations', () => {
@@ -322,11 +331,10 @@ describe('ai-config routes - full CRUD operations', () => {
 		};
 		const configId = createBody.configuration.id;
 
-		// Use an invalid token — middleware rejects with 401
+		// Request as user-2 — middleware passes, ownership check returns 404
 		const res = await aiConfigRoutes.request(`${BASE_URL}/${configId}/full`, {
-			headers: { Authorization: 'Bearer other-token' },
+			headers: authHeaderUser2,
 		});
-		// Middleware rejects the request before the route handler
-		expect(res.status).toBe(401);
+		expect(res.status).toBe(404);
 	});
 });

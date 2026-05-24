@@ -40,9 +40,17 @@ export function parseGoogleLoginBody(
 	if (!data.access_token || !data.user) {
 		return { success: false, error: 'Unexpected response from server.' };
 	}
+	const user = data.user;
+	if (
+		typeof user.id !== 'string' ||
+		typeof user.email !== 'string' ||
+		typeof user.username !== 'string'
+	) {
+		return { success: false, error: 'Unexpected response from server.' };
+	}
 	return {
 		success: true,
-		user: data.user,
+		user,
 		accessToken: data.access_token,
 	};
 }

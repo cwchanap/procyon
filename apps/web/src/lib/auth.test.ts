@@ -96,4 +96,48 @@ describe('parseGoogleLoginBody', () => {
 			expect(result.error).toBe('Unexpected response from server.');
 		}
 	});
+
+	test('returns failure when user object is missing required fields', () => {
+		const result = parseGoogleLoginBody(
+			200,
+			JSON.stringify({ access_token: 'tok', user: {} })
+		);
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBe('Unexpected response from server.');
+		}
+	});
+
+	test('returns failure when user.id is not a string', () => {
+		const result = parseGoogleLoginBody(
+			200,
+			JSON.stringify({
+				access_token: 'tok',
+				user: { id: 123, email: 'a@b.com', username: 'a' },
+			})
+		);
+		expect(result.success).toBe(false);
+	});
+
+	test('returns failure when user.email is not a string', () => {
+		const result = parseGoogleLoginBody(
+			200,
+			JSON.stringify({
+				access_token: 'tok',
+				user: { id: 'u1', email: null, username: 'a' },
+			})
+		);
+		expect(result.success).toBe(false);
+	});
+
+	test('returns failure when user.username is not a string', () => {
+		const result = parseGoogleLoginBody(
+			200,
+			JSON.stringify({
+				access_token: 'tok',
+				user: { id: 'u1', email: 'a@b.com', username: undefined },
+			})
+		);
+		expect(result.success).toBe(false);
+	});
 });

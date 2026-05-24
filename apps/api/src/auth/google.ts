@@ -36,13 +36,11 @@ export async function verifyGoogleIdToken(
 
 	const { payload } = await jwtVerify(idToken, getJwks(), {
 		algorithms: ['RS256'],
+		audience,
 	});
 
 	if (typeof payload.iss !== 'string' || !VALID_ISSUERS.has(payload.iss)) {
 		throw new Error('Invalid token issuer');
-	}
-	if (payload.aud !== audience) {
-		throw new Error('Invalid token audience');
 	}
 	if (typeof payload.sub !== 'string') {
 		throw new Error('Invalid token subject');

@@ -4,6 +4,7 @@ import { users, type User } from '../db/schema';
 const USERNAME_PATTERN = /[^a-z0-9_-]+/g;
 const MAX_USERNAME_LEN = 30;
 const MAX_DERIVE_ATTEMPTS = 5;
+const MAX_INSERT_RETRIES = 3;
 
 function slugify(input: string): string {
 	const lower = input.toLowerCase().trim();
@@ -95,22 +96,39 @@ export async function upsertGoogleUser(
 		return row;
 	}
 
-	const username = await deriveUsername(db, input.email);
+	let username = await deriveUsername(db, input.email);
 
-	const inserted = (await db
-		.insert(users)
-		.values({
-			id: crypto.randomUUID(),
-			googleSub: input.sub,
-			email: input.email,
-			username,
-			name: input.name ?? null,
-			picture: input.picture ?? null,
-			createdAt: now,
-			updatedAt: now,
-		})
-		.returning()
-		.all()) as User[];
+	let inserted: User[] = [];
+	for (let attempt = 0; attempt < MAX_INSERT_RETRIES; attempt++) {
+		try {
+			inserted = (await db
+				.insert(users)
+				.values({
+					id: crypto.randomUUID(),
+					googleSub: input.sub,
+					email: input.email,
+					username,
+					name: input.name ?? null,
+					picture: input.picture ?? null,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.returning()
+				.all()) as User[];
+			break;
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			if (
+				msg.includes('username') &&
+				/unique/i.test(msg) &&
+				attempt < MAX_INSERT_RETRIES - 1
+			) {
+				username = await deriveUsername(db, input.email);
+			} else {
+				throw err;
+			}
+		}
+	}
 
 	const row = inserted[0];
 	if (!row) {
