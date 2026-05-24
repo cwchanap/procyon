@@ -19,6 +19,10 @@ migrations_dir = "drizzle"
 [vars]
 NODE_ENV = "production"
 
+# Required secrets, set with `wrangler secret put`:
+#   GOOGLE_CLIENT_ID  - Google OAuth client ID used to verify ID tokens
+#   JWT_SECRET        - HS256 secret used to sign/verify the app JWT
+
 # Production environment
 [env.production]
 name = "procyon"
