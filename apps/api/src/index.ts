@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
-import { initializeDB } from './db';
+import { getDB, initializeDB } from './db';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import aiConfigRoutes from './routes/ai-config';
@@ -73,6 +73,12 @@ if (proc && typeof proc.on === 'function') {
 }
 
 const app = new Hono();
+
+// Bind shared DB instance to request context so routes can `c.get('db')`
+app.use('*', async (c, next) => {
+	c.set('db', getDB());
+	await next();
+});
 
 // CORS middleware
 const allowedOrigins = isProduction
