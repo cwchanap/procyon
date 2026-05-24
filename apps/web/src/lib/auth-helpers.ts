@@ -4,6 +4,8 @@ export type AuthUser = {
 	username: string;
 	name?: string | null;
 	picture?: string | null;
+	createdAt?: string | Date | null;
+	updatedAt?: string | Date | null;
 };
 
 export type GoogleLoginResult =

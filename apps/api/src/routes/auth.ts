@@ -2,10 +2,12 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { HTTPException } from 'hono/http-exception';
+import { eq } from 'drizzle-orm';
 import * as googleModule from '../auth/google';
 import * as usersModule from '../auth/users';
 import { signAppJwt } from '../auth/jwt';
 import { authMiddleware, getUser } from '../auth/middleware';
+import { users } from '../db/schema';
 import { logger } from '../logger';
 
 const app = new Hono();
@@ -29,8 +31,7 @@ app.post('/google', zValidator('json', googleSchema), async c => {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : 'Invalid Google token';
-			const isConfigError =
-				/configured/i.test(message) || /missing/i.test(message);
+			const isConfigError = /GOOGLE_CLIENT_ID.*not configured/i.test(message);
 			if (isConfigError) {
 				logger.error('Google auth configuration error', { error });
 				return c.json({ error: 'Internal server error' }, 500);
@@ -87,11 +88,23 @@ app.post('/logout', async c => c.json({ message: 'Logged out' }));
 
 app.get('/session', authMiddleware, async c => {
 	const u = getUser(c);
+	const db = (c.get('db') as unknown) ?? null;
+
+	const row = await db.select().from(users).where(eq(users.id, u.userId)).get();
+
+	if (!row) {
+		return c.json({ error: 'User not found' }, 404);
+	}
+
 	return c.json({
 		user: {
-			id: u.userId,
-			email: u.email,
-			username: u.username,
+			id: row.id,
+			email: row.email,
+			username: row.username,
+			name: row.name,
+			picture: row.picture,
+			createdAt: row.createdAt,
+			updatedAt: row.updatedAt,
 		},
 	});
 });
