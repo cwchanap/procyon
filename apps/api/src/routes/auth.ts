@@ -18,9 +18,14 @@ app.post('/google', zValidator('json', googleSchema), async c => {
 	try {
 		const { id_token } = c.req.valid('json');
 
+		const googleClientId = (c.get('googleClientId') as string) || undefined;
+		const jwtSecret = (c.get('jwtSecret') as string) || undefined;
+
 		let claims;
 		try {
-			claims = await googleModule.verifyGoogleIdToken(id_token);
+			claims = await googleModule.verifyGoogleIdToken(id_token, {
+				clientId: googleClientId,
+			});
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : 'Invalid Google token';
@@ -46,11 +51,14 @@ app.post('/google', zValidator('json', googleSchema), async c => {
 			picture: claims.picture,
 		});
 
-		const access_token = await signAppJwt({
-			sub: user.id,
-			email: user.email,
-			username: user.username,
-		});
+		const access_token = await signAppJwt(
+			{
+				sub: user.id,
+				email: user.email,
+				username: user.username,
+			},
+			{ secret: jwtSecret }
+		);
 
 		return c.json({
 			access_token,
