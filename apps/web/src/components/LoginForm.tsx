@@ -55,8 +55,10 @@ export function LoginForm() {
 			gis.initialize({
 				client_id: clientId,
 				callback: async response => {
+					if (cancelled) return;
 					setError('');
 					const result = await signInWithGoogle(response.credential);
+					if (cancelled) return;
 					if (result.success) {
 						window.location.href = '/';
 					} else {
