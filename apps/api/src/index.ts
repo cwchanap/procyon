@@ -10,20 +10,10 @@ import playHistoryRoutes from './routes/play-history';
 import ratingsRoutes from './routes/ratings';
 import puzzleRoutes from './routes/puzzles';
 import { env, isProduction } from './env';
-import { startRateLimitCleanup } from './auth/rate-limit';
 import { logger } from './logger';
 
 // Initialize database (will use local SQLite for development)
 initializeDB();
-
-// Start rate limit cleanup task
-let stopCleanup: (() => void) | null = null;
-try {
-	stopCleanup = startRateLimitCleanup();
-} catch (error) {
-	logger.error('Failed to start rate limit cleanup task', { error });
-	throw error;
-}
 
 let server: unknown = null;
 let isShuttingDown = false;
@@ -68,7 +58,6 @@ if (proc && typeof proc.on === 'function') {
 				});
 			});
 
-			stopCleanup?.();
 			logger.info('Graceful shutdown complete', { signal });
 		} catch (error) {
 			logger.error('Error during graceful shutdown', { signal, error });
