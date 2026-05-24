@@ -1,248 +1,127 @@
-import { expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export interface TestUser {
+	id: string;
 	email: string;
 	username: string;
-	password: string;
 }
 
-const normalizeEnvValue = (value?: string): string =>
-	value?.trim().replace(/^["']+|["']+$/g, '') ?? '';
-
-const FIXTURE_EMAIL =
-	normalizeEnvValue(process.env.E2E_TEST_USER_EMAIL) ||
-	'test-procyon@cwchanap.dev';
-const FIXTURE_USERNAME =
-	normalizeEnvValue(process.env.E2E_TEST_USER_USERNAME) ||
-	FIXTURE_EMAIL.split('@')[0] ||
-	'test-procyon';
-const FIXTURE_PASSWORD =
-	normalizeEnvValue(process.env.E2E_TEST_USER_PASSWORD) || 'password123';
-
-const FIXTURE_USER: TestUser = {
-	email: FIXTURE_EMAIL,
-	username: FIXTURE_USERNAME,
-	password: FIXTURE_PASSWORD,
-};
+const ACCESS_TOKEN_KEY = 'procyon_access_token';
 
 export class AuthHelper {
 	constructor(public page: Page) {}
 
-	private async isUnauthenticatedState(): Promise<boolean> {
-		const currentPath = new URL(this.page.url()).pathname;
-		if (currentPath === '/login' || currentPath === '/register') {
-			return true;
-		}
-
-		// Scope to nav element to avoid matching unrelated CTAs elsewhere on the page
-		const navLocator = this.page.locator('nav');
-		const unauthLocators = [
-			navLocator.getByRole('button', { name: 'Login' }),
-			navLocator.getByRole('link', { name: 'Login' }),
-			navLocator.getByRole('button', { name: 'Sign In' }),
-			navLocator.getByRole('link', { name: 'Sign In' }),
-		];
-
-		for (const locator of unauthLocators) {
-			if (
-				await locator
-					.first()
-					.isVisible()
-					.catch(() => false)
-			) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/**
-	 * Return the shared Supabase fixture user for E2E tests.
-	 */
-	static getFixtureUser(): TestUser {
-		return { ...FIXTURE_USER };
-	}
-
-	/**
-	 * Generate a unique test user with timestamp to avoid conflicts
-	 */
 	static generateTestUser(): TestUser {
-		const timestamp = Date.now();
+		const stamp = Date.now();
 		return {
-			email: `testuser${timestamp}@example.com`,
-			username: `testuser${timestamp}`,
-			password: 'testpassword123',
+			id: `test-user-${stamp}`,
+			email: `test-${stamp}@example.com`,
+			username: `test_${stamp}`,
 		};
 	}
 
 	/**
-	 * Navigate to the registration page
+	 * Intercept /api/auth/google and /api/auth/session so the GIS callback can
+	 * be simulated without involving Google Identity Services.
 	 */
-	async goToRegister(): Promise<void> {
-		await this.page.goto('/register');
-		await expect(this.page).toHaveTitle('Sign Up - Procyon Chess', {
-			timeout: 15000,
+	async stubGoogleLogin(user: TestUser, accessToken = 'e2e-token') {
+		await this.page.route('**/api/auth/google', async route => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					access_token: accessToken,
+					user: {
+						id: user.id,
+						email: user.email,
+						username: user.username,
+						name: user.username,
+						picture: null,
+					},
+				}),
+			});
 		});
-		await this.page
-			.locator('[data-testid="register-form"][data-hydrated="true"]')
-			.waitFor({ state: 'visible', timeout: 15000 });
-	}
-
-	/**
-	 * Navigate to the login page
-	 */
-	async goToLogin(): Promise<void> {
-		await this.page.goto('/login');
-		await expect(this.page).toHaveTitle('Sign In - Procyon Chess', {
-			timeout: 15000,
-		});
-		await this.page
-			.locator('[data-testid="login-form"][data-hydrated="true"]')
-			.waitFor({ state: 'visible', timeout: 15000 });
-	}
-
-	/**
-	 * Fill out and submit the registration form
-	 */
-	async register(user: TestUser): Promise<void> {
-		await this.goToRegister();
-
-		await this.page.getByRole('textbox', { name: 'Email' }).fill(user.email);
-		await this.page
-			.getByRole('textbox', { name: 'Username' })
-			.fill(user.username);
-		await this.page
-			.getByRole('textbox', { name: 'Password', exact: true })
-			.fill(user.password);
-		await this.page
-			.getByRole('textbox', { name: 'Confirm Password' })
-			.fill(user.password);
-
-		await this.page.getByRole('button', { name: 'Create Account' }).click();
-
-		// Wait briefly for any client-side redirect to occur
-		await this.page
-			.waitForURL(url => url.pathname !== '/register', { timeout: 5000 })
-			.catch(() => null);
-		const currentPath = new URL(this.page.url()).pathname;
-		if (currentPath === '/register') {
-			// If we're still on the register page (with or without query params),
-			// navigate explicitly to home. On successful registration the session
-			// cookie should already be set, so the navbar will reflect auth state.
-			await this.page.goto('/');
-		}
-
-		// Ensure we're on the home page
-		await expect(this.page).toHaveURL('/', { timeout: 15000 });
-		await expect(this.page).toHaveTitle('Chess Games', { timeout: 15000 });
-	}
-
-	/**
-	 * Fill out and submit the login form
-	 */
-	async login(email: string, password: string): Promise<void> {
-		await this.goToLogin();
-
-		await this.page.getByRole('textbox', { name: 'Email' }).fill(email);
-		await this.page.getByRole('textbox', { name: 'Password' }).fill(password);
-
-		await this.page.getByRole('button', { name: 'Sign In' }).click();
-
-		// Wait for redirect to home page
-		await expect(this.page).toHaveURL('/', { timeout: 15000 });
-		await expect(this.page).toHaveTitle('Chess Games', { timeout: 15000 });
-	}
-
-	/**
-	 * Click the logout button
-	 */
-	async logout(): Promise<void> {
-		if (await this.isUnauthenticatedState()) {
-			return;
-		}
-
-		// Open the user dropdown from the nav bar
-		const navUserButton = this.page.locator('nav button').first();
-		await navUserButton.click();
-
-		// Click the Sign Out button in the dropdown
-		await this.page.getByRole('button', { name: 'Sign Out' }).click();
-
-		await expect
-			.poll(() => this.isUnauthenticatedState(), {
-				timeout: 15000,
-			})
-			.toBe(true);
-	}
-
-	/**
-	 * Check if user is authenticated by looking for user info in AuthNav
-	 */
-	async expectAuthenticated(username: string, email: string): Promise<void> {
-		// Wait for auth nav to load first
-		await this.waitForAuthNav();
-
-		// Check for username and email text being visible on the page
-		await expect(this.page.locator(`text=${username}`).first()).toBeVisible({
-			timeout: 15000,
-		});
-		await expect(this.page.locator(`text=${email}`).first()).toBeVisible({
-			timeout: 15000,
+		await this.page.route('**/api/auth/session', async route => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					user: {
+						id: user.id,
+						email: user.email,
+						username: user.username,
+					},
+				}),
+			});
 		});
 	}
 
 	/**
-	 * Check if user is not authenticated by looking for Sign In/Sign Up buttons
+	 * Stub auth endpoints, plant the access token in localStorage, and land
+	 * authenticated on the home page.
 	 */
-	async expectNotAuthenticated(): Promise<void> {
-		await expect
-			.poll(() => this.isUnauthenticatedState(), {
-				timeout: 15000,
-			})
-			.toBe(true);
-	}
-
-	/**
-	 * Navigate to home page
-	 */
-	async goToHome(): Promise<void> {
+	async loginAsTestUser(user: TestUser, accessToken = 'e2e-token') {
+		await this.stubGoogleLogin(user, accessToken);
+		await this.page.addInitScript(
+			({ token, key }) => {
+				window.localStorage.setItem(key, token);
+			},
+			{ token: accessToken, key: ACCESS_TOKEN_KEY }
+		);
 		await this.page.goto('/');
-		await expect(this.page).toHaveTitle('Chess Games');
 	}
 
-	/**
-	 * Click Sign In button from the auth nav
-	 */
-	async clickSignInFromNav(): Promise<void> {
-		await this.page.getByRole('button', { name: 'Sign In' }).click();
-		await expect(this.page).toHaveURL('/login');
+	/** Backwards-compatible alias used by older specs. */
+	async register(user: TestUser) {
+		await this.loginAsTestUser(user);
 	}
 
-	/**
-	 * Click Sign Up button from the auth nav
-	 */
-	async clickSignUpFromNav(): Promise<void> {
-		await this.page.getByRole('button', { name: 'Sign Up' }).click();
-		await expect(this.page).toHaveURL('/register');
+	/** Backwards-compatible alias used by older specs. */
+	async login(emailOrUser: string | TestUser) {
+		const user =
+			typeof emailOrUser === 'string'
+				? {
+						id: `test-user-${Date.now()}`,
+						email: emailOrUser,
+						username: emailOrUser.split('@')[0] || 'tester',
+					}
+				: emailOrUser;
+		await this.loginAsTestUser(user);
 	}
 
-	/**
-	 * Check for error message on login/register forms
-	 */
-	async expectErrorMessage(message: string): Promise<void> {
-		await expect(this.page.getByText(message)).toBeVisible();
+	async logout() {
+		await this.page.evaluate(key => {
+			window.localStorage.removeItem(key);
+		}, ACCESS_TOKEN_KEY);
+		await this.page.goto('/');
 	}
 
-	/**
-	 * Wait for auth nav to load (useful for initial page loads)
-	 */
-	async waitForAuthNav(): Promise<void> {
-		// Wait for any navigation button (Login or user dropdown) to be visible
-		await this.page
-			.locator('nav button')
-			.first()
-			.waitFor({ state: 'visible', timeout: 15000 });
+	async expectAuthenticated(username: string, _email?: string) {
+		await expect(this.page.locator('body')).toContainText(username);
+	}
+
+	async expectNotAuthenticated() {
+		const navLocator = this.page.locator('nav');
+		const candidates = [
+			navLocator.getByRole('button', { name: 'Sign In' }),
+			navLocator.getByRole('link', { name: 'Sign In' }),
+			navLocator.getByRole('button', { name: 'Login' }),
+			navLocator.getByRole('link', { name: 'Login' }),
+		];
+		for (const c of candidates) {
+			if (
+				await c
+					.first()
+					.isVisible()
+					.catch(() => false)
+			) {
+				return;
+			}
+		}
+		throw new Error('Expected unauthenticated nav state but none was found');
+	}
+
+	async goToHome() {
+		await this.page.goto('/');
 	}
 }

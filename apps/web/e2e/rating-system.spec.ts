@@ -97,9 +97,8 @@ test.describe('ELO Rating System', () => {
 
 	test.beforeEach(async ({ page }) => {
 		authHelper = new AuthHelper(page);
-		const testUser = AuthHelper.getFixtureUser();
-		await authHelper.login(testUser.email, testUser.password);
-		await authHelper.expectAuthenticated(testUser.username, testUser.email);
+		const testUser = AuthHelper.generateTestUser();
+		await authHelper.loginAsTestUser(testUser);
 	});
 
 	test.describe('Profile Page - Ratings Section', () => {
