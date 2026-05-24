@@ -13,9 +13,8 @@ import puzzleRoutes from './routes/puzzles';
 type Bindings = {
 	DB: D1Database;
 	ASSETS: Fetcher;
-	SUPABASE_URL: string;
-	SUPABASE_ANON_KEY: string;
-	SUPABASE_SERVICE_ROLE_KEY: string;
+	GOOGLE_CLIENT_ID: string;
+	JWT_SECRET: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
