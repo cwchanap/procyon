@@ -1,4 +1,7 @@
--- Migration: Google-only auth. Drop Supabase-keyed user data and create users table.
+-- Migration: Google-only auth. Remove Supabase-keyed data and create users table.
+-- WARNING: This migration DELETES all rows from ai_configurations, play_history,
+-- player_ratings, rating_history, and user_puzzle_progress before creating the
+-- application-owned users table. Take a D1 snapshot before applying.
 
 DELETE FROM `ai_configurations`;
 --> statement-breakpoint
@@ -11,7 +14,7 @@ DELETE FROM `rating_history`;
 DELETE FROM `user_puzzle_progress`;
 --> statement-breakpoint
 
-CREATE TABLE `users` (
+CREATE TABLE IF NOT EXISTS `users` (
   `id` text PRIMARY KEY NOT NULL,
   `google_sub` text NOT NULL,
   `email` text NOT NULL,
