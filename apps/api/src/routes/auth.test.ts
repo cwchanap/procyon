@@ -120,6 +120,42 @@ describe('POST /auth/google', () => {
 		expect(cookie).toContain('Path=/');
 	});
 
+	test('sets Secure cookie flag when request is HTTPS', async () => {
+		nextGoogleClaims = {
+			sub: 'google-1',
+			email: 'alice@example.com',
+			emailVerified: true,
+			name: 'Alice',
+			picture: 'https://example.com/a.png',
+		};
+		nextUpsertUser = {
+			id: 'user-uuid-1',
+			googleSub: 'google-1',
+			email: 'alice@example.com',
+			username: 'alice',
+			name: 'Alice',
+			picture: 'https://example.com/a.png',
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		};
+		const app = mountAuth();
+		const res = await app.request('/auth/google', {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+				'x-forwarded-proto': 'https',
+			},
+			body: JSON.stringify({ id_token: 'fake-google-token' }),
+		});
+		expect(res.status).toBe(200);
+		const cookie = res.headers.get('set-cookie');
+		expect(cookie).toContain('procyon_access_token=');
+		expect(cookie).toContain('HttpOnly');
+		expect(cookie).toContain('SameSite=Lax');
+		expect(cookie).toContain('Path=/');
+		expect(cookie).toContain('Secure');
+	});
+
 	test('returns 401 on invalid google token', async () => {
 		nextGoogleError = new Error('Invalid token audience');
 		const app = mountAuth();
@@ -247,6 +283,19 @@ describe('POST /auth/logout', () => {
 		expect(res.status).toBe(200);
 		const cookie = res.headers.get('set-cookie');
 		expect(cookie).toContain('procyon_access_token=');
+		expect(cookie).toMatch(/Max-Age=0|Expires=/i);
+	});
+
+	test('sets Secure cookie flag when request is HTTPS', async () => {
+		const app = mountAuth();
+		const res = await app.request('/auth/logout', {
+			method: 'POST',
+			headers: { 'x-forwarded-proto': 'https' },
+		});
+		expect(res.status).toBe(200);
+		const cookie = res.headers.get('set-cookie');
+		expect(cookie).toContain('procyon_access_token=');
+		expect(cookie).toContain('Secure');
 		expect(cookie).toMatch(/Max-Age=0|Expires=/i);
 	});
 });

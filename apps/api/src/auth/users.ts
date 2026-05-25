@@ -130,6 +130,13 @@ export async function upsertGoogleUser(
 					.get()) as User | undefined;
 				if (raced) return raced;
 
+				const racedByEmail = (await db
+					.select()
+					.from(users)
+					.where(eq(users.email, input.email))
+					.get()) as User | undefined;
+				if (racedByEmail) return racedByEmail;
+
 				// Otherwise it's a username collision — derive a fresh one.
 				if (attempt < MAX_INSERT_RETRIES - 1) {
 					username = await deriveUsername(db, input.email);

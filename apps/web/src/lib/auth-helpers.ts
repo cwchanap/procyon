@@ -39,7 +39,11 @@ export function parseGoogleLoginBody(
 	} catch {
 		return { success: false, error: 'Unexpected response from server.' };
 	}
-	if (!data.access_token || !data.user) {
+	if (
+		typeof data.access_token !== 'string' ||
+		!data.access_token ||
+		!data.user
+	) {
 		return { success: false, error: 'Unexpected response from server.' };
 	}
 	const user = data.user;
