@@ -36,6 +36,13 @@ async function generateTestJwt(user: TestUser): Promise<string> {
 }
 
 export class AuthHelper {
+	private _googleRouteHandler?: (
+		route: import('@playwright/test').Route
+	) => Promise<void>;
+	private _sessionRouteHandler?: (
+		route: import('@playwright/test').Route
+	) => Promise<void>;
+
 	constructor(public page: Page) {}
 
 	static generateTestUser(): TestUser {
@@ -57,7 +64,7 @@ export class AuthHelper {
 	 */
 	async stubGoogleLogin(user: TestUser, accessToken?: string) {
 		const token = accessToken ?? (await generateTestJwt(user));
-		await this.page.route('**/api/auth/google', async route => {
+		this._googleRouteHandler = async route => {
 			await route.fulfill({
 				status: 200,
 				contentType: 'application/json',
@@ -72,8 +79,8 @@ export class AuthHelper {
 					},
 				}),
 			});
-		});
-		await this.page.route('**/api/auth/session', async route => {
+		};
+		this._sessionRouteHandler = async route => {
 			await route.fulfill({
 				status: 200,
 				contentType: 'application/json',
@@ -85,7 +92,9 @@ export class AuthHelper {
 					},
 				}),
 			});
-		});
+		};
+		await this.page.route('**/api/auth/google', this._googleRouteHandler);
+		await this.page.route('**/api/auth/session', this._sessionRouteHandler);
 		return token;
 	}
 
@@ -140,6 +149,12 @@ export class AuthHelper {
 			window.localStorage.removeItem(key);
 		}, ACCESS_TOKEN_KEY);
 		await this.page.context().clearCookies({ name: ACCESS_TOKEN_KEY });
+		if (this._googleRouteHandler) {
+			await this.page.unroute('**/api/auth/google', this._googleRouteHandler);
+		}
+		if (this._sessionRouteHandler) {
+			await this.page.unroute('**/api/auth/session', this._sessionRouteHandler);
+		}
 		await this.page.goto('/');
 	}
 
