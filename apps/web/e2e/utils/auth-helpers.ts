@@ -103,6 +103,17 @@ export class AuthHelper {
 			},
 			{ token, key: ACCESS_TOKEN_KEY }
 		);
+		await this.page.context().addCookies([
+			{
+				name: ACCESS_TOKEN_KEY,
+				value: token,
+				domain: 'localhost',
+				path: '/',
+				httpOnly: true,
+				sameSite: 'Lax',
+				expires: Math.floor(Date.now() / 1000) + 60 * 60,
+			},
+		]);
 		await this.page.reload();
 	}
 
@@ -128,6 +139,7 @@ export class AuthHelper {
 		await this.page.evaluate(key => {
 			window.localStorage.removeItem(key);
 		}, ACCESS_TOKEN_KEY);
+		await this.page.context().clearCookies({ name: ACCESS_TOKEN_KEY });
 		await this.page.goto('/');
 	}
 

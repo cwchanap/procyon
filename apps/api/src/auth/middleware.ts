@@ -1,6 +1,6 @@
 import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { extractBearerToken } from './utils';
+import { extractBearerToken, extractCookieToken } from './utils';
 import { verifyAppJwt } from './jwt';
 
 interface AuthUser {
@@ -12,7 +12,9 @@ interface AuthUser {
 export async function authMiddleware(c: Context, next: Next) {
 	try {
 		const authHeader = c.req.header('authorization') || '';
-		const token = extractBearerToken(authHeader);
+		const cookieHeader = c.req.header('cookie') || '';
+		const token =
+			extractBearerToken(authHeader) ?? extractCookieToken(cookieHeader);
 
 		if (!token) {
 			throw new HTTPException(401, {

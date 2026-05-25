@@ -1,11 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/Button';
 import { useAuth } from '../lib/auth';
+import type { AuthUser } from '../lib/auth-helpers';
 
-export function AppNavBar() {
-	const { user, logout, isAuthenticated } = useAuth();
+interface AppNavBarProps {
+	initialUser?: AuthUser | null;
+}
+
+export function AppNavBar({ initialUser }: AppNavBarProps) {
+	const { user, logout, isAuthenticated, loading } = useAuth(
+		initialUser === undefined ? undefined : { initialUser }
+	);
 	const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 	const dropdownRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		document.documentElement.classList.remove('procyon-auth-client-pending');
+		document.documentElement.classList.add('procyon-auth-hydrated');
+		return () => {
+			document.documentElement.classList.remove('procyon-auth-hydrated');
+		};
+	}, []);
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -86,7 +101,9 @@ export function AppNavBar() {
 
 					{/* Auth Section */}
 					<div className='flex items-center gap-4'>
-						{isAuthenticated ? (
+						{loading ? (
+							<div className='h-10 w-24' aria-hidden='true' />
+						) : isAuthenticated ? (
 							<div className='relative' ref={dropdownRef}>
 								{/* User Badge */}
 								<button

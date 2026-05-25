@@ -113,6 +113,11 @@ describe('POST /auth/google', () => {
 		expect(typeof body.access_token).toBe('string');
 		expect(body.user.username).toBe('alice');
 		expect(body.user.email).toBe('alice@example.com');
+		const cookie = res.headers.get('set-cookie');
+		expect(cookie).toContain('procyon_access_token=');
+		expect(cookie).toContain('HttpOnly');
+		expect(cookie).toContain('SameSite=Lax');
+		expect(cookie).toContain('Path=/');
 	});
 
 	test('returns 401 on invalid google token', async () => {
@@ -240,5 +245,8 @@ describe('POST /auth/logout', () => {
 		const app = mountAuth();
 		const res = await app.request('/auth/logout', { method: 'POST' });
 		expect(res.status).toBe(200);
+		const cookie = res.headers.get('set-cookie');
+		expect(cookie).toContain('procyon_access_token=');
+		expect(cookie).toMatch(/Max-Age=0|Expires=/i);
 	});
 });
