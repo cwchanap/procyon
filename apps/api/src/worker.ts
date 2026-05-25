@@ -1,7 +1,12 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
+import { eq } from 'drizzle-orm';
+import { getInitialAuthUserScript, renderServerAuthNav } from './auth/html';
+import { verifyAppJwt } from './auth/jwt';
+import { AUTH_COOKIE_NAME, extractCookieToken } from './auth/utils';
 import { getDB, initializeDB } from './db';
+import { users } from './db/schema';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import aiConfigRoutes from './routes/ai-config';
@@ -17,7 +22,80 @@ type Bindings = {
 	JWT_SECRET: string;
 };
 
+type WorkerContext = Context<{ Bindings: Bindings }>;
+
+interface HtmlAuthUser {
+	id: string;
+	email: string;
+	username: string;
+	name?: string | null;
+	picture?: string | null;
+	createdAt?: string | Date | null;
+	updatedAt?: string | Date | null;
+}
+
 const app = new Hono<{ Bindings: Bindings }>();
+
+async function getRequestAuthUser(
+	c: WorkerContext
+): Promise<HtmlAuthUser | null> {
+	const token = extractCookieToken(
+		c.req.header('cookie') || '',
+		AUTH_COOKIE_NAME
+	);
+	if (!token) return null;
+
+	try {
+		const payload = await verifyAppJwt(token, {
+			secret: c.env.JWT_SECRET || undefined,
+		});
+		const row = await getDB()
+			.select()
+			.from(users)
+			.where(eq(users.id, payload.sub))
+			.get();
+
+		if (!row) return null;
+
+		return {
+			id: row.id,
+			email: row.email,
+			username: row.username,
+			name: row.name,
+			picture: row.picture,
+			createdAt: row.createdAt,
+			updatedAt: row.updatedAt,
+		};
+	} catch {
+		return null;
+	}
+}
+
+async function withServerAuthHtml(
+	c: WorkerContext,
+	response: Response
+): Promise<Response> {
+	const contentType = response.headers.get('content-type') || '';
+	if (!contentType.toLowerCase().includes('text/html')) return response;
+	if (typeof HTMLRewriter === 'undefined') return response;
+
+	const user = await getRequestAuthUser(c);
+	const authState = user ? 'authenticated' : 'anonymous';
+
+	return new HTMLRewriter()
+		.on('#procyon-initial-auth-script', {
+			element(element) {
+				element.setInnerContent(getInitialAuthUserScript(user));
+			},
+		})
+		.on('#procyon-server-auth-nav', {
+			element(element) {
+				element.setAttribute('data-auth-state', authState);
+				element.setInnerContent(renderServerAuthNav(user), { html: true });
+			},
+		})
+		.transform(response);
+}
 
 // Initialize database with D1 binding and bind to request context
 app.use('*', async (c, next) => {
@@ -83,10 +161,11 @@ app.get('/*', async c => {
 				method: c.req.raw.method,
 				headers: c.req.raw.headers,
 			});
-			return await c.env.ASSETS.fetch(indexRequest);
+			const fallback = await c.env.ASSETS.fetch(indexRequest);
+			return await withServerAuthHtml(c, fallback);
 		}
 
-		return asset;
+		return await withServerAuthHtml(c, asset);
 	} catch (err) {
 		console.error('Asset fetch error:', err);
 		return c.notFound();

@@ -1,12 +1,14 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { setCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
 import { eq } from 'drizzle-orm';
 import * as googleModule from '../auth/google';
 import * as usersModule from '../auth/users';
 import { signAppJwt } from '../auth/jwt';
 import { authMiddleware, getUser } from '../auth/middleware';
+import { AUTH_COOKIE_NAME } from '../auth/utils';
 import { users } from '../db/schema';
 import { logger } from '../logger';
 
@@ -15,6 +17,30 @@ const app = new Hono();
 const googleSchema = z.object({
 	id_token: z.string().min(10),
 });
+
+const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+
+function isHttpsRequest(c: Parameters<typeof setCookie>[0]): boolean {
+	const forwardedProto = c.req.header('x-forwarded-proto') || '';
+	return (
+		forwardedProto.split(',')[0]?.trim().toLowerCase() === 'https' ||
+		new URL(c.req.url).protocol === 'https:'
+	);
+}
+
+function setAuthCookie(
+	c: Parameters<typeof setCookie>[0],
+	token: string,
+	maxAge = AUTH_COOKIE_MAX_AGE_SECONDS
+): void {
+	setCookie(c, AUTH_COOKIE_NAME, token, {
+		httpOnly: true,
+		sameSite: 'Lax',
+		path: '/',
+		secure: isHttpsRequest(c),
+		maxAge,
+	});
+}
 
 app.post('/google', zValidator('json', googleSchema), async c => {
 	try {
@@ -67,6 +93,8 @@ app.post('/google', zValidator('json', googleSchema), async c => {
 			{ secret: jwtSecret }
 		);
 
+		setAuthCookie(c, access_token);
+
 		return c.json({
 			access_token,
 			user: {
@@ -84,7 +112,10 @@ app.post('/google', zValidator('json', googleSchema), async c => {
 	}
 });
 
-app.post('/logout', async c => c.json({ message: 'Logged out' }));
+app.post('/logout', async c => {
+	setAuthCookie(c, '', 0);
+	return c.json({ message: 'Logged out' });
+});
 
 app.get('/session', authMiddleware, async c => {
 	const u = getUser(c);

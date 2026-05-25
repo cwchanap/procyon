@@ -66,6 +66,22 @@ describe('authMiddleware', () => {
 		expect(body.email).toBe('valid@example.com');
 	});
 
+	test('accepts a valid app JWT from the auth cookie', async () => {
+		const token = await signAppJwt({
+			sub: 'cookie-user-1',
+			email: 'cookie@example.com',
+			username: 'cookie_user',
+		});
+		const app = makeApp();
+		const res = await app.request('/me', {
+			headers: { cookie: `procyon_access_token=${token}` },
+		});
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.userId).toBe('cookie-user-1');
+		expect(body.email).toBe('cookie@example.com');
+	});
+
 	test('rejects a token signed with the wrong secret', async () => {
 		const token = await signAppJwt(
 			{ sub: 'u', email: 'x@example.com', username: 'x' },

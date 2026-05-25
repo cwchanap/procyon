@@ -1,5 +1,10 @@
 import { describe, test, expect } from 'bun:test';
-import { extractBearerToken, isUsernameUniqueConstraintError } from './utils';
+import {
+	AUTH_COOKIE_NAME,
+	extractBearerToken,
+	extractCookieToken,
+	isUsernameUniqueConstraintError,
+} from './utils';
 
 describe('extractBearerToken', () => {
 	test('returns null for empty string', () => {
@@ -44,6 +49,28 @@ describe('extractBearerToken', () => {
 	test('returns null when multiple parts present', () => {
 		// Malformed header with extra parts should be rejected
 		expect(extractBearerToken('Bearer token extra')).toBeNull();
+	});
+});
+
+describe('extractCookieToken', () => {
+	test('returns null for empty cookie header', () => {
+		expect(extractCookieToken('')).toBeNull();
+	});
+
+	test('extracts the auth cookie value', () => {
+		expect(
+			extractCookieToken(`theme=dark; ${AUTH_COOKIE_NAME}=jwt-token; foo=bar`)
+		).toBe('jwt-token');
+	});
+
+	test('decodes URL-encoded cookie values', () => {
+		expect(
+			extractCookieToken(`${AUTH_COOKIE_NAME}=jwt%2Epayload%2Esignature`)
+		).toBe('jwt.payload.signature');
+	});
+
+	test('returns null when the auth cookie is absent', () => {
+		expect(extractCookieToken('theme=dark; foo=bar')).toBeNull();
 	});
 });
 
