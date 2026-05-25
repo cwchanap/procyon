@@ -99,6 +99,16 @@ async function withServerAuthHtml(
 
 // Initialize database with D1 binding and bind to request context
 app.use('*', async (c, next) => {
+	// Validate required secrets on the first request (Workers have no startup hook)
+	if (!c.env.JWT_SECRET) {
+		console.error('JWT_SECRET is not configured in Workers environment');
+		return c.json({ error: 'Service misconfigured' }, 503);
+	}
+	if (!c.env.GOOGLE_CLIENT_ID) {
+		console.error('GOOGLE_CLIENT_ID is not configured in Workers environment');
+		return c.json({ error: 'Service misconfigured' }, 503);
+	}
+
 	if (c.env.DB) {
 		initializeDB(c.env.DB);
 	}
@@ -108,18 +118,26 @@ app.use('*', async (c, next) => {
 	await next();
 });
 
-// CORS middleware - allow all origins in production or specific origins
+// CORS middleware - accept dev origins + any same-host request automatically
 app.use(
 	'/api/*',
 	cors({
-		origin: origin => {
-			// Allow all origins in production, or check against whitelist
-			const allowedOrigins = [
-				'http://localhost:3500',
-				'http://localhost:3000',
-				// Add your production domain here
-			];
-			return allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+		origin: (origin, c) => {
+			const devOrigins = ['http://localhost:3500', 'http://localhost:3000'];
+			if (devOrigins.includes(origin)) return origin;
+
+			// Accept when Origin host matches the request host (covers any
+			// production domain automatically, including workers.dev subdomains).
+			try {
+				const originHost = new URL(origin).host;
+				const reqHost = new URL(c.req.url).host;
+				if (originHost && originHost === reqHost) return origin;
+			} catch {
+				// malformed origin — reject
+			}
+
+			// Reject unknown cross-origin requests with credentials
+			return '';
 		},
 		allowHeaders: ['Content-Type', 'Authorization'],
 		allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

@@ -113,31 +113,60 @@ app.post('/google', zValidator('json', googleSchema), async c => {
 });
 
 app.post('/logout', async c => {
+	// Defense-in-depth: reject cross-origin POSTs (SameSite=Lax allows
+	// top-level navigations but we only want same-origin POST here).
+	const origin = c.req.header('origin');
+	if (origin) {
+		try {
+			const originHost = new URL(origin).host;
+			const reqHost = new URL(c.req.url).host;
+			if (originHost !== reqHost) {
+				return c.json({ error: 'Forbidden' }, 403);
+			}
+		} catch {
+			return c.json({ error: 'Forbidden' }, 403);
+		}
+	}
+
 	setAuthCookie(c, '', 0);
 	return c.json({ message: 'Logged out' });
 });
 
 app.get('/session', authMiddleware, async c => {
 	const u = getUser(c);
-	const db = (c.get('db') as unknown) ?? null;
+	const db = c.get('db');
 
-	const row = await db.select().from(users).where(eq(users.id, u.userId)).get();
-
-	if (!row) {
-		return c.json({ error: 'User not found' }, 404);
+	if (!db) {
+		logger.error('Database not available for /session');
+		return c.json({ error: 'Service unavailable' }, 503);
 	}
 
-	return c.json({
-		user: {
-			id: row.id,
-			email: row.email,
-			username: row.username,
-			name: row.name,
-			picture: row.picture,
-			createdAt: row.createdAt,
-			updatedAt: row.updatedAt,
-		},
-	});
+	try {
+		const row = await db
+			.select()
+			.from(users)
+			.where(eq(users.id, u.userId))
+			.get();
+
+		if (!row) {
+			return c.json({ error: 'User not found' }, 404);
+		}
+
+		return c.json({
+			user: {
+				id: row.id,
+				email: row.email,
+				username: row.username,
+				name: row.name,
+				picture: row.picture,
+				createdAt: row.createdAt,
+				updatedAt: row.updatedAt,
+			},
+		});
+	} catch (error) {
+		logger.error('Session lookup failed', { userId: u.userId, error });
+		return c.json({ error: 'Internal server error' }, 500);
+	}
 });
 
 export default app;

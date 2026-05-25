@@ -2,11 +2,12 @@ import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { extractBearerToken, extractCookieToken } from './utils';
 import { verifyAppJwt } from './jwt';
+import { logger } from '../logger';
 
 interface AuthUser {
 	userId: string;
-	email?: string;
-	username?: string;
+	email: string;
+	username: string;
 }
 
 export async function authMiddleware(c: Context, next: Next) {
@@ -27,7 +28,9 @@ export async function authMiddleware(c: Context, next: Next) {
 		let payload;
 		try {
 			payload = await verifyAppJwt(token, { secret: jwtSecret });
-		} catch {
+		} catch (jwtError) {
+			const reason = jwtError instanceof Error ? jwtError.message : 'unknown';
+			logger.warn('JWT verification failed', { reason });
 			throw new HTTPException(401, {
 				message: 'Unauthorized: Invalid or expired token',
 			});
@@ -43,7 +46,7 @@ export async function authMiddleware(c: Context, next: Next) {
 		if (error instanceof HTTPException) {
 			throw error;
 		}
-		console.error('authMiddleware unexpected error:', error);
+		logger.error('authMiddleware unexpected error', { error });
 		throw new HTTPException(500, { message: 'Internal server error' });
 	}
 }

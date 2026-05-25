@@ -274,6 +274,21 @@ describe('GET /auth/session', () => {
 		const res = await app.request('/auth/session');
 		expect(res.status).toBe(401);
 	});
+
+	test('returns 503 when db is not available', async () => {
+		const token = await signAppJwt({
+			sub: 'user-uuid-1',
+			email: 'alice@example.com',
+			username: 'alice',
+		});
+		// Mount auth routes without injecting a db — c.get('db') returns undefined
+		const app = new Hono();
+		app.route('/auth', authRoutes);
+		const res = await app.request('/auth/session', {
+			headers: { authorization: `Bearer ${token}` },
+		});
+		expect(res.status).toBe(503);
+	});
 });
 
 describe('POST /auth/logout', () => {
@@ -297,5 +312,25 @@ describe('POST /auth/logout', () => {
 		expect(cookie).toContain('procyon_access_token=');
 		expect(cookie).toContain('Secure');
 		expect(cookie).toMatch(/Max-Age=0|Expires=/i);
+	});
+
+	test('rejects cross-origin POST', async () => {
+		const app = mountAuth();
+		const res = await app.request('/auth/logout', {
+			method: 'POST',
+			headers: { origin: 'https://evil.example.com' },
+		});
+		expect(res.status).toBe(403);
+	});
+
+	test('accepts same-origin POST', async () => {
+		const app = mountAuth();
+		// Hono test requests use http://localhost as base, so origin must
+		// have matching host.
+		const res = await app.request('/auth/logout', {
+			method: 'POST',
+			headers: { origin: 'http://localhost' },
+		});
+		expect(res.status).toBe(200);
 	});
 });
