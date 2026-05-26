@@ -2,12 +2,19 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { HTTPException } from 'hono/http-exception';
+import { deleteCookie, setCookie } from 'hono/cookie';
 import { getSupabaseClientsFromContext } from '../auth/supabase';
+import { verifyGoogleIdToken } from '../auth/google';
+import { upsertGoogleUser } from '../auth/users';
+import { signAppJwt, verifyAppJwt } from '../auth/jwt';
 import {
+	AUTH_COOKIE_NAME,
 	extractBearerToken,
+	extractCookieToken,
 	isUsernameUniqueConstraintError,
 } from '../auth/utils';
 import { recordLoginAttempt, resetLoginAttempts } from '../auth/rate-limit';
+import { getDB } from '../db';
 import { env } from '../env';
 import { logger } from '../logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -56,6 +63,56 @@ function getSupabaseAnonOrThrow(
 		});
 	}
 }
+
+const googleLoginSchema = z.object({
+	id_token: z.string().min(1),
+});
+
+app.post('/google', zValidator('json', googleLoginSchema), async c => {
+	try {
+		const { id_token } = c.req.valid('json');
+
+		const claims = await verifyGoogleIdToken(id_token);
+
+		const db = getDB();
+		const user = await upsertGoogleUser(db, {
+			sub: claims.sub,
+			email: claims.email,
+			emailVerified: claims.emailVerified,
+			name: claims.name,
+			picture: claims.picture,
+		});
+
+		const token = await signAppJwt({
+			sub: user.id,
+			email: user.email,
+			username: user.username,
+		});
+
+		setCookie(c, AUTH_COOKIE_NAME, token, {
+			path: '/',
+			httpOnly: true,
+			secure: process.env.NODE_ENV === 'production',
+			sameSite: 'Lax',
+			maxAge: 7 * 24 * 60 * 60, // 7 days, matches JWT expiry
+		});
+
+		return c.json({
+			user: {
+				id: user.id,
+				email: user.email,
+				username: user.username,
+				name: user.name,
+				picture: user.picture,
+			},
+		});
+	} catch (error) {
+		if (error instanceof HTTPException) throw error;
+		const message = error instanceof Error ? error.message : 'Sign-in failed';
+		logger.error('google login error', { error });
+		return c.json({ error: message }, 401);
+	}
+});
 
 app.post('/register', zValidator('json', registerSchema), async c => {
 	try {
@@ -180,56 +237,41 @@ app.post('/login', zValidator('json', loginSchema), async c => {
 
 app.post('/logout', async c => {
 	try {
-		// logout uses anon key only
-		const supabaseEnv = {
-			url: c.env.SUPABASE_URL ?? env.SUPABASE_URL,
-			anonKey: c.env.SUPABASE_ANON_KEY ?? env.SUPABASE_ANON_KEY,
-		};
+		// Always clear the auth cookie (cookie-only clients)
+		deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
 
-		if (!supabaseEnv.url || !supabaseEnv.anonKey) {
-			logger.error('logout error: supabase env missing', {
-				missingUrl: !supabaseEnv.url,
-				missingAnonKey: !supabaseEnv.anonKey,
-			});
-			throw new HTTPException(500, {
-				message:
-					'Supabase configuration is missing or invalid. Please set SUPABASE_URL and SUPABASE_ANON_KEY.',
-			});
-		}
-
+		// If a Bearer token is also present, revoke the Supabase session
 		const token = extractBearerToken(
 			c.req.raw.headers.get('authorization') || ''
 		);
-		if (!token) {
-			throw new HTTPException(401, {
-				message: 'Unauthorized: Missing access token',
-			});
+
+		if (token) {
+			const supabaseEnv = {
+				url: c.env.SUPABASE_URL ?? env.SUPABASE_URL,
+				anonKey: c.env.SUPABASE_ANON_KEY ?? env.SUPABASE_ANON_KEY,
+			};
+
+			if (supabaseEnv.url && supabaseEnv.anonKey) {
+				const response = await fetch(`${supabaseEnv.url}/auth/v1/logout`, {
+					method: 'POST',
+					headers: {
+						apikey: supabaseEnv.anonKey,
+						Authorization: `Bearer ${token}`,
+					},
+				});
+
+				if (response.status === 401 || response.status === 403) {
+					logger.warn('logout: Supabase rejected Bearer token', {
+						status: response.status,
+					});
+				} else if (!response.ok) {
+					logger.error('logout error: unexpected Supabase status', {
+						status: response.status,
+					});
+				}
+			}
 		}
 
-		const response = await fetch(`${supabaseEnv.url}/auth/v1/logout`, {
-			method: 'POST',
-			headers: {
-				apikey: supabaseEnv.anonKey,
-				Authorization: `Bearer ${token}`,
-			},
-		});
-
-		if (response.status === 401 || response.status === 403) {
-			throw new HTTPException(401, {
-				message: 'Unauthorized: Invalid or expired token',
-			});
-		}
-
-		if (!response.ok) {
-			logger.error('logout error: unexpected status', {
-				status: response.status,
-			});
-			throw new HTTPException(500, {
-				message: 'Failed to revoke session tokens',
-			});
-		}
-
-		// Supabase signOut is handled client-side; API acknowledges logout
 		return c.json({ message: 'Logged out' });
 	} catch (error) {
 		if (error instanceof HTTPException) throw error;
@@ -240,8 +282,26 @@ app.post('/logout', async c => {
 
 app.get('/session', async c => {
 	try {
-		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.session');
+		// 1. Try cookie-based app JWT first (cookie-only auth path)
+		const cookieHeader = c.req.header('cookie') || '';
+		const cookieToken = extractCookieToken(cookieHeader);
 
+		if (cookieToken) {
+			try {
+				const payload = await verifyAppJwt(cookieToken);
+				return c.json({
+					user: {
+						id: payload.sub,
+						email: payload.email,
+						username: payload.username,
+					},
+				});
+			} catch {
+				// Invalid/expired cookie token — fall through to Bearer
+			}
+		}
+
+		// 2. Fall back to Bearer token via Supabase (legacy path)
 		const token = extractBearerToken(
 			c.req.raw.headers.get('authorization') || ''
 		);
@@ -250,6 +310,8 @@ app.get('/session', async c => {
 				message: 'Unauthorized: Missing access token',
 			});
 		}
+
+		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.session');
 
 		const { data, error } = await supabaseAnon.auth.getUser(token);
 		if (error || !data?.user) {

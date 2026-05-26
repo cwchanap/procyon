@@ -6,6 +6,7 @@ interface EnvConfig {
 	PUBLIC_API_URL: string;
 	PUBLIC_SUPABASE_URL: string;
 	PUBLIC_SUPABASE_ANON_KEY: string;
+	PUBLIC_GOOGLE_CLIENT_ID: string;
 }
 
 const API_FALLBACK_BASE_URL = import.meta.env.DEV
@@ -44,6 +45,9 @@ const PUBLIC_SUPABASE_URL = normalizeEnvValue(PUBLIC_SUPABASE_URL_RAW);
 const PUBLIC_SUPABASE_ANON_KEY = normalizeEnvValue(
 	PUBLIC_SUPABASE_ANON_KEY_RAW
 );
+const PUBLIC_GOOGLE_CLIENT_ID = normalizeEnvValue(
+	import.meta.env.PUBLIC_GOOGLE_CLIENT_ID
+);
 
 // Validate configuration in production
 if (import.meta.env.PROD) {
@@ -61,4 +65,5 @@ export const env: EnvConfig = {
 	PUBLIC_API_URL,
 	PUBLIC_SUPABASE_URL,
 	PUBLIC_SUPABASE_ANON_KEY,
+	PUBLIC_GOOGLE_CLIENT_ID,
 };

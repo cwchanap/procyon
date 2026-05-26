@@ -8,6 +8,13 @@ export function AppNavBar() {
 	const dropdownRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
+		// Signal to Layout.astro CSS that the React nav has hydrated and is
+		// ready to be displayed.  The server-rendered static nav is hidden via
+		// `html.procyon-auth-hydrated #procyon-server-auth-nav { display:none }`.
+		document.documentElement.classList.add('procyon-auth-hydrated');
+	}, []);
+
+	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
 			if (
 				dropdownRef.current &&
