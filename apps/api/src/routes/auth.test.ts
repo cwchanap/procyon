@@ -81,7 +81,7 @@ function mountAuthWithDb() {
 }
 
 describe('POST /auth/google', () => {
-	test('returns access_token for valid google id token', async () => {
+	test('returns user for valid google id token', async () => {
 		nextGoogleClaims = {
 			sub: 'google-1',
 			email: 'alice@example.com',
@@ -107,10 +107,8 @@ describe('POST /auth/google', () => {
 		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
-			access_token: string;
 			user: { id: string; email: string; username: string };
 		};
-		expect(typeof body.access_token).toBe('string');
 		expect(body.user.username).toBe('alice');
 		expect(body.user.email).toBe('alice@example.com');
 		const cookie = res.headers.get('set-cookie');
