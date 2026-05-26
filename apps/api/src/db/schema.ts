@@ -36,7 +36,7 @@ export const aiConfigurations = sqliteTable(
 	'ai_configurations',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
-		// User UUID stored as text (references users.id)
+		// Supabase user UUID stored as text (no foreign key - user data lives in Supabase)
 		userId: text('user_id').notNull(),
 		provider: text('provider').notNull(), // 'gemini', 'openrouter', 'openai', etc.
 		modelName: text('model_name').notNull(), // 'gemini-2.0-flash', 'gpt-4o-mini', etc.
@@ -60,7 +60,7 @@ export const playHistory = sqliteTable(
 	'play_history',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
-		// User UUID stored as text (references users.id)
+		// Supabase user UUID stored as text (no foreign key - user data lives in Supabase)
 		userId: text('user_id').notNull(),
 		chessId: text('chess_id').$type<ChessVariantId>().notNull(),
 		date: text('date').notNull(),

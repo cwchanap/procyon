@@ -1,11 +1,12 @@
 # Chess Platform API
 
-Hono-based API server with Google-only authentication (HS256 app JWT + HttpOnly cookie) and Drizzle ORM + Cloudflare D1 integration.
+Hono-based API server with Supabase Auth (JWT-based) and Drizzle ORM + Cloudflare D1 integration.
 
 ## Features
 
-- **Google Authentication**: Google Identity Services sign-in with HS256 app JWTs
-- **Dual Database Architecture**: Local SQLite for development, Cloudflare D1 for production
+- **JWT Authentication**: Supabase Auth with JWT tokens for secure authentication
+- **Dual Database Architecture**: Supabase for auth, D1/SQLite for app data
+- **Rate Limiting**: In-memory rate limiting for login attempts (5 per 15 min)
 - **Input Validation**: Zod schemas for request validation
 - **CORS**: Configured for web app integration with credentials support
 
@@ -13,8 +14,9 @@ Hono-based API server with Google-only authentication (HS256 app JWT + HttpOnly 
 
 ### Authentication
 
-- `POST /api/auth/google` - Google sign-in (exchanges Google ID token for app JWT)
-- `POST /api/auth/logout` - Logout user (clears auth cookie)
+- `POST /api/auth/register` - Register new user (returns JWT tokens)
+- `POST /api/auth/login` - User login (returns JWT tokens)
+- `POST /api/auth/logout` - Logout user (invalidates session)
 - `GET /api/auth/session` - Get current session info
 
 ### Users (Protected)
@@ -40,8 +42,9 @@ Hono-based API server with Google-only authentication (HS256 app JWT + HttpOnly 
    ```bash
    cp .env.example .env
    # Add required environment variables:
-   # GOOGLE_CLIENT_ID=your-google-client-id
-   # JWT_SECRET=your-jwt-secret-at-least-32-chars
+   # SUPABASE_URL=https://your-project.supabase.co
+   # SUPABASE_ANON_KEY=your-anon-key
+   # SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    ```
 
 3. **Run database migrations**:
@@ -64,18 +67,23 @@ Hono-based API server with Google-only authentication (HS256 app JWT + HttpOnly 
 
 ## Authentication Usage
 
-### Google Sign-In
-
-The frontend uses Google Identity Services to obtain a Google ID token, then posts it to the API:
+### Register User
 
 ```bash
-curl -X POST http://localhost:3501/api/auth/google \
+curl -X POST http://localhost:3501/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"id_token":"google-id-token-here"}'
-# Returns: { "access_token": "...", "user": {...} }
+  -d '{"email":"user@example.com","username":"user","password":"password123"}'
+# Returns: { "access_token": "...", "refresh_token": "...", "user": {...} }
 ```
 
-The API validates the Google ID token against Google's JWKS, upserts the user, and returns an HS256 app JWT set as an HttpOnly cookie.
+### Login
+
+```bash
+curl -X POST http://localhost:3501/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"password123"}'
+# Returns: { "access_token": "...", "refresh_token": "...", "user": {...} }
+```
 
 ### Check Session
 
@@ -103,11 +111,12 @@ curl -X POST http://localhost:3501/api/auth/logout \
 For production deployment with Cloudflare D1:
 
 1. Set up Cloudflare D1 database
-2. Set up Google OAuth credentials in Google Cloud Console
+2. Set up Supabase project and get credentials
 3. Set production secrets:
    ```bash
-   wrangler secret put GOOGLE_CLIENT_ID
-   wrangler secret put JWT_SECRET
+   wrangler secret put SUPABASE_URL
+   wrangler secret put SUPABASE_ANON_KEY
+   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
    ```
 4. Apply database migrations to D1:
    ```bash
@@ -122,12 +131,14 @@ For production deployment with Cloudflare D1:
 
 **Development (.env)**:
 
-- `GOOGLE_CLIENT_ID` - Google OAuth client ID
-- `JWT_SECRET` - Secret for signing app JWTs (min 32 characters)
+- `SUPABASE_URL` - Your Supabase project URL
+- `SUPABASE_ANON_KEY` - Supabase anonymous/public key
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (server-side only)
 - `PORT` - Server port (default: 3501)
 - `NODE_ENV` - Environment (development/production)
 
 **Production (wrangler secrets)**:
 
-- `GOOGLE_CLIENT_ID` - Set via `wrangler secret put`
-- `JWT_SECRET` - Set via `wrangler secret put`
+- `SUPABASE_URL` - Set via `wrangler secret put`
+- `SUPABASE_ANON_KEY` - Set via `wrangler secret put`
+- `SUPABASE_SERVICE_ROLE_KEY` - Set via `wrangler secret put`

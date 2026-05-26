@@ -7,7 +7,7 @@
  *   36-44  isWorkersRuntime() detection
  *   56-64  getEnvNumber() branches (empty / invalid / valid)
  *   66-68  getEnvBoolean()
- *   88-98  production validation (throws when GOOGLE_CLIENT_ID / JWT_SECRET are missing)
+ *   88-98  production validation (throws when SUPABASE_* vars are missing)
  */
 import { describe, test, expect } from 'bun:test';
 
@@ -47,8 +47,9 @@ function applySafeEnv(
 	overrides: Record<string, string | undefined> = {}
 ): void {
 	process.env.NODE_ENV = 'test';
-	process.env.GOOGLE_CLIENT_ID = 'test-client-id';
-	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+	process.env.SUPABASE_URL = 'https://example.supabase.co';
+	process.env.SUPABASE_ANON_KEY = 'test-anon-key';
+	process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
 	for (const [key, value] of Object.entries(overrides)) {
 		if (value === undefined) delete process.env[key];
 		else process.env[key] = value;
@@ -81,10 +82,11 @@ describe('isWorkersRuntime detection (via production validation)', () => {
 			delete (globalThis as Record<string, unknown>).caches;
 
 			// In Workers runtime isWorkersRuntime() → true, so validation is skipped
-			// even when the required vars are absent
+			// even when SUPABASE_* vars are absent
 			process.env.NODE_ENV = 'production';
-			delete process.env.GOOGLE_CLIENT_ID;
-			delete process.env.JWT_SECRET;
+			delete process.env.SUPABASE_URL;
+			delete process.env.SUPABASE_ANON_KEY;
+			delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 			await expect(importFreshEnv()).resolves.toBeDefined();
 		} finally {
@@ -93,7 +95,7 @@ describe('isWorkersRuntime detection (via production validation)', () => {
 		}
 	});
 
-	test('production validation throws when not on Workers runtime and GOOGLE_CLIENT_ID is missing', async () => {
+	test('production validation throws when not on Workers runtime and SUPABASE_URL is missing', async () => {
 		const savedEnv = snapshotEnv();
 		const savedGlobals = snapshotGlobals(['WebSocketPair', 'caches']);
 
@@ -102,11 +104,12 @@ describe('isWorkersRuntime detection (via production validation)', () => {
 			delete (globalThis as Record<string, unknown>).caches;
 
 			process.env.NODE_ENV = 'production';
-			delete process.env.GOOGLE_CLIENT_ID;
-			process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+			delete process.env.SUPABASE_URL;
+			process.env.SUPABASE_ANON_KEY = 'anon';
+			process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
 
 			await expect(importFreshEnv()).rejects.toThrow(
-				'GOOGLE_CLIENT_ID is required in production.'
+				'SUPABASE_URL is required in production.'
 			);
 		} finally {
 			restoreGlobals(savedGlobals);
@@ -114,7 +117,7 @@ describe('isWorkersRuntime detection (via production validation)', () => {
 		}
 	});
 
-	test('production validation throws when JWT_SECRET is missing', async () => {
+	test('production validation throws when SUPABASE_ANON_KEY is missing', async () => {
 		const savedEnv = snapshotEnv();
 		const savedGlobals = snapshotGlobals(['WebSocketPair', 'caches']);
 
@@ -123,11 +126,34 @@ describe('isWorkersRuntime detection (via production validation)', () => {
 			delete (globalThis as Record<string, unknown>).caches;
 
 			process.env.NODE_ENV = 'production';
-			process.env.GOOGLE_CLIENT_ID = 'test-client-id';
-			delete process.env.JWT_SECRET;
+			process.env.SUPABASE_URL = 'https://x.supabase.co';
+			delete process.env.SUPABASE_ANON_KEY;
+			process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
 
 			await expect(importFreshEnv()).rejects.toThrow(
-				'JWT_SECRET is required in production.'
+				'SUPABASE_ANON_KEY is required in production.'
+			);
+		} finally {
+			restoreGlobals(savedGlobals);
+			restoreEnv(savedEnv);
+		}
+	});
+
+	test('production validation throws when SUPABASE_SERVICE_ROLE_KEY is missing', async () => {
+		const savedEnv = snapshotEnv();
+		const savedGlobals = snapshotGlobals(['WebSocketPair', 'caches']);
+
+		try {
+			delete (globalThis as Record<string, unknown>).WebSocketPair;
+			delete (globalThis as Record<string, unknown>).caches;
+
+			process.env.NODE_ENV = 'production';
+			process.env.SUPABASE_URL = 'https://x.supabase.co';
+			process.env.SUPABASE_ANON_KEY = 'anon';
+			delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+			await expect(importFreshEnv()).rejects.toThrow(
+				'SUPABASE_SERVICE_ROLE_KEY is required in production.'
 			);
 		} finally {
 			restoreGlobals(savedGlobals);
@@ -144,8 +170,9 @@ describe('isWorkersRuntime detection (via production validation)', () => {
 			delete (globalThis as Record<string, unknown>).caches;
 
 			process.env.NODE_ENV = 'production';
-			process.env.GOOGLE_CLIENT_ID = 'test-client-id';
-			process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+			process.env.SUPABASE_URL = 'https://x.supabase.co';
+			process.env.SUPABASE_ANON_KEY = 'anon';
+			process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
 
 			await expect(importFreshEnv()).resolves.toBeDefined();
 		} finally {

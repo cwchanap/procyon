@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
-import { getDB, initializeDB } from './db';
+import { initializeDB } from './db';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import aiConfigRoutes from './routes/ai-config';
@@ -10,10 +10,20 @@ import playHistoryRoutes from './routes/play-history';
 import ratingsRoutes from './routes/ratings';
 import puzzleRoutes from './routes/puzzles';
 import { env, isProduction } from './env';
+import { startRateLimitCleanup } from './auth/rate-limit';
 import { logger } from './logger';
 
 // Initialize database (will use local SQLite for development)
 initializeDB();
+
+// Start rate limit cleanup task
+let stopCleanup: (() => void) | null = null;
+try {
+	stopCleanup = startRateLimitCleanup();
+} catch (error) {
+	logger.error('Failed to start rate limit cleanup task', { error });
+	throw error;
+}
 
 let server: unknown = null;
 let isShuttingDown = false;
@@ -58,6 +68,7 @@ if (proc && typeof proc.on === 'function') {
 				});
 			});
 
+			stopCleanup?.();
 			logger.info('Graceful shutdown complete', { signal });
 		} catch (error) {
 			logger.error('Error during graceful shutdown', { signal, error });
@@ -73,14 +84,6 @@ if (proc && typeof proc.on === 'function') {
 }
 
 const app = new Hono();
-
-// Bind shared DB instance and auth secrets to request context
-app.use('*', async (c, next) => {
-	c.set('db', getDB());
-	c.set('googleClientId', env.GOOGLE_CLIENT_ID || '');
-	c.set('jwtSecret', env.JWT_SECRET || '');
-	await next();
-});
 
 // CORS middleware
 const allowedOrigins = isProduction

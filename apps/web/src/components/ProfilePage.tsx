@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { useAuth } from '../lib/auth';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 import { env } from '../lib/env';
 import { RatingsSection } from './RatingsSection';
 
@@ -126,13 +126,14 @@ export function ProfilePage() {
 			if (configForProvider && configForProvider.id) {
 				// Load the full config with API key
 				try {
+					const authHeaders = await getAuthHeaders();
 					const response = await fetch(
 						`${env.PUBLIC_API_URL}/ai-config/${configForProvider.id}/full`,
 						{
 							headers: {
 								'Content-Type': 'application/json',
+								...authHeaders,
 							},
-							credentials: 'include',
 						}
 					);
 
@@ -200,11 +201,12 @@ export function ProfilePage() {
 
 	const fetchConfigurations = async () => {
 		try {
+			const authHeaders = await getAuthHeaders();
 			const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 				headers: {
 					'Content-Type': 'application/json',
+					...authHeaders,
 				},
-				credentials: 'include',
 			});
 
 			if (response.ok) {
@@ -228,18 +230,19 @@ export function ProfilePage() {
 
 		try {
 			setConfigStatus('saving');
+			const authHeaders = await getAuthHeaders();
 
 			const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
+					...authHeaders,
 				},
-				credentials: 'include',
 				body: JSON.stringify({
 					provider: selectedProvider,
 					modelName: selectedModel,
 					apiKey: apiKey,
-					isActive: true,
+					isActive: true, // Always set as active when saving
 				}),
 			});
 
@@ -270,13 +273,14 @@ export function ProfilePage() {
 		if (!config.id) return;
 
 		try {
+			const authHeaders = await getAuthHeaders();
 			const response = await fetch(
 				`${env.PUBLIC_API_URL}/ai-config/${config.id}/full`,
 				{
 					headers: {
 						'Content-Type': 'application/json',
+						...authHeaders,
 					},
-					credentials: 'include',
 				}
 			);
 

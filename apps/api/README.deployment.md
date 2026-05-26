@@ -7,7 +7,6 @@ This guide walks through deploying the Procyon API to Cloudflare Workers with th
 1. Cloudflare account with Workers enabled
 2. Wrangler CLI installed (already in devDependencies)
 3. Web app built and ready in `../web/dist`
-4. Google OAuth client ID configured in Google Cloud Console
 
 ## Initial Setup
 
@@ -53,21 +52,29 @@ Set your JWT secret (do not commit this):
 
 ```bash
 bunx wrangler secret put JWT_SECRET
-# Enter your secret when prompted (minimum 32 characters)
-```
-
-Set your Google Client ID:
-
-```bash
-bunx wrangler secret put GOOGLE_CLIENT_ID
-# Enter your Google OAuth client ID
+# Enter your secret when prompted
 ```
 
 For staging environment:
 
 ```bash
 bunx wrangler secret put JWT_SECRET --env staging
-bunx wrangler secret put GOOGLE_CLIENT_ID --env staging
+```
+
+Set Supabase configuration (required for /api/auth and /api/users):
+
+```bash
+bunx wrangler secret put SUPABASE_URL
+bunx wrangler secret put SUPABASE_ANON_KEY
+bunx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+```
+
+For staging environment:
+
+```bash
+bunx wrangler secret put SUPABASE_URL --env staging
+bunx wrangler secret put SUPABASE_ANON_KEY --env staging
+bunx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env staging
 ```
 
 ### 5. Build Web App
@@ -112,9 +119,7 @@ Create `.dev.vars` file for local secrets (copy from `.dev.vars.example`):
 
 ```bash
 cp .dev.vars.example .dev.vars
-# Edit .dev.vars with your values:
-# GOOGLE_CLIENT_ID=your-google-client-id
-# JWT_SECRET=your-jwt-secret
+# Edit .dev.vars with your values
 ```
 
 ### View Live Logs
@@ -158,8 +163,8 @@ bun run cf:d1:migrations:apply
 Key settings to configure:
 
 1. **Database ID**: Update after creating D1 database
-2. **CORS Origins**: The worker automatically accepts same-host origins
-3. **Secrets**: Set via `wrangler secret put`
+2. **CORS Origins**: Add production domain in `src/worker.ts`
+3. **Environment Variables**: Set via `wrangler secret put`
 
 ## Troubleshooting
 
@@ -179,13 +184,7 @@ cd apps/web && bun run build
 
 ### CORS Errors
 
-The worker automatically accepts requests where the Origin host matches the request host. For cross-origin development against a remote worker, add your dev origin to the `devOrigins` list in `src/worker.ts`.
-
-### Authentication Errors
-
-1. Verify `GOOGLE_CLIENT_ID` secret is set: `wrangler secret list`
-2. Verify `JWT_SECRET` secret is set: `wrangler secret list`
-3. Check logs for specific errors: `bun run cf:tail`
+Update allowed origins in `src/worker.ts` to include your production domain.
 
 ## Post-Deployment
 

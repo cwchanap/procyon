@@ -85,7 +85,7 @@ describe('upsertGoogleUser', () => {
 		expect(rows.length).toBe(1);
 	});
 
-	test('returns existing user on unique-constraint collision', async () => {
+	test('returns existing user on unique-constraint collision (same googleSub)', async () => {
 		const db = makeDb();
 		const now = new Date();
 
@@ -153,5 +153,71 @@ describe('upsertGoogleUser', () => {
 		// Should return the existing row instead of throwing.
 		expect(user.id).toBe('existing-id');
 		expect(user.googleSub).toBe('g1');
+	});
+
+	test('rejects email collision with different googleSub', async () => {
+		const db = makeDb();
+		const now = new Date();
+
+		// Pre-insert user A with googleSub=g1, email=shared@example.com
+		db.insert(users)
+			.values({
+				id: 'user-a-id',
+				googleSub: 'g1',
+				email: 'shared@example.com',
+				username: 'shared',
+				name: 'User A',
+				createdAt: now,
+				updatedAt: now,
+			})
+			.run();
+
+		// User B tries to sign in with googleSub=g2 but same email.
+		// The initial SELECT by googleSub='g2' finds nothing, so insert is
+		// attempted. The insert fails on the email UNIQUE constraint.
+		// The re-SELECT by googleSub finds nothing, the re-SELECT by email
+		// finds User A — but googleSub doesn't match, so it must reject.
+		let selectCount = 0;
+		const originalSelect = db.select.bind(db);
+		const proxiedDb = new Proxy(db, {
+			get(target, prop) {
+				if (prop === 'select') {
+					return (...args: unknown[]) => {
+						selectCount++;
+						if (selectCount === 1) {
+							const builder = originalSelect(...args);
+							return {
+								...builder,
+								from: (...a: unknown[]) => {
+									const fromBuilder = builder.from(...a);
+									return {
+										...fromBuilder,
+										where: (...b: unknown[]) => {
+											const whereBuilder = fromBuilder.where(...b);
+											return {
+												...whereBuilder,
+												get: async () => undefined,
+											};
+										},
+									};
+								},
+							};
+						}
+						return originalSelect(...args);
+					};
+				}
+				const value = (target as Record<string, unknown>)[prop as string];
+				return typeof value === 'function' ? value.bind(target) : value;
+			},
+		});
+
+		await expect(
+			upsertGoogleUser(proxiedDb, {
+				sub: 'g2',
+				email: 'shared@example.com',
+				emailVerified: true,
+				name: 'User B',
+			})
+		).rejects.toThrow('Email already associated with a different account');
 	});
 });
