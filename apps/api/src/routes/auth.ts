@@ -96,7 +96,6 @@ app.post('/google', zValidator('json', googleSchema), async c => {
 		setAuthCookie(c, access_token);
 
 		return c.json({
-			access_token,
 			user: {
 				id: user.id,
 				email: user.email,
