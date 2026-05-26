@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
+import { eq } from 'drizzle-orm';
 import { authMiddleware, getUser } from '../auth/middleware';
-import { getSupabaseClientsFromContext } from '../auth/supabase';
-import { isUsernameUniqueConstraintError } from '../auth/utils';
+import { getDB } from '../db';
+import { users } from '../db/schema';
 
 const app = new Hono();
 
@@ -10,61 +11,37 @@ const USERNAME_MAX_LENGTH = 30;
 const USERNAME_REGEX = /^[a-z0-9_-]+$/;
 
 // Get current user profile (protected route)
-// User data is now stored in Supabase, not D1
 app.get('/me', authMiddleware, async c => {
 	const user = getUser(c);
-	const { supabaseAdmin } = getSupabaseClientsFromContext({
-		env: c.env as Record<string, string | undefined>,
-	});
-	if (!supabaseAdmin) {
-		return c.json(
-			{
-				error:
-					'Supabase admin client unavailable. Set SUPABASE_SERVICE_ROLE_KEY for admin operations.',
-			},
-			500
-		);
-	}
-	const adminClient = supabaseAdmin;
+	const db = getDB();
 
-	// The user is already authenticated via middleware, so we can return user data
-	// from the JWT claims. For more detailed data, we query Supabase.
-	const { data, error } = await adminClient.auth.admin.getUserById(user.userId);
+	const row = await db
+		.select()
+		.from(users)
+		.where(eq(users.id, user.userId))
+		.get();
 
-	if (error || !data?.user) {
+	if (!row) {
 		return c.json({ error: 'User not found' }, 404);
 	}
 
-	const supabaseUser = data.user;
 	return c.json({
 		user: {
-			id: supabaseUser.id,
-			email: supabaseUser.email,
-			username: supabaseUser.user_metadata?.username,
-			name: supabaseUser.user_metadata?.name,
-			createdAt: supabaseUser.created_at,
-			updatedAt: supabaseUser.updated_at,
+			id: row.id,
+			email: row.email,
+			username: row.username,
+			name: row.name,
+			picture: row.picture,
+			createdAt: row.createdAt.toISOString(),
+			updatedAt: row.updatedAt.toISOString(),
 		},
 	});
 });
 
 // Update user profile (protected route)
-// Updates user_metadata in Supabase
 app.put('/me', authMiddleware, async c => {
 	const user = getUser(c);
-	const { supabaseAdmin } = getSupabaseClientsFromContext({
-		env: c.env as Record<string, string | undefined>,
-	});
-	if (!supabaseAdmin) {
-		return c.json(
-			{
-				error:
-					'Supabase admin client unavailable. Set SUPABASE_SERVICE_ROLE_KEY for admin operations.',
-			},
-			500
-		);
-	}
-	const adminClient = supabaseAdmin;
+	const db = getDB();
 	const body = await c.req.json();
 	let updatedUsername: string | undefined;
 
@@ -104,36 +81,39 @@ app.put('/me', authMiddleware, async c => {
 			);
 		}
 
-		let updateError: unknown;
 		try {
-			const result = await adminClient.auth.admin.updateUserById(user.userId, {
-				user_metadata: { username: normalized },
-			});
-			updateError = result.error;
-		} catch (error) {
-			updateError = error;
-		}
+			const updated = await db
+				.update(users)
+				.set({ username: normalized, updatedAt: new Date() })
+				.where(eq(users.id, user.userId))
+				.returning()
+				.all();
 
-		if (updateError) {
-			if (isUsernameUniqueConstraintError(updateError)) {
+			if (!updated.length) {
+				return c.json({ error: 'User not found' }, 404);
+			}
+			updatedUsername = normalized;
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			if (/unique/i.test(msg)) {
 				return c.json(
 					{ error: 'Username already taken. Please choose another.' },
 					409
 				);
 			}
-
-			console.error('Error updating user metadata:', updateError);
+			console.error('Error updating user:', err);
 			return c.json({ error: 'Failed to update profile' }, 500);
 		}
-
-		updatedUsername = normalized;
 	}
 
 	// Fetch updated user data
-	const { data, error } = await adminClient.auth.admin.getUserById(user.userId);
+	const row = await db
+		.select()
+		.from(users)
+		.where(eq(users.id, user.userId))
+		.get();
 
-	if (error) {
-		console.error('Failed to fetch updated user after profile update:', error);
+	if (!row) {
 		if (typeof updatedUsername !== 'undefined') {
 			return c.json({
 				message: 'Profile updated successfully',
@@ -146,26 +126,19 @@ app.put('/me', authMiddleware, async c => {
 				},
 			});
 		}
-		return c.json(
-			{ error: 'Failed to fetch updated user profile. Please try again.' },
-			500
-		);
-	}
-
-	if (!data?.user) {
 		return c.json({ error: 'User not found' }, 404);
 	}
 
-	const supabaseUser = data.user;
 	return c.json({
 		message: 'Profile updated successfully',
 		user: {
-			id: supabaseUser.id,
-			email: supabaseUser.email,
-			username: supabaseUser.user_metadata?.username,
-			name: supabaseUser.user_metadata?.name,
-			createdAt: supabaseUser.created_at,
-			updatedAt: supabaseUser.updated_at,
+			id: row.id,
+			email: row.email,
+			username: row.username,
+			name: row.name,
+			picture: row.picture,
+			createdAt: row.createdAt.toISOString(),
+			updatedAt: row.updatedAt.toISOString(),
 		},
 	});
 });

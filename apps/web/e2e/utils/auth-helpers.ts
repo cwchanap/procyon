@@ -17,13 +17,11 @@ const FIXTURE_USERNAME =
 	normalizeEnvValue(process.env.E2E_TEST_USER_USERNAME) ||
 	FIXTURE_EMAIL.split('@')[0] ||
 	'test-procyon';
-const FIXTURE_PASSWORD =
-	normalizeEnvValue(process.env.E2E_TEST_USER_PASSWORD) || 'password123';
 
 const FIXTURE_USER: TestUser = {
 	email: FIXTURE_EMAIL,
 	username: FIXTURE_USERNAME,
-	password: FIXTURE_PASSWORD,
+	password: '',
 };
 
 export class AuthHelper {
@@ -59,7 +57,7 @@ export class AuthHelper {
 	}
 
 	/**
-	 * Return the shared Supabase fixture user for E2E tests.
+	 * Return the shared fixture user for E2E tests.
 	 */
 	static getFixtureUser(): TestUser {
 		return { ...FIXTURE_USER };
@@ -73,8 +71,59 @@ export class AuthHelper {
 		return {
 			email: `testuser${timestamp}@example.com`,
 			username: `testuser${timestamp}`,
-			password: 'testpassword123',
+			password: '',
 		};
+	}
+
+	/**
+	 * Authenticate via the API by calling /api/auth/google with a test-mode
+	 * claim payload.  This bypasses the Google Identity Services UI entirely.
+	 */
+	async loginViaApi(user?: TestUser): Promise<void> {
+		const testUser = user ?? FIXTURE_USER;
+		const apiBase =
+			normalizeEnvValue(process.env.PUBLIC_API_URL) ||
+			'http://localhost:3501/api';
+
+		// Build a test-claim token that the server accepts in non-production mode
+		const claimPayload = `test-claim:${JSON.stringify({
+			sub: `e2e-${testUser.email}`,
+			email: testUser.email,
+			emailVerified: true,
+			name: testUser.username,
+		})}`;
+
+		const response = await this.page.request.post(`${apiBase}/auth/google`, {
+			headers: { 'Content-Type': 'application/json' },
+			data: { id_token: claimPayload },
+		});
+
+		expect(response.ok()).toBe(true);
+
+		// Navigate to home to trigger hydration with the new cookie
+		await this.page.goto('/');
+		await expect(this.page).toHaveTitle('Chess Games', { timeout: 15000 });
+	}
+
+	/**
+	 * Navigate to the login page
+	 */
+	async goToLogin(): Promise<void> {
+		await this.page.goto('/login');
+		await expect(this.page).toHaveTitle('Sign In - Procyon Chess', {
+			timeout: 15000,
+		});
+		// Wait for the Google sign-in button to be visible (the only auth control)
+		await this.page
+			.locator('[data-testid="google-signin-button"]')
+			.waitFor({ state: 'visible', timeout: 15000 })
+			.catch(() => {
+				// Fallback: wait for any sign-in related content
+				return this.page
+					.getByText(/sign.?in/i)
+					.first()
+					.waitFor({ state: 'visible', timeout: 5000 });
+			});
 	}
 
 	/**
@@ -86,73 +135,36 @@ export class AuthHelper {
 			timeout: 15000,
 		});
 		await this.page
-			.locator('[data-testid="register-form"][data-hydrated="true"]')
-			.waitFor({ state: 'visible', timeout: 15000 });
+			.locator('[data-testid="google-signin-button"]')
+			.waitFor({ state: 'visible', timeout: 15000 })
+			.catch(() => {
+				return this.page
+					.getByText(/sign.?up/i)
+					.first()
+					.waitFor({ state: 'visible', timeout: 5000 });
+			});
 	}
 
 	/**
-	 * Navigate to the login page
+	 * Authenticate a user via the API (replaces the old form-based login).
+	 * For E2E, this uses the test-claim bypass to call /api/auth/google directly.
 	 */
-	async goToLogin(): Promise<void> {
-		await this.page.goto('/login');
-		await expect(this.page).toHaveTitle('Sign In - Procyon Chess', {
-			timeout: 15000,
-		});
-		await this.page
-			.locator('[data-testid="login-form"][data-hydrated="true"]')
-			.waitFor({ state: 'visible', timeout: 15000 });
+	async login(email?: string, _password?: string): Promise<void> {
+		const user: TestUser = {
+			email: email ?? FIXTURE_USER.email,
+			username: email?.split('@')[0] ?? FIXTURE_USER.username,
+			password: '',
+		};
+		await this.loginViaApi(user);
 	}
 
 	/**
-	 * Fill out and submit the registration form
+	 * Register (and authenticate) a user via the API.
+	 * Since Google sign-in creates the user on first login, register and login
+	 * are equivalent — both call /api/auth/google.
 	 */
 	async register(user: TestUser): Promise<void> {
-		await this.goToRegister();
-
-		await this.page.getByRole('textbox', { name: 'Email' }).fill(user.email);
-		await this.page
-			.getByRole('textbox', { name: 'Username' })
-			.fill(user.username);
-		await this.page
-			.getByRole('textbox', { name: 'Password', exact: true })
-			.fill(user.password);
-		await this.page
-			.getByRole('textbox', { name: 'Confirm Password' })
-			.fill(user.password);
-
-		await this.page.getByRole('button', { name: 'Create Account' }).click();
-
-		// Wait briefly for any client-side redirect to occur
-		await this.page
-			.waitForURL(url => url.pathname !== '/register', { timeout: 5000 })
-			.catch(() => null);
-		const currentPath = new URL(this.page.url()).pathname;
-		if (currentPath === '/register') {
-			// If we're still on the register page (with or without query params),
-			// navigate explicitly to home. On successful registration the session
-			// cookie should already be set, so the navbar will reflect auth state.
-			await this.page.goto('/');
-		}
-
-		// Ensure we're on the home page
-		await expect(this.page).toHaveURL('/', { timeout: 15000 });
-		await expect(this.page).toHaveTitle('Chess Games', { timeout: 15000 });
-	}
-
-	/**
-	 * Fill out and submit the login form
-	 */
-	async login(email: string, password: string): Promise<void> {
-		await this.goToLogin();
-
-		await this.page.getByRole('textbox', { name: 'Email' }).fill(email);
-		await this.page.getByRole('textbox', { name: 'Password' }).fill(password);
-
-		await this.page.getByRole('button', { name: 'Sign In' }).click();
-
-		// Wait for redirect to home page
-		await expect(this.page).toHaveURL('/', { timeout: 15000 });
-		await expect(this.page).toHaveTitle('Chess Games', { timeout: 15000 });
+		await this.loginViaApi(user);
 	}
 
 	/**

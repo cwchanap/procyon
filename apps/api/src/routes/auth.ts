@@ -15,6 +15,8 @@ import {
 } from '../auth/utils';
 import { recordLoginAttempt, resetLoginAttempts } from '../auth/rate-limit';
 import { getDB } from '../db';
+import { users } from '../db/schema';
+import { eq } from 'drizzle-orm';
 import { env } from '../env';
 import { logger } from '../logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -72,7 +74,20 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 	try {
 		const { id_token } = c.req.valid('json');
 
-		const claims = await verifyGoogleIdToken(id_token);
+		let claims;
+		// Test-mode bypass: accept a JSON-encoded claims object prefixed with
+		// "test-claim:" so E2E tests can authenticate without a real Google token.
+		if (id_token.startsWith('test-claim:') && env.NODE_ENV !== 'production') {
+			try {
+				claims = JSON.parse(id_token.slice('test-claim:'.length)) as Awaited<
+					ReturnType<typeof verifyGoogleIdToken>
+				>;
+			} catch {
+				return c.json({ error: 'Invalid test claim payload' }, 400);
+			}
+		} else {
+			claims = await verifyGoogleIdToken(id_token);
+		}
 
 		const db = getDB();
 		const user = await upsertGoogleUser(db, {
@@ -289,11 +304,39 @@ app.get('/session', async c => {
 		if (cookieToken) {
 			try {
 				const payload = await verifyAppJwt(cookieToken);
+
+				// Enrich session with DB fields (createdAt, name, picture)
+				let dbUser:
+					| {
+							name: string | null;
+							picture: string | null;
+							createdAt: Date;
+					  }
+					| undefined;
+				try {
+					const db = getDB();
+					dbUser =
+						(await db
+							.select({
+								name: users.name,
+								picture: users.picture,
+								createdAt: users.createdAt,
+							})
+							.from(users)
+							.where(eq(users.id, payload.sub))
+							.get()) ?? undefined;
+				} catch {
+					// DB unavailable — return JWT claims only
+				}
+
 				return c.json({
 					user: {
 						id: payload.sub,
 						email: payload.email,
 						username: payload.username,
+						name: dbUser?.name ?? null,
+						picture: dbUser?.picture ?? null,
+						createdAt: dbUser?.createdAt?.toISOString() ?? null,
 					},
 				});
 			} catch {
