@@ -3,7 +3,6 @@ import { env } from './env';
 import {
 	resolveApiBaseUrl,
 	parseGoogleLoginBody,
-	ACCESS_TOKEN_KEY,
 	type AuthUser,
 	type GoogleLoginResult,
 } from './auth-helpers';
@@ -38,42 +37,12 @@ function dispatchAuthChange(user: AuthUser | null): void {
 	}
 }
 
-function getStoredToken(): string | null {
-	try {
-		return globalThis.localStorage?.getItem(ACCESS_TOKEN_KEY) ?? null;
-	} catch {
-		return null;
-	}
-}
-
-function setStoredToken(token: string | null): void {
-	try {
-		if (token) {
-			globalThis.localStorage?.setItem(ACCESS_TOKEN_KEY, token);
-		} else {
-			globalThis.localStorage?.removeItem(ACCESS_TOKEN_KEY);
-		}
-	} catch {
-		// ignore storage errors
-	}
-}
-
-export async function getAuthHeaders(): Promise<Record<string, string>> {
-	const token = getStoredToken();
-	return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 async function fetchSession(): Promise<AuthUser | null> {
-	const headers = await getAuthHeaders();
 	try {
 		const res = await fetch(`${API_BASE_URL}/auth/session`, {
-			headers,
 			credentials: 'include',
 		});
-		if (!res.ok) {
-			if (res.status === 401) setStoredToken(null);
-			return null;
-		}
+		if (!res.ok) return null;
 		const data = (await res.json()) as { user: AuthUser };
 		return data.user;
 	} catch {
@@ -98,10 +67,8 @@ async function postGoogleLogin(idToken: string): Promise<GoogleLoginResult> {
 
 async function postLogout(): Promise<void> {
 	try {
-		const headers = await getAuthHeaders();
 		await fetch(`${API_BASE_URL}/auth/logout`, {
 			method: 'POST',
-			headers,
 			credentials: 'include',
 		});
 	} catch {
@@ -146,16 +113,13 @@ export function useAuth(options?: UseAuthOptions) {
 	);
 	const [loading, setLoading] = useState(() => {
 		if (initialAuthState.user) return false;
-		if (!initialAuthState.hasServerSnapshot) return true;
-		return !!getStoredToken();
+		return true;
 	});
 
 	useEffect(() => {
 		let mounted = true;
 
-		const shouldFetchSession =
-			!initialAuthState.user &&
-			(!initialAuthState.hasServerSnapshot || !!getStoredToken());
+		const shouldFetchSession = !initialAuthState.user;
 
 		if (shouldFetchSession) {
 			fetchSession()
@@ -169,8 +133,6 @@ export function useAuth(options?: UseAuthOptions) {
 			setLoading(false);
 		}
 
-		// Listen for auth state changes from other React island instances
-		// so that login/logout in one island updates all mounted islands.
 		const handleAuthChange = (e: Event) => {
 			if (!mounted) return;
 			const { user: newUser } = (e as CustomEvent<AuthChangeDetail>).detail;
@@ -190,7 +152,6 @@ export function useAuth(options?: UseAuthOptions) {
 		async (idToken: string): Promise<GoogleLoginResult> => {
 			const result = await postGoogleLogin(idToken);
 			if (result.success) {
-				setStoredToken(result.accessToken);
 				setUser(result.user);
 				dispatchAuthChange(result.user);
 			}
@@ -201,7 +162,6 @@ export function useAuth(options?: UseAuthOptions) {
 
 	const logout = useCallback(async () => {
 		await postLogout();
-		setStoredToken(null);
 		setUser(null);
 		dispatchAuthChange(null);
 	}, []);

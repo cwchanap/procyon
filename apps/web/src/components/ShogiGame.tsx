@@ -14,7 +14,6 @@ import type { AIConfig, AIProvider } from '../lib/ai/types';
 import ShogiBoard from './ShogiBoard';
 import ShogiHand from './ShogiHand';
 import { env } from '../lib/env';
-import { getAuthHeaders } from '../lib/auth';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
@@ -145,13 +144,12 @@ const ShogiGame: React.FC = () => {
 						opponentLlmId = 'gemini-2.5-flash';
 					}
 
-					const authHeaders = await getAuthHeaders();
 					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 						method: 'POST',
 						headers: {
 							'Content-Type': 'application/json',
-							...authHeaders,
 						},
+						credentials: 'include',
 						body: JSON.stringify({
 							chessId: 'shogi',
 							status,

@@ -8,8 +8,6 @@ export interface Props {
 
 const { title = 'Procyon', showNav = true } = Astro.props;
 const initialAuthScript = 'window.__PROCYON_INITIAL_AUTH_USER__=null;';
-const pendingAuthScript =
-  "try{if(localStorage.getItem('procyon_access_token')){document.documentElement.classList.add('procyon-auth-client-pending');}}catch{}";
 ---
 
 <!doctype html>
@@ -36,7 +34,6 @@ const pendingAuthScript =
             is:inline
             set:html={initialAuthScript}
           />
-          <script is:inline set:html={pendingAuthScript} />
           <div id='procyon-server-auth-nav' data-auth-state='anonymous'>
             <nav class='fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-purple-900/30 to-pink-900/30 backdrop-blur-lg border-b border-purple-500/20'>
               <div class='container mx-auto px-4'>

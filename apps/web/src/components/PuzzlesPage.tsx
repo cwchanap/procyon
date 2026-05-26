@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth, getAuthHeaders } from '../lib/auth';
+import { useAuth } from '../lib/auth';
 import { env } from '../lib/env';
 import PuzzleGrid from './puzzle/PuzzleGrid';
 import PuzzleSolver from './puzzle/PuzzleSolver';
@@ -59,9 +59,8 @@ export default function PuzzlesPage() {
 		async (signal?: AbortSignal): Promise<void> => {
 			if (!isAuthenticated) return;
 
-			const headers = await getAuthHeaders();
 			const r = await fetch(`${env.PUBLIC_API_URL}/puzzles/progress`, {
-				headers,
+				credentials: 'include',
 				signal,
 			});
 			if (!r.ok) {
