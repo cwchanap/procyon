@@ -28,7 +28,19 @@ NODE_ENV = "production"
 name = "procyon"
 vars = { NODE_ENV = "production" }
 
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "procyon"
+database_id = "6b377c9b-75bb-4435-9ebb-6b76eb367fc3"
+migrations_dir = "drizzle"
+
 # Staging environment
 [env.staging]
 name = "procyon-staging"
 vars = { NODE_ENV = "staging" }
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "procyon"
+database_id = "6b377c9b-75bb-4435-9ebb-6b76eb367fc3"
+migrations_dir = "drizzle"
