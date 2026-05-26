@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { resetLoginAttempts } from '../auth/rate-limit';
+import { signAppJwt } from '../auth/jwt';
 import authRoutes from './auth';
 
 const SUPABASE_URL = 'http://localhost:54321';
@@ -206,16 +207,24 @@ describe('POST /logout', () => {
 		restore();
 	});
 
-	test('returns 401 when Authorization header is missing', async () => {
+	test('returns 200 and clears cookie when no Authorization header (cookie-only client)', async () => {
 		restore = mockFetch({});
 		const res = await authRoutes.fetch(
 			new Request(`${SUPABASE_URL}/logout`, { method: 'POST' }),
 			envBindings
 		);
-		expect(res.status).toBe(401);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { message: string };
+		expect(body.message).toBe('Logged out');
+
+		// Verify cookie is cleared
+		const setCookie = res.headers.get('set-cookie');
+		expect(setCookie).toBeTruthy();
+		expect(setCookie!).toContain('procyon_access_token=');
+		expect(setCookie!).toContain('Max-Age=0');
 	});
 
-	test('returns 401 when token is rejected by Supabase (401 from Supabase)', async () => {
+	test('returns 200 even when Supabase rejects the Bearer token', async () => {
 		restore = mockFetch({
 			'/auth/v1/logout': { status: 401, body: { message: 'Unauthorized' } },
 		});
@@ -226,10 +235,12 @@ describe('POST /logout', () => {
 			}),
 			envBindings
 		);
-		expect(res.status).toBe(401);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { message: string };
+		expect(body.message).toBe('Logged out');
 	});
 
-	test('returns 200 on successful logout', async () => {
+	test('returns 200 on successful logout with valid Bearer token', async () => {
 		restore = mockFetch({
 			'/auth/v1/logout': { status: 204, body: {} },
 		});
@@ -245,7 +256,7 @@ describe('POST /logout', () => {
 		expect(body.message).toBe('Logged out');
 	});
 
-	test('returns 500 when Supabase returns unexpected error status', async () => {
+	test('returns 200 even when Supabase returns unexpected error status', async () => {
 		restore = mockFetch({
 			'/auth/v1/logout': {
 				status: 503,
@@ -259,7 +270,7 @@ describe('POST /logout', () => {
 			}),
 			envBindings
 		);
-		expect(res.status).toBe(500);
+		expect(res.status).toBe(200);
 	});
 });
 
@@ -438,5 +449,118 @@ describe('POST /register', () => {
 		expect(res.status).toBe(201);
 		const body = (await res.json()) as { user: { username: string } };
 		expect(body.user.username).toBe('testuser');
+	});
+});
+
+describe('GET /session (cookie-based)', () => {
+	let originalEnv: NodeJS.ProcessEnv;
+
+	beforeEach(() => {
+		originalEnv = { ...process.env };
+		process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+		process.env.SUPABASE_URL = process.env.SUPABASE_URL ?? SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY =
+			process.env.SUPABASE_ANON_KEY ?? SUPABASE_ANON_KEY;
+	});
+
+	afterEach(() => {
+		process.env = originalEnv;
+	});
+
+	test('returns user from a valid app JWT in the cookie', async () => {
+		const token = await signAppJwt({
+			sub: 'cookie-user-1',
+			email: 'cookie@example.com',
+			username: 'cookieuser',
+		});
+
+		const res = await authRoutes.fetch(
+			new Request(`${SUPABASE_URL}/session`, {
+				headers: { cookie: `procyon_access_token=${token}` },
+			}),
+			envBindings
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			user: { id: string; email: string; username: string };
+		};
+		expect(body.user.id).toBe('cookie-user-1');
+		expect(body.user.email).toBe('cookie@example.com');
+		expect(body.user.username).toBe('cookieuser');
+	});
+
+	test('falls back to Bearer when cookie token is invalid', async () => {
+		// Invalid cookie + valid Bearer should fall through to Supabase path
+		const restore = mockFetch({
+			'/auth/v1/user': {
+				status: 200,
+				body: {
+					id: 'bearer-user',
+					email: 'bearer@example.com',
+					user_metadata: { username: 'beareruser' },
+				},
+			},
+		});
+
+		const res = await authRoutes.fetch(
+			new Request(`${SUPABASE_URL}/session`, {
+				headers: {
+					cookie: 'procyon_access_token=garbage-token',
+					authorization: 'Bearer valid-bearer',
+				},
+			}),
+			envBindings
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			user: { id: string; email: string };
+		};
+		expect(body.user.id).toBe('bearer-user');
+		restore();
+	});
+
+	test('returns 401 when no cookie and no Authorization header', async () => {
+		const res = await authRoutes.fetch(
+			new Request(`${SUPABASE_URL}/session`),
+			envBindings
+		);
+		expect(res.status).toBe(401);
+	});
+});
+
+describe('POST /google', () => {
+	let originalEnv: NodeJS.ProcessEnv;
+
+	beforeEach(() => {
+		originalEnv = { ...process.env };
+		process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+	});
+
+	afterEach(() => {
+		process.env = originalEnv;
+	});
+
+	test('returns 400 when id_token is missing', async () => {
+		const res = await authRoutes.fetch(
+			new Request(`${SUPABASE_URL}/google`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({}),
+			}),
+			envBindings
+		);
+		expect(res.status).toBe(400);
+	});
+
+	test('returns 401 when id_token is invalid', async () => {
+		const res = await authRoutes.fetch(
+			new Request(`${SUPABASE_URL}/google`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id_token: 'invalid-token' }),
+			}),
+			envBindings
+		);
+		expect(res.status).toBe(401);
 	});
 });
