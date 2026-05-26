@@ -1,66 +1,49 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import playHistoryRoutes from './play-history';
+import { signAppJwt } from '../auth/jwt';
+
+const TEST_USER_ID = '00000000-0000-4000-8000-000000000001';
+
+let authHeader: Record<string, string> = {};
+let originalJwtSecret: string | undefined;
+
+beforeAll(async () => {
+	originalJwtSecret = process.env.JWT_SECRET;
+	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+	const token = await signAppJwt({
+		sub: TEST_USER_ID,
+		email: 'test@example.com',
+		username: 'testuser',
+	});
+	authHeader = { Authorization: `Bearer ${token}` };
+});
+
+afterAll(() => {
+	if (originalJwtSecret !== undefined) {
+		process.env.JWT_SECRET = originalJwtSecret;
+	} else {
+		delete process.env.JWT_SECRET;
+	}
+});
 
 describe('POST /api/play-history PvP submission guard', () => {
 	test('rejects opponentUserId submissions with 403', async () => {
-		const originalFetch = globalThis.fetch;
-		process.env.SUPABASE_URL =
-			process.env.SUPABASE_URL ?? 'http://localhost:54321';
-		process.env.SUPABASE_ANON_KEY =
-			process.env.SUPABASE_ANON_KEY ?? 'test-anon-key';
+		const res = await playHistoryRoutes.request('http://localhost/', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...authHeader,
+			},
+			body: JSON.stringify({
+				chessId: 'chess',
+				status: 'win',
+				date: new Date().toISOString(),
+				opponentUserId: '00000000-0000-4000-8000-000000000000',
+			}),
+		});
 
-		globalThis.fetch = (async (
-			input: RequestInfo | URL,
-			init?: RequestInit
-		) => {
-			const url = typeof input === 'string' ? input : input.toString();
-			const pathname = new URL(url).pathname;
-
-			if (pathname.endsWith('/auth/v1/user')) {
-				const authHeader =
-					(init?.headers as Record<string, string> | undefined)
-						?.Authorization ??
-					(init?.headers as Record<string, string> | undefined)?.authorization;
-
-				if (authHeader === 'Bearer test-token') {
-					return new Response(
-						JSON.stringify({
-							id: '00000000-0000-4000-8000-000000000001',
-							email: 'test@example.com',
-						}),
-						{ status: 200, headers: { 'Content-Type': 'application/json' } }
-					);
-				}
-
-				return new Response(JSON.stringify({ message: 'Unauthorized' }), {
-					status: 401,
-					headers: { 'Content-Type': 'application/json' },
-				});
-			}
-
-			return new Response('Not Found', { status: 404 });
-		}) as typeof fetch;
-
-		try {
-			const res = await playHistoryRoutes.request('http://localhost/', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: 'Bearer test-token',
-				},
-				body: JSON.stringify({
-					chessId: 'chess',
-					status: 'win',
-					date: new Date().toISOString(),
-					opponentUserId: '00000000-0000-4000-8000-000000000000',
-				}),
-			});
-
-			expect(res.status).toBe(403);
-			const body = (await res.json()) as { error?: unknown };
-			expect(typeof body.error).toBe('string');
-		} finally {
-			globalThis.fetch = originalFetch;
-		}
+		expect(res.status).toBe(403);
+		const body = (await res.json()) as { error?: unknown };
+		expect(typeof body.error).toBe('string');
 	});
 });
