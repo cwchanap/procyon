@@ -1,12 +1,11 @@
 import { test, expect, describe, beforeEach, afterEach, mock } from 'bun:test';
 
 // Mock the auth module before importing storage (avoids React dependency)
-mock.module('../auth', () => ({
-	getAuthHeaders: mock(() => Promise.resolve({})),
-}));
+mock.module('../auth', () => ({}));
 
 // Now import storage after the mock is set up
-const { defaultAIConfig, saveAIConfig, clearAIConfig, loadAIConfig } = await import('./storage');
+const { defaultAIConfig, saveAIConfig, clearAIConfig, loadAIConfig } =
+	await import('./storage');
 import type { AIConfig } from './types';
 
 // ---------------------------------------------------------------------------
@@ -118,7 +117,9 @@ describe('AI Storage', () => {
 					return {
 						ok: true,
 						json: async () => ({
-							configurations: [{ id: 'cfg-1', isActive: true, hasApiKey: true }],
+							configurations: [
+								{ id: 'cfg-1', isActive: true, hasApiKey: true },
+							],
 						}),
 					};
 				}
@@ -250,8 +251,18 @@ describe('AI Storage', () => {
 
 		test('should save different providers correctly', () => {
 			const testCases: AIConfig[] = [
-				{ provider: 'gemini', apiKey: 'g-key', model: 'gemini-2.5-flash-lite', enabled: true },
-				{ provider: 'openrouter', apiKey: 'or-key', model: 'gpt-oss-120b', enabled: false },
+				{
+					provider: 'gemini',
+					apiKey: 'g-key',
+					model: 'gemini-2.5-flash-lite',
+					enabled: true,
+				},
+				{
+					provider: 'openrouter',
+					apiKey: 'or-key',
+					model: 'gpt-oss-120b',
+					enabled: false,
+				},
 				{
 					provider: 'chutes',
 					apiKey: 'ch-key',
