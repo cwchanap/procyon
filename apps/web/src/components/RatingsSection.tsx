@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { getAuthHeaders } from '../lib/auth';
 import { env } from '../lib/env';
 import { RatingBadge } from './RatingBadge';
 import type { GameVariant } from '../lib/ai/game-variant-types';
@@ -51,12 +50,8 @@ export function RatingsSection() {
 				setIsLoading(true);
 				setError(null); // Reset error before fetch
 
-				const authHeaders = await getAuthHeaders();
 				const response = await fetch(`${env.PUBLIC_API_URL}/ratings`, {
-					headers: {
-						// Content-Type not needed for GET request
-						...authHeaders,
-					},
+					credentials: 'include',
 					signal: controller.signal,
 				});
 

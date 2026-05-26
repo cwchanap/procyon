@@ -1,324 +1,186 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { env } from './env';
-import { supabaseClient } from './supabase';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+import {
+	resolveApiBaseUrl,
+	parseGoogleLoginBody,
+	type AuthUser,
+	type GoogleLoginResult,
+} from './auth-helpers';
 
-type AuthUser = {
-	id: string;
-	email: string;
-	username: string;
-	createdAt: string;
-	user_metadata?: Record<string, unknown>;
-};
+const API_BASE_URL = resolveApiBaseUrl(env.PUBLIC_API_URL);
 
-function mapSupabaseUser(user: SupabaseUser | null): AuthUser | null {
-	if (!user) return null;
-
-	const metadata = user.user_metadata as
-		| ({ username?: string } & Record<string, unknown>)
-		| null;
-	const rawUsername =
-		metadata && typeof metadata.username === 'string'
-			? metadata.username
-			: undefined;
-	const username =
-		rawUsername && rawUsername.trim().length > 0
-			? rawUsername
-			: user.email?.split('@')[0] || 'Player';
-
-	return {
-		id: user.id,
-		email: user.email ?? '',
-		username,
-		createdAt: user.created_at,
-		user_metadata: user.user_metadata as Record<string, unknown> | undefined,
-	};
+declare global {
+	interface Window {
+		__PROCYON_INITIAL_AUTH_USER__?: AuthUser | null;
+	}
 }
 
-type LoginResult =
-	| { success: true }
-	| { success: false; error: string; retryAfterMs?: number };
+/**
+ * Custom event name used to synchronise auth state across independent React
+ * islands in Astro's island architecture.  Each `useAuth()` hook instance
+ * dispatches this event on login/logout and listens for it so that all
+ * mounted islands stay in sync without a shared React context.
+ */
+export const AUTH_CHANGE_EVENT = 'procyon-auth-change';
 
-type RegisterResult = { success: boolean; error?: string };
-
-function resolveApiBaseUrl(): string {
-	const base = env.PUBLIC_API_URL || '/api';
-	return base.replace(/\/$/, '') || '/api';
+interface AuthChangeDetail {
+	user: AuthUser | null;
 }
 
-const API_BASE_URL = resolveApiBaseUrl();
-
-export async function getAuthHeaders(): Promise<Record<string, string>> {
+function dispatchAuthChange(user: AuthUser | null): void {
 	try {
-		const { data } = await supabaseClient.auth.getSession();
-		const accessToken = data.session?.access_token;
-		if (!accessToken) {
-			return {};
-		}
-		return {
-			Authorization: `Bearer ${accessToken}`,
-		};
+		globalThis.dispatchEvent(
+			new CustomEvent<AuthChangeDetail>(AUTH_CHANGE_EVENT, { detail: { user } })
+		);
 	} catch {
-		return {};
+		// ignore (SSR / test environments without DOM)
 	}
 }
 
-async function apiLogin(email: string, password: string): Promise<LoginResult> {
-	try {
-		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-		const res = await fetch(`${API_BASE_URL}/auth/login`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ email, password }),
-			signal: controller.signal,
-		});
-
-		clearTimeout(timeoutId);
-
-		if (res.status === 429) {
-			const bodyText = await res.text();
-			let data: { error?: string; retryAfterMs?: number } = {};
-			try {
-				data = JSON.parse(bodyText) as typeof data;
-			} catch {
-				// ignore parse errors
-			}
-			return {
-				success: false,
-				error:
-					data.error ||
-					bodyText ||
-					'Too many attempts. Please wait before retrying.',
-				retryAfterMs: data.retryAfterMs,
-			};
-		}
-
-		if (!res.ok) {
-			const bodyText = await res.text();
-			let data: { error?: string; message?: string } = {};
-			try {
-				data = JSON.parse(bodyText) as typeof data;
-			} catch {
-				// ignore parse errors
-			}
-			return {
-				success: false,
-				error: data.error || data.message || bodyText || 'Login failed',
-			};
-		}
-
-		const data = (await res.json()) as {
-			access_token: string;
-			refresh_token: string;
-			user: AuthUser;
-		};
-
-		const { error: setSessionError } = await supabaseClient.auth.setSession({
-			access_token: data.access_token,
-			refresh_token: data.refresh_token,
-		});
-
-		if (setSessionError) {
-			return { success: false, error: setSessionError.message };
-		}
-
-		return { success: true };
-	} catch (error) {
-		if (error instanceof Error) {
-			if (error.name === 'AbortError') {
-				return {
-					success: false,
-					error: 'Login request timed out. Please try again.',
-				};
-			}
-			if (error.message.includes('fetch')) {
-				return {
-					success: false,
-					error: 'Network error. Please check your connection.',
-				};
-			}
-		}
-		return { success: false, error: 'Login failed. Please try again.' };
-	}
+/**
+ * Returns auth headers for API requests.
+ * In the cookie-only auth model, auth is handled by HttpOnly cookies
+ * sent automatically with `credentials: 'include'`. This function
+ * returns empty headers for backward compatibility with existing callers.
+ */
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+	return {};
 }
 
-async function apiRegister(
-	email: string,
-	username: string,
-	password: string
-): Promise<RegisterResult> {
-	const controller = new AbortController();
-	const timeoutId = setTimeout(() => controller.abort(), 10000);
-
+async function fetchSession(): Promise<AuthUser | null> {
 	try {
-		const res = await fetch(`${API_BASE_URL}/auth/register`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ email, username, password }),
-			signal: controller.signal,
-		});
-
-		clearTimeout(timeoutId);
-
-		if (!res.ok) {
-			const bodyText = await res.text();
-			let data: { error?: string; message?: string } = {};
-			try {
-				data = JSON.parse(bodyText) as typeof data;
-			} catch {
-				// ignore parse errors
-			}
-			return {
-				success: false,
-				error: data.error || data.message || bodyText || 'Registration failed',
-			};
-		}
-
-		const loginResult = await apiLogin(email, password);
-
-		if (!loginResult.success) {
-			return {
-				success: false,
-				error:
-					loginResult.error ||
-					'Registration succeeded, but automatic login failed. Please log in manually.',
-			};
-		}
-
-		return { success: true };
-	} catch (error) {
-		clearTimeout(timeoutId);
-
-		if (error instanceof Error) {
-			if (error.name === 'AbortError') {
-				return {
-					success: false,
-					error: 'Registration request timed out. Please try again.',
-				};
-			}
-			if (error instanceof SyntaxError) {
-				return {
-					success: false,
-					error: 'Unexpected response from server. Please try again.',
-				};
-			}
-			if (error.message.includes('fetch')) {
-				return {
-					success: false,
-					error: 'Network error. Please check your connection.',
-				};
-			}
-		}
-
-		return { success: false, error: 'Registration failed. Please try again.' };
-	}
-}
-
-async function apiLogout(): Promise<void> {
-	const controller = new AbortController();
-	const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-	try {
-		const headers = await getAuthHeaders();
-		if (Object.keys(headers).length === 0) {
-			clearTimeout(timeoutId);
-			return;
-		}
-		const res = await fetch(`${API_BASE_URL}/auth/logout`, {
-			method: 'POST',
-			headers,
+		const res = await fetch(`${API_BASE_URL}/auth/session`, {
 			credentials: 'include',
-			signal: controller.signal,
 		});
-
-		clearTimeout(timeoutId);
-
-		if (!res.ok) {
-			const data = await res.json().catch(() => ({}));
-			globalThis.console?.error?.('API logout failed', {
-				status: res.status,
-				error: data.error,
-			});
-		}
-	} catch (error) {
-		clearTimeout(timeoutId);
-		globalThis.console?.error?.('API logout error', { error });
+		if (!res.ok) return null;
+		const data = (await res.json()) as { user: AuthUser };
+		return data.user;
+	} catch {
+		return null;
 	}
 }
 
-export function useAuth() {
-	const [user, setUser] = useState<AuthUser | null>(null);
-	const [loading, setLoading] = useState(true);
+async function postGoogleLogin(idToken: string): Promise<GoogleLoginResult> {
+	try {
+		const res = await fetch(`${API_BASE_URL}/auth/google`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			credentials: 'include',
+			body: JSON.stringify({ id_token: idToken }),
+		});
+		const bodyText = await res.text();
+		return parseGoogleLoginBody(res.status, bodyText);
+	} catch {
+		return { success: false, error: 'Network error. Please try again.' };
+	}
+}
 
-	const syncUserFromSession = async () => {
-		try {
-			const { data } = await supabaseClient.auth.getSession();
-			setUser(mapSupabaseUser(data.session?.user ?? null));
-		} catch {
-			setUser(null);
-		} finally {
-			setLoading(false);
-		}
-	};
+async function postLogout(): Promise<void> {
+	try {
+		await fetch(`${API_BASE_URL}/auth/logout`, {
+			method: 'POST',
+			credentials: 'include',
+		});
+	} catch {
+		// best-effort
+	}
+}
+
+export interface UseAuthOptions {
+	initialUser?: AuthUser | null;
+}
+
+interface InitialAuthState {
+	user: AuthUser | null;
+	hasServerSnapshot: boolean;
+}
+
+function getInitialAuthState(options?: UseAuthOptions): InitialAuthState {
+	if (options && 'initialUser' in options) {
+		return {
+			user: options.initialUser ?? null,
+			hasServerSnapshot: true,
+		};
+	}
+
+	if (
+		typeof window !== 'undefined' &&
+		'__PROCYON_INITIAL_AUTH_USER__' in window
+	) {
+		return {
+			user: window.__PROCYON_INITIAL_AUTH_USER__ ?? null,
+			hasServerSnapshot: true,
+		};
+	}
+
+	return { user: null, hasServerSnapshot: false };
+}
+
+export function useAuth(options?: UseAuthOptions) {
+	const initialAuthState = getInitialAuthState(options);
+	const [user, setUser] = useState<AuthUser | null>(
+		() => initialAuthState.user
+	);
+	const [loading, setLoading] = useState(() => {
+		if (initialAuthState.user) return false;
+		return true;
+	});
 
 	useEffect(() => {
 		let mounted = true;
-		supabaseClient.auth
-			.getSession()
-			.then(({ data }) => {
-				if (!mounted) return;
-				setUser(mapSupabaseUser(data.session?.user ?? null));
-				setLoading(false);
-			})
-			.catch(() => {
-				if (!mounted) return;
-				setUser(null);
-				setLoading(false);
-			});
 
-		const { data: subscription } = supabaseClient.auth.onAuthStateChange(
-			(_event, session) => {
-				if (!mounted) return;
-				setUser(mapSupabaseUser(session?.user ?? null));
-				setLoading(false);
-			}
-		);
+		const shouldFetchSession = !initialAuthState.user;
+
+		if (shouldFetchSession) {
+			fetchSession()
+				.then(u => {
+					if (mounted) setUser(u);
+				})
+				.finally(() => {
+					if (mounted) setLoading(false);
+				});
+		} else {
+			setLoading(false);
+		}
+
+		const handleAuthChange = (e: Event) => {
+			if (!mounted) return;
+			const { user: newUser } = (e as CustomEvent<AuthChangeDetail>).detail;
+			setUser(newUser);
+			setLoading(false);
+		};
+
+		globalThis.addEventListener(AUTH_CHANGE_EVENT, handleAuthChange);
 
 		return () => {
 			mounted = false;
-			subscription?.subscription.unsubscribe();
+			globalThis.removeEventListener(AUTH_CHANGE_EVENT, handleAuthChange);
 		};
+	}, []);
+
+	const signInWithGoogle = useCallback(
+		async (idToken: string): Promise<GoogleLoginResult> => {
+			const result = await postGoogleLogin(idToken);
+			if (result.success) {
+				setUser(result.user);
+				dispatchAuthChange(result.user);
+			}
+			return result;
+		},
+		[]
+	);
+
+	const logout = useCallback(async () => {
+		await postLogout();
+		setUser(null);
+		dispatchAuthChange(null);
 	}, []);
 
 	return {
 		user,
 		loading,
-		login: async (email: string, password: string) => {
-			const result = await apiLogin(email, password);
-			if (result.success) {
-				await syncUserFromSession();
-			}
-			return result;
-		},
-		register: async (email: string, username: string, password: string) => {
-			const result = await apiRegister(email, username, password);
-			if (result.success) {
-				await syncUserFromSession();
-			}
-			return result;
-		},
-		logout: async () => {
-			await apiLogout();
-			const { error } = await supabaseClient.auth.signOut();
-			if (error) {
-				globalThis.console?.error?.('Supabase signOut failed', {
-					error: error.message,
-				});
-			}
-			setUser(null);
-		},
+		signInWithGoogle,
+		logout,
 		isAuthenticated: !!user,
 	};
 }

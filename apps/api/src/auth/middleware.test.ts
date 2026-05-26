@@ -1,142 +1,95 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { Hono } from 'hono';
 import { authMiddleware, getUser } from './middleware';
+import { signAppJwt } from './jwt';
 
-const SUPABASE_URL = 'http://localhost:54321';
+const originalJwtSecret = process.env.JWT_SECRET;
 
-function setupEnv() {
-	process.env.SUPABASE_URL ??= SUPABASE_URL;
-	process.env.SUPABASE_ANON_KEY ??= 'test-anon-key';
-}
+beforeAll(() => {
+	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+});
 
-type FetchMockRestore = () => void;
+afterAll(() => {
+	if (originalJwtSecret === undefined) {
+		delete process.env.JWT_SECRET;
+	} else {
+		process.env.JWT_SECRET = originalJwtSecret;
+	}
+});
 
-function mockSupabaseFetch(userResponse: {
-	status: number;
-	body: Record<string, unknown>;
-}): FetchMockRestore {
-	const original = globalThis.fetch;
-	globalThis.fetch = (async (input: RequestInfo | URL, _init?: RequestInit) => {
-		const url =
-			typeof input === 'string'
-				? input
-				: input instanceof Request
-					? input.url
-					: input.toString();
-		if (url.includes('/auth/v1/user')) {
-			return new Response(JSON.stringify(userResponse.body), {
-				status: userResponse.status,
-				headers: { 'Content-Type': 'application/json' },
-			});
-		}
-		return new Response('Not Found', { status: 404 });
-	}) as typeof fetch;
-	return () => {
-		globalThis.fetch = original;
-	};
-}
-
-function mockSupabaseFetchServerError(): FetchMockRestore {
-	const original = globalThis.fetch;
-	globalThis.fetch = (async (_input: RequestInfo | URL) => {
-		return new Response(JSON.stringify({ error: 'internal server error' }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
-	}) as typeof fetch;
-	return () => {
-		globalThis.fetch = original;
-	};
-}
-
-function createTestApp() {
+function makeApp() {
 	const app = new Hono();
-	app.get('/protected', authMiddleware, c => {
-		const user = getUser(c);
-		return c.json({ userId: user.userId, email: user.email ?? null });
+	app.use('*', authMiddleware);
+	app.get('/me', c => {
+		const u = getUser(c);
+		return c.json(u);
 	});
 	return app;
 }
 
 describe('authMiddleware', () => {
-	let restore: FetchMockRestore = () => {};
-
-	beforeEach(() => {
-		setupEnv();
-	});
-
-	afterEach(() => {
-		restore();
-	});
-
-	test('returns 401 when Authorization header is missing', async () => {
-		restore = mockSupabaseFetch({
-			status: 200,
-			body: { id: 'u1', email: 'a@b.com' },
-		});
-		const app = createTestApp();
-		const res = await app.request('http://localhost/protected');
+	test('rejects missing header', async () => {
+		const app = makeApp();
+		const res = await app.request('/me');
 		expect(res.status).toBe(401);
 	});
 
-	test('returns 401 when Authorization header has wrong scheme', async () => {
-		restore = mockSupabaseFetch({
-			status: 200,
-			body: { id: 'u1', email: 'a@b.com' },
-		});
-		const app = createTestApp();
-		const res = await app.request('http://localhost/protected', {
-			headers: { Authorization: 'Basic dXNlcjpwYXNz' },
+	test('rejects malformed header', async () => {
+		const app = makeApp();
+		const res = await app.request('/me', {
+			headers: { authorization: 'NotBearer foo' },
 		});
 		expect(res.status).toBe(401);
 	});
 
-	test('returns 401 when Authorization header is just "Bearer" with no token', async () => {
-		restore = mockSupabaseFetch({
-			status: 200,
-			body: { id: 'u1', email: 'a@b.com' },
-		});
-		const app = createTestApp();
-		const res = await app.request('http://localhost/protected', {
-			headers: { Authorization: 'Bearer' },
+	test('rejects garbage token', async () => {
+		const app = makeApp();
+		const res = await app.request('/me', {
+			headers: { authorization: 'Bearer not-a-jwt' },
 		});
 		expect(res.status).toBe(401);
 	});
 
-	test('returns 401 when Supabase rejects the token', async () => {
-		restore = mockSupabaseFetch({
-			status: 401,
-			body: { message: 'Unauthorized' },
+	test('accepts a valid app JWT', async () => {
+		const token = await signAppJwt({
+			sub: 'user-uuid-1',
+			email: 'valid@example.com',
+			username: 'valid',
 		});
-		const app = createTestApp();
-		const res = await app.request('http://localhost/protected', {
-			headers: { Authorization: 'Bearer invalid-token' },
-		});
-		expect(res.status).toBe(401);
-	});
-
-	test('returns 200 and sets user context for a valid token', async () => {
-		restore = mockSupabaseFetch({
-			status: 200,
-			body: { id: 'user-uuid-1', email: 'valid@example.com' },
-		});
-		const app = createTestApp();
-		const res = await app.request('http://localhost/protected', {
-			headers: { Authorization: 'Bearer test-token' },
+		const app = makeApp();
+		const res = await app.request('/me', {
+			headers: { authorization: `Bearer ${token}` },
 		});
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { userId: string; email: string | null };
+		const body = await res.json();
 		expect(body.userId).toBe('user-uuid-1');
 		expect(body.email).toBe('valid@example.com');
 	});
 
-	test('returns 401 when Supabase returns a server error (client returns error, not throw)', async () => {
-		// The Supabase client converts HTTP error responses into { data: null, error }
-		// so the middleware treats it as an invalid token (401).
-		restore = mockSupabaseFetchServerError();
-		const app = createTestApp();
-		const res = await app.request('http://localhost/protected', {
-			headers: { Authorization: 'Bearer test-token' },
+	test('accepts a valid app JWT from the auth cookie', async () => {
+		const token = await signAppJwt({
+			sub: 'cookie-user-1',
+			email: 'cookie@example.com',
+			username: 'cookie_user',
+		});
+		const app = makeApp();
+		const res = await app.request('/me', {
+			headers: { cookie: `procyon_access_token=${token}` },
+		});
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.userId).toBe('cookie-user-1');
+		expect(body.email).toBe('cookie@example.com');
+	});
+
+	test('rejects a token signed with the wrong secret', async () => {
+		const token = await signAppJwt(
+			{ sub: 'u', email: 'x@example.com', username: 'x' },
+			{ secret: 'different-secret-32-chars-aaaaaaaa' }
+		);
+		const app = makeApp();
+		const res = await app.request('/me', {
+			headers: { authorization: `Bearer ${token}` },
 		});
 		expect(res.status).toBe(401);
 	});

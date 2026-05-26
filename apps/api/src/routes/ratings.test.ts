@@ -1,12 +1,42 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import {
+	describe,
+	test,
+	expect,
+	beforeAll,
+	afterAll,
+	beforeEach,
+	afterEach,
+} from 'bun:test';
 import { initializeDB } from '../db';
 import ratingsRoutes from './ratings';
+import { signAppJwt } from '../auth/jwt';
 
 const SUPABASE_URL = 'http://localhost:54321';
 const SUPABASE_ANON_KEY = 'test-anon-key';
 const BASE_URL = 'http://localhost';
-const AUTH_HEADER = { Authorization: 'Bearer test-token' };
 const TEST_USER_ID = 'user-uuid-1';
+
+let AUTH_HEADER: Record<string, string> = {};
+let originalJwtSecret: string | undefined;
+
+beforeAll(async () => {
+	originalJwtSecret = process.env.JWT_SECRET;
+	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+	const token = await signAppJwt({
+		sub: TEST_USER_ID,
+		email: 'test@example.com',
+		username: 'testuser',
+	});
+	AUTH_HEADER = { Authorization: `Bearer ${token}` };
+});
+
+afterAll(() => {
+	if (originalJwtSecret !== undefined) {
+		process.env.JWT_SECRET = originalJwtSecret;
+	} else {
+		delete process.env.JWT_SECRET;
+	}
+});
 
 // CF-style env bindings injected into every request so getSupabaseClientsFromContext
 // creates fresh clients and bypasses the module-level singleton.

@@ -64,6 +64,13 @@
       "when": 1769000000000,
       "tag": "0008_chess_puzzles",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1779501449251,
+      "tag": "0009_google_only_auth",
+      "breakpoints": true
     }
   ]
 }

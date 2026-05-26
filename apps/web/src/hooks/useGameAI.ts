@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { useAuth, getAuthHeaders } from '../lib/auth';
+import { useAuth } from '../lib/auth';
 import type { AIConfig, AIProvider } from '../lib/ai/types';
 import { AI_PROVIDERS } from '../lib/ai/types';
 import type { GameVariant } from '../lib/ai/game-variant-types';
@@ -90,12 +90,11 @@ export function useGameAI({
 				// Get fallback model using functional state update
 				const providerInfo = AI_PROVIDERS[newProvider];
 
-				const authHeaders = await getAuthHeaders();
 				const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 					headers: {
 						'Content-Type': 'application/json',
-						...authHeaders,
 					},
+					credentials: 'include',
 					signal: controller.signal,
 				});
 
@@ -168,8 +167,8 @@ export function useGameAI({
 					{
 						headers: {
 							'Content-Type': 'application/json',
-							...authHeaders,
 						},
+						credentials: 'include',
 						signal: controller.signal,
 					}
 				);
