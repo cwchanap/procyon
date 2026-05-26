@@ -54,5 +54,5 @@ jobs:
         run: bun run build
         env:
           PUBLIC_API_URL: "http://localhost:3501/api"
-          GOOGLE_CLIENT_ID: "example-google-client-id"
-          JWT_SECRET: "ci-jwt-secret-must-be-at-least-32-chars-long"
+          PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          PUBLIC_SUPABASE_ANON_KEY: "example-public-anon-key"

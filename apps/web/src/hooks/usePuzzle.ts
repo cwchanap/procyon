@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useAuth } from '../lib/auth';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 import { env } from '../lib/env';
 import { makeMove, algebraicToPosition } from '../lib/chess/game';
 import { positionToAlgebraic, getPieceAt } from '../lib/chess/board';
@@ -148,12 +148,12 @@ export function usePuzzle() {
 			if (isAuthenticated && !savedRef.current.has(progressKey)) {
 				savedRef.current.add(progressKey);
 				try {
+					const headers = await getAuthHeaders();
 					const response = await fetch(
 						`${env.PUBLIC_API_URL}/puzzles/${puzzleId}/progress`,
 						{
 							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							credentials: 'include',
+							headers: { 'Content-Type': 'application/json', ...headers },
 							body: JSON.stringify({
 								solved: mergedSolved,
 								failedAttempts: mergedFailedAttempts,

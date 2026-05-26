@@ -7,7 +7,6 @@ export interface Props {
 }
 
 const { title = 'Procyon', showNav = true } = Astro.props;
-const initialAuthScript = 'window.__PROCYON_INITIAL_AUTH_USER__=null;';
 ---
 
 <!doctype html>
@@ -21,74 +20,11 @@ const initialAuthScript = 'window.__PROCYON_INITIAL_AUTH_USER__=null;';
     <meta name='viewport' content='width=device-width, initial-scale=1.0' />
     <link rel='icon' type='image/svg+xml' href='/favicon.svg' />
     <title>{title}</title>
-    <script src='https://accounts.google.com/gsi/client' async defer></script>
   </head>
   <body
     class='min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white overflow-x-hidden'
   >
-    {
-      showNav && (
-        <>
-          <script
-            id='procyon-initial-auth-script'
-            is:inline
-            set:html={initialAuthScript}
-          />
-          <div id='procyon-server-auth-nav' data-auth-state='anonymous'>
-            <nav class='fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-purple-900/30 to-pink-900/30 backdrop-blur-lg border-b border-purple-500/20'>
-              <div class='container mx-auto px-4'>
-                <div class='flex items-center justify-between h-16'>
-                  <div class='flex items-center gap-3'>
-                    <a
-                      href='/'
-                      class='flex items-center gap-3 text-white hover:text-purple-200 transition-colors duration-200'
-                    >
-                      <div class='w-8 h-8 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-lg shadow-lg'>
-                        ♔
-                      </div>
-                      <span class='text-xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent'>
-                        Procyon Chess
-                      </span>
-                    </a>
-                  </div>
-
-                  <div class='hidden sm:flex items-center gap-1'>
-                    <a
-                      href='/puzzles'
-                      class='px-3 py-1.5 rounded-lg text-sm text-purple-200 hover:text-white hover:bg-white/10 transition-colors duration-200'
-                    >
-                      Puzzles
-                    </a>
-                  </div>
-                  <div class='flex sm:hidden items-center gap-1'>
-                    <a
-                      href='/puzzles'
-                      aria-label='Puzzles'
-                      class='px-3 py-1.5 rounded-lg text-sm text-purple-200 hover:text-white hover:bg-white/10 transition-colors duration-200'
-                    >
-                      Puzzles
-                    </a>
-                  </div>
-
-                  <div class='flex items-center gap-4'>
-                    <a
-                      href='/login'
-                      data-auth-anonymous
-                      class='inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary hover:bg-primary/90 h-10 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200'
-                    >
-                      Login
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </nav>
-          </div>
-          <div id='procyon-client-auth-nav'>
-            <AppNavBar client:only='react' />
-          </div>
-        </>
-      )
-    }
+    {showNav && <AppNavBar client:load />}
     <main class={showNav ? 'pt-20' : ''}>
       <slot />
     </main>
@@ -143,24 +79,6 @@ const initialAuthScript = 'window.__PROCYON_INITIAL_AUTH_USER__=null;';
 
   * {
     border-color: hsl(var(--border));
-  }
-
-  #procyon-client-auth-nav {
-    display: none;
-  }
-
-  html.procyon-auth-hydrated #procyon-server-auth-nav {
-    display: none;
-  }
-
-  html.procyon-auth-client-pending
-    #procyon-server-auth-nav
-    [data-auth-anonymous] {
-    visibility: hidden;
-  }
-
-  html.procyon-auth-hydrated #procyon-client-auth-nav {
-    display: contents;
   }
 
   @keyframes shimmer {

@@ -135,7 +135,17 @@ export async function upsertGoogleUser(
 					.from(users)
 					.where(eq(users.email, input.email))
 					.get()) as User | undefined;
-				if (racedByEmail) return racedByEmail;
+				if (racedByEmail) {
+					// If the email belongs to a different Google identity, this
+					// is a collision (e.g. Workspace reassignment or imported
+					// data). Reject rather than silently merging identities.
+					if (racedByEmail.googleSub !== input.sub) {
+						throw new Error(
+							'Email already associated with a different account'
+						);
+					}
+					return racedByEmail;
+				}
 
 				// Otherwise it's a username collision — derive a fresh one.
 				if (attempt < MAX_INSERT_RETRIES - 1) {

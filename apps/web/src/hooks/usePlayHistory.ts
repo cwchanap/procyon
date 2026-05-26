@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '../lib/auth';
+import { useAuth, getAuthHeaders } from '../lib/auth';
 import type { AIConfig } from '../lib/ai/types';
 import type { GameVariant, GameStatus } from '../lib/ai/game-variant-types';
 
@@ -85,12 +85,13 @@ export function usePlayHistory({
 
 		try {
 			const opponentLlmId = getOpponentLlmId();
+			const authHeaders = await getAuthHeaders();
 			const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
+					...authHeaders,
 				},
-				credentials: 'include',
 				body: JSON.stringify({
 					chessId: gameVariant,
 					status: result,

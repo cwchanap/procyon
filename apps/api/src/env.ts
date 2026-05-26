@@ -7,9 +7,10 @@ interface EnvConfig {
 	NODE_ENV: string;
 	PORT: number;
 
-	// Google OAuth
-	GOOGLE_CLIENT_ID: string;
-	JWT_SECRET: string;
+	// Supabase
+	SUPABASE_URL: string;
+	SUPABASE_ANON_KEY: string;
+	SUPABASE_SERVICE_ROLE_KEY: string;
 
 	// Frontend
 	FRONTEND_URL: string;
@@ -54,7 +55,10 @@ function getEnv(key: string, defaultValue?: string): string {
 
 function getEnvNumber(key: string, defaultValue: number): number {
 	const value = normalizeEnvValue(processEnv[key]);
-	if (!value) return defaultValue;
+	if (!value) {
+		return defaultValue;
+	}
+
 	const parsed = Number.parseInt(value, 10);
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : defaultValue;
 }
@@ -67,8 +71,9 @@ export const env: EnvConfig = {
 	NODE_ENV: getEnv('NODE_ENV'),
 	PORT: getEnvNumber('PORT', 3501),
 
-	GOOGLE_CLIENT_ID: getEnv('GOOGLE_CLIENT_ID'),
-	JWT_SECRET: getEnv('JWT_SECRET'),
+	SUPABASE_URL: getEnv('SUPABASE_URL'),
+	SUPABASE_ANON_KEY: getEnv('SUPABASE_ANON_KEY'),
+	SUPABASE_SERVICE_ROLE_KEY: getEnv('SUPABASE_SERVICE_ROLE_KEY'),
 
 	FRONTEND_URL: getEnv('FRONTEND_URL', 'http://localhost:3500'),
 
@@ -79,12 +84,16 @@ export const env: EnvConfig = {
 	CI: getEnvBoolean('CI'),
 };
 
+// Validate critical environment variables
 if (env.NODE_ENV === 'production' && !isWorkersRuntime()) {
-	if (!env.GOOGLE_CLIENT_ID) {
-		throw new Error('GOOGLE_CLIENT_ID is required in production.');
+	if (!env.SUPABASE_URL) {
+		throw new Error('SUPABASE_URL is required in production.');
 	}
-	if (!env.JWT_SECRET) {
-		throw new Error('JWT_SECRET is required in production.');
+	if (!env.SUPABASE_ANON_KEY) {
+		throw new Error('SUPABASE_ANON_KEY is required in production.');
+	}
+	if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+		throw new Error('SUPABASE_SERVICE_ROLE_KEY is required in production.');
 	}
 }
 

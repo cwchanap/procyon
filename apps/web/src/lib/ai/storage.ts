@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { AIConfig } from './types';
 import { env } from '../env';
+import { getAuthHeaders } from '../auth';
 
 const AI_CONFIG_KEY = 'procyon_ai_config';
 
@@ -29,12 +30,13 @@ export async function loadAIConfig(): Promise<AIConfig> {
 	}
 
 	try {
-		// Try to load from backend API
+		const authHeaders = await getAuthHeaders();
+		// Try to load from backend API using authorization headers
 		const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 			headers: {
 				'Content-Type': 'application/json',
+				...authHeaders,
 			},
-			credentials: 'include',
 		});
 
 		if (response.ok) {
@@ -51,8 +53,8 @@ export async function loadAIConfig(): Promise<AIConfig> {
 					{
 						headers: {
 							'Content-Type': 'application/json',
+							...authHeaders,
 						},
-						credentials: 'include',
 					}
 				);
 

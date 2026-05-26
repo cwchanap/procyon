@@ -1,26 +1,64 @@
-import { describe, test, expect, beforeAll, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { initializeDB } from '../db';
 import { aiConfigurations } from '../db/schema';
 import { sql } from 'drizzle-orm';
-import { signAppJwt } from '../auth/jwt';
 import aiConfigRoutes from './ai-config';
 
+const SUPABASE_URL = 'http://localhost:54321';
+const SUPABASE_ANON_KEY = 'test-anon-key';
+
+type FetchMockRestore = () => void;
+
+/**
+ * Mock Supabase auth: 'Bearer test-token' succeeds, anything else fails.
+ */
+function mockSupabaseFetch(): FetchMockRestore {
+	const original = globalThis.fetch;
+	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url =
+			typeof input === 'string'
+				? input
+				: input instanceof Request
+					? input.url
+					: input.toString();
+		if (url.includes('/auth/v1/user')) {
+			const auth =
+				(init?.headers as Record<string, string> | undefined)?.Authorization ??
+				(init?.headers as Record<string, string> | undefined)?.authorization;
+			if (auth === 'Bearer test-token') {
+				return new Response(
+					JSON.stringify({ id: 'user-uuid-1', email: 'test@example.com' }),
+					{ status: 200, headers: { 'Content-Type': 'application/json' } }
+				);
+			}
+			return new Response(JSON.stringify({ message: 'Unauthorized' }), {
+				status: 401,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+		return new Response('Not Found', { status: 404 });
+	}) as typeof fetch;
+	return () => {
+		globalThis.fetch = original;
+	};
+}
+
 const BASE_URL = 'http://localhost';
-const TEST_USER_ID = 'user-uuid-1';
-
-let authHeader: Record<string, string> = {};
-
-beforeAll(async () => {
-	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
-	const token = await signAppJwt({
-		sub: TEST_USER_ID,
-		email: 'test@example.com',
-		username: 'testuser',
-	});
-	authHeader = { Authorization: `Bearer ${token}` };
-});
+const AUTH_HEADER = { Authorization: 'Bearer test-token' };
 
 describe('ai-config routes - auth guards (no token)', () => {
+	let restore: FetchMockRestore = () => {};
+
+	beforeEach(() => {
+		process.env.SUPABASE_URL ??= SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		restore = mockSupabaseFetch();
+	});
+
+	afterEach(() => {
+		restore();
+	});
+
 	test('GET / returns 401 without token', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/`);
 		expect(res.status).toBe(401);
@@ -62,10 +100,22 @@ describe('ai-config routes - auth guards (no token)', () => {
 });
 
 describe('ai-config routes - Zod validation (with valid token)', () => {
+	let restore: FetchMockRestore = () => {};
+
+	beforeEach(() => {
+		process.env.SUPABASE_URL ??= SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		restore = mockSupabaseFetch();
+	});
+
+	afterEach(() => {
+		restore();
+	});
+
 	test('POST / returns 400 for invalid provider enum', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...authHeader },
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 			body: JSON.stringify({
 				provider: 'invalid-provider',
 				modelName: 'some-model',
@@ -78,7 +128,7 @@ describe('ai-config routes - Zod validation (with valid token)', () => {
 	test('POST / returns 400 when apiKey is empty string', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...authHeader },
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 			body: JSON.stringify({
 				provider: 'gemini',
 				modelName: 'gemini-pro',
@@ -91,7 +141,7 @@ describe('ai-config routes - Zod validation (with valid token)', () => {
 	test('POST / returns 400 when modelName is empty string', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...authHeader },
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 			body: JSON.stringify({
 				provider: 'openai',
 				modelName: '',
@@ -104,7 +154,7 @@ describe('ai-config routes - Zod validation (with valid token)', () => {
 	test('POST / returns 400 when required fields are missing', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...authHeader },
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 			body: JSON.stringify({ provider: 'gemini' }),
 		});
 		expect(res.status).toBe(400);
@@ -113,7 +163,7 @@ describe('ai-config routes - Zod validation (with valid token)', () => {
 	test('POST /set-active returns 400 for invalid provider enum', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/set-active`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...authHeader },
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 			body: JSON.stringify({ provider: 'unknown', modelName: 'model' }),
 		});
 		expect(res.status).toBe(400);
@@ -122,7 +172,7 @@ describe('ai-config routes - Zod validation (with valid token)', () => {
 	test('POST /set-active returns 400 when modelName is missing', async () => {
 		const res = await aiConfigRoutes.request(`${BASE_URL}/set-active`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...authHeader },
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 			body: JSON.stringify({ provider: 'gemini' }),
 		});
 		expect(res.status).toBe(400);
@@ -134,7 +184,13 @@ describe('ai-config routes - Zod validation (with valid token)', () => {
 });
 
 describe('ai-config routes - success path with API key masking', () => {
+	let restore: FetchMockRestore = () => {};
+
 	beforeEach(async () => {
+		process.env.SUPABASE_URL ??= SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY ??= SUPABASE_ANON_KEY;
+		restore = mockSupabaseFetch();
+
 		// Initialize test database
 		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
 		const db = (await import('../db')).getDB();
@@ -145,6 +201,10 @@ describe('ai-config routes - success path with API key masking', () => {
 			.where(sql`${aiConfigurations.userId} = 'user-uuid-1'`);
 	});
 
+	afterEach(() => {
+		restore();
+	});
+
 	test('POST / creates config and GET / returns masked API key', async () => {
 		const originalKey = 'test-key-1234';
 		const maskedKey = '***' + originalKey.slice(-4);
@@ -152,7 +212,7 @@ describe('ai-config routes - success path with API key masking', () => {
 		// Create a configuration
 		const createRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', ...authHeader },
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 			body: JSON.stringify({
 				provider: 'gemini',
 				modelName: 'gemini-pro',
@@ -167,7 +227,7 @@ describe('ai-config routes - success path with API key masking', () => {
 
 		// Get all configurations and verify API key is masked
 		const getRes = await aiConfigRoutes.request(`${BASE_URL}/`, {
-			headers: authHeader,
+			headers: AUTH_HEADER,
 		});
 		expect(getRes.status).toBe(200);
 		const getBody = (await getRes.json()) as {

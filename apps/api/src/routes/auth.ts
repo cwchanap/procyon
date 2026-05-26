@@ -1,170 +1,274 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { setCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
-import { eq } from 'drizzle-orm';
-import * as googleModule from '../auth/google';
-import * as usersModule from '../auth/users';
-import { signAppJwt } from '../auth/jwt';
-import { authMiddleware, getUser } from '../auth/middleware';
-import { AUTH_COOKIE_NAME } from '../auth/utils';
-import { users } from '../db/schema';
+import { getSupabaseClientsFromContext } from '../auth/supabase';
+import {
+	extractBearerToken,
+	isUsernameUniqueConstraintError,
+} from '../auth/utils';
+import { recordLoginAttempt, resetLoginAttempts } from '../auth/rate-limit';
+import { env } from '../env';
 import { logger } from '../logger';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-const app = new Hono();
+type Bindings = {
+	SUPABASE_URL?: string;
+	SUPABASE_ANON_KEY?: string;
+	SUPABASE_SERVICE_ROLE_KEY?: string;
+};
 
-const googleSchema = z.object({
-	id_token: z.string().min(10),
+const app = new Hono<{ Bindings: Bindings }>();
+
+const registerSchema = z.object({
+	email: z.string().email(),
+	username: z
+		.string()
+		.min(3)
+		.max(30)
+		.regex(/^[a-z0-9_-]+$/i)
+		.optional(),
+	password: z.string().min(8),
 });
 
-const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+const loginSchema = z.object({
+	email: z.string().email(),
+	password: z.string().min(1),
+});
 
-function isHttpsRequest(c: Parameters<typeof setCookie>[0]): boolean {
-	const forwardedProto = c.req.header('x-forwarded-proto') || '';
-	return (
-		forwardedProto.split(',')[0]?.trim().toLowerCase() === 'https' ||
-		new URL(c.req.url).protocol === 'https:'
-	);
-}
-
-function setAuthCookie(
-	c: Parameters<typeof setCookie>[0],
-	token: string,
-	maxAge = AUTH_COOKIE_MAX_AGE_SECONDS
-): void {
-	setCookie(c, AUTH_COOKIE_NAME, token, {
-		httpOnly: true,
-		sameSite: 'Lax',
-		path: '/',
-		secure: isHttpsRequest(c),
-		maxAge,
-	});
-}
-
-app.post('/google', zValidator('json', googleSchema), async c => {
+function getSupabaseAnonOrThrow(
+	c: { env: Bindings },
+	context: string
+): SupabaseClient {
 	try {
-		const { id_token } = c.req.valid('json');
+		const { supabaseAnon } = getSupabaseClientsFromContext({
+			env: c.env,
+		});
+		if (!supabaseAnon) {
+			throw new Error('Supabase anon client unavailable');
+		}
+		return supabaseAnon;
+	} catch (error) {
+		logger.error('Supabase client initialization failed', { context, error });
+		throw new HTTPException(500, {
+			message:
+				'Supabase configuration is missing or invalid. Please set SUPABASE_URL and SUPABASE_ANON_KEY.',
+		});
+	}
+}
 
-		const googleClientId = (c.get('googleClientId') as string) || undefined;
-		const jwtSecret = (c.get('jwtSecret') as string) || undefined;
+app.post('/register', zValidator('json', registerSchema), async c => {
+	try {
+		const { email, username, password } = c.req.valid('json');
 
-		let claims;
-		try {
-			claims = await googleModule.verifyGoogleIdToken(id_token, {
-				clientId: googleClientId,
-			});
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : 'Invalid Google token';
-			const isConfigError = /GOOGLE_CLIENT_ID.*not configured/i.test(message);
-			if (isConfigError) {
-				logger.error('Google auth configuration error', { error });
-				return c.json({ error: 'Internal server error' }, 500);
-			}
-			const isEmailUnverified =
-				/email/i.test(message) && /verif/i.test(message);
+		const status = recordLoginAttempt(email);
+		if (!status.allowed) {
 			return c.json(
 				{
-					error: isEmailUnverified
-						? 'Email not verified with Google'
-						: 'Invalid Google token',
+					error: 'Too many registration attempts. Please wait before retrying.',
+					retryAfterMs: status.retryAfterMs,
 				},
-				401
+				429
 			);
 		}
 
-		const db = (c.get('db') as unknown) ?? null;
+		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.register');
+		const normalizedUsername =
+			typeof username === 'string' ? username.trim().toLowerCase() : undefined;
 
-		const user = await usersModule.upsertGoogleUser(db, {
-			sub: claims.sub,
-			email: claims.email,
-			emailVerified: claims.emailVerified,
-			name: claims.name,
-			picture: claims.picture,
+		const options = normalizedUsername
+			? { data: { username: normalizedUsername } }
+			: undefined;
+		const { data, error } = await supabaseAnon.auth.signUp({
+			email,
+			password,
+			...(options ? { options } : {}),
 		});
 
-		const access_token = await signAppJwt(
-			{
-				sub: user.id,
-				email: user.email,
-				username: user.username,
-			},
-			{ secret: jwtSecret }
-		);
+		if (error) {
+			if (normalizedUsername && isUsernameUniqueConstraintError(error)) {
+				return c.json(
+					{ error: 'Username already taken. Please choose another.' },
+					409
+				);
+			}
+			return c.json({ error: error.message || 'Registration failed' }, 400);
+		}
 
-		setAuthCookie(c, access_token);
+		if (!data.user) {
+			return c.json({ error: 'Registration failed' }, 400);
+		}
+
+		let session = data.session ?? null;
+		if (!session) {
+			const signInResult = await supabaseAnon.auth.signInWithPassword({
+				email,
+				password,
+			});
+			if (!signInResult.error && signInResult.data.session) {
+				session = signInResult.data.session;
+			}
+		}
+
+		resetLoginAttempts(email);
+
+		return c.json(
+			{
+				access_token: session?.access_token ?? null,
+				refresh_token: session?.refresh_token ?? null,
+				user: {
+					id: data.user.id,
+					email: data.user.email,
+					username: normalizedUsername,
+				},
+			},
+			201
+		);
+	} catch (error) {
+		if (error instanceof HTTPException) {
+			return c.json({ error: error.message }, error.status);
+		}
+		logger.error('register error', { error });
+		return c.json({ error: 'Internal server error' }, 500);
+	}
+});
+
+app.post('/login', zValidator('json', loginSchema), async c => {
+	try {
+		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.login');
+
+		const { email, password } = c.req.valid('json');
+
+		const status = recordLoginAttempt(email);
+		if (!status.allowed) {
+			return c.json(
+				{
+					error: 'Too many login attempts. Please wait before retrying.',
+					retryAfterMs: status.retryAfterMs,
+				},
+				429
+			);
+		}
+
+		const { data, error } = await supabaseAnon.auth.signInWithPassword({
+			email,
+			password,
+		});
+
+		if (error || !data.session) {
+			return c.json({ error: 'Invalid email or password' }, 401);
+		}
+
+		resetLoginAttempts(email);
 
 		return c.json({
+			access_token: data.session.access_token,
+			refresh_token: data.session.refresh_token,
 			user: {
-				id: user.id,
-				email: user.email,
-				username: user.username,
-				name: user.name,
-				picture: user.picture,
+				id: data.user.id,
+				email: data.user.email,
 			},
 		});
 	} catch (error) {
-		if (error instanceof HTTPException) throw error;
-		logger.error('auth/google error', { error });
+		if (error instanceof HTTPException) {
+			return c.json({ error: error.message }, error.status);
+		}
+		logger.error('login error', { error });
 		return c.json({ error: 'Internal server error' }, 500);
 	}
 });
 
 app.post('/logout', async c => {
-	// Defense-in-depth: reject cross-origin POSTs (SameSite=Lax allows
-	// top-level navigations but we only want same-origin POST here).
-	const origin = c.req.header('origin');
-	if (origin) {
-		try {
-			const originHost = new URL(origin).host;
-			const reqHost = new URL(c.req.url).host;
-			if (originHost !== reqHost) {
-				return c.json({ error: 'Forbidden' }, 403);
-			}
-		} catch {
-			return c.json({ error: 'Forbidden' }, 403);
-		}
-	}
+	try {
+		// logout uses anon key only
+		const supabaseEnv = {
+			url: c.env.SUPABASE_URL ?? env.SUPABASE_URL,
+			anonKey: c.env.SUPABASE_ANON_KEY ?? env.SUPABASE_ANON_KEY,
+		};
 
-	setAuthCookie(c, '', 0);
-	return c.json({ message: 'Logged out' });
+		if (!supabaseEnv.url || !supabaseEnv.anonKey) {
+			logger.error('logout error: supabase env missing', {
+				missingUrl: !supabaseEnv.url,
+				missingAnonKey: !supabaseEnv.anonKey,
+			});
+			throw new HTTPException(500, {
+				message:
+					'Supabase configuration is missing or invalid. Please set SUPABASE_URL and SUPABASE_ANON_KEY.',
+			});
+		}
+
+		const token = extractBearerToken(
+			c.req.raw.headers.get('authorization') || ''
+		);
+		if (!token) {
+			throw new HTTPException(401, {
+				message: 'Unauthorized: Missing access token',
+			});
+		}
+
+		const response = await fetch(`${supabaseEnv.url}/auth/v1/logout`, {
+			method: 'POST',
+			headers: {
+				apikey: supabaseEnv.anonKey,
+				Authorization: `Bearer ${token}`,
+			},
+		});
+
+		if (response.status === 401 || response.status === 403) {
+			throw new HTTPException(401, {
+				message: 'Unauthorized: Invalid or expired token',
+			});
+		}
+
+		if (!response.ok) {
+			logger.error('logout error: unexpected status', {
+				status: response.status,
+			});
+			throw new HTTPException(500, {
+				message: 'Failed to revoke session tokens',
+			});
+		}
+
+		// Supabase signOut is handled client-side; API acknowledges logout
+		return c.json({ message: 'Logged out' });
+	} catch (error) {
+		if (error instanceof HTTPException) throw error;
+		logger.error('logout error', { error });
+		throw new HTTPException(500, { message: 'Internal server error' });
+	}
 });
 
-app.get('/session', authMiddleware, async c => {
-	const u = getUser(c);
-	const db = c.get('db');
-
-	if (!db) {
-		logger.error('Database not available for /session');
-		return c.json({ error: 'Service unavailable' }, 503);
-	}
-
+app.get('/session', async c => {
 	try {
-		const row = await db
-			.select()
-			.from(users)
-			.where(eq(users.id, u.userId))
-			.get();
+		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.session');
 
-		if (!row) {
-			return c.json({ error: 'User not found' }, 404);
+		const token = extractBearerToken(
+			c.req.raw.headers.get('authorization') || ''
+		);
+		if (!token) {
+			throw new HTTPException(401, {
+				message: 'Unauthorized: Missing access token',
+			});
+		}
+
+		const { data, error } = await supabaseAnon.auth.getUser(token);
+		if (error || !data?.user) {
+			throw new HTTPException(401, {
+				message: 'Unauthorized: Invalid or expired token',
+			});
 		}
 
 		return c.json({
 			user: {
-				id: row.id,
-				email: row.email,
-				username: row.username,
-				name: row.name,
-				picture: row.picture,
-				createdAt: row.createdAt,
-				updatedAt: row.updatedAt,
+				id: data.user.id,
+				email: data.user.email,
+				user_metadata: data.user.user_metadata,
 			},
 		});
 	} catch (error) {
-		logger.error('Session lookup failed', { userId: u.userId, error });
-		return c.json({ error: 'Internal server error' }, 500);
+		if (error instanceof HTTPException) throw error;
+		logger.error('session error', { error });
+		throw new HTTPException(500, { message: 'Internal server error' });
 	}
 });
 

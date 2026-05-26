@@ -1,7 +1,9 @@
 import { test, expect, describe, beforeEach, afterEach, mock } from 'bun:test';
 
 // Mock the auth module before importing storage (avoids React dependency)
-mock.module('../auth', () => ({}));
+mock.module('../auth', () => ({
+	getAuthHeaders: mock(() => Promise.resolve({})),
+}));
 
 // Now import storage after the mock is set up
 const { defaultAIConfig, saveAIConfig, clearAIConfig, loadAIConfig } =

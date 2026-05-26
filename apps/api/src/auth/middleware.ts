@@ -1,21 +1,17 @@
 import type { Context, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { extractBearerToken, extractCookieToken } from './utils';
-import { verifyAppJwt } from './jwt';
-import { logger } from '../logger';
+import { getSupabaseClientsFromContext } from './supabase';
+import { extractBearerToken } from './utils';
 
 interface AuthUser {
 	userId: string;
-	email: string;
-	username: string;
+	email?: string;
 }
 
 export async function authMiddleware(c: Context, next: Next) {
 	try {
 		const authHeader = c.req.header('authorization') || '';
-		const cookieHeader = c.req.header('cookie') || '';
-		const token =
-			extractBearerToken(authHeader) ?? extractCookieToken(cookieHeader);
+		const token = extractBearerToken(authHeader);
 
 		if (!token) {
 			throw new HTTPException(401, {
@@ -23,31 +19,32 @@ export async function authMiddleware(c: Context, next: Next) {
 			});
 		}
 
-		const jwtSecret = (c.get('jwtSecret') as string) || undefined;
+		const { supabaseAnon } = getSupabaseClientsFromContext({
+			env: c.env as Record<string, string | undefined>,
+		});
 
-		let payload;
-		try {
-			payload = await verifyAppJwt(token, { secret: jwtSecret });
-		} catch (jwtError) {
-			const reason = jwtError instanceof Error ? jwtError.message : 'unknown';
-			logger.warn('JWT verification failed', { reason });
+		const { data, error } = await supabaseAnon.auth.getUser(token);
+
+		if (error || !data?.user) {
 			throw new HTTPException(401, {
 				message: 'Unauthorized: Invalid or expired token',
 			});
 		}
 
+		const user = data.user;
 		c.set('user', {
-			userId: payload.sub,
-			email: payload.email,
-			username: payload.username,
+			userId: user.id,
+			email: user.email ?? undefined,
 		});
 		await next();
 	} catch (error) {
 		if (error instanceof HTTPException) {
 			throw error;
 		}
-		logger.error('authMiddleware unexpected error', { error });
-		throw new HTTPException(500, { message: 'Internal server error' });
+		console.error('authMiddleware unexpected error:', error);
+		throw new HTTPException(500, {
+			message: 'Internal server error',
+		});
 	}
 }
 
