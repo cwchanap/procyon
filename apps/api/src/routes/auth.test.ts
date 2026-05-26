@@ -1,6 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { resetLoginAttempts } from '../auth/rate-limit';
 import { signAppJwt } from '../auth/jwt';
+import { initializeDB, getDB } from '../db';
+import { users as usersTable } from '../db/schema';
 import authRoutes from './auth';
 
 const SUPABASE_URL = 'http://localhost:54321';
@@ -482,11 +484,66 @@ describe('GET /session (cookie-based)', () => {
 		);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
-			user: { id: string; email: string; username: string };
+			user: {
+				id: string;
+				email: string;
+				username: string;
+				createdAt: string | null;
+			};
 		};
 		expect(body.user.id).toBe('cookie-user-1');
 		expect(body.user.email).toBe('cookie@example.com');
 		expect(body.user.username).toBe('cookieuser');
+		// No DB row for this user, so createdAt is null
+		expect(body.user.createdAt).toBeNull();
+	});
+
+	test('returns enriched user data when DB user exists', async () => {
+		const dbUserId = 'db-cookie-user-1';
+		const now = new Date();
+		process.env.NODE_ENV = 'test';
+		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
+		const db = getDB();
+		await db.insert(usersTable).values({
+			id: dbUserId,
+			googleSub: 'google-sub-enriched',
+			email: 'enriched@example.com',
+			username: 'enricheduser',
+			name: 'Enriched User',
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		const token = await signAppJwt({
+			sub: dbUserId,
+			email: 'enriched@example.com',
+			username: 'enricheduser',
+		});
+
+		const res = await authRoutes.fetch(
+			new Request(`${SUPABASE_URL}/session`, {
+				headers: { cookie: `procyon_access_token=${token}` },
+			}),
+			envBindings
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			user: {
+				id: string;
+				email: string;
+				username: string;
+				name: string | null;
+				createdAt: string | null;
+			};
+		};
+		expect(body.user.id).toBe(dbUserId);
+		expect(body.user.email).toBe('enriched@example.com');
+		expect(body.user.username).toBe('enricheduser');
+		expect(body.user.name).toBe('Enriched User');
+		expect(typeof body.user.createdAt).toBe('string');
+		// SQLite integer timestamp truncates sub-second precision
+		const parsedDate = new Date(body.user.createdAt!);
+		expect(Math.abs(parsedDate.getTime() - now.getTime())).toBeLessThan(1000);
 	});
 
 	test('falls back to Bearer when cookie token is invalid', async () => {

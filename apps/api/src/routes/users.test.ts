@@ -5,23 +5,24 @@ import {
 	beforeAll,
 	afterAll,
 	beforeEach,
-	afterEach,
 } from 'bun:test';
-import usersRoutes from './users';
+import { initializeDB, getDB } from '../db';
+import { users as usersTable } from '../db/schema';
 import { signAppJwt } from '../auth/jwt';
+import usersRoutes from './users';
 
-const SUPABASE_URL = 'http://localhost:54321';
-const SUPABASE_ANON_KEY = 'test-anon-key';
-const SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
-const BASE_URL = 'http://localhost';
 const TEST_USER_ID = '00000000-0000-4000-8000-000000000001';
+const BASE_URL = 'http://localhost';
 
-let AUTH_HEADER: Record<string, string> = {};
 let originalJwtSecret: string | undefined;
+let originalNodeEnv: string | undefined;
+let AUTH_HEADER: Record<string, string> = {};
 
 beforeAll(async () => {
 	originalJwtSecret = process.env.JWT_SECRET;
+	originalNodeEnv = process.env.NODE_ENV;
 	process.env.JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+	process.env.NODE_ENV = 'test';
 	const token = await signAppJwt({
 		sub: TEST_USER_ID,
 		email: 'test@example.com',
@@ -36,263 +37,158 @@ afterAll(() => {
 	} else {
 		delete process.env.JWT_SECRET;
 	}
+	if (originalNodeEnv !== undefined) {
+		process.env.NODE_ENV = originalNodeEnv;
+	} else {
+		delete process.env.NODE_ENV;
+	}
 });
 
-// CF-style env bindings injected into every request so getSupabaseClientsFromContext
-// creates fresh clients and bypasses the module-level singleton.
-const CF_ENV = {
-	SUPABASE_URL,
-	SUPABASE_ANON_KEY,
-	SUPABASE_SERVICE_ROLE_KEY,
-};
-
-type FetchMockRestore = () => void;
-
-interface MockUser {
-	id: string;
-	email: string;
-	user_metadata: { username?: string; name?: string };
-	created_at: string;
-	updated_at: string;
-}
-
-function mockSupabaseFetch(user?: Partial<MockUser>): FetchMockRestore {
-	const original = globalThis.fetch;
-	const mockUser: MockUser = {
+async function seedUser(opts: { seedConflict?: boolean } = {}): Promise<void> {
+	initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
+	const db = getDB();
+	const now = new Date();
+	await db.insert(usersTable).values({
 		id: TEST_USER_ID,
+		googleSub: 'google-sub-1',
 		email: 'test@example.com',
-		user_metadata: { username: 'testuser', name: 'Test User' },
-		created_at: '2024-01-01T00:00:00Z',
-		updated_at: '2024-01-01T00:00:00Z',
-		...user,
-	};
-
-	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url =
-			typeof input === 'string'
-				? input
-				: input instanceof Request
-					? input.url
-					: input.toString();
-
-		const method =
-			input instanceof Request ? input.method : (init?.method ?? 'GET');
-		const headers =
-			input instanceof Request
-				? new Headers(input.headers)
-				: new Headers(init?.headers as HeadersInit | undefined);
-		const auth =
-			headers.get('authorization') ?? headers.get('Authorization') ?? '';
-
-		// Supabase anon auth (middleware check)
-		if (url.includes('/auth/v1/user') && !url.includes('/admin/')) {
-			if (auth === 'Bearer test-token') {
-				return new Response(
-					JSON.stringify({ id: TEST_USER_ID, email: 'test@example.com' }),
-					{ status: 200, headers: { 'Content-Type': 'application/json' } }
-				);
-			}
-			return new Response(JSON.stringify({ message: 'Unauthorized' }), {
-				status: 401,
-				headers: { 'Content-Type': 'application/json' },
-			});
-		}
-
-		// Supabase admin - update user by ID (check PUT before GET)
-		if (
-			url.includes(`/auth/v1/admin/users/${TEST_USER_ID}`) &&
-			method === 'PUT'
-		) {
-			if (auth !== `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`) {
-				return new Response(JSON.stringify({ message: 'Unauthorized' }), {
-					status: 401,
-					headers: { 'Content-Type': 'application/json' },
-				});
-			}
-			const body = JSON.parse((init.body as string) ?? '{}') as {
-				user_metadata?: { username?: string };
-			};
-			// Mutate in place so subsequent GET reflects the update
-			mockUser.user_metadata = {
-				...mockUser.user_metadata,
-				...body.user_metadata,
-			};
-			return new Response(JSON.stringify({ user: { ...mockUser } }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
-		}
-
-		// Supabase admin - get user by ID
-		if (url.includes(`/auth/v1/admin/users/${TEST_USER_ID}`)) {
-			if (auth !== `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`) {
-				return new Response(JSON.stringify({ message: 'Unauthorized' }), {
-					status: 401,
-					headers: { 'Content-Type': 'application/json' },
-				});
-			}
-			return new Response(JSON.stringify({ user: { ...mockUser } }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
-		}
-
-		return new Response('Not Found', { status: 404 });
-	}) as typeof fetch;
-
-	return () => {
-		globalThis.fetch = original;
-	};
+		username: 'testuser',
+		name: 'Test User',
+		createdAt: now,
+		updatedAt: now,
+	});
+	if (opts.seedConflict) {
+		await db.insert(usersTable).values({
+			id: 'other-user',
+			googleSub: 'google-sub-2',
+			email: 'other@example.com',
+			username: 'othertaken',
+			createdAt: now,
+			updatedAt: now,
+		});
+	}
 }
 
 describe('users routes - auth guards', () => {
-	let restore: FetchMockRestore = () => {};
-
-	beforeEach(() => {
-		restore = mockSupabaseFetch();
-	});
-
-	afterEach(() => restore());
+	beforeEach(() => seedUser());
 
 	test('GET /me returns 401 without token', async () => {
-		const res = await usersRoutes.request(`${BASE_URL}/me`, {}, CF_ENV);
+		const res = await usersRoutes.request(`${BASE_URL}/me`);
 		expect(res.status).toBe(401);
 	});
 
 	test('PUT /me returns 401 without token', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ username: 'newname' }),
-			},
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ username: 'newname' }),
+		});
 		expect(res.status).toBe(401);
 	});
 });
 
 describe('users routes - GET /me', () => {
-	let restore: FetchMockRestore = () => {};
-
-	beforeEach(() => {
-		restore = mockSupabaseFetch();
-	});
-
-	afterEach(() => restore());
+	beforeEach(() => seedUser());
 
 	test('GET /me returns user profile for authenticated user', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{ headers: AUTH_HEADER },
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			headers: AUTH_HEADER,
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
-			user: { id: string; email: string; username: string };
+			user: {
+				id: string;
+				email: string;
+				username: string;
+				name: string | null;
+				createdAt: string;
+			};
 		};
 		expect(body.user).toBeDefined();
 		expect(body.user.id).toBe(TEST_USER_ID);
 		expect(body.user.email).toBe('test@example.com');
 		expect(body.user.username).toBe('testuser');
+		expect(body.user.name).toBe('Test User');
+		expect(typeof body.user.createdAt).toBe('string');
+	});
+
+	test('GET /me returns 404 for unknown user', async () => {
+		const token = await signAppJwt({
+			sub: 'nonexistent-user-id',
+			email: 'noone@example.com',
+			username: 'ghost',
+		});
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			headers: { Authorization: `Bearer ${token}` },
+		});
+		expect(res.status).toBe(404);
 	});
 });
 
 describe('users routes - PUT /me validation', () => {
-	let restore: FetchMockRestore = () => {};
-
-	beforeEach(() => {
-		restore = mockSupabaseFetch();
-	});
-
-	afterEach(() => restore());
+	beforeEach(() => seedUser());
 
 	test('PUT /me returns 400 when username is not a string', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-				body: JSON.stringify({ username: 123 }),
-			},
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			body: JSON.stringify({ username: 123 }),
+		});
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as { error: string };
 		expect(body.error).toContain('string');
 	});
 
 	test('PUT /me returns 400 when username is empty string', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-				body: JSON.stringify({ username: '   ' }),
-			},
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			body: JSON.stringify({ username: '   ' }),
+		});
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as { error: string };
 		expect(body.error).toContain('empty');
 	});
 
 	test('PUT /me returns 400 when username is too short', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-				body: JSON.stringify({ username: 'ab' }),
-			},
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			body: JSON.stringify({ username: 'ab' }),
+		});
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as { error: string };
 		expect(body.error).toContain('between');
 	});
 
 	test('PUT /me returns 400 when username is too long', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-				body: JSON.stringify({ username: 'a'.repeat(31) }),
-			},
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			body: JSON.stringify({ username: 'a'.repeat(31) }),
+		});
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as { error: string };
 		expect(body.error).toContain('between');
 	});
 
 	test('PUT /me returns 400 when username has invalid characters', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-				body: JSON.stringify({ username: 'invalid user!' }),
-			},
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			body: JSON.stringify({ username: 'invalid user!' }),
+		});
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as { error: string };
 		expect(body.error).toContain('letters');
 	});
 
 	test('PUT /me successfully updates username', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-				body: JSON.stringify({ username: 'newusername' }),
-			},
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			body: JSON.stringify({ username: 'newusername' }),
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			message: string;
@@ -303,15 +199,11 @@ describe('users routes - PUT /me validation', () => {
 	});
 
 	test('PUT /me normalizes username to lowercase', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-				body: JSON.stringify({ username: 'NewUser123' }),
-			},
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			body: JSON.stringify({ username: 'NewUser123' }),
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			user: { username: string };
@@ -320,15 +212,11 @@ describe('users routes - PUT /me validation', () => {
 	});
 
 	test('PUT /me returns 200 with current user when no fields to update', async () => {
-		const res = await usersRoutes.request(
-			`${BASE_URL}/me`,
-			{
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
-				body: JSON.stringify({}),
-			},
-			CF_ENV
-		);
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+			body: JSON.stringify({}),
+		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			message: string;
@@ -338,5 +226,20 @@ describe('users routes - PUT /me validation', () => {
 		expect(body.user).toBeDefined();
 		expect(body.user.id).toBe(TEST_USER_ID);
 		expect(body.user.email).toBe('test@example.com');
+	});
+
+	test('PUT /me returns 409 on unique constraint conflict', async () => {
+		await seedUser({ seedConflict: true });
+		const res = await usersRoutes.request(`${BASE_URL}/me`, {
+			method: 'PUT',
+			headers: {
+				'content-type': 'application/json',
+				...AUTH_HEADER,
+			},
+			body: JSON.stringify({ username: 'othertaken' }),
+		});
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).toContain('already taken');
 	});
 });

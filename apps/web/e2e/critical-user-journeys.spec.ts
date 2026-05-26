@@ -14,7 +14,7 @@ const waitForProfileReady = async (page: Page, authenticated = true) => {
 
 const waitForLoginFormReady = async (page: Page) => {
 	await page
-		.locator('[data-testid="login-form"][data-hydrated="true"]')
+		.locator('[data-testid="google-signin-button"]')
 		.waitFor({ state: 'visible', timeout: 15000 });
 };
 

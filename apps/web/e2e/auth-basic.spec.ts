@@ -6,7 +6,7 @@ test.describe('Basic Authentication Flow', () => {
 		const authHelper = new AuthHelper(page);
 		const testUser = AuthHelper.getFixtureUser();
 
-		await authHelper.login(testUser.email, testUser.password);
+		await authHelper.login(testUser.email);
 		await authHelper.expectAuthenticated(testUser.username, testUser.email);
 		await authHelper.logout();
 		await authHelper.expectNotAuthenticated();
