@@ -147,8 +147,9 @@ jobs:
           E2E_EMAIL="${E2E_TEST_USER_EMAIL:-test-procyon@cwchanap.dev}"
           E2E_USERNAME="${E2E_TEST_USER_USERNAME:-test-procyon}"
           CLAIM_PAYLOAD=$(printf '{"sub":"e2e-%s","email":"%s","emailVerified":true,"name":"%s"}' "$E2E_EMAIL" "$E2E_EMAIL" "$E2E_USERNAME")
-          CLAIM_TOKEN="test-claim:${CLAIM_PAYLOAD}"
-          REQUEST_BODY=$(printf '{"id_token":"%s"}' "$CLAIM_TOKEN")
+          # Escape inner double quotes so the claim payload can be embedded in JSON
+          ESCAPED_CLAIM=$(printf '%s' "$CLAIM_PAYLOAD" | sed 's/"/\\"/g')
+          REQUEST_BODY="{\"id_token\":\"test-claim:${ESCAPED_CLAIM}\"}"
 
           for i in $(seq 1 10); do
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \

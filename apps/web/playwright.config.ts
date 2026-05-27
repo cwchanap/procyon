@@ -146,6 +146,7 @@ export default defineConfig({
         PUBLIC_SUPABASE_URL: supabaseEnv.url,
         PUBLIC_SUPABASE_ANON_KEY: supabaseEnv.anonKey,
         PUBLIC_API_URL: 'http://localhost:3501/api',
+        PUBLIC_GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
         ASTRO_DISABLE_DEV_TOOLBAR: 'true',
       },
     },
@@ -156,6 +157,7 @@ export default defineConfig({
       timeout: 120 * 1000,
       env: {
         NODE_ENV: 'e2e',
+        JWT_SECRET: 'e2e-test-secret-must-be-at-least-32-chars-long',
         SUPABASE_URL: supabaseEnv.url,
         SUPABASE_ANON_KEY: supabaseEnv.anonKey,
         SUPABASE_SERVICE_ROLE_KEY: supabaseEnv.serviceRoleKey,
