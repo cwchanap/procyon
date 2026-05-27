@@ -92,6 +92,7 @@ jobs:
       - name: Start API server
         env:
           NODE_ENV: e2e
+          JWT_SECRET: e2e-test-secret-must-be-at-least-32-chars-long
         run: |
           set -e
           cd apps/api
@@ -143,13 +144,15 @@ jobs:
         run: |
           E2E_EMAIL="${E2E_TEST_USER_EMAIL:-test-procyon@cwchanap.dev}"
           E2E_USERNAME="${E2E_TEST_USER_USERNAME:-test-procyon}"
-          CLAIM_TOKEN="test-claim:{\"sub\":\"e2e-${E2E_EMAIL}\",\"email\":\"${E2E_EMAIL}\",\"emailVerified\":true,\"name\":\"${E2E_USERNAME}\"}"
+          CLAIM_PAYLOAD=$(printf '{"sub":"e2e-%s","email":"%s","emailVerified":true,"name":"%s"}' "$E2E_EMAIL" "$E2E_EMAIL" "$E2E_USERNAME")
+          CLAIM_TOKEN="test-claim:${CLAIM_PAYLOAD}"
+          REQUEST_BODY=$(printf '{"id_token":"%s"}' "$CLAIM_TOKEN")
 
           for i in $(seq 1 10); do
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
               -X POST "${PUBLIC_API_URL}/auth/google" \
               -H "Content-Type: application/json" \
-              -d "{\"id_token\":\"${CLAIM_TOKEN}\"}")
+              -d "$REQUEST_BODY")
             if [ "$HTTP_CODE" = "200" ]; then
               echo "E2E test user seeded successfully"
               exit 0
