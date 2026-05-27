@@ -8,7 +8,11 @@ const SUPABASE_URL = 'http://localhost:54321';
 const SUPABASE_ANON_KEY = 'test-anon-key';
 
 // Bindings passed to authRoutes.fetch() so c.env is populated (required by logout route)
-const envBindings = { SUPABASE_URL, SUPABASE_ANON_KEY };
+const envBindings = {
+	SUPABASE_URL,
+	SUPABASE_ANON_KEY,
+	JWT_SECRET: 'test-jwt-secret-must-be-at-least-32-chars-long',
+};
 
 type FetchMockRestore = () => void;
 
