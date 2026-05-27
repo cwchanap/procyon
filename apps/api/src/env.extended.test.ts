@@ -173,8 +173,32 @@ describe('isWorkersRuntime detection (via production validation)', () => {
 			process.env.SUPABASE_URL = 'https://x.supabase.co';
 			process.env.SUPABASE_ANON_KEY = 'anon';
 			process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
+			process.env.JWT_SECRET = 'a-production-jwt-secret-key';
 
 			await expect(importFreshEnv()).resolves.toBeDefined();
+		} finally {
+			restoreGlobals(savedGlobals);
+			restoreEnv(savedEnv);
+		}
+	});
+
+	test('production validation throws when JWT_SECRET is missing', async () => {
+		const savedEnv = snapshotEnv();
+		const savedGlobals = snapshotGlobals(['WebSocketPair', 'caches']);
+
+		try {
+			delete (globalThis as Record<string, unknown>).WebSocketPair;
+			delete (globalThis as Record<string, unknown>).caches;
+
+			process.env.NODE_ENV = 'production';
+			process.env.SUPABASE_URL = 'https://x.supabase.co';
+			process.env.SUPABASE_ANON_KEY = 'anon';
+			process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
+			delete process.env.JWT_SECRET;
+
+			await expect(importFreshEnv()).rejects.toThrow(
+				'JWT_SECRET is required in production.'
+			);
 		} finally {
 			restoreGlobals(savedGlobals);
 			restoreEnv(savedEnv);

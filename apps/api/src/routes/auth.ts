@@ -225,11 +225,13 @@ app.get('/session', async c => {
 					secret: c.get('jwtSecret') || c.env.JWT_SECRET,
 				});
 
-				// Enrich session with DB fields (createdAt, name, picture)
+				// Enrich session with DB fields (createdAt, name, picture, username, email)
 				let dbUser:
 					| {
 							name: string | null;
 							picture: string | null;
+							username: string;
+							email: string;
 							createdAt: Date;
 					  }
 					| undefined;
@@ -240,6 +242,8 @@ app.get('/session', async c => {
 							.select({
 								name: users.name,
 								picture: users.picture,
+								username: users.username,
+								email: users.email,
 								createdAt: users.createdAt,
 							})
 							.from(users)
@@ -252,8 +256,8 @@ app.get('/session', async c => {
 				return c.json({
 					user: {
 						id: payload.sub,
-						email: payload.email,
-						username: payload.username,
+						email: dbUser?.email ?? payload.email,
+						username: dbUser?.username ?? payload.username,
 						name: dbUser?.name ?? null,
 						picture: dbUser?.picture ?? null,
 						createdAt: dbUser?.createdAt?.toISOString() ?? null,
