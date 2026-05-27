@@ -121,7 +121,7 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 		setCookie(c, AUTH_COOKIE_NAME, token, {
 			path: '/',
 			httpOnly: true,
-			secure: process.env.NODE_ENV === 'production',
+			secure: new URL(c.req.url).protocol === 'https:',
 			sameSite: 'Lax',
 			maxAge: 7 * 24 * 60 * 60, // 7 days, matches JWT expiry
 		});

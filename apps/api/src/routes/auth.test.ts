@@ -430,4 +430,48 @@ describe('POST /google', () => {
 		const allowedEnvs = ['development', 'e2e', 'test'];
 		expect(allowedEnvs).not.toContain('staging');
 	});
+
+	test('sets Secure cookie flag over https', async () => {
+		process.env.NODE_ENV = 'e2e';
+		const claimToken = `test-claim:${JSON.stringify({
+			sub: 'e2e-secure-test',
+			email: 'secure@example.com',
+			emailVerified: true,
+			name: 'Secure Test',
+		})}`;
+		const res = await authRoutes.fetch(
+			new Request('https://api.example.com/google', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id_token: claimToken }),
+			}),
+			envBindings
+		);
+		expect(res.status).toBe(200);
+		const setCookie = res.headers.get('set-cookie');
+		expect(setCookie).toBeTruthy();
+		expect(setCookie!).toContain('Secure');
+	});
+
+	test('omits Secure cookie flag over http', async () => {
+		process.env.NODE_ENV = 'e2e';
+		const claimToken = `test-claim:${JSON.stringify({
+			sub: 'e2e-insecure-test',
+			email: 'insecure@example.com',
+			emailVerified: true,
+			name: 'Insecure Test',
+		})}`;
+		const res = await authRoutes.fetch(
+			new Request('http://localhost:3501/google', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id_token: claimToken }),
+			}),
+			envBindings
+		);
+		expect(res.status).toBe(200);
+		const setCookie = res.headers.get('set-cookie');
+		expect(setCookie).toBeTruthy();
+		expect(setCookie!).not.toContain('Secure');
+	});
 });
