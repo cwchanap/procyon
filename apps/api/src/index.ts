@@ -85,11 +85,15 @@ if (proc && typeof proc.on === 'function') {
 
 const app = new Hono();
 
-// Expose JWT_SECRET to authMiddleware via context
+// Expose JWT_SECRET and GOOGLE_CLIENT_ID to routes via context
 app.use('*', async (c, next) => {
 	const jwtSecret = process.env.JWT_SECRET;
 	if (jwtSecret) {
 		c.set('jwtSecret', jwtSecret);
+	}
+	const googleClientId = process.env.GOOGLE_CLIENT_ID;
+	if (googleClientId) {
+		c.set('googleClientId', googleClientId);
 	}
 	await next();
 });
