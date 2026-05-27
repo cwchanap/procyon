@@ -11,9 +11,7 @@ import {
 	AUTH_COOKIE_NAME,
 	extractBearerToken,
 	extractCookieToken,
-	isUsernameUniqueConstraintError,
 } from '../auth/utils';
-import { recordLoginAttempt, resetLoginAttempts } from '../auth/rate-limit';
 import { getDB } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
@@ -77,7 +75,12 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 		let claims;
 		// Test-mode bypass: accept a JSON-encoded claims object prefixed with
 		// "test-claim:" so E2E tests can authenticate without a real Google token.
-		if (id_token.startsWith('test-claim:') && env.NODE_ENV !== 'production') {
+		if (
+			id_token.startsWith('test-claim:') &&
+			(env.NODE_ENV === 'development' ||
+				env.NODE_ENV === 'e2e' ||
+				env.NODE_ENV === 'test')
+		) {
 			try {
 				claims = JSON.parse(id_token.slice('test-claim:'.length)) as Awaited<
 					ReturnType<typeof verifyGoogleIdToken>
@@ -130,124 +133,28 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 });
 
 app.post('/register', zValidator('json', registerSchema), async c => {
-	try {
-		const { email, username, password } = c.req.valid('json');
-
-		const status = recordLoginAttempt(email);
-		if (!status.allowed) {
-			return c.json(
-				{
-					error: 'Too many registration attempts. Please wait before retrying.',
-					retryAfterMs: status.retryAfterMs,
-				},
-				429
-			);
-		}
-
-		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.register');
-		const normalizedUsername =
-			typeof username === 'string' ? username.trim().toLowerCase() : undefined;
-
-		const options = normalizedUsername
-			? { data: { username: normalizedUsername } }
-			: undefined;
-		const { data, error } = await supabaseAnon.auth.signUp({
-			email,
-			password,
-			...(options ? { options } : {}),
-		});
-
-		if (error) {
-			if (normalizedUsername && isUsernameUniqueConstraintError(error)) {
-				return c.json(
-					{ error: 'Username already taken. Please choose another.' },
-					409
-				);
-			}
-			return c.json({ error: error.message || 'Registration failed' }, 400);
-		}
-
-		if (!data.user) {
-			return c.json({ error: 'Registration failed' }, 400);
-		}
-
-		let session = data.session ?? null;
-		if (!session) {
-			const signInResult = await supabaseAnon.auth.signInWithPassword({
-				email,
-				password,
-			});
-			if (!signInResult.error && signInResult.data.session) {
-				session = signInResult.data.session;
-			}
-		}
-
-		resetLoginAttempts(email);
-
-		return c.json(
-			{
-				access_token: session?.access_token ?? null,
-				refresh_token: session?.refresh_token ?? null,
-				user: {
-					id: data.user.id,
-					email: data.user.email,
-					username: normalizedUsername,
-				},
-			},
-			201
-		);
-	} catch (error) {
-		if (error instanceof HTTPException) {
-			return c.json({ error: error.message }, error.status);
-		}
-		logger.error('register error', { error });
-		return c.json({ error: 'Internal server error' }, 500);
-	}
+	// Legacy email/password registration — deprecated in favour of Google OAuth.
+	// The app JWT middleware requires a local users row (keyed on google_sub),
+	// so Supabase-only tokens issued here are rejected by protected routes.
+	return c.json(
+		{
+			error:
+				'Email registration is no longer supported. Please use Google Sign-In.',
+		},
+		410
+	);
 });
 
 app.post('/login', zValidator('json', loginSchema), async c => {
-	try {
-		const supabaseAnon = getSupabaseAnonOrThrow(c, 'auth.login');
-
-		const { email, password } = c.req.valid('json');
-
-		const status = recordLoginAttempt(email);
-		if (!status.allowed) {
-			return c.json(
-				{
-					error: 'Too many login attempts. Please wait before retrying.',
-					retryAfterMs: status.retryAfterMs,
-				},
-				429
-			);
-		}
-
-		const { data, error } = await supabaseAnon.auth.signInWithPassword({
-			email,
-			password,
-		});
-
-		if (error || !data.session) {
-			return c.json({ error: 'Invalid email or password' }, 401);
-		}
-
-		resetLoginAttempts(email);
-
-		return c.json({
-			access_token: data.session.access_token,
-			refresh_token: data.session.refresh_token,
-			user: {
-				id: data.user.id,
-				email: data.user.email,
-			},
-		});
-	} catch (error) {
-		if (error instanceof HTTPException) {
-			return c.json({ error: error.message }, error.status);
-		}
-		logger.error('login error', { error });
-		return c.json({ error: 'Internal server error' }, 500);
-	}
+	// Legacy email/password login — deprecated in favour of Google OAuth.
+	// The app JWT middleware requires a local users row (keyed on google_sub),
+	// so Supabase-only tokens issued here are rejected by protected routes.
+	return c.json(
+		{
+			error: 'Email login is no longer supported. Please use Google Sign-In.',
+		},
+		410
+	);
 });
 
 app.post('/logout', async c => {
