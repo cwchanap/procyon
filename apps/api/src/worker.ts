@@ -28,9 +28,12 @@ app.use('*', async (c, next) => {
 	if (c.env.DB) {
 		initializeDB(c.env.DB);
 	}
-	// Expose JWT_SECRET to authMiddleware via context
+	// Expose JWT_SECRET and GOOGLE_CLIENT_ID to routes via context
 	if (c.env.JWT_SECRET) {
 		c.set('jwtSecret', c.env.JWT_SECRET);
+	}
+	if (c.env.GOOGLE_CLIENT_ID) {
+		c.set('googleClientId', c.env.GOOGLE_CLIENT_ID);
 	}
 	await next();
 });

@@ -27,7 +27,12 @@ type Bindings = {
 	JWT_SECRET?: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+type Variables = {
+	jwtSecret?: string;
+	googleClientId?: string;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 const registerSchema = z.object({
 	email: z.string().email(),
@@ -91,9 +96,8 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 				return c.json({ error: 'Invalid test claim payload' }, 400);
 			}
 		} else {
-			claims = await verifyGoogleIdToken(id_token, {
-				clientId: c.env.GOOGLE_CLIENT_ID,
-			});
+			const clientId = c.get('googleClientId') || c.env.GOOGLE_CLIENT_ID;
+			claims = await verifyGoogleIdToken(id_token, { clientId });
 		}
 
 		const db = getDB();
@@ -111,7 +115,7 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 				email: user.email,
 				username: user.username,
 			},
-			{ secret: c.env.JWT_SECRET }
+			{ secret: c.get('jwtSecret') || c.env.JWT_SECRET }
 		);
 
 		setCookie(c, AUTH_COOKIE_NAME, token, {
@@ -218,7 +222,7 @@ app.get('/session', async c => {
 		if (cookieToken) {
 			try {
 				const payload = await verifyAppJwt(cookieToken, {
-					secret: c.env.JWT_SECRET,
+					secret: c.get('jwtSecret') || c.env.JWT_SECRET,
 				});
 
 				// Enrich session with DB fields (createdAt, name, picture)
