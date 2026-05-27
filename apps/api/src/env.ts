@@ -7,6 +7,10 @@ interface EnvConfig {
 	NODE_ENV: string;
 	PORT: number;
 
+	// Auth
+	JWT_SECRET: string;
+	GOOGLE_CLIENT_ID: string;
+
 	// Supabase
 	SUPABASE_URL: string;
 	SUPABASE_ANON_KEY: string;
@@ -71,6 +75,9 @@ export const env: EnvConfig = {
 	NODE_ENV: getEnv('NODE_ENV'),
 	PORT: getEnvNumber('PORT', 3501),
 
+	JWT_SECRET: getEnv('JWT_SECRET'),
+	GOOGLE_CLIENT_ID: getEnv('GOOGLE_CLIENT_ID'),
+
 	SUPABASE_URL: getEnv('SUPABASE_URL'),
 	SUPABASE_ANON_KEY: getEnv('SUPABASE_ANON_KEY'),
 	SUPABASE_SERVICE_ROLE_KEY: getEnv('SUPABASE_SERVICE_ROLE_KEY'),
@@ -94,6 +101,9 @@ if (env.NODE_ENV === 'production' && !isWorkersRuntime()) {
 	}
 	if (!env.SUPABASE_SERVICE_ROLE_KEY) {
 		throw new Error('SUPABASE_SERVICE_ROLE_KEY is required in production.');
+	}
+	if (!env.JWT_SECRET) {
+		throw new Error('JWT_SECRET is required in production.');
 	}
 }
 

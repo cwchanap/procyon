@@ -31,6 +31,14 @@ describe('env object', () => {
 		expect(typeof env.SUPABASE_SERVICE_ROLE_KEY).toBe('string');
 	});
 
+	test('JWT_SECRET is a string', () => {
+		expect(typeof env.JWT_SECRET).toBe('string');
+	});
+
+	test('GOOGLE_CLIENT_ID is a string', () => {
+		expect(typeof env.GOOGLE_CLIENT_ID).toBe('string');
+	});
+
 	test('CI is a boolean', () => {
 		expect(typeof env.CI).toBe('boolean');
 	});

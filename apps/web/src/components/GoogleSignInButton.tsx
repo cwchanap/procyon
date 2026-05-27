@@ -92,11 +92,14 @@ export function GoogleSignInButton({
 			});
 
 			if (buttonRef.current) {
+				const containerWidth =
+					buttonRef.current.parentElement?.clientWidth ?? 400;
+				const buttonWidth = Math.min(containerWidth, 400);
 				window.google.accounts.id.renderButton(buttonRef.current, {
 					theme: 'filled_black',
 					size: 'large',
 					text,
-					width: 400,
+					width: buttonWidth,
 				});
 			}
 		}
@@ -121,7 +124,7 @@ export function GoogleSignInButton({
 
 	return (
 		<div
-			className='flex flex-col items-center gap-4'
+			className='flex flex-col items-center gap-4 w-full max-w-[400px]'
 			data-testid='google-signin-button'
 		>
 			{loading && (

@@ -4,6 +4,7 @@
 
 NODE_ENV=development
 JWT_SECRET=your-secret-key-here-change-in-production
+GOOGLE_CLIENT_ID=your-google-client-id
 
 # Supabase (use anon key for client traffic, service role ONLY for server/admin)
 SUPABASE_URL=https://your-supabase-project.supabase.co

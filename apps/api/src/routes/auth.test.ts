@@ -7,11 +7,13 @@ import authRoutes from './auth';
 const SUPABASE_URL = 'http://localhost:54321';
 const SUPABASE_ANON_KEY = 'test-anon-key';
 
+const JWT_SECRET = 'test-jwt-secret-must-be-at-least-32-chars-long';
+
 // Bindings passed to authRoutes.fetch() so c.env is populated (required by logout route)
 const envBindings = {
 	SUPABASE_URL,
 	SUPABASE_ANON_KEY,
-	JWT_SECRET: 'test-jwt-secret-must-be-at-least-32-chars-long',
+	JWT_SECRET,
 };
 
 type FetchMockRestore = () => void;
@@ -261,11 +263,14 @@ describe('GET /session (cookie-based)', () => {
 	});
 
 	test('returns user from a valid app JWT in the cookie', async () => {
-		const token = await signAppJwt({
-			sub: 'cookie-user-1',
-			email: 'cookie@example.com',
-			username: 'cookieuser',
-		});
+		const token = await signAppJwt(
+			{
+				sub: 'cookie-user-1',
+				email: 'cookie@example.com',
+				username: 'cookieuser',
+			},
+			{ secret: JWT_SECRET }
+		);
 
 		const res = await authRoutes.fetch(
 			new Request(`${SUPABASE_URL}/session`, {
@@ -305,11 +310,14 @@ describe('GET /session (cookie-based)', () => {
 			updatedAt: now,
 		});
 
-		const token = await signAppJwt({
-			sub: dbUserId,
-			email: 'enriched@example.com',
-			username: 'enricheduser',
-		});
+		const token = await signAppJwt(
+			{
+				sub: dbUserId,
+				email: 'enriched@example.com',
+				username: 'enricheduser',
+			},
+			{ secret: JWT_SECRET }
+		);
 
 		const res = await authRoutes.fetch(
 			new Request(`${SUPABASE_URL}/session`, {
@@ -335,6 +343,51 @@ describe('GET /session (cookie-based)', () => {
 		// SQLite integer timestamp truncates sub-second precision
 		const parsedDate = new Date(body.user.createdAt!);
 		expect(Math.abs(parsedDate.getTime() - now.getTime())).toBeLessThan(1000);
+	});
+
+	test('returns DB username when it differs from JWT claims', async () => {
+		const dbUserId = 'db-cookie-user-renamed';
+		const now = new Date();
+		process.env.NODE_ENV = 'test';
+		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
+		const db = getDB();
+		await db.insert(usersTable).values({
+			id: dbUserId,
+			googleSub: 'google-sub-renamed',
+			email: 'renamed@example.com',
+			username: 'newname',
+			name: 'Renamed User',
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		// JWT still contains the OLD username/email
+		const token = await signAppJwt(
+			{
+				sub: dbUserId,
+				email: 'old@example.com',
+				username: 'oldname',
+			},
+			{ secret: JWT_SECRET }
+		);
+
+		const res = await authRoutes.fetch(
+			new Request(`${SUPABASE_URL}/session`, {
+				headers: { cookie: `procyon_access_token=${token}` },
+			}),
+			envBindings
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			user: {
+				id: string;
+				email: string;
+				username: string;
+			};
+		};
+		// Session should reflect the DB values, not the stale JWT claims
+		expect(body.user.username).toBe('newname');
+		expect(body.user.email).toBe('renamed@example.com');
 	});
 
 	test('falls back to Bearer when cookie token is invalid', async () => {
