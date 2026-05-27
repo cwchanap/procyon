@@ -85,6 +85,15 @@ if (proc && typeof proc.on === 'function') {
 
 const app = new Hono();
 
+// Expose JWT_SECRET to authMiddleware via context
+app.use('*', async (c, next) => {
+	const jwtSecret = process.env.JWT_SECRET;
+	if (jwtSecret) {
+		c.set('jwtSecret', jwtSecret);
+	}
+	await next();
+});
+
 // CORS middleware
 const allowedOrigins = isProduction
 	? [env.FRONTEND_URL].filter(Boolean)

@@ -59,6 +59,12 @@ if (import.meta.env.PROD) {
 	}
 	assertNonEmptyString(PUBLIC_SUPABASE_URL, 'PUBLIC_SUPABASE_URL');
 	assertNonEmptyString(PUBLIC_SUPABASE_ANON_KEY, 'PUBLIC_SUPABASE_ANON_KEY');
+	if (!PUBLIC_GOOGLE_CLIENT_ID) {
+		// eslint-disable-next-line no-console
+		console.warn(
+			'PUBLIC_GOOGLE_CLIENT_ID is not set. Google Sign-In will be disabled. Set PUBLIC_GOOGLE_CLIENT_ID to enable Google OAuth.'
+		);
+	}
 }
 
 export const env: EnvConfig = {

@@ -16,6 +16,8 @@ type Bindings = {
 	SUPABASE_URL: string;
 	SUPABASE_ANON_KEY: string;
 	SUPABASE_SERVICE_ROLE_KEY: string;
+	GOOGLE_CLIENT_ID: string;
+	JWT_SECRET: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -25,6 +27,10 @@ app.use('*', async (c, next) => {
 	// Initialize DB with Cloudflare D1 binding for production
 	if (c.env.DB) {
 		initializeDB(c.env.DB);
+	}
+	// Expose JWT_SECRET to authMiddleware via context
+	if (c.env.JWT_SECRET) {
+		c.set('jwtSecret', c.env.JWT_SECRET);
 	}
 	await next();
 });

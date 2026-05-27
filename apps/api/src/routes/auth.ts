@@ -23,6 +23,8 @@ type Bindings = {
 	SUPABASE_URL?: string;
 	SUPABASE_ANON_KEY?: string;
 	SUPABASE_SERVICE_ROLE_KEY?: string;
+	GOOGLE_CLIENT_ID?: string;
+	JWT_SECRET?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -89,7 +91,9 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 				return c.json({ error: 'Invalid test claim payload' }, 400);
 			}
 		} else {
-			claims = await verifyGoogleIdToken(id_token);
+			claims = await verifyGoogleIdToken(id_token, {
+				clientId: c.env.GOOGLE_CLIENT_ID,
+			});
 		}
 
 		const db = getDB();
@@ -101,11 +105,14 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 			picture: claims.picture,
 		});
 
-		const token = await signAppJwt({
-			sub: user.id,
-			email: user.email,
-			username: user.username,
-		});
+		const token = await signAppJwt(
+			{
+				sub: user.id,
+				email: user.email,
+				username: user.username,
+			},
+			{ secret: c.env.JWT_SECRET }
+		);
 
 		setCookie(c, AUTH_COOKIE_NAME, token, {
 			path: '/',
@@ -210,7 +217,9 @@ app.get('/session', async c => {
 
 		if (cookieToken) {
 			try {
-				const payload = await verifyAppJwt(cookieToken);
+				const payload = await verifyAppJwt(cookieToken, {
+					secret: c.env.JWT_SECRET,
+				});
 
 				// Enrich session with DB fields (createdAt, name, picture)
 				let dbUser:
