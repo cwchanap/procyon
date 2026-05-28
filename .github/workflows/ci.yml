@@ -56,3 +56,4 @@ jobs:
           PUBLIC_API_URL: "http://localhost:3501/api"
           PUBLIC_SUPABASE_URL: "https://example.supabase.co"
           PUBLIC_SUPABASE_ANON_KEY: "example-public-anon-key"
+          PUBLIC_GOOGLE_CLIENT_ID: "test-client-id.apps.googleusercontent.com"
