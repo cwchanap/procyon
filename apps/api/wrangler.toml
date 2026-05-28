@@ -24,14 +24,3 @@ NODE_ENV = "production"
 name = "procyon"
 vars = { NODE_ENV = "production" }
 
-# Staging environment
-[env.staging]
-name = "procyon-staging"
-vars = { NODE_ENV = "staging" }
-
-# Staging D1 Database — isolated from production
-[[env.staging.d1_databases]]
-binding = "DB"
-database_name = "procyon-staging"
-database_id = "STAGING_DATABASE_ID"
-migrations_dir = "drizzle"
