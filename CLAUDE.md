@@ -124,7 +124,6 @@ bun run db:seed         # Seed puzzles data into local SQLite database
 ```bash
 cd apps/api
 bun run deploy                    # Deploy to Cloudflare Workers (production)
-bun run deploy:staging            # Deploy to staging environment
 bun run cf:dev                    # Run with Wrangler for local D1 testing
 bun run cf:d1:migrations:apply    # Apply migrations to Cloudflare D1
 bun run db:seed:d1                # Seed puzzles into D1 (production)
