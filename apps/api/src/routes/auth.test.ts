@@ -472,16 +472,16 @@ describe('POST /google', () => {
 		// override the module-level env cache.
 		//
 		// The production code checks:
-		//   env.NODE_ENV === 'development' || env.NODE_ENV === 'e2e' || env.NODE_ENV === 'test'
-		// So 'staging' should NOT match.
+		//   env.NODE_ENV === 'e2e' || env.NODE_ENV === 'test'
+		// So 'staging' and 'development' should NOT match.
 		//
 		// Since env.NODE_ENV === 'test' in this process, we can't make the
 		// test-claim path reject. Instead, verify that the accepted env values
-		// are explicitly development/e2e/test (the code change was from
-		// `!== 'production'` to explicit allowlist). A value of 'staging'
+		// are explicitly e2e/test. Values like 'staging' or 'development'
 		// would fail the allowlist check.
-		const allowedEnvs = ['development', 'e2e', 'test'];
+		const allowedEnvs = ['e2e', 'test'];
 		expect(allowedEnvs).not.toContain('staging');
+		expect(allowedEnvs).not.toContain('development');
 	});
 
 	test('sets Secure cookie flag over https', async () => {
