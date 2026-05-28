@@ -105,6 +105,9 @@ if (env.NODE_ENV === 'production' && !isWorkersRuntime()) {
 	if (!env.JWT_SECRET) {
 		throw new Error('JWT_SECRET is required in production.');
 	}
+	if (!env.GOOGLE_CLIENT_ID) {
+		throw new Error('GOOGLE_CLIENT_ID is required in production.');
+	}
 }
 
 export const isDevelopment =

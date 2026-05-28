@@ -81,12 +81,19 @@ function resolveSupabaseEnv(): SupabaseEnv {
   );
 }
 
-const supabaseEnv = resolveSupabaseEnv();
-process.env.SUPABASE_URL = supabaseEnv.url;
-process.env.SUPABASE_ANON_KEY = supabaseEnv.anonKey;
-process.env.SUPABASE_SERVICE_ROLE_KEY = supabaseEnv.serviceRoleKey;
-process.env.PUBLIC_SUPABASE_URL = supabaseEnv.url;
-process.env.PUBLIC_SUPABASE_ANON_KEY = supabaseEnv.anonKey;
+// Resolve Supabase env only when starting dev servers.
+// E2E tests authenticate via test-claims against /api/auth/google, so Supabase
+// is not required for listing tests or running against already-started servers.
+let supabaseEnv: SupabaseEnv | null = null;
+
+if (shouldStartWebServer) {
+  supabaseEnv = resolveSupabaseEnv();
+  process.env.SUPABASE_URL = supabaseEnv.url;
+  process.env.SUPABASE_ANON_KEY = supabaseEnv.anonKey;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = supabaseEnv.serviceRoleKey;
+  process.env.PUBLIC_SUPABASE_URL = supabaseEnv.url;
+  process.env.PUBLIC_SUPABASE_ANON_KEY = supabaseEnv.anonKey;
+}
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -134,7 +141,7 @@ export default defineConfig({
   ],
 
   /* Run dev servers automatically; relies on local Supabase for auth */
-  webServer: shouldStartWebServer ? [
+  webServer: shouldStartWebServer && supabaseEnv ? [
     {
       command: 'sh -c "cd .. && cd web && bun run dev"',
       url: 'http://localhost:3500',
