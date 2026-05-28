@@ -24,7 +24,6 @@
     "web:dev": "turbo dev --filter=web --ui=tui",
     "api:dev": "turbo dev --filter=api --ui=tui",
     "deploy": "bun run build && cd apps/api && bun run deploy",
-    "deploy:staging": "bun run build && cd apps/api && bun run deploy:staging",
     "prepare": "husky"
   },
   "lint-staged": {

@@ -55,26 +55,12 @@ bunx wrangler secret put JWT_SECRET
 # Enter your secret when prompted
 ```
 
-For staging environment:
-
-```bash
-bunx wrangler secret put JWT_SECRET --env staging
-```
-
 Set Supabase configuration (required for /api/auth and /api/users):
 
 ```bash
 bunx wrangler secret put SUPABASE_URL
 bunx wrangler secret put SUPABASE_ANON_KEY
 bunx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-```
-
-For staging environment:
-
-```bash
-bunx wrangler secret put SUPABASE_URL --env staging
-bunx wrangler secret put SUPABASE_ANON_KEY --env staging
-bunx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env staging
 ```
 
 ### 5. Build Web App
@@ -93,12 +79,6 @@ cd ../api
 
 ```bash
 bun run deploy
-```
-
-### Deploy to Staging
-
-```bash
-bun run deploy:staging
 ```
 
 ## Development with Cloudflare
@@ -148,14 +128,8 @@ bun run cf:d1:migrations:apply
 
 ### Production
 
-- Name: `procyon-api`
-- D1 Database: `procyon-db`
-- Assets: Served from `../web/dist`
-
-### Staging
-
-- Name: `procyon-api-staging`
-- Uses same D1 database (create separate one if needed)
+- Name: `procyon`
+- D1 Database: `procyon`
 - Assets: Served from `../web/dist`
 
 ## Updating wrangler.toml
