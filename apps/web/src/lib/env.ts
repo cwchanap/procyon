@@ -4,8 +4,6 @@
 
 interface EnvConfig {
 	PUBLIC_API_URL: string;
-	PUBLIC_SUPABASE_URL: string;
-	PUBLIC_SUPABASE_ANON_KEY: string;
 	PUBLIC_GOOGLE_CLIENT_ID: string;
 }
 
@@ -22,8 +20,6 @@ const normalizeEnvValue = (value: unknown): string => {
 
 const PUBLIC_API_URL =
 	normalizeEnvValue(import.meta.env.PUBLIC_API_URL) || API_FALLBACK_BASE_URL;
-const PUBLIC_SUPABASE_URL_RAW = import.meta.env.PUBLIC_SUPABASE_URL;
-const PUBLIC_SUPABASE_ANON_KEY_RAW = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
 
 function assertNonEmptyString(
 	value: unknown,
@@ -41,10 +37,6 @@ function assertNonEmptyString(
 	);
 }
 
-const PUBLIC_SUPABASE_URL = normalizeEnvValue(PUBLIC_SUPABASE_URL_RAW);
-const PUBLIC_SUPABASE_ANON_KEY = normalizeEnvValue(
-	PUBLIC_SUPABASE_ANON_KEY_RAW
-);
 const PUBLIC_GOOGLE_CLIENT_ID = normalizeEnvValue(
 	import.meta.env.PUBLIC_GOOGLE_CLIENT_ID
 );
@@ -57,14 +49,10 @@ if (import.meta.env.PROD) {
 			'API base URL is configured to use localhost in production. This is insecure and will not work in production environments.'
 		);
 	}
-	assertNonEmptyString(PUBLIC_SUPABASE_URL, 'PUBLIC_SUPABASE_URL');
-	assertNonEmptyString(PUBLIC_SUPABASE_ANON_KEY, 'PUBLIC_SUPABASE_ANON_KEY');
 	assertNonEmptyString(PUBLIC_GOOGLE_CLIENT_ID, 'PUBLIC_GOOGLE_CLIENT_ID');
 }
 
 export const env: EnvConfig = {
 	PUBLIC_API_URL,
-	PUBLIC_SUPABASE_URL,
-	PUBLIC_SUPABASE_ANON_KEY,
 	PUBLIC_GOOGLE_CLIENT_ID,
 };

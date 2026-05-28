@@ -84,9 +84,7 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 		// "test-claim:" so E2E tests can authenticate without a real Google token.
 		if (
 			id_token.startsWith('test-claim:') &&
-			(env.NODE_ENV === 'development' ||
-				env.NODE_ENV === 'e2e' ||
-				env.NODE_ENV === 'test')
+			(env.NODE_ENV === 'e2e' || env.NODE_ENV === 'test')
 		) {
 			try {
 				claims = JSON.parse(id_token.slice('test-claim:'.length)) as Awaited<

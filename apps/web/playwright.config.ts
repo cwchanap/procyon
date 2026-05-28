@@ -47,7 +47,7 @@ function parseSupabaseEnvFromCli(): SupabaseEnv | null {
   return null;
 }
 
-function resolveSupabaseEnv(): SupabaseEnv {
+function resolveSupabaseEnv(): SupabaseEnv | null {
   const envUrl = normalizeEnvValue(
     process.env.SUPABASE_URL ?? process.env.PUBLIC_SUPABASE_URL
   );
@@ -76,9 +76,7 @@ function resolveSupabaseEnv(): SupabaseEnv {
     return cliEnv;
   }
 
-  throw new Error(
-    'Supabase env is missing. Start local Supabase with `supabase start` or set SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY.'
-  );
+  return null;
 }
 
 // Resolve Supabase env only when starting dev servers.
@@ -88,11 +86,11 @@ let supabaseEnv: SupabaseEnv | null = null;
 
 if (shouldStartWebServer) {
   supabaseEnv = resolveSupabaseEnv();
-  process.env.SUPABASE_URL = supabaseEnv.url;
-  process.env.SUPABASE_ANON_KEY = supabaseEnv.anonKey;
-  process.env.SUPABASE_SERVICE_ROLE_KEY = supabaseEnv.serviceRoleKey;
-  process.env.PUBLIC_SUPABASE_URL = supabaseEnv.url;
-  process.env.PUBLIC_SUPABASE_ANON_KEY = supabaseEnv.anonKey;
+  if (supabaseEnv) {
+    process.env.SUPABASE_URL = supabaseEnv.url;
+    process.env.SUPABASE_ANON_KEY = supabaseEnv.anonKey;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = supabaseEnv.serviceRoleKey;
+  }
 }
 
 /**
@@ -140,18 +138,14 @@ export default defineConfig({
     },
   ],
 
-  /* Run dev servers automatically; relies on local Supabase for auth */
-  webServer: shouldStartWebServer && supabaseEnv ? [
+  /* Run dev servers automatically */
+  webServer: shouldStartWebServer ? [
     {
       command: 'sh -c "cd .. && cd web && bun run dev"',
       url: 'http://localhost:3500',
       reuseExistingServer: false,
       timeout: 120 * 1000,
       env: {
-        SUPABASE_URL: supabaseEnv.url,
-        SUPABASE_ANON_KEY: supabaseEnv.anonKey,
-        PUBLIC_SUPABASE_URL: supabaseEnv.url,
-        PUBLIC_SUPABASE_ANON_KEY: supabaseEnv.anonKey,
         PUBLIC_API_URL: 'http://localhost:3501/api',
         PUBLIC_GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
         ASTRO_DISABLE_DEV_TOOLBAR: 'true',
@@ -165,9 +159,11 @@ export default defineConfig({
       env: {
         NODE_ENV: 'e2e',
         JWT_SECRET: 'e2e-test-secret-must-be-at-least-32-chars-long',
-        SUPABASE_URL: supabaseEnv.url,
-        SUPABASE_ANON_KEY: supabaseEnv.anonKey,
-        SUPABASE_SERVICE_ROLE_KEY: supabaseEnv.serviceRoleKey,
+        ...(supabaseEnv ? {
+          SUPABASE_URL: supabaseEnv.url,
+          SUPABASE_ANON_KEY: supabaseEnv.anonKey,
+          SUPABASE_SERVICE_ROLE_KEY: supabaseEnv.serviceRoleKey,
+        } : {}),
       },
     },
   ] : undefined,
