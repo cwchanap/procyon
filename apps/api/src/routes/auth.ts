@@ -117,7 +117,7 @@ app.post('/google', zValidator('json', googleLoginSchema), async c => {
 		);
 
 		setCookie(c, AUTH_COOKIE_NAME, token, {
-			path: '/',
+			path: '/api',
 			httpOnly: true,
 			secure: new URL(c.req.url).protocol === 'https:',
 			sameSite: 'Lax',
@@ -169,7 +169,7 @@ app.post('/login', zValidator('json', loginSchema), async c => {
 app.post('/logout', async c => {
 	try {
 		// Always clear the auth cookie (cookie-only clients)
-		deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
+		deleteCookie(c, AUTH_COOKIE_NAME, { path: '/api' });
 
 		// If a Bearer token is also present, revoke the Supabase session
 		const token = extractBearerToken(
