@@ -47,9 +47,12 @@ export function AppNavBar() {
 		window.location.href = '/play-history';
 	};
 
-	const handleLogoutClick = () => {
+	const handleLogoutClick = async () => {
 		setIsDropdownOpen(false);
-		logout();
+		const result = await logout();
+		if (!result.success) {
+			alert('Failed to sign out. Please try again.');
+		}
 	};
 
 	return (

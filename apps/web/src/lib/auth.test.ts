@@ -408,7 +408,7 @@ describe('useAuth', () => {
 		expect(result.current.user).toBeNull();
 	});
 
-	test('logout: clears user and dispatches event', async () => {
+	test('logout: clears user and dispatches event on success', async () => {
 		globalThis.fetch = mock(() => Promise.resolve(jsonResponse({}))) as any;
 
 		const captured: Array<{ user: AuthUser | null }> = [];
@@ -419,10 +419,11 @@ describe('useAuth', () => {
 
 		const { result } = renderHook(() => useAuth({ initialUser: mockUser }));
 
-		await act(async () => {
-			await result.current.logout();
+		const logoutResult = await act(async () => {
+			return result.current.logout();
 		});
 
+		expect(logoutResult.success).toBe(true);
 		expect(result.current.user).toBeNull();
 		expect(result.current.isAuthenticated).toBe(false);
 
@@ -431,6 +432,38 @@ describe('useAuth', () => {
 		expect(authEvent.user).toBeNull();
 
 		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
+	});
+
+	test('logout: keeps user when server responds with error', async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(jsonResponse({}, 500))
+		) as any;
+
+		const { result } = renderHook(() => useAuth({ initialUser: mockUser }));
+
+		const logoutResult = await act(async () => {
+			return result.current.logout();
+		});
+
+		expect(logoutResult.success).toBe(false);
+		expect(result.current.user).toEqual(mockUser);
+		expect(result.current.isAuthenticated).toBe(true);
+	});
+
+	test('logout: keeps user when network request fails', async () => {
+		globalThis.fetch = mock(() =>
+			Promise.reject(new Error('Network error'))
+		) as any;
+
+		const { result } = renderHook(() => useAuth({ initialUser: mockUser }));
+
+		const logoutResult = await act(async () => {
+			return result.current.logout();
+		});
+
+		expect(logoutResult.success).toBe(false);
+		expect(result.current.user).toEqual(mockUser);
+		expect(result.current.isAuthenticated).toBe(true);
 	});
 
 	test('auth sync event from another island updates state', async () => {

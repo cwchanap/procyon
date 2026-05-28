@@ -75,14 +75,15 @@ async function postGoogleLogin(idToken: string): Promise<GoogleLoginResult> {
 	}
 }
 
-async function postLogout(): Promise<void> {
+async function postLogout(): Promise<boolean> {
 	try {
-		await fetch(`${API_BASE_URL}/auth/logout`, {
+		const res = await fetch(`${API_BASE_URL}/auth/logout`, {
 			method: 'POST',
 			credentials: 'include',
 		});
+		return res.ok;
 	} catch {
-		// best-effort
+		return false;
 	}
 }
 
@@ -170,10 +171,13 @@ export function useAuth(options?: UseAuthOptions) {
 		[]
 	);
 
-	const logout = useCallback(async () => {
-		await postLogout();
-		setUser(null);
-		dispatchAuthChange(null);
+	const logout = useCallback(async (): Promise<{ success: boolean }> => {
+		const success = await postLogout();
+		if (success) {
+			setUser(null);
+			dispatchAuthChange(null);
+		}
+		return { success };
 	}, []);
 
 	return {
