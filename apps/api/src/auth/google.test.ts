@@ -1,14 +1,12 @@
-import {
-	describe,
-	test,
-	expect,
-	beforeAll,
-	beforeEach,
-	afterAll,
-	mock,
-} from 'bun:test';
+import { describe, test, expect, beforeEach, afterAll, mock } from 'bun:test';
 
 const CLIENT_ID = 'test-google-client-id.apps.googleusercontent.com';
+
+// Set the env var BEFORE any imports that snapshot it (e.g. `../env`) so the
+// test client id is captured regardless of whether the host environment
+// already provides a real GOOGLE_CLIENT_ID.
+const originalClientId = process.env.GOOGLE_CLIENT_ID;
+process.env.GOOGLE_CLIENT_ID = CLIENT_ID;
 
 let nextPayload: Record<string, unknown> | null = null;
 
@@ -61,10 +59,6 @@ mock.module('jose', () => ({
 const { verifyGoogleIdToken } = await import('./google');
 const { env: apiEnv } = await import('../env');
 
-beforeAll(() => {
-	process.env.GOOGLE_CLIENT_ID = CLIENT_ID;
-});
-
 beforeEach(() => {
 	nextPayload = null;
 });
@@ -73,6 +67,13 @@ afterAll(() => {
 	// Ensure no stale stub payload leaks into other test files that share the
 	// process and rely on the real `jwtVerify` passthrough.
 	nextPayload = null;
+
+	// Restore the original env var so other test files see the real value.
+	if (originalClientId === undefined) {
+		delete process.env.GOOGLE_CLIENT_ID;
+	} else {
+		process.env.GOOGLE_CLIENT_ID = originalClientId;
+	}
 });
 
 describe('verifyGoogleIdToken', () => {
