@@ -55,6 +55,12 @@ bunx wrangler secret put JWT_SECRET
 # Enter your secret when prompted
 ```
 
+Set Google OAuth configuration (required for `/api/auth/google`):
+
+```bash
+bunx wrangler secret put GOOGLE_CLIENT_ID
+```
+
 Set Supabase configuration (required for /api/auth and /api/users):
 
 ```bash
