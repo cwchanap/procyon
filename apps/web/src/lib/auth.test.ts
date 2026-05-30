@@ -289,6 +289,31 @@ describe('useAuth', () => {
 		expect(result.current.user).toEqual(mockUser);
 	});
 
+	test('fetches session when window initial auth user is null', async () => {
+		const fetchSpy = mock(() =>
+			Promise.resolve(jsonResponse({ user: mockUser }))
+		);
+		globalThis.fetch = fetchSpy as unknown as typeof fetch;
+		(
+			happyWindow as Window & {
+				__PROCYON_INITIAL_AUTH_USER__?: AuthUser | null;
+			}
+		).__PROCYON_INITIAL_AUTH_USER__ = null;
+
+		const { result } = renderHook(() => useAuth());
+
+		expect(result.current.loading).toBe(true);
+		expect(result.current.user).toBeNull();
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(result.current.loading).toBe(false);
+		expect(result.current.user).toEqual(mockUser);
+	});
+
 	test('sets user to null when session fetch returns non-OK', async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(jsonResponse({}, 401))

@@ -81,7 +81,7 @@ function formatDate(date: string): string {
 }
 
 export default function PlayHistoryPage() {
-	const { isAuthenticated, user } = useAuth();
+	const { isAuthenticated, user, loading: isAuthLoading } = useAuth();
 	const [history, setHistory] = useState<ServerPlayHistory[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -92,6 +92,10 @@ export default function PlayHistoryPage() {
 	}, []);
 
 	useEffect(() => {
+		if (isAuthLoading) {
+			return;
+		}
+
 		if (!isAuthenticated) {
 			setIsLoading(false);
 			setHistory([]);
@@ -147,7 +151,7 @@ export default function PlayHistoryPage() {
 		return () => {
 			controller.abort();
 		};
-	}, [isAuthenticated]);
+	}, [isAuthenticated, isAuthLoading]);
 
 	const summary = useMemo(() => {
 		if (!history.length) {
@@ -173,6 +177,18 @@ export default function PlayHistoryPage() {
 			winRate,
 		};
 	}, [history]);
+
+	if (isAuthLoading) {
+		return (
+			<div
+				data-testid='play-history-loading'
+				data-hydrated={isHydrated ? 'true' : 'false'}
+				className='min-h-[70vh] flex items-center justify-center text-purple-100/70 animate-pulse'
+			>
+				Loading your play history...
+			</div>
+		);
+	}
 
 	if (!isAuthenticated) {
 		return (
