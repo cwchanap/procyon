@@ -226,7 +226,17 @@ test.describe('ELO Rating System', () => {
 			await expect(page.getByText('Classical Chess')).toBeVisible();
 
 			// Verify there's at least 1 game played
-			await expect(page.getByText('Games')).toBeVisible();
+			const chessRatingCard = page
+				.getByRole('heading', { name: 'Classical Chess' })
+				.locator('xpath=ancestor::div[contains(@class, "rounded-xl")][1]');
+			await expect(chessRatingCard).toBeVisible();
+
+			const gamesStat = chessRatingCard.locator('div').filter({
+				has: page.getByText(/^Games$/),
+				hasNot: page.getByText(/^W\/L\/D$/),
+			});
+			await expect(gamesStat.getByText(/^Games$/)).toBeVisible();
+			await expect(gamesStat.locator('span.font-semibold')).not.toHaveText('0');
 		});
 
 		test('should show Win badge and update win count after winning', async ({

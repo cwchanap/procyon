@@ -174,12 +174,12 @@ test.describe('Shogi AI Integration', () => {
 
 	test('should display shogi board coordinates correctly', async ({ page }) => {
 		// Check file numbers (9-1) are visible
-		await expect(page.getByText('9').first()).toBeVisible();
-		await expect(page.getByText('1').first()).toBeVisible();
+		await expect(page.getByText(/^9$/).first()).toBeVisible();
+		await expect(page.getByText(/^1$/).first()).toBeVisible();
 
 		// Check rank letters (a-i) are visible
-		await expect(page.getByText('a').first()).toBeVisible();
-		await expect(page.getByText('i').first()).toBeVisible();
+		await expect(page.getByText(/^a$/).first()).toBeVisible();
+		await expect(page.getByText(/^i$/).first()).toBeVisible();
 	});
 
 	test('should handle piece selection in AI mode', async ({ page }) => {
