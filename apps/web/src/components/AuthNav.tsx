@@ -3,7 +3,7 @@ import { Button } from './ui/Button';
 import { useAuth } from '../lib/auth';
 
 export function AuthNav() {
-	const { user, logout, isAuthenticated } = useAuth();
+	const { user, logout, isAuthenticated, loading } = useAuth();
 	const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 	const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +45,9 @@ export function AuthNav() {
 
 	return (
 		<div className='fixed top-4 right-4 z-50'>
-			{isAuthenticated ? (
+			{loading ? (
+				<div className='h-10 w-24' aria-hidden='true' />
+			) : isAuthenticated ? (
 				<div className='relative' ref={dropdownRef}>
 					{/* User Badge */}
 					<button

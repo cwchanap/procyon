@@ -3,16 +3,18 @@ import { Button } from './ui/Button';
 import { useAuth } from '../lib/auth';
 
 export function AppNavBar() {
-	const { user, logout, isAuthenticated } = useAuth();
+	const { user, logout, isAuthenticated, loading } = useAuth();
 	const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 	const dropdownRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
+		if (loading) return;
 		// Signal to Layout.astro CSS that the React nav has hydrated and is
 		// ready to be displayed.  The server-rendered static nav is hidden via
 		// `html.procyon-auth-hydrated #procyon-server-auth-nav { display:none }`.
 		document.documentElement.classList.add('procyon-auth-hydrated');
-	}, []);
+		document.documentElement.classList.remove('procyon-auth-client-pending');
+	}, [loading]);
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -96,7 +98,9 @@ export function AppNavBar() {
 
 					{/* Auth Section */}
 					<div className='flex items-center gap-4'>
-						{isAuthenticated ? (
+						{loading ? (
+							<div className='h-10 w-24' aria-hidden='true' />
+						) : isAuthenticated ? (
 							<div className='relative' ref={dropdownRef}>
 								{/* User Badge */}
 								<button

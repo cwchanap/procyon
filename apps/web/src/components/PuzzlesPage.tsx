@@ -12,7 +12,7 @@ import type {
 import { readLocalPuzzleProgress } from '../hooks/usePuzzle';
 
 export default function PuzzlesPage() {
-	const { isAuthenticated, user } = useAuth();
+	const { isAuthenticated, user, loading: isAuthLoading } = useAuth();
 
 	const [puzzleList, setPuzzleList] = useState<PuzzleListItem[]>([]);
 	const [activePuzzle, setActivePuzzle] = useState<PuzzleData | null>(null);
@@ -57,7 +57,7 @@ export default function PuzzlesPage() {
 	// Helper to fetch server progress (shared between refreshServerProgress and useEffect)
 	const fetchServerProgress = useCallback(
 		async (signal?: AbortSignal): Promise<void> => {
-			if (!isAuthenticated) return;
+			if (isAuthLoading || !isAuthenticated) return;
 
 			const r = await fetch(`${env.PUBLIC_API_URL}/puzzles/progress`, {
 				credentials: 'include',
@@ -73,7 +73,7 @@ export default function PuzzlesPage() {
 			}
 			setServerProgress(map);
 		},
-		[isAuthenticated, user?.id]
+		[isAuthenticated, isAuthLoading, user?.id]
 	);
 
 	// Refreshes server progress from API
@@ -83,6 +83,10 @@ export default function PuzzlesPage() {
 
 	// Load server progress when authenticated
 	useEffect(() => {
+		if (isAuthLoading) {
+			return;
+		}
+
 		if (!isAuthenticated) {
 			setServerProgress({});
 			return;
@@ -100,7 +104,7 @@ export default function PuzzlesPage() {
 		});
 
 		return () => controller.abort();
-	}, [isAuthenticated, fetchServerProgress]);
+	}, [isAuthenticated, isAuthLoading, fetchServerProgress]);
 
 	const handleSelectPuzzle = useCallback(async (id: number) => {
 		const requestId = ++puzzleRequestIdRef.current;
@@ -197,7 +201,7 @@ export default function PuzzlesPage() {
 					onBack={handleBack}
 					onNextPuzzle={handleNextPuzzle}
 				/>
-				{!isAuthenticated && (
+				{!isAuthLoading && !isAuthenticated && (
 					<p className='text-center text-purple-300/60 text-sm mt-6'>
 						<a
 							href='/login'

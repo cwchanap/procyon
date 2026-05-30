@@ -7,7 +7,8 @@ export interface Props {
 }
 
 const { title = 'Procyon', showNav = true } = Astro.props;
-const initialAuthScript = 'window.__PROCYON_INITIAL_AUTH_USER__=null;';
+const initialAuthScript =
+  'document.documentElement.classList.add("procyon-auth-client-pending");window.__PROCYON_INITIAL_AUTH_USER__=null;';
 ---
 
 <!doctype html>
