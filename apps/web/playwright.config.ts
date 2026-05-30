@@ -153,7 +153,7 @@ export default defineConfig({
     },
     {
       command: 'sh -c "cd ../api && NODE_ENV=e2e bun --watch src/index.ts"',
-      url: 'http://localhost:3501',
+      url: 'http://localhost:3501/health',
       reuseExistingServer: false,
       timeout: 120 * 1000,
       env: {
