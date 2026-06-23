@@ -12,20 +12,24 @@ const ChessGameSelector: React.FC = () => {
 		{
 			title: 'Standard Chess',
 			description: 'Classic chess with game mode and interactive tutorials.',
+			variant: 'chess' as const,
 		},
 		{
 			title: 'Chinese Chess',
 			description: 'Traditional Xiangqi with unique pieces and board layout.',
+			variant: 'xiangqi' as const,
 		},
 		{
 			title: 'Japanese Chess (Shogi)',
 			description:
 				'Traditional Japanese chess with unique piece movement and drops.',
+			variant: 'shogi' as const,
 		},
 		{
 			title: 'Jungle Chess (鬥獸棋)',
 			description:
 				'Animal-themed strategy game with unique terrain and piece hierarchy.',
+			variant: 'jungle' as const,
 		},
 	];
 
@@ -62,6 +66,7 @@ const ChessGameSelector: React.FC = () => {
 					<ChessGameCard
 						title={game.title}
 						description={game.description}
+						variant={game.variant}
 						onPlay={() => handlePlayGame(game.title)}
 					/>
 				</div>
