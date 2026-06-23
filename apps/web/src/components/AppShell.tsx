@@ -45,7 +45,7 @@ export function AppShell() {
 	) : isAuthenticated ? (
 		<div className='flex items-center gap-3'>
 			<div className='flex h-9 w-9 items-center justify-center rounded-full bg-brass text-ink-900 text-sm font-bold'>
-				{user?.username.charAt(0).toUpperCase()}
+				{user?.username?.charAt(0)?.toUpperCase()}
 			</div>
 			<div className='min-w-0 flex-1'>
 				<div className='truncate text-sm text-ivory'>{user?.username}</div>
@@ -125,6 +125,16 @@ export function AppShell() {
 						<span className='text-base'>→</span>
 						Login
 					</a>
+				)}
+				{!loading && isAuthenticated && (
+					<button
+						onClick={handleLogout}
+						aria-label='Sign Out'
+						className='flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] text-ivory-dim transition-colors hover:text-brass'
+					>
+						<span className='text-base'>⎋</span>
+						Sign Out
+					</button>
 				)}
 			</nav>
 		</>
