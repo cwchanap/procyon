@@ -131,10 +131,10 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 		<>
 			<button
 				onClick={handleButtonClick}
-				className={`px-6 py-3 rounded-xl font-medium transition-colors border ${
+				className={`px-6 py-3 rounded-xl font-medium transition-colors border border-line ${
 					isActive
 						? 'bg-brass text-ink-900 shadow-lg'
-						: 'bg-ink-700 border-line text-ivory hover:bg-ink-600'
+						: 'bg-ink-700 text-ivory hover:bg-ink-600'
 				}`}
 			>
 				⚙️ AI Settings
