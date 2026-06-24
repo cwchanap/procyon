@@ -8,16 +8,16 @@ describe('DIFFICULTY_BADGE_STYLES', () => {
 		expect(DIFFICULTY_BADGE_STYLES).toHaveProperty('advanced');
 	});
 
-	test('beginner style contains emerald color classes', () => {
-		expect(DIFFICULTY_BADGE_STYLES['beginner']).toContain('emerald');
+	test('beginner style contains jungle color classes', () => {
+		expect(DIFFICULTY_BADGE_STYLES['beginner']).toContain('jungle');
 	});
 
-	test('intermediate style contains yellow color classes', () => {
-		expect(DIFFICULTY_BADGE_STYLES['intermediate']).toContain('yellow');
+	test('intermediate style contains brass color classes', () => {
+		expect(DIFFICULTY_BADGE_STYLES['intermediate']).toContain('brass');
 	});
 
-	test('advanced style contains red color classes', () => {
-		expect(DIFFICULTY_BADGE_STYLES['advanced']).toContain('red');
+	test('advanced style contains cinnabar color classes', () => {
+		expect(DIFFICULTY_BADGE_STYLES['advanced']).toContain('C8402F');
 	});
 
 	test('all badge styles are non-empty strings', () => {
@@ -42,8 +42,8 @@ describe('DIFFICULTY_BADGE_FALLBACK', () => {
 		expect(DIFFICULTY_BADGE_FALLBACK.length).toBeGreaterThan(0);
 	});
 
-	test('contains purple color classes', () => {
-		expect(DIFFICULTY_BADGE_FALLBACK).toContain('purple');
+	test('contains ink color classes', () => {
+		expect(DIFFICULTY_BADGE_FALLBACK).toContain('ink');
 	});
 
 	test('is different from all difficulty-specific styles', () => {
