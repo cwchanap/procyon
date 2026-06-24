@@ -898,7 +898,7 @@ const ShogiGame: React.FC = () => {
 								<span className='w-3 h-3 bg-jungle rounded-full inline-block'></span>
 								Possible moves
 								<span className='mx-2'>•</span>
-								<span className='w-3 h-3 border-2 border-red-500 rounded inline-block'></span>
+								<span className='w-3 h-3 border-2 border-[#C8402F] rounded inline-block'></span>
 								Captures
 							</p>
 							<p className='text-xs text-ivory-dim'>
@@ -927,11 +927,11 @@ const ShogiGame: React.FC = () => {
 							</h3>
 							<div className='space-y-3 text-ivory-dim'>
 								<p className='flex items-center gap-3'>
-									<span className='text-green-400'>•</span>
+									<span className='text-jungle'>•</span>
 									Click on any piece to see its possible moves
 								</p>
 								<p className='flex items-center gap-3'>
-									<span className='text-blue-400'>•</span>
+									<span className='text-shogi'>•</span>
 									Green highlights show legal moves
 								</p>
 								<p className='flex items-center gap-3'>
@@ -939,7 +939,7 @@ const ShogiGame: React.FC = () => {
 									Red outlines indicate capture moves
 								</p>
 								<p className='flex items-center gap-3'>
-									<span className='text-yellow-400'>•</span>
+									<span className='text-brass'>•</span>
 									Yellow rings show tutorial highlights
 								</p>
 							</div>
@@ -1089,7 +1089,7 @@ const ShogiGame: React.FC = () => {
 									onClick={() => setIsDebugMode(!isDebugMode)}
 									className={`bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 ${
 										isDebugMode
-											? 'bg-yellow-500/20 text-yellow-300 border-yellow-400'
+											? 'bg-brass/20 text-brass border-brass'
 											: 'text-ivory-dim border-line hover:bg-ink-600'
 									}`}
 								>

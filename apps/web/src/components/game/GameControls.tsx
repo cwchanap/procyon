@@ -47,7 +47,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 						onClick={onToggleDebug}
 						className={`bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 ${
 							isDebugMode
-								? 'bg-yellow-500/20 text-yellow-300 border-yellow-400'
+								? 'bg-brass/20 text-brass border-brass'
 								: 'text-ivory-dim hover:bg-ink-600'
 						}`}
 					>

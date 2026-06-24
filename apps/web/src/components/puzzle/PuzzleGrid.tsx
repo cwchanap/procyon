@@ -77,7 +77,7 @@ export default function PuzzleGrid({
 								<p className='text-ivory-dim text-sm leading-snug line-clamp-2'>
 									{puzzle.description}
 								</p>
-								<div className='mt-4 text-xs text-ivory-dim font-mono'>
+								<div className='mt-4 text-xs text-ivory-dim'>
 									Play as {puzzle.playerColor}
 								</div>
 							</button>

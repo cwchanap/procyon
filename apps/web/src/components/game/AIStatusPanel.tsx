@@ -27,7 +27,7 @@ const AIStatusPanel: React.FC<AIStatusPanelProps> = ({
 			<div className='text-center'>
 				{!aiConfigured ? (
 					hasGameStarted && (
-						<div className='text-yellow-400 text-sm'>
+						<div className='text-brass text-sm'>
 							⚠ AI not configured - Configure API key in Profile to enable AI
 							gameplay
 						</div>
@@ -42,7 +42,7 @@ const AIStatusPanel: React.FC<AIStatusPanelProps> = ({
 						)}
 
 						{aiError && isAIPaused && (
-							<div className='flex flex-col items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg'>
+							<div className='flex flex-col items-center gap-3 p-4 bg-[#C8402F]/10 border border-[#C8402F]/30 rounded-lg'>
 								<div className='text-[#C8402F] text-center'>
 									<div className='font-semibold mb-1'>❌ AI Error</div>
 									<div className='text-sm opacity-90'>{aiError}</div>

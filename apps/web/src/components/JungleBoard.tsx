@@ -30,17 +30,17 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 	const getTerrainColor = (terrain: JungleTerrain): string => {
 		switch (terrain.type) {
 			case 'water':
-				return 'bg-blue-400 border-blue-500';
+				return 'bg-[#16323B] border-[#3E5C8A]/40';
 			case 'trap':
 				return terrain.owner === 'red'
-					? 'bg-red-200 border-red-400'
-					: 'bg-blue-200 border-blue-400';
+					? 'bg-[#C8402F]/15 border-[#C8402F]/40'
+					: 'bg-[#3E5C8A]/15 border-[#3E5C8A]/40';
 			case 'den':
 				return terrain.owner === 'red'
-					? 'bg-red-300 border-red-500'
-					: 'bg-blue-300 border-blue-500';
+					? 'bg-[#C8402F]/25 border-[#C8402F]/60'
+					: 'bg-[#3E5C8A]/25 border-[#3E5C8A]/60';
 			default:
-				return 'bg-green-100 border-green-300';
+				return 'bg-[#1F3029] border-[#3E8C6F]/30';
 		}
 	};
 
@@ -49,7 +49,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 	};
 
 	const getPieceColor = (piece: JunglePiece): string => {
-		return piece.color === 'red' ? 'text-red-600' : 'text-blue-600';
+		return piece.color === 'red' ? 'text-[#E0654F]' : 'text-[#7BA0D6]';
 	};
 
 	const isSelected = (row: number, col: number): boolean => {
@@ -72,7 +72,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 
 	const getSquareClasses = (row: number, col: number): string => {
 		const terrainData = terrain[row]![col];
-		if (!terrainData) return 'w-16 h-16 border-2 border-gray-300';
+		if (!terrainData) return 'w-16 h-16 border-2 border-line';
 
 		const baseClasses = `
             w-16 h-16 border-2 flex items-center justify-center text-2xl font-bold
@@ -81,15 +81,15 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
         `;
 
 		if (isSelected(row, col)) {
-			return `${baseClasses} ring-4 ring-yellow-400 ring-opacity-75 scale-105 z-10`;
+			return `${baseClasses} ring-4 ring-brass ring-opacity-75 scale-105 z-10`;
 		}
 
 		if (isPossibleMove(row, col)) {
-			return `${baseClasses} ring-2 ring-green-400 ring-opacity-75`;
+			return `${baseClasses} ring-2 ring-jungle ring-opacity-75`;
 		}
 
 		if (isHighlighted(row, col)) {
-			return `${baseClasses} ring-2 ring-purple-400 ring-opacity-75`;
+			return `${baseClasses} ring-2 ring-shogi ring-opacity-75`;
 		}
 
 		return baseClasses;
@@ -111,15 +111,15 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 	const getTerrainSymbolColor = (terrain: JungleTerrain): string => {
 		switch (terrain.type) {
 			case 'water':
-				return 'text-blue-600 text-opacity-30';
+				return 'text-[#7BA0D6]/30';
 			case 'trap':
 				return terrain.owner === 'red'
-					? 'text-red-500 text-opacity-40'
-					: 'text-blue-500 text-opacity-40';
+					? 'text-[#E0654F]/40'
+					: 'text-[#7BA0D6]/40';
 			case 'den':
 				return terrain.owner === 'red'
-					? 'text-red-600 text-opacity-50'
-					: 'text-blue-600 text-opacity-50';
+					? 'text-[#E0654F]/50'
+					: 'text-[#7BA0D6]/50';
 			default:
 				return '';
 		}
@@ -132,7 +132,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 				{JUNGLE_FILES.map((file, index) => (
 					<div
 						key={index}
-						className='w-16 h-6 flex items-center justify-center text-sm font-semibold text-gray-600'
+						className='w-16 h-6 flex items-center justify-center text-sm font-semibold text-ivory-dim'
 					>
 						{file}
 					</div>
@@ -146,7 +146,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 					{JUNGLE_RANKS.map((rank, index) => (
 						<div
 							key={index}
-							className='w-6 h-16 flex items-center justify-center text-sm font-semibold text-gray-600'
+							className='w-6 h-16 flex items-center justify-center text-sm font-semibold text-ivory-dim'
 						>
 							{rank}
 						</div>
@@ -188,12 +188,12 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 
 										{/* Possible move indicator */}
 										{isPossibleMove(rowIndex, colIndex) && !piece && (
-											<div className='absolute w-3 h-3 bg-green-500 rounded-full opacity-75'></div>
+											<div className='absolute w-3 h-3 bg-jungle rounded-full opacity-75'></div>
 										)}
 
 										{/* Capture indicator */}
 										{isPossibleMove(rowIndex, colIndex) && piece && (
-											<div className='absolute inset-0 border-2 border-red-500 rounded'></div>
+											<div className='absolute inset-0 border-2 border-[#C8402F] rounded'></div>
 										)}
 									</div>
 								);
@@ -204,33 +204,33 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 			</div>
 
 			{/* Legend */}
-			<div className='mt-4 p-4 bg-gray-100 rounded-lg max-w-2xl'>
-				<h3 className='text-sm font-semibold mb-2 text-gray-700'>
+			<div className='mt-4 p-4 bg-ink-700 border border-line rounded-lg max-w-2xl'>
+				<h3 className='text-sm font-semibold mb-2 text-ivory'>
 					Terrain Legend:
 				</h3>
-				<div className='grid grid-cols-2 gap-2 text-xs text-gray-600'>
+				<div className='grid grid-cols-2 gap-2 text-xs text-ivory-dim'>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-green-100 border border-green-300'></div>
+						<div className='w-4 h-4 bg-[#1F3029] border border-[#3E8C6F]/30'></div>
 						<span>Normal Land</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-blue-400 border border-blue-500'></div>
+						<div className='w-4 h-4 bg-[#16323B] border border-[#3E5C8A]/40'></div>
 						<span>Water (only rats can enter)</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-red-200 border border-red-400'></div>
+						<div className='w-4 h-4 bg-[#C8402F]/15 border border-[#C8402F]/40'></div>
 						<span>Red Trap</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-blue-200 border border-blue-400'></div>
+						<div className='w-4 h-4 bg-[#3E5C8A]/15 border border-[#3E5C8A]/40'></div>
 						<span>Blue Trap</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-red-300 border border-red-500'></div>
+						<div className='w-4 h-4 bg-[#C8402F]/25 border border-[#C8402F]/60'></div>
 						<span>Red Den</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-blue-300 border border-blue-500'></div>
+						<div className='w-4 h-4 bg-[#3E5C8A]/25 border border-[#3E5C8A]/60'></div>
 						<span>Blue Den</span>
 					</div>
 				</div>

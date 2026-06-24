@@ -780,13 +780,13 @@ const XiangqiGame: React.FC = () => {
 			{errorMsg && (
 				<div className='w-full max-w-4xl mx-auto mb-6'>
 					<div
-						className='flex items-start justify-between gap-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100'
+						className='flex items-start justify-between gap-4 rounded-lg border border-[#C8402F]/40 bg-[#C8402F]/10 px-4 py-3 text-ivory'
 						role='alert'
 					>
 						<p className='text-sm'>{errorMsg}</p>
 						<button
 							type='button'
-							className='text-xs font-semibold uppercase tracking-wide text-red-200 hover:text-red-100'
+							className='text-xs font-semibold uppercase tracking-wide text-[#C8402F] hover:text-ivory'
 							onClick={() => setErrorMsg(null)}
 						>
 							Dismiss
