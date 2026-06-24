@@ -131,7 +131,10 @@ motion disabled under it).
   hairline brightens. No scale transforms, no bounce.
 - **Removed:** `float`, `glow`, `gradient-shift`/`animated-bg`, `shimmer`,
   `animate-ping`/`animate-spin`/`animate-bounce` decorative blobs and particles,
-  ✨ emoji on buttons.
+  purely ornamental emoji (e.g. homepage flair). Decorative emoji on buttons
+  means non-functional emoji used only for visual flair; emoji that are part of
+  E2E-pinned button labels (e.g. control buttons whose text Playwright asserts
+  on) must be kept.
 
 ## 7. Components & Pages
 

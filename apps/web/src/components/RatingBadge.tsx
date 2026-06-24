@@ -1,3 +1,5 @@
+import { cva } from 'class-variance-authority';
+
 interface RankTier {
 	tier: string;
 	color: string;
@@ -51,7 +53,26 @@ const SIZE_CLASSES = {
 	sm: 'px-2 py-0.5 text-xs gap-1',
 	md: 'px-3 py-1 text-sm gap-1.5',
 	lg: 'px-4 py-1.5 text-base gap-2',
-};
+} as const;
+
+const ratingBadgeVariants = cva(
+	'inline-flex items-center rounded-full border font-semibold shadow-lg',
+	{
+		variants: {
+			tier: Object.fromEntries(
+				Object.entries(TIER_COLORS).map(([key, c]) => [
+					key,
+					`${c.bg} ${c.border} ${c.text}`,
+				])
+			),
+			size: SIZE_CLASSES,
+		},
+		defaultVariants: {
+			tier: 'gray',
+			size: 'md',
+		},
+	}
+);
 
 export function RatingBadge({
 	rating,
@@ -59,11 +80,14 @@ export function RatingBadge({
 	size = 'md',
 	showLabel = true,
 }: RatingBadgeProps) {
-	const colorClasses = TIER_COLORS[tier.color] ?? DEFAULT_TIER_COLORS;
-
 	return (
 		<div
-			className={`inline-flex items-center rounded-full ${colorClasses.bg} ${colorClasses.border} border ${colorClasses.text} font-semibold shadow-lg ${SIZE_CLASSES[size]}`}
+			className={ratingBadgeVariants({
+				tier: (TIER_COLORS[tier.color]
+					? tier.color
+					: 'gray') as keyof typeof TIER_COLORS,
+				size,
+			})}
 		>
 			<span className='font-mono'>{rating}</span>
 			{showLabel && (

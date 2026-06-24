@@ -560,7 +560,7 @@ git commit -m "feat(ui): add PageHeader component"
 
 - Consumes: `useAuth` from `../lib/auth`, `Button`, `cn`. Produces: `AppShell` default export — the hydrated client nav (desktop left rail ≥`lg` + mobile bottom tab bar) that sets `procyon-auth-hydrated` on mount (same effect AppNavBar had). `AppNavBar` is re-pointed to render `AppShell` (kept as a thin re-export so existing imports/`client:only` usage keep working). Layout.astro's static fallback nav becomes a Nocturne top bar and `<main>` gets left padding on `lg` for the rail.
 
-**Notes:** Nav items: Play (`/`), Puzzles (`/puzzles`), History (`/play-history`), Ratings (`/profile#ratings` → use `/profile`), Profile (`/profile`). Use the current route via `window.location.pathname` for the active tick. Keep the "Login" link/button (anonymous) and the Sign Out action (authenticated) — both are E2E-pinned.
+**Notes:** Nav items: Play (`/`), Puzzles (`/puzzles`), History (`/play-history`), Profile (`/profile`; covers the ratings section via `/profile#ratings`). Use the current route via `window.location.pathname` for the active tick. Keep the "Login" link/button (anonymous) and the Sign Out action (authenticated) — both are E2E-pinned.
 
 - [ ] **Step 1: Create `AppShell.tsx`**
 
@@ -659,7 +659,7 @@ export function AppShell() {
       </aside>
 
       {/* Mobile bottom tab bar */}
-      <nav className='fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-800/95 backdrop-blur lg:hidden'>
+      <nav className='fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-800/95 lg:hidden'>
         {NAV.map(item => (
           <a
             key={item.href}

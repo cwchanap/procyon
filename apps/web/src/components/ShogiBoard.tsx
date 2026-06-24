@@ -55,10 +55,12 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 		const isPromotionZone = renderPromotionZone(row);
 
 		return (
-			<div
+			<button
+				type='button'
 				key={`${row}-${col}`}
+				aria-label={`Square ${row}-${col}`}
 				className={`
-          w-12 h-12 flex items-center justify-center cursor-pointer relative text-xs
+          w-12 h-12 flex items-center justify-center cursor-pointer relative text-xs p-0
           ${squareColor}
           ${isSelected ? 'ring-2 ring-shogi ring-inset' : ''}
           ${isHighlighted ? 'ring-2 ring-[#3E5C8A]/80 ring-inset' : ''}
@@ -104,7 +106,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 						{String.fromCharCode(97 + row)}
 					</div>
 				)}
-			</div>
+			</button>
 		);
 	};
 

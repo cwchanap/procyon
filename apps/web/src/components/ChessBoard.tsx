@@ -66,10 +66,12 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 		const squareColor = getSquareColor(row, col);
 
 		return (
-			<div
+			<button
+				type='button'
 				key={`${row}-${col}`}
+				aria-label={`Square ${row}-${col}`}
 				className={`
-          w-16 h-16 flex items-center justify-center cursor-pointer relative
+          w-16 h-16 flex items-center justify-center cursor-pointer relative p-0
           ${squareColor}
           ${isSelected ? 'ring-2 ring-brass ring-inset' : ''}
           ${isHighlighted ? 'ring-2 ring-chess ring-opacity-60 ring-inset' : ''}
@@ -86,7 +88,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 				{piece && (
 					<span
 						className={`text-4xl select-none filter drop-shadow-lg ${
-							piece.color === 'white' ? 'text-ivory' : 'text-ink-900'
+							piece.color === 'white' ? 'text-ivory' : 'text-ivory-dim'
 						}`}
 					>
 						{getPieceSymbol(piece)}
@@ -97,7 +99,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 				{isPossible && piece && (
 					<div className='absolute inset-0 border-4 border-[#C8402F] rounded pointer-events-none' />
 				)}
-			</div>
+			</button>
 		);
 	};
 

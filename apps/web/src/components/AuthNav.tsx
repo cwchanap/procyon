@@ -52,7 +52,7 @@ export function AuthNav() {
 					{/* User Badge */}
 					<button
 						onClick={toggleDropdown}
-						className='bg-card/80 backdrop-blur-sm rounded-lg p-2 shadow-lg border border-border/50 flex items-center gap-3 hover:bg-card/90 transition-colors cursor-pointer'
+						className='bg-card/80 rounded-lg p-2 shadow-lg border border-border/50 flex items-center gap-3 hover:bg-card/90 transition-colors cursor-pointer'
 					>
 						{/* Avatar */}
 						<div className='w-8 h-8 bg-brass rounded-full flex items-center justify-center text-ink-900 text-sm font-bold'>
@@ -84,7 +84,7 @@ export function AuthNav() {
 
 					{/* Dropdown Menu */}
 					{isDropdownOpen && (
-						<div className='absolute right-0 mt-2 w-48 bg-card/95 backdrop-blur-sm rounded-lg shadow-xl border border-border/50 py-2 z-50'>
+						<div className='absolute right-0 mt-2 w-48 bg-card/95 rounded-lg shadow-xl border border-border/50 py-2 z-50'>
 							<div className='px-4 py-2 border-b border-border/30'>
 								<div className='text-sm font-medium text-card-foreground'>
 									{user?.username}

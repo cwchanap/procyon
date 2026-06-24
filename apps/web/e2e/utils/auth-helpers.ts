@@ -33,13 +33,15 @@ export class AuthHelper {
 			return true;
 		}
 
-		// Scope to nav element to avoid matching unrelated CTAs elsewhere on the page
-		const navLocator = this.page.locator('nav');
+		// AppShell renders auth controls in <aside> (desktop rail) and <nav>
+		// (mobile bottom bar). Scope to both to avoid matching unrelated CTAs
+		// elsewhere on the page.
+		const shellLocator = this.page.locator('aside, nav');
 		const unauthLocators = [
-			navLocator.getByRole('button', { name: 'Login' }),
-			navLocator.getByRole('link', { name: 'Login' }),
-			navLocator.getByRole('button', { name: 'Sign In' }),
-			navLocator.getByRole('link', { name: 'Sign In' }),
+			shellLocator.getByRole('button', { name: 'Login' }),
+			shellLocator.getByRole('link', { name: 'Login' }),
+			shellLocator.getByRole('button', { name: 'Sign In' }),
+			shellLocator.getByRole('link', { name: 'Sign In' }),
 		];
 
 		for (const locator of unauthLocators) {
@@ -175,12 +177,18 @@ export class AuthHelper {
 			return;
 		}
 
-		// Open the user dropdown from the nav bar
-		const navUserButton = this.page.locator('nav button').first();
-		await navUserButton.click();
-
-		// Click the Sign Out button in the dropdown
-		await this.page.getByRole('button', { name: 'Sign Out' }).click();
+		// AppShell exposes Sign Out as a direct button (no dropdown): in the
+		// desktop <aside> user chip or the mobile <nav> bottom bar. Click the
+		// visible one.
+		const signOutButtons = this.page.getByRole('button', { name: 'Sign Out' });
+		const count = await signOutButtons.count();
+		for (let i = 0; i < count; i++) {
+			const button = signOutButtons.nth(i);
+			if (await button.isVisible().catch(() => false)) {
+				await button.click();
+				break;
+			}
+		}
 
 		await expect
 			.poll(() => this.isUnauthenticatedState(), {
@@ -251,10 +259,33 @@ export class AuthHelper {
 	 * Wait for auth nav to load (useful for initial page loads)
 	 */
 	async waitForAuthNav(): Promise<void> {
-		// Wait for any navigation button (Login or user dropdown) to be visible
-		await this.page
-			.locator('nav button')
-			.first()
-			.waitFor({ state: 'visible', timeout: 15000 });
+		// Wait for any AppShell auth control (Sign Out button when
+		// authenticated, or Login link/button when anonymous) to become
+		// visible. AppShell renders these in <aside> (desktop) or <nav>
+		// (mobile).
+		const shellLocator = this.page.locator('aside, nav');
+		const authControls = [
+			shellLocator.getByRole('button', { name: 'Sign Out' }),
+			shellLocator.getByRole('button', { name: 'Login' }),
+			shellLocator.getByRole('link', { name: 'Login' }),
+		];
+		await expect
+			.poll(
+				async () => {
+					for (const locator of authControls) {
+						if (
+							await locator
+								.first()
+								.isVisible()
+								.catch(() => false)
+						) {
+							return true;
+						}
+					}
+					return false;
+				},
+				{ timeout: 15000 }
+			)
+			.toBe(true);
 	}
 }

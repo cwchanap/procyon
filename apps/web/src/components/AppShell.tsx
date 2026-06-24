@@ -110,7 +110,7 @@ export function AppShell() {
 			</aside>
 
 			{/* Mobile bottom tab bar */}
-			<nav className='fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-800/95 backdrop-blur lg:hidden'>
+			<nav className='fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-800/95 lg:hidden'>
 				{navItems.map(item => (
 					<a
 						key={item.href}
