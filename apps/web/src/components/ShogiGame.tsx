@@ -895,13 +895,13 @@ const ShogiGame: React.FC = () => {
 								Click on pieces in your hand to drop them on the board.
 							</p>
 							<p className='flex items-center justify-center gap-2'>
-								<span className='w-3 h-3 bg-green-400 rounded-full inline-block'></span>
+								<span className='w-3 h-3 bg-jungle rounded-full inline-block'></span>
 								Possible moves
 								<span className='mx-2'>•</span>
 								<span className='w-3 h-3 border-2 border-red-500 rounded inline-block'></span>
 								Captures
 							</p>
-							<p className='text-xs text-orange-300'>
+							<p className='text-xs text-ivory-dim'>
 								先手 (Sente) plays first and pieces point upward. 後手 (Gote)
 								pieces are rotated and point downward.
 							</p>
@@ -1113,21 +1113,21 @@ const ShogiGame: React.FC = () => {
 								<div className='flex gap-2 justify-center text-xs'>
 									<button
 										onClick={triggerDebugWin}
-										className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
+										className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
 										title='Debug: Win'
 									>
 										🏆 Win
 									</button>
 									<button
 										onClick={triggerDebugLoss}
-										className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
+										className='px-3 py-1 bg-[#C8402F] hover:opacity-90 text-ivory rounded'
 										title='Debug: Loss'
 									>
 										💀 Loss
 									</button>
 									<button
 										onClick={triggerDebugDraw}
-										className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
+										className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
 										title='Debug: Draw'
 									>
 										🤝 Draw
