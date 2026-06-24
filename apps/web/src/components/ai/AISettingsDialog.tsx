@@ -131,10 +131,10 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 		<>
 			<button
 				onClick={handleButtonClick}
-				className={`glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+				className={`px-6 py-3 rounded-xl font-medium transition-colors border ${
 					isActive
-						? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
-						: 'text-white hover:bg-white hover:bg-opacity-20'
+						? 'bg-brass text-ink-900 shadow-lg'
+						: 'bg-ink-700 border-line text-ivory hover:bg-ink-600'
 				}`}
 			>
 				⚙️ AI Settings
@@ -144,18 +144,20 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 				<>
 					{/* Backdrop */}
 					<div
-						className='fixed inset-0 bg-black bg-opacity-50 z-40'
+						className='fixed inset-0 bg-ink-900/70 z-40'
 						onClick={() => setIsOpen(false)}
 					/>
 
 					{/* Dialog */}
 					<div className='fixed inset-0 flex items-center justify-center z-50 pointer-events-none'>
-						<div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20 w-full max-w-md pointer-events-auto bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 bg-opacity-95'>
+						<div className='bg-ink-700 border border-line shadow-panel p-6 rounded-2xl w-full max-w-md pointer-events-auto'>
 							<div className='flex justify-between items-center mb-6'>
-								<h2 className='text-2xl font-bold text-white'>AI Settings</h2>
+								<h2 className='text-2xl font-bold text-ivory font-display'>
+									AI Settings
+								</h2>
 								<button
 									onClick={() => setIsOpen(false)}
-									className='text-white hover:text-gray-300 text-2xl leading-none'
+									className='text-ivory-dim hover:text-ivory text-2xl leading-none'
 								>
 									×
 								</button>
@@ -163,16 +165,16 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 
 							{PROVIDER_OPTIONS.length === 0 ? (
 								<div className='text-center py-6'>
-									<p className='text-yellow-300 mb-4'>
+									<p className='text-brass mb-4'>
 										⚠️ No AI providers configured
 									</p>
-									<p className='text-purple-200 text-sm'>
+									<p className='text-ivory-dim text-sm'>
 										Please configure an API key in the Profile page to enable AI
 										gameplay.
 									</p>
 									<button
 										onClick={() => (window.location.href = '/profile')}
-										className='mt-4 glass-effect px-4 py-2 rounded-xl text-white bg-purple-500 bg-opacity-30 border border-white border-opacity-20 hover:bg-opacity-50 transition-all'
+										className='mt-4 px-4 py-2 rounded-xl bg-brass text-ink-900 hover:bg-brass-bright font-medium transition-colors'
 									>
 										Go to Profile
 									</button>
@@ -180,13 +182,13 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 							) : (
 								<div className='space-y-4'>
 									<div>
-										<label className='block text-sm font-medium text-purple-200 mb-2'>
+										<label className='block text-sm font-medium text-ivory-dim mb-2'>
 											AI Player
 										</label>
 										<select
 											value={aiPlayer}
 											onChange={e => onAIPlayerChange(e.target.value)}
-											className='w-full glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20 focus:outline-none focus:ring-2 focus:ring-purple-500'
+											className='w-full px-4 py-2 rounded-xl bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
 										>
 											{aiPlayerOptions.map(option => (
 												<option key={option.value} value={option.value}>
@@ -197,7 +199,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 									</div>
 
 									<div>
-										<label className='block text-sm font-medium text-purple-200 mb-2'>
+										<label className='block text-sm font-medium text-ivory-dim mb-2'>
 											AI Provider
 										</label>
 										<select
@@ -211,7 +213,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 													onModelChange(models[0].value);
 												}
 											}}
-											className='w-full glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20 focus:outline-none focus:ring-2 focus:ring-purple-500'
+											className='w-full px-4 py-2 rounded-xl bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
 										>
 											{PROVIDER_OPTIONS.map(option => (
 												<option key={option.value} value={option.value}>
@@ -222,13 +224,13 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 									</div>
 
 									<div>
-										<label className='block text-sm font-medium text-purple-200 mb-2'>
+										<label className='block text-sm font-medium text-ivory-dim mb-2'>
 											AI Model
 										</label>
 										<select
 											value={currentModel}
 											onChange={e => onModelChange(e.target.value)}
-											className='w-full glass-effect px-4 py-2 rounded-xl text-white bg-black bg-opacity-30 border border-white border-opacity-20 focus:outline-none focus:ring-2 focus:ring-purple-500'
+											className='w-full px-4 py-2 rounded-xl bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
 										>
 											{availableModels.map(option => (
 												<option key={option.value} value={option.value}>
@@ -243,7 +245,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 							<div className='mt-6 flex justify-end'>
 								<button
 									onClick={() => setIsOpen(false)}
-									className='glass-effect px-6 py-2 rounded-xl text-white bg-purple-500 bg-opacity-30 border border-white border-opacity-20 hover:bg-opacity-50 transition-all'
+									className='bg-ink-700 border border-line text-ivory hover:bg-ink-600 px-6 py-2 rounded-xl transition-colors'
 								>
 									Close
 								</button>
