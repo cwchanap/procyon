@@ -171,7 +171,7 @@ export default function PuzzlesPage() {
 
 	if (isLoadingList) {
 		return (
-			<div className='min-h-[60vh] flex items-center justify-center text-purple-100/60 animate-pulse text-lg'>
+			<div className='min-h-[60vh] flex items-center justify-center text-ivory-dim animate-pulse text-lg'>
 				Loading puzzles…
 			</div>
 		);
@@ -180,11 +180,11 @@ export default function PuzzlesPage() {
 	if (listError) {
 		return (
 			<div className='min-h-[60vh] flex items-center justify-center'>
-				<div className='glass-effect rounded-2xl p-8 text-center space-y-4'>
-					<p className='text-red-200'>{listError}</p>
+				<div className='bg-ink-700 border border-line rounded-lg p-8 text-center space-y-4'>
+					<p className='text-[#C8402F]'>{listError}</p>
 					<button
 						onClick={() => window.location.reload()}
-						className='px-4 py-2 rounded-full bg-white/10 text-white text-sm hover:bg-white/20 transition-colors'
+						className='px-4 py-2 rounded-md bg-brass text-ink-900 text-sm hover:bg-brass-bright font-medium transition-colors'
 					>
 						Retry
 					</button>
@@ -195,17 +195,17 @@ export default function PuzzlesPage() {
 
 	if (activePuzzle) {
 		return (
-			<div className='container mx-auto px-4 py-8'>
+			<div className='mx-auto max-w-5xl px-6 py-12'>
 				<PuzzleSolver
 					puzzle={activePuzzle}
 					onBack={handleBack}
 					onNextPuzzle={handleNextPuzzle}
 				/>
 				{!isAuthLoading && !isAuthenticated && (
-					<p className='text-center text-purple-300/60 text-sm mt-6'>
+					<p className='text-center text-ivory-dim text-sm mt-6'>
 						<a
 							href='/login'
-							className='text-cyan-300 hover:text-cyan-100 underline'
+							className='text-brass hover:text-brass-bright underline'
 						>
 							Sign in
 						</a>{' '}
@@ -217,16 +217,16 @@ export default function PuzzlesPage() {
 	}
 
 	return (
-		<div className='container mx-auto px-4 py-8'>
+		<div className='mx-auto max-w-5xl px-6 py-12'>
 			{isLoadingPuzzle && (
 				<div className='fixed inset-0 bg-black/40 flex items-center justify-center z-50'>
-					<div className='glass-effect rounded-2xl p-6 text-white text-sm animate-pulse'>
+					<div className='bg-ink-700 border border-line rounded-lg p-6 text-ivory text-sm animate-pulse'>
 						Loading puzzle…
 					</div>
 				</div>
 			)}
 			{puzzleError && (
-				<div className='mb-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-400/20 text-red-200 text-sm text-center'>
+				<div className='mb-4 px-4 py-3 rounded-lg bg-[#C8402F]/10 border border-line text-[#C8402F] text-sm text-center'>
 					{puzzleError}
 				</div>
 			)}
