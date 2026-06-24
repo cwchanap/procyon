@@ -4,6 +4,7 @@ import type { PuzzleData } from '../../lib/puzzle/types';
 import { usePuzzle, MAX_FAILED_ATTEMPTS } from '../../hooks/usePuzzle';
 import { cn } from '../../lib/utils';
 import { cva } from 'class-variance-authority';
+import { Button } from '../ui/Button';
 
 interface PuzzleSolverProps {
 	puzzle: PuzzleData;
@@ -12,15 +13,15 @@ interface PuzzleSolverProps {
 }
 
 const statusBanner = cva(
-	'w-full text-center py-2 px-4 rounded-xl text-sm font-medium transition-colors duration-300',
+	'w-full text-center py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-300',
 	{
 		variants: {
 			phase: {
-				idle: 'bg-white/5 text-purple-100',
-				playing: 'bg-white/5 text-purple-100',
-				opponent: 'bg-white/5 text-purple-100',
-				solved: 'bg-emerald-500/20 text-emerald-200',
-				failed: 'bg-red-500/20 text-red-200',
+				idle: 'bg-ink-600 text-ivory-dim',
+				playing: 'bg-ink-600 text-ivory-dim',
+				opponent: 'bg-ink-600 text-ivory-dim',
+				solved: 'bg-jungle/20 text-jungle',
+				failed: 'bg-[#C8402F]/20 text-[#C8402F]',
 			},
 		},
 	}
@@ -31,9 +32,9 @@ const difficultyBadge = cva(
 	{
 		variants: {
 			difficulty: {
-				beginner: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30',
-				intermediate: 'bg-yellow-500/20 text-yellow-200 border-yellow-400/30',
-				advanced: 'bg-red-500/20 text-red-200 border-red-400/30',
+				beginner: 'bg-jungle/20 text-jungle border-jungle/30',
+				intermediate: 'bg-brass/20 text-brass border-brass/30',
+				advanced: 'bg-[#C8402F]/20 text-[#C8402F] border-[#C8402F]/30',
 			},
 		},
 		defaultVariants: {
@@ -47,8 +48,8 @@ const failedAttemptDot = cva(
 	{
 		variants: {
 			filled: {
-				true: 'bg-red-400',
-				false: 'bg-white/20',
+				true: 'bg-[#C8402F]',
+				false: 'bg-ink-600 border border-line',
 			},
 		},
 	}
@@ -111,7 +112,7 @@ export default function PuzzleSolver({
 			<div className='w-full'>
 				<button
 					onClick={onBack}
-					className='text-purple-200/60 hover:text-white text-sm flex items-center gap-1 mb-4 transition-colors duration-200'
+					className='text-ivory-dim hover:text-ivory text-sm flex items-center gap-1 mb-4 transition-colors duration-200'
 				>
 					<svg
 						className='w-4 h-4'
@@ -129,14 +130,16 @@ export default function PuzzleSolver({
 					Back to puzzles
 				</button>
 				<div className='flex items-center gap-3 mb-1'>
-					<h2 className='text-2xl font-bold text-white'>{puzzle.title}</h2>
+					<h2 className='text-2xl font-bold text-ivory font-display'>
+						{puzzle.title}
+					</h2>
 					<span
 						className={cn(difficultyBadge({ difficulty: puzzle.difficulty }))}
 					>
 						{puzzle.difficulty}
 					</span>
 				</div>
-				<p className='text-purple-100/70 text-sm'>{puzzle.description}</p>
+				<p className='text-ivory-dim text-sm'>{puzzle.description}</p>
 			</div>
 
 			{/* Status Banner */}
@@ -166,31 +169,26 @@ export default function PuzzleSolver({
 			{/* Controls */}
 			<div className='flex gap-3 flex-wrap justify-center'>
 				{isInteractive && !showSolution && (
-					<button
+					<Button
+						variant='outline'
+						size='sm'
 						onClick={requestHint}
 						disabled={showHint}
-						className='px-4 py-2 rounded-xl glass-effect text-purple-100 text-sm hover:bg-white/10 transition-all duration-200 disabled:opacity-40 border border-white/10'
 					>
 						Hint
-					</button>
+					</Button>
 				)}
 
 				{(phase === 'failed' || phase === 'solved') && (
-					<button
-						onClick={tryAgain}
-						className='px-6 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white font-semibold text-sm transition-all duration-200'
-					>
+					<Button variant='secondary' size='sm' onClick={tryAgain}>
 						Try Again
-					</button>
+					</Button>
 				)}
 
 				{phase === 'solved' && (
-					<button
-						onClick={onNextPuzzle ?? onBack}
-						className='px-6 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white font-semibold text-sm transition-all duration-200'
-					>
+					<Button variant='default' size='sm' onClick={onNextPuzzle ?? onBack}>
 						{onNextPuzzle ? 'Next Puzzle' : 'Back'}
-					</button>
+					</Button>
 				)}
 			</div>
 		</div>

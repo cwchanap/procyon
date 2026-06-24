@@ -7,6 +7,8 @@ import {
 	DIFFICULTY_BADGE_STYLES,
 	DIFFICULTY_BADGE_FALLBACK,
 } from '../../lib/puzzle/utils';
+import { Panel } from '../ui/Panel';
+import { PageHeader } from '../PageHeader';
 
 interface PuzzleGridProps {
 	puzzles: PuzzleListItem[];
@@ -25,23 +27,13 @@ export default function PuzzleGrid({
 		!!(serverProgress[id]?.solved || localProgress[id]?.solved);
 
 	return (
-		<div className='w-full max-w-5xl mx-auto'>
-			<header className='mb-8 space-y-2'>
-				<p className='text-purple-200/70 uppercase tracking-[0.3em] text-xs'>
-					Tactics
-				</p>
-				<h1 className='text-4xl font-black text-white tracking-tight'>
-					Chess Puzzles
-				</h1>
-				<p className='text-purple-100/60'>
-					Sharpen your tactical vision with hand-picked puzzles.
-				</p>
-			</header>
+		<div className='w-full'>
+			<PageHeader eyebrow='Training' title='Chess Puzzles' />
 
 			{puzzles.length === 0 ? (
-				<div className='glass-effect rounded-2xl p-8 text-center text-purple-200/60'>
+				<Panel className='p-8 text-center text-ivory-dim'>
 					No puzzles available yet.
-				</div>
+				</Panel>
 			) : (
 				<div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
 					{puzzles.map(puzzle => {
@@ -54,7 +46,7 @@ export default function PuzzleGrid({
 							<button
 								key={puzzle.id}
 								onClick={() => onSelectPuzzle(puzzle.id)}
-								className='glass-effect rounded-2xl p-5 text-left hover:bg-white/10 transition-all duration-200 border border-white/10 hover:border-white/20 group'
+								className='bg-ink-700 border border-line rounded-lg p-5 text-left hover:-translate-y-0.5 transition-all duration-200 hover:border-line-brass group'
 							>
 								<div className='flex items-start justify-between gap-2 mb-3'>
 									<span
@@ -63,7 +55,7 @@ export default function PuzzleGrid({
 										{puzzle.difficulty}
 									</span>
 									{solved && (
-										<span className='text-xs text-emerald-300 font-semibold flex items-center gap-1'>
+										<span className='text-xs text-jungle font-semibold flex items-center gap-1'>
 											<svg
 												className='w-3 h-3'
 												fill='currentColor'
@@ -79,13 +71,13 @@ export default function PuzzleGrid({
 										</span>
 									)}
 								</div>
-								<h3 className='text-white font-semibold text-base mb-1 group-hover:text-purple-200 transition-colors duration-200'>
+								<h3 className='text-ivory font-semibold text-base mb-1 group-hover:text-brass transition-colors duration-200'>
 									{puzzle.title}
 								</h3>
-								<p className='text-purple-100/60 text-sm leading-snug line-clamp-2'>
+								<p className='text-ivory-dim text-sm leading-snug line-clamp-2'>
 									{puzzle.description}
 								</p>
-								<div className='mt-4 text-xs text-purple-300/50'>
+								<div className='mt-4 text-xs text-ivory-dim font-mono'>
 									Play as {puzzle.playerColor}
 								</div>
 							</button>
