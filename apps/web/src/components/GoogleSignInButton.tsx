@@ -112,11 +112,9 @@ export function GoogleSignInButton({
 
 	if (error && !env.PUBLIC_GOOGLE_CLIENT_ID) {
 		return (
-			<div className='text-center text-purple-200 text-sm'>
+			<div className='text-center text-ivory-dim text-sm'>
 				Google Sign-In is not configured. Please set{' '}
-				<code className='bg-purple-900/50 px-1 rounded'>
-					PUBLIC_GOOGLE_CLIENT_ID
-				</code>{' '}
+				<code className='bg-ink-800 px-1 rounded'>PUBLIC_GOOGLE_CLIENT_ID</code>{' '}
 				in your environment.
 			</div>
 		);
@@ -127,13 +125,9 @@ export function GoogleSignInButton({
 			className='flex flex-col items-center gap-4 w-full max-w-[400px]'
 			data-testid='google-signin-button'
 		>
-			{loading && (
-				<div className='text-purple-200 text-sm animate-pulse'>
-					Signing in...
-				</div>
-			)}
+			{loading && <div className='text-ivory-dim text-sm'>Signing in...</div>}
 			{error && (
-				<div className='text-red-400 text-sm text-center bg-red-900/20 border border-red-500/30 rounded-lg p-3'>
+				<div className='text-[#C8402F] text-sm text-center border border-line rounded-lg p-3'>
 					{error}
 				</div>
 			)}
