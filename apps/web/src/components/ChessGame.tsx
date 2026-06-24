@@ -887,13 +887,13 @@ const ChessGame: React.FC = () => {
 			{providerError && (
 				<div className='w-full max-w-4xl mx-auto mb-4'>
 					<div
-						className='flex items-start justify-between gap-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100'
+						className='flex items-start justify-between gap-4 rounded-lg border border-[#C8402F]/40 bg-[#C8402F]/10 px-4 py-3 text-ivory'
 						role='alert'
 					>
 						<p className='text-sm'>{providerError}</p>
 						<button
 							type='button'
-							className='text-xs font-semibold uppercase tracking-wide text-red-200 hover:text-red-100'
+							className='text-xs font-semibold uppercase tracking-wide text-[#C8402F] hover:text-ivory'
 							onClick={() => setProviderError(null)}
 						>
 							Dismiss
@@ -906,7 +906,7 @@ const ChessGame: React.FC = () => {
 				!isLoadingConfig &&
 				(!aiConfig.enabled || !aiConfig.apiKey) && (
 					<div className='text-center'>
-						<div className='text-yellow-400 text-sm'>
+						<div className='text-brass text-sm'>
 							⚠ AI not configured - Configure API key in Profile to enable AI
 							gameplay
 						</div>

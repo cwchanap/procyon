@@ -40,8 +40,8 @@ const TIER_COLORS: Record<string, TierColorClasses> = {
 		text: 'text-ivory',
 	},
 	green: {
-		bg: 'bg-green-700',
-		border: 'border-green-500/50',
+		bg: 'bg-jungle/30',
+		border: 'border-jungle/50',
 		text: 'text-ivory',
 	},
 	gray: DEFAULT_TIER_COLORS,

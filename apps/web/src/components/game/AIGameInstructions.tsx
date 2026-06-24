@@ -20,10 +20,10 @@ const AIGameInstructions: React.FC<AIGameInstructionsProps> = ({
 				move.
 			</p>
 			<p className='flex items-center justify-center gap-2'>
-				<span className='w-3 h-3 bg-green-400 rounded-full inline-block'></span>
+				<span className='w-3 h-3 bg-jungle rounded-full inline-block'></span>
 				Possible moves
 				<span className='mx-2'>•</span>
-				<span className='w-3 h-3 border-2 border-red-500 rounded inline-block'></span>
+				<span className='w-3 h-3 border-2 border-[#C8402F] rounded inline-block'></span>
 				Captures
 			</p>
 			{children}

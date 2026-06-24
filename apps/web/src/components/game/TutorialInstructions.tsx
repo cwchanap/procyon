@@ -29,11 +29,11 @@ const TutorialInstructions: React.FC<TutorialInstructionsProps> = ({
 				</h3>
 				<div className='space-y-3 text-ivory-dim'>
 					<p className='flex items-center gap-3'>
-						<span className='text-green-400'>•</span>
+						<span className='text-jungle'>•</span>
 						Click on any piece to see its possible moves
 					</p>
 					<p className='flex items-center gap-3'>
-						<span className='text-blue-400'>•</span>
+						<span className='text-shogi'>•</span>
 						Green highlights show legal moves
 					</p>
 					<p className='flex items-center gap-3'>
@@ -41,7 +41,7 @@ const TutorialInstructions: React.FC<TutorialInstructionsProps> = ({
 						Colored outlines indicate capture moves
 					</p>
 					<p className='flex items-center gap-3'>
-						<span className='text-yellow-400'>•</span>
+						<span className='text-brass'>•</span>
 						Yellow rings show tutorial highlights
 					</p>
 				</div>

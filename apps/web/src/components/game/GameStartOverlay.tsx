@@ -15,8 +15,8 @@ const GameStartOverlay: React.FC<GameStartOverlayProps> = ({
 		<div className={`relative ${active ? 'opacity-75' : ''}`}>
 			{children}
 			{active && (
-				<div className='absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center rounded-lg'>
-					<div className='bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium'>
+				<div className='absolute inset-0 bg-ink-900/20 flex items-center justify-center rounded-lg'>
+					<div className='bg-ink-900/60 text-ivory px-4 py-2 rounded-lg text-sm font-medium'>
 						{message}
 					</div>
 				</div>
