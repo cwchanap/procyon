@@ -542,12 +542,12 @@ const JungleGame: React.FC = () => {
 		<GameScaffold
 			title={title}
 			subtitle={subtitle}
-			titleGradientClassName='bg-gradient-to-r from-green-400 via-blue-500 to-purple-600'
-			subtitleClassName='text-purple-100'
+			titleGradientClassName='bg-jungle font-display'
+			subtitleClassName='text-ivory-dim'
 			currentMode={gameMode}
 			onModeChange={toggleToMode}
 			showModeToggle={showModeToggle}
-			inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
+			inactiveModeClassName='text-ivory-dim hover:bg-ink-600'
 			aiSettingsButton={
 				<AISettingsDialog
 					aiPlayer={aiPlayer}
@@ -683,7 +683,7 @@ const JungleGame: React.FC = () => {
 									>
 										🤝 Draw
 									</button>
-									<span className='text-gray-400 self-center'>
+									<span className='text-ivory-dim self-center'>
 										(Shift+D to toggle)
 									</span>
 								</div>
