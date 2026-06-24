@@ -89,7 +89,10 @@ export function AppShell() {
 						PROCYON
 					</span>
 				</a>
-				<nav className='flex flex-1 flex-col gap-1'>
+				<nav
+					aria-label='Main navigation'
+					className='flex flex-1 flex-col gap-1'
+				>
 					{navItems.map(item => (
 						<a
 							key={item.href}
@@ -110,7 +113,10 @@ export function AppShell() {
 			</aside>
 
 			{/* Mobile bottom tab bar */}
-			<nav className='fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-800/95 lg:hidden'>
+			<nav
+				aria-label='Main navigation'
+				className='fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-800/95 lg:hidden'
+			>
 				{navItems.map(item => (
 					<a
 						key={item.href}

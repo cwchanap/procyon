@@ -63,7 +63,7 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
                             ${
 															isSelected(piece)
 																? 'bg-shogi/20 ring-2 ring-shogi'
-																: 'bg-ink-600 hover:bg-ink-500'
+																: 'bg-ink-600 hover:bg-ink-700'
 														}
                             min-w-[32px] min-h-[32px]
                         `}

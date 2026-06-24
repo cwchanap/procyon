@@ -219,7 +219,7 @@ export default function PuzzlesPage() {
 	return (
 		<div className='mx-auto max-w-5xl px-6 py-12'>
 			{isLoadingPuzzle && (
-				<div className='fixed inset-0 bg-black/40 flex items-center justify-center z-50'>
+				<div className='fixed inset-0 bg-ink-900/40 flex items-center justify-center z-50'>
 					<div className='bg-ink-700 border border-line rounded-lg p-6 text-ivory text-sm animate-pulse'>
 						Loading puzzle…
 					</div>
