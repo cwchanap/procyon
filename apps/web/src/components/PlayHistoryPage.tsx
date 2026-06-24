@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { env } from '../lib/env';
+import { PageHeader } from './PageHeader';
+import { Panel } from './ui/Panel';
+import { Button } from './ui/Button';
 
 type ServerPlayHistory = {
 	id: number;
@@ -28,15 +31,15 @@ const RESULT_STYLES: Record<
 > = {
 	win: {
 		label: 'Win',
-		className: 'bg-green-500/20 text-green-200 border border-green-400/30',
+		className: 'bg-jungle/20 text-jungle border border-jungle/30',
 	},
 	loss: {
 		label: 'Loss',
-		className: 'bg-red-500/20 text-red-200 border border-red-400/30',
+		className: 'bg-[#C8402F]/20 text-[#C8402F] border border-[#C8402F]/30',
 	},
 	draw: {
 		label: 'Draw',
-		className: 'bg-yellow-500/20 text-yellow-200 border border-yellow-400/30',
+		className: 'bg-ink-600 text-ivory-dim border border-line',
 	},
 };
 
@@ -183,7 +186,7 @@ export default function PlayHistoryPage() {
 			<div
 				data-testid='play-history-loading'
 				data-hydrated={isHydrated ? 'true' : 'false'}
-				className='min-h-[70vh] flex items-center justify-center text-purple-100/70 animate-pulse'
+				className='min-h-[70vh] flex items-center justify-center text-ivory-dim'
 			>
 				Loading your play history...
 			</div>
@@ -197,73 +200,66 @@ export default function PlayHistoryPage() {
 				data-hydrated={isHydrated ? 'true' : 'false'}
 				className='min-h-[70vh] flex items-center justify-center'
 			>
-				<div className='glass-effect rounded-3xl px-10 py-14 text-center space-y-4 max-w-md w-full'>
-					<h1 className='text-3xl font-semibold text-white'>
+				<Panel className='px-10 py-14 text-center space-y-4 max-w-md w-full'>
+					<h1 className='text-3xl font-semibold text-ivory'>
 						Sign in to view your play history
 					</h1>
-					<p className='text-purple-100/80'>
+					<p className='text-ivory-dim'>
 						Your recent games and results will appear here once you are logged
 						in.
 					</p>
-					<button
+					<Button
 						type='button'
 						onClick={() => (window.location.href = '/login')}
-						className='px-6 py-3 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium hover:from-purple-500 hover:to-pink-500 transition-all duration-200 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50'
 					>
 						Go to Login
-					</button>
-				</div>
+					</Button>
+				</Panel>
 			</div>
 		);
 	}
 
 	return (
 		<div className='min-h-[70vh]'>
-			<div className='container mx-auto px-4 py-12 space-y-8 max-w-6xl'>
-				<header className='space-y-4'>
-					<p className='text-purple-200/80 uppercase tracking-[0.3em] text-xs'>
-						Activity
-					</p>
-					<h1 className='text-4xl sm:text-5xl font-black text-white tracking-tight'>
-						Play History
-					</h1>
-					<p className='text-purple-100/80 max-w-2xl'>
-						Review your recent matches across every variant, monitor your
-						results, and spot trends in your progress.
-					</p>
-				</header>
+			<div className='mx-auto max-w-4xl px-6 py-12 space-y-8'>
+				<PageHeader eyebrow='Archive' title='Play History' />
+
+				<p className='text-ivory-dim max-w-2xl -mt-4'>
+					Review your recent matches across every variant, monitor your results,
+					and spot trends in your progress.
+				</p>
 
 				<section className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
 					<SummaryCard label='Total Games' value={summary.total} />
 					<SummaryCard
 						label='Wins'
 						value={summary.wins}
-						accentClass='from-emerald-500/20 to-green-500/10 text-emerald-200 border-emerald-300/50'
+						accentClass='text-jungle'
 					/>
 					<SummaryCard
 						label='Losses'
 						value={summary.losses}
-						accentClass='from-rose-500/20 to-red-500/10 text-rose-200 border-rose-300/50'
+						accentClass='text-[#C8402F]'
 					/>
 					<SummaryCard
 						label='Win Rate'
 						value={`${summary.winRate}%`}
-						accentClass='from-sky-500/20 to-purple-500/10 text-sky-200 border-sky-300/50'
+						accentClass='text-brass'
 					/>
 				</section>
 
-				<section className='glass-effect rounded-3xl p-6 sm:p-8 shadow-2xl border border-white/10'>
+				<Panel className='p-6 sm:p-8'>
 					<div className='flex items-center justify-between mb-6'>
-						<h2 className='text-2xl font-semibold text-white'>Recent games</h2>
-						<span className='text-sm text-purple-100/70'>
+						<h2 className='text-2xl font-semibold text-ivory'>Recent games</h2>
+						<span className='text-sm text-ivory-dim'>
 							{user?.username ? `Signed in as ${user.username}` : ''}
 						</span>
 					</div>
 
 					<div className='overflow-x-auto'>
-						<table className='min-w-full divide-y divide-white/10'>
+						<table className='min-w-full divide-y divide-line'>
 							<thead>
-								<tr className='text-left text-sm uppercase tracking-wider text-purple-200/70'>
+								<tr className='text-left text-sm uppercase tracking-wider text-ivory-dim'>
 									<th scope='col' className='py-3 pr-4'>
 										Date
 									</th>
@@ -281,12 +277,12 @@ export default function PlayHistoryPage() {
 									</th>
 								</tr>
 							</thead>
-							<tbody className='divide-y divide-white/5'>
+							<tbody className='divide-y divide-line'>
 								{isLoading ? (
 									<tr>
 										<td
 											colSpan={5}
-											className='py-16 text-center text-purple-100/70 animate-pulse'
+											className='py-16 text-center text-ivory-dim'
 										>
 											Loading your games...
 										</td>
@@ -297,24 +293,25 @@ export default function PlayHistoryPage() {
 											<div className='space-y-4'>
 												<p
 													data-testid='api-error'
-													className='text-red-200 font-medium'
+													className='text-[#C8402F] font-medium'
 												>
 													{error}
 												</p>
-												<button
+												<Button
 													type='button'
+													variant='outline'
+													size='sm'
 													onClick={() => window.location.reload()}
-													className='px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors border border-white/20 text-sm text-white'
 												>
 													Retry
-												</button>
+												</Button>
 											</div>
 										</td>
 									</tr>
 								) : history.length === 0 ? (
 									<tr>
 										<td colSpan={5} className='py-16 text-center'>
-											<div className='space-y-3 text-purple-100/70'>
+											<div className='space-y-3 text-ivory-dim'>
 												<p className='text-lg font-medium'>
 													You have not recorded any games yet.
 												</p>
@@ -331,9 +328,9 @@ export default function PlayHistoryPage() {
 										return (
 											<tr
 												key={entry.id}
-												className='text-sm text-purple-50/90 hover:bg-white/5 transition-colors'
+												className='text-sm text-ivory transition-colors hover:bg-ink-600'
 											>
-												<td className='py-4 pr-4 whitespace-nowrap'>
+												<td className='py-4 pr-4 whitespace-nowrap font-mono'>
 													{formatDate(entry.date)}
 												</td>
 												<td className='py-4 pr-4 whitespace-nowrap'>
@@ -355,10 +352,10 @@ export default function PlayHistoryPage() {
 															<span
 																className={`font-mono font-semibold ${
 																	entry.ratingChange > 0
-																		? 'text-green-400'
+																		? 'text-jungle'
 																		: entry.ratingChange < 0
-																			? 'text-red-400'
-																			: 'text-gray-400'
+																			? 'text-[#C8402F]'
+																			: 'text-ivory-dim'
 																}
 																`}
 															>
@@ -366,13 +363,15 @@ export default function PlayHistoryPage() {
 																{entry.ratingChange}
 															</span>
 															{entry.newRating != null && (
-																<span className='text-xs text-purple-200/60'>
+																<span className='text-xs font-mono text-ivory-dim'>
 																	{entry.newRating}
 																</span>
 															)}
 														</div>
 													) : (
-														<span className='text-gray-500 text-xs'>—</span>
+														<span className='text-ivory-dim text-xs font-mono'>
+															—
+														</span>
 													)}
 												</td>
 											</tr>
@@ -382,7 +381,7 @@ export default function PlayHistoryPage() {
 							</tbody>
 						</table>
 					</div>
-				</section>
+				</Panel>
 			</div>
 		</div>
 	);
@@ -397,20 +396,14 @@ interface SummaryCardProps {
 function SummaryCard({
 	label,
 	value,
-	accentClass = 'from-purple-500/20 to-pink-500/10 text-purple-100 border-purple-300/40',
+	accentClass = 'text-ivory',
 }: SummaryCardProps) {
 	return (
-		<div className='relative overflow-hidden rounded-3xl border border-white/10 glass-effect p-6'>
-			<div
-				className={`absolute inset-0 bg-gradient-to-br ${accentClass} opacity-80`}
-				aria-hidden='true'
-			/>
-			<div className='relative space-y-2'>
-				<p className='text-xs uppercase tracking-[0.3em] text-white/70'>
-					{label}
-				</p>
-				<p className='text-3xl font-bold text-white'>{value}</p>
-			</div>
-		</div>
+		<Panel className='p-6'>
+			<p className='text-xs uppercase tracking-[0.3em] text-ivory-dim mb-2'>
+				{label}
+			</p>
+			<p className={`text-3xl font-bold font-mono ${accentClass}`}>{value}</p>
+		</Panel>
 	);
 }
