@@ -748,11 +748,11 @@ const XiangqiGame: React.FC = () => {
 			title={title}
 			subtitle={subtitle}
 			titleClassName='text-ivory'
-			subtitleClassName='text-purple-100'
+			subtitleClassName='text-ivory-dim'
 			currentMode={gameMode}
 			onModeChange={toggleToMode}
 			showModeToggle={showModeToggle}
-			inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
+			inactiveModeClassName='text-ivory-dim hover:bg-ink-600'
 			aiSettingsButton={
 				<AISettingsDialog
 					aiPlayer={aiPlayer}
@@ -836,7 +836,7 @@ const XiangqiGame: React.FC = () => {
 						</AIGameInstructions>
 
 						{gameState.moveHistory.length > 0 && (
-							<div className='text-sm text-purple-200 text-center max-w-md mx-auto bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
+							<div className='text-sm text-ivory-dim text-center max-w-md mx-auto bg-ink-700 rounded-lg p-4 border border-line'>
 								<h3 className='font-semibold mb-2'>
 									Move History ({gameState.moveHistory.length})
 								</h3>
@@ -934,7 +934,7 @@ const XiangqiGame: React.FC = () => {
 									>
 										🤝 Draw
 									</button>
-									<span className='text-gray-400 self-center'>
+									<span className='text-ivory-dim self-center'>
 										(Shift+D to toggle)
 									</span>
 								</div>

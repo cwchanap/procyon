@@ -35,21 +35,21 @@ const AIStatusPanel: React.FC<AIStatusPanelProps> = ({
 				) : (
 					<>
 						{isAIThinking && !isAIPaused && (
-							<div className='flex items-center justify-center gap-2 text-cyan-200'>
-								<div className='animate-spin w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full'></div>
+							<div className='flex items-center justify-center gap-2 text-ivory-dim'>
+								<div className='animate-spin w-4 h-4 border-2 border-brass border-t-transparent rounded-full'></div>
 								AI is thinking...
 							</div>
 						)}
 
 						{aiError && isAIPaused && (
 							<div className='flex flex-col items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg'>
-								<div className='text-red-300 text-center'>
+								<div className='text-[#C8402F] text-center'>
 									<div className='font-semibold mb-1'>❌ AI Error</div>
 									<div className='text-sm opacity-90'>{aiError}</div>
 								</div>
 								<button
 									onClick={onRetry}
-									className='px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors text-sm font-medium'
+									className='px-4 py-2 bg-brass text-ink-900 rounded-lg transition-colors text-sm font-medium hover:bg-brass-bright'
 								>
 									🔄 Retry
 								</button>

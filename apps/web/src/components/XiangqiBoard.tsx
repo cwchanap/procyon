@@ -61,18 +61,23 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 		const inPalace = isInPalace(row, col);
 		const onRiver = isRiverLine(row);
 
+		// Nocturne board tones for Xiangqi: #3A211C / #241513
+		const baseBg = inPalace
+			? 'bg-[#3A211C]'
+			: onRiver
+				? 'bg-[#2D1A16]'
+				: 'bg-[#241513]';
+
 		return (
 			<div
 				key={`${row}-${col}`}
 				className={`
                     w-12 h-12 flex items-center justify-center cursor-pointer relative
-                    border border-amber-800 border-opacity-30
-                    ${inPalace ? 'bg-gradient-to-br from-yellow-100 to-yellow-200' : 'bg-gradient-to-br from-amber-50 to-amber-100'}
-                    ${onRiver ? 'bg-gradient-to-r from-blue-100 to-cyan-100' : ''}
-                    ${isSelected ? 'ring-4 ring-red-500 ring-opacity-80 scale-105' : ''}
-                    ${isHighlighted ? 'ring-4 ring-yellow-400 ring-opacity-60' : ''}
-                    ${isPossible ? 'animate-pulse' : ''}
-                    hover:scale-105 hover:shadow-lg transition-all duration-300
+                    border border-[#C8402F]/20
+                    ${baseBg}
+                    ${isSelected ? 'ring-2 ring-xiangqi ring-inset' : ''}
+                    ${isHighlighted ? 'ring-2 ring-[#C8A24B]/60 ring-inset' : ''}
+                    transition-colors duration-150
                 `}
 				onClick={() => onSquareClick({ row, col })}
 			>
@@ -81,7 +86,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 					{/* Horizontal line */}
 					{col < XIANGQI_COLS - 1 && (
 						<div
-							className='absolute top-1/2 right-0 w-0 h-0 border-t border-amber-800 border-opacity-50 translate-x-1/2 -translate-y-px'
+							className='absolute top-1/2 right-0 w-0 h-0 border-t border-[#C8402F]/50 translate-x-1/2 -translate-y-px'
 							style={{ width: '24px' }}
 						/>
 					)}
@@ -89,7 +94,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 					{/* Vertical line */}
 					{row < XIANGQI_ROWS - 1 && (
 						<div
-							className='absolute bottom-0 left-1/2 w-0 h-0 border-l border-amber-800 border-opacity-50 translate-y-1/2 -translate-x-px'
+							className='absolute bottom-0 left-1/2 w-0 h-0 border-l border-[#C8402F]/50 translate-y-1/2 -translate-x-px'
 							style={{ height: '24px' }}
 						/>
 					)}
@@ -102,7 +107,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 								(row === 1 && col === 4) ||
 								(row === 8 && col === 4) ||
 								(row === 9 && col === 5)) && (
-								<div className='absolute top-0 left-0 w-full h-full border-r border-amber-800 border-opacity-30 transform rotate-45 origin-center' />
+								<div className='absolute top-0 left-0 w-full h-full border-r border-[#C8402F]/40 transform rotate-45 origin-center' />
 							)}
 
 							{/* Top-right to bottom-left diagonal in palace */}
@@ -110,7 +115,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 								(row === 1 && col === 4) ||
 								(row === 8 && col === 4) ||
 								(row === 9 && col === 3)) && (
-								<div className='absolute top-0 right-0 w-full h-full border-l border-amber-800 border-opacity-30 transform -rotate-45 origin-center' />
+								<div className='absolute top-0 right-0 w-full h-full border-l border-[#C8402F]/40 transform -rotate-45 origin-center' />
 							)}
 						</>
 					)}
@@ -118,7 +123,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 
 				{/* Possible move indicator */}
 				{isPossible && !piece && (
-					<div className='w-3 h-3 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full opacity-80 animate-bounce shadow-lg' />
+					<div className='w-3 h-3 bg-xiangqi/70 rounded-full' />
 				)}
 
 				{/* Piece */}
@@ -129,11 +134,10 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
                             w-10 h-10 rounded-full flex items-center justify-center
                             ${
 															piece.color === 'red'
-																? 'bg-gradient-to-br from-red-500 to-red-700 text-white'
-																: 'bg-gradient-to-br from-gray-800 to-black text-white'
+																? 'bg-[#C8402F] text-ivory'
+																: 'bg-ink-700 border border-line text-ivory'
 														}
-                            border-2 border-amber-700 shadow-lg
-                            transition-all duration-300 hover:scale-110 filter drop-shadow-lg
+                            border-2 border-line shadow-lg
                         `}
 						>
 							<span className='text-sm font-bold select-none'>
@@ -145,15 +149,15 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 
 				{/* Capture indicator */}
 				{isPossible && piece && (
-					<div className='absolute inset-0 border-4 border-orange-500 rounded pointer-events-none animate-pulse shadow-lg' />
+					<div className='absolute inset-0 border-4 border-[#C8402F] rounded pointer-events-none' />
 				)}
 
 				{/* River indicator */}
 				{row === 4 && (
-					<div className='absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-blue-300 to-transparent opacity-60' />
+					<div className='absolute bottom-0 left-0 right-0 h-px bg-[#C8402F]/60' />
 				)}
 				{row === 5 && (
-					<div className='absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-blue-300 to-transparent opacity-60' />
+					<div className='absolute top-0 left-0 right-0 h-px bg-[#C8402F]/60' />
 				)}
 			</div>
 		);
@@ -181,7 +185,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 		return (
 			<div className='absolute left-0 right-0 top-1/2 transform -translate-y-1/2 pointer-events-none'>
 				<div className='flex justify-center'>
-					<div className='bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg opacity-80'>
+					<div className='bg-[#C8402F] text-ivory px-3 py-1 rounded-full text-xs font-bold shadow-lg opacity-80'>
 						楚河 汉界
 					</div>
 				</div>
@@ -190,14 +194,14 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 	};
 
 	return (
-		<div className='relative inline-block border-4 border-amber-900 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-amber-100 to-amber-200 p-4 transform hover:scale-105 transition-all duration-500'>
-			<div className='relative rounded-lg overflow-hidden shadow-inner bg-gradient-to-br from-amber-50 to-amber-150 p-2'>
+		<div className='relative inline-block border-2 border-line rounded-lg overflow-hidden shadow-2xl bg-ink-800 p-3'>
+			<div className='relative rounded overflow-hidden'>
 				{renderBoard()}
 				{renderRiverLabel()}
 			</div>
 
 			{/* Board labels */}
-			<div className='absolute -bottom-8 left-4 right-4 flex justify-between text-xs text-amber-800 font-semibold'>
+			<div className='absolute -bottom-8 left-4 right-4 flex justify-between text-xs text-ivory-dim font-semibold'>
 				<span>红方 (Red)</span>
 				<span>黑方 (Black)</span>
 			</div>

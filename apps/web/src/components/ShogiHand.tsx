@@ -39,15 +39,13 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
 
 	return (
 		<div
-			className={`flex flex-col items-center p-2 bg-gradient-to-br ${
-				color === 'sente'
-					? 'from-blue-50 to-blue-100 border-blue-300'
-					: 'from-red-50 to-red-100 border-red-300'
-			} border rounded-lg shadow-sm min-h-[100px] w-48`}
+			className={`flex flex-col items-center p-2 bg-ink-700 border ${
+				color === 'sente' ? 'border-shogi/40' : 'border-[#C8402F]/40'
+			} rounded-lg shadow-sm min-h-[100px] w-48`}
 		>
 			<div
 				className={`text-sm font-bold mb-2 ${
-					color === 'sente' ? 'text-blue-800' : 'text-red-800'
+					color === 'sente' ? 'text-shogi' : 'text-[#C8402F]'
 				}`}
 			>
 				{color === 'sente' ? '先手の持ち駒' : '後手の持ち駒'}
@@ -59,11 +57,11 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
 						key={type}
 						className={`
                             flex flex-col items-center justify-center p-1 rounded cursor-pointer
-                            transition-all duration-200 hover:scale-110 hover:shadow-md
+                            transition-colors duration-150
                             ${
 															isSelected(piece)
-																? 'bg-yellow-200 ring-2 ring-yellow-400 scale-105'
-																: 'bg-white hover:bg-gray-50'
+																? 'bg-shogi/20 ring-2 ring-shogi'
+																: 'bg-ink-600 hover:bg-ink-500'
 														}
                             min-w-[32px] min-h-[32px]
                         `}
@@ -71,20 +69,22 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
 					>
 						<div
 							className={`text-base font-bold ${
-								color === 'sente' ? 'text-black' : 'text-red-700'
+								color === 'sente' ? 'text-ivory' : 'text-[#C8402F]'
 							}`}
 						>
 							{getPieceDisplay(piece)}
 						</div>
 						{count > 1 && (
-							<div className='text-xs font-bold text-gray-600'>{count}</div>
+							<div className='text-xs font-bold font-mono text-ivory-dim'>
+								{count}
+							</div>
 						)}
 					</div>
 				))}
 			</div>
 
 			{pieces.length === 0 && (
-				<div className='text-xs text-gray-500 italic flex-1 flex items-center'>
+				<div className='text-xs text-ivory-dim italic flex-1 flex items-center'>
 					持ち駒なし
 				</div>
 			)}

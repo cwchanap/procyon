@@ -22,10 +22,10 @@ const DemoSelector: React.FC<DemoSelectorProps> = ({
 				<button
 					key={demoItem.id}
 					onClick={() => onDemoChange(demoItem.id)}
-					className={`glass-effect px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+					className={`bg-ink-700 border border-line px-4 py-2 rounded-xl text-sm font-medium transition-colors duration-150 ${
 						currentDemo === demoItem.id
-							? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-							: 'text-purple-100 hover:bg-white hover:bg-opacity-20'
+							? 'bg-brass text-ink-900 border-brass shadow-lg'
+							: 'text-ivory-dim hover:bg-ink-600'
 					}`}
 				>
 					{demoItem.title}

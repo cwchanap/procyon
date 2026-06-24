@@ -11,7 +11,7 @@ interface GameModeToggleProps {
 }
 
 const baseButtonClass =
-	'glass-effect px-6 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30';
+	'bg-ink-700 border border-line px-6 py-3 rounded-xl font-medium transition-colors duration-150';
 
 const GameModeToggle: React.FC<GameModeToggleProps> = ({
 	currentMode,
@@ -26,7 +26,7 @@ const GameModeToggle: React.FC<GameModeToggleProps> = ({
 				onClick={() => onChange('tutorial')}
 				className={`${baseButtonClass} ${
 					currentMode === 'tutorial'
-						? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+						? 'bg-brass text-ink-900 border-brass shadow-lg'
 						: inactiveClassName
 				}`}
 				type='button'

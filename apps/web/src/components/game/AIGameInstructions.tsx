@@ -14,7 +14,7 @@ const AIGameInstructions: React.FC<AIGameInstructionsProps> = ({
 	children,
 }) => {
 	return (
-		<div className='text-sm text-purple-200 text-center max-w-md mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
+		<div className='text-sm text-ivory-dim text-center max-w-md mx-auto space-y-2 bg-ink-700 rounded-lg p-4 border border-line'>
 			<p className='flex items-center justify-center gap-2'>
 				Click on a piece to select it, then click on a highlighted square to
 				move.
@@ -27,7 +27,7 @@ const AIGameInstructions: React.FC<AIGameInstructionsProps> = ({
 				Captures
 			</p>
 			{children}
-			<p className='flex items-center justify-center gap-2 pt-2 border-t border-white border-opacity-10'>
+			<p className='flex items-center justify-center gap-2 pt-2 border-t border-line'>
 				<span>🤖</span>
 				{aiConfigured && providerName && modelName
 					? `Playing against ${providerName} (${modelName})`
