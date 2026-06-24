@@ -55,7 +55,7 @@ export function AuthNav() {
 						className='bg-card/80 backdrop-blur-sm rounded-lg p-2 shadow-lg border border-border/50 flex items-center gap-3 hover:bg-card/90 transition-colors cursor-pointer'
 					>
 						{/* Avatar */}
-						<div className='w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-sm font-bold'>
+						<div className='w-8 h-8 bg-brass rounded-full flex items-center justify-center text-ink-900 text-sm font-bold'>
 							{user?.username.charAt(0).toUpperCase()}
 						</div>
 						<div className='text-sm'>
@@ -143,7 +143,7 @@ export function AuthNav() {
 					variant='default'
 					size='lg'
 					onClick={() => (window.location.href = '/login')}
-					className='bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200'
+					className='bg-brass text-ink-900 hover:bg-brass-bright font-medium shadow-lg transition-colors'
 				>
 					Login
 				</Button>
