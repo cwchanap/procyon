@@ -6,7 +6,7 @@ type Mode = 'tutorial' | 'ai';
 interface GameScaffoldProps {
 	title: string;
 	subtitle: string;
-	titleGradientClassName: string;
+	titleClassName: string;
 	subtitleClassName: string;
 	currentMode: Mode;
 	onModeChange(mode: Mode): void;
@@ -19,7 +19,7 @@ interface GameScaffoldProps {
 const GameScaffold: React.FC<GameScaffoldProps> = ({
 	title,
 	subtitle,
-	titleGradientClassName,
+	titleClassName,
 	subtitleClassName,
 	currentMode,
 	onModeChange,
@@ -32,7 +32,7 @@ const GameScaffold: React.FC<GameScaffoldProps> = ({
 		<div className='flex flex-col items-center gap-6 p-6 max-w-7xl mx-auto'>
 			<div className='text-center'>
 				<h1
-					className={`text-4xl font-bold ${titleGradientClassName} bg-clip-text text-transparent mb-4`}
+					className={`font-display text-4xl font-bold ${titleClassName} mb-4`}
 				>
 					{title}
 				</h1>

@@ -100,12 +100,12 @@ const GameTemplate: React.FC = () => {
 			subtitle={
 				gameMode === 'tutorial' ? demos[0].description : getStatusMessage()
 			}
-			titleGradientClassName='bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300'
-			subtitleClassName='text-purple-100'
+			titleClassName='text-ivory'
+			subtitleClassName='text-ivory-dim'
 			currentMode={gameMode}
 			onModeChange={setGameMode}
 			showModeToggle={gameMode === 'tutorial' || !hasGameStarted}
-			inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
+			inactiveModeClassName='text-ivory-dim hover:bg-ink-600'
 			aiSettingsButton={
 				<AISettingsDialog
 					aiPlayer={aiPlayer}

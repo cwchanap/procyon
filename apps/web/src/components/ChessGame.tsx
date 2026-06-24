@@ -859,7 +859,7 @@ const ChessGame: React.FC = () => {
 		<GameScaffold
 			title={title}
 			subtitle={subtitle}
-			titleGradientClassName='bg-gradient-to-r from-cyan-300 via-purple-300 to-pink-300'
+			titleClassName='text-ivory'
 			subtitleClassName='text-purple-100'
 			currentMode={gameMode}
 			onModeChange={toggleToMode}

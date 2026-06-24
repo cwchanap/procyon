@@ -542,7 +542,7 @@ const JungleGame: React.FC = () => {
 		<GameScaffold
 			title={title}
 			subtitle={subtitle}
-			titleGradientClassName='bg-jungle font-display'
+			titleClassName='text-ivory'
 			subtitleClassName='text-ivory-dim'
 			currentMode={gameMode}
 			onModeChange={toggleToMode}
@@ -664,21 +664,21 @@ const JungleGame: React.FC = () => {
 								<div className='flex gap-2 justify-center text-xs'>
 									<button
 										onClick={triggerDebugWin}
-										className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded'
+										className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
 										title='Debug: Win'
 									>
 										🏆 Win
 									</button>
 									<button
 										onClick={triggerDebugLoss}
-										className='px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded'
+										className='px-3 py-1 bg-[#C8402F] hover:opacity-90 text-ivory rounded'
 										title='Debug: Loss'
 									>
 										💀 Loss
 									</button>
 									<button
 										onClick={triggerDebugDraw}
-										className='px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded'
+										className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
 										title='Debug: Draw'
 									>
 										🤝 Draw

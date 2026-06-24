@@ -747,7 +747,7 @@ const XiangqiGame: React.FC = () => {
 		<GameScaffold
 			title={title}
 			subtitle={subtitle}
-			titleGradientClassName='bg-gradient-to-r from-red-400 via-yellow-400 to-red-600'
+			titleClassName='text-ivory'
 			subtitleClassName='text-purple-100'
 			currentMode={gameMode}
 			onModeChange={toggleToMode}
