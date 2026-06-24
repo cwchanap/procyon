@@ -32,7 +32,9 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 	};
 
 	const getSquareColor = (_row: number, _col: number): string => {
-		return 'bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-600';
+		// Nocturne board tones for Shogi: #23283A / #181B26
+		// Use alternating tones for promotion zone vs regular zone
+		return 'bg-[#23283A] border border-[#3E5C8A]/40';
 	};
 
 	const getPieceDisplay = (piece: ShogiPiece | null): string => {
@@ -58,24 +60,26 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 				className={`
           w-12 h-12 flex items-center justify-center cursor-pointer relative text-xs
           ${squareColor}
-          ${isSelected ? 'ring-4 ring-red-400 ring-opacity-80 scale-105' : ''}
-          ${isHighlighted ? 'ring-4 ring-yellow-400 ring-opacity-60' : ''}
-          ${isPossible ? 'animate-pulse bg-green-200' : ''}
-          ${isPromotionZone ? 'bg-gradient-to-br from-orange-50 to-orange-100' : ''}
-          hover:scale-105 hover:shadow-md transition-all duration-200
+          ${isSelected ? 'ring-2 ring-shogi ring-inset' : ''}
+          ${isHighlighted ? 'ring-2 ring-[#3E5C8A]/80 ring-inset' : ''}
+          ${isPossible ? 'bg-[#3E5C8A]/20' : ''}
+          ${isPromotionZone ? 'bg-[#181B26]' : ''}
+          transition-colors duration-150
         `}
 				onClick={() => onSquareClick({ row, col })}
 			>
 				{/* Possible move indicator */}
 				{isPossible && !piece && (
-					<div className='w-3 h-3 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full opacity-80 animate-bounce shadow-sm' />
+					<div className='w-3 h-3 bg-shogi/70 rounded-full' />
 				)}
 
 				{/* Piece */}
 				{piece && (
 					<div
-						className={`flex flex-col items-center justify-center select-none transition-all duration-200 hover:scale-110 ${
-							piece.color === 'sente' ? 'text-black' : 'text-red-700 rotate-180'
+						className={`flex flex-col items-center justify-center select-none ${
+							piece.color === 'sente'
+								? 'text-ivory'
+								: 'text-[#C8402F] rotate-180'
 						}`}
 					>
 						<span className='text-lg font-bold leading-none'>
@@ -86,17 +90,17 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 
 				{/* Capture indicator */}
 				{isPossible && piece && (
-					<div className='absolute inset-0 border-2 border-red-500 rounded pointer-events-none animate-pulse' />
+					<div className='absolute inset-0 border-2 border-[#C8402F] rounded pointer-events-none' />
 				)}
 
 				{/* File and Rank labels */}
 				{row === 0 && (
-					<div className='absolute -top-5 text-xs font-bold text-gray-600'>
+					<div className='absolute -top-5 text-xs font-bold font-mono text-ivory-dim'>
 						{9 - col}
 					</div>
 				)}
 				{col === 8 && (
-					<div className='absolute -right-5 text-xs font-bold text-gray-600'>
+					<div className='absolute -right-5 text-xs font-bold font-mono text-ivory-dim'>
 						{String.fromCharCode(97 + row)}
 					</div>
 				)}
@@ -124,13 +128,11 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 
 	return (
 		<div className='flex flex-col items-center'>
-			<div className='mb-2 text-sm font-bold text-red-700'>後手 (Gote)</div>
-			<div className='inline-block border-2 border-yellow-800 rounded-lg overflow-hidden shadow-lg bg-gradient-to-br from-yellow-100 to-yellow-200 p-2'>
-				<div className='rounded overflow-hidden shadow-inner bg-gradient-to-br from-yellow-50 to-yellow-100'>
-					{renderBoard()}
-				</div>
+			<div className='mb-2 text-sm font-bold text-[#C8402F]'>後手 (Gote)</div>
+			<div className='inline-block border-2 border-line rounded-lg overflow-hidden shadow-lg bg-ink-800 p-1'>
+				<div className='rounded overflow-hidden'>{renderBoard()}</div>
 			</div>
-			<div className='mt-2 text-sm font-bold text-black'>先手 (Sente)</div>
+			<div className='mt-2 text-sm font-bold text-ivory'>先手 (Sente)</div>
 		</div>
 	);
 };

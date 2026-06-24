@@ -27,7 +27,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 		<div className='flex gap-4 justify-center flex-wrap'>
 			<button
 				onClick={onStartOrReset}
-				className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
+				className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-xl hover:bg-ink-600 transition-colors duration-150'
 			>
 				{hasGameStarted ? '🆕 New Game' : '▶️ Start'}
 			</button>
@@ -35,7 +35,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 			{isGameOver && (
 				<button
 					onClick={onReset}
-					className='bg-gradient-to-r from-green-500 to-emerald-500 hover:from-emerald-500 hover:to-green-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
+					className='bg-brass text-ink-900 px-6 py-3 font-semibold rounded-xl hover:bg-brass-bright transition-colors duration-150 shadow-lg'
 				>
 					🎮 Play Again
 				</button>
@@ -45,10 +45,10 @@ const GameControls: React.FC<GameControlsProps> = ({
 				<>
 					<button
 						onClick={onToggleDebug}
-						className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+						className={`bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 ${
 							isDebugMode
-								? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
-								: 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+								? 'bg-yellow-500/20 text-yellow-300 border-yellow-400'
+								: 'text-ivory-dim hover:bg-ink-600'
 						}`}
 					>
 						🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
@@ -57,7 +57,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 					{canExport && (
 						<button
 							onClick={onExport}
-							className='glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 text-blue-300 border-blue-400 hover:bg-blue-500 hover:bg-opacity-10'
+							className='bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 text-ivory-dim hover:bg-ink-600'
 							title='Export game with AI prompts and responses'
 						>
 							📥 Export Game

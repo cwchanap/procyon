@@ -62,17 +62,15 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 	const currentProvider = AI_PROVIDERS[tempConfig.provider];
 
 	return (
-		<div
-			className={`glass-effect rounded-xl border border-white border-opacity-20 ${className}`}
-		>
+		<div className={`bg-ink-700 border border-line rounded-xl ${className}`}>
 			{/* Header */}
-			<div className='p-4 border-b border-white border-opacity-10'>
+			<div className='p-4 border-b border-line'>
 				<div className='flex items-center justify-between'>
 					<div className='flex items-center gap-3'>
 						<span className='text-2xl'>🤖</span>
 						<div>
-							<h3 className='text-lg font-semibold text-white'>AI Opponent</h3>
-							<p className='text-sm text-purple-200'>
+							<h3 className='text-lg font-semibold text-ivory'>AI Opponent</h3>
+							<p className='text-sm text-ivory-dim'>
 								{config.enabled
 									? `${currentProvider.name} - ${config.model}`
 									: 'Disabled'}
@@ -85,15 +83,15 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 								type='checkbox'
 								checked={tempConfig.enabled}
 								onChange={e => handleEnabledChange(e.target.checked)}
-								className='w-4 h-4 rounded border-2 border-purple-400 bg-transparent checked:bg-purple-500 focus:ring-2 focus:ring-purple-400'
+								className='w-4 h-4 rounded border-2 border-brass bg-transparent checked:bg-brass focus-visible:ring-brass'
 							/>
-							<span className='text-sm text-purple-200'>Enable AI</span>
+							<span className='text-sm text-ivory-dim'>Enable AI</span>
 						</label>
 						<Button
 							onClick={() => setIsExpanded(!isExpanded)}
 							variant='ghost'
 							size='sm'
-							className='text-purple-200 hover:text-white'
+							className='text-ivory-dim hover:text-ivory'
 						>
 							{isExpanded ? '▲' : '▼'}
 						</Button>
@@ -106,7 +104,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 				<div className='p-4 space-y-4'>
 					{/* Provider Selection */}
 					<div className='space-y-2'>
-						<label className='block text-sm font-medium text-white'>
+						<label className='block text-sm font-medium text-ivory'>
 							AI Provider
 						</label>
 						<div className='grid grid-cols-2 gap-2'>
@@ -114,10 +112,10 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 								<button
 									key={key}
 									onClick={() => handleProviderChange(key as AIProvider)}
-									className={`p-3 rounded-lg border-2 transition-all duration-200 ${
+									className={`p-3 rounded-lg border-2 transition-colors duration-150 ${
 										tempConfig.provider === key
-											? 'border-purple-400 bg-purple-500 bg-opacity-20 text-white'
-											: 'border-white border-opacity-20 text-purple-200 hover:border-purple-400'
+											? 'border-brass bg-brass/20 text-ivory'
+											: 'border-line text-ivory-dim hover:border-brass'
 									}`}
 								>
 									<div className='text-sm font-medium'>{provider.name}</div>
@@ -131,16 +129,16 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 
 					{/* Model Selection */}
 					<div className='space-y-2'>
-						<label className='block text-sm font-medium text-white'>
+						<label className='block text-sm font-medium text-ivory'>
 							Model
 						</label>
 						<select
 							value={tempConfig.model}
 							onChange={e => handleModelChange(e.target.value)}
-							className='w-full p-2 rounded-lg bg-black bg-opacity-30 border border-white border-opacity-20 text-white focus:border-purple-400 focus:ring-1 focus:ring-purple-400'
+							className='w-full p-2 rounded-lg bg-ink-800 border border-line text-ivory focus:border-brass focus:ring-1 focus-visible:ring-brass'
 						>
 							{currentProvider.models.map(model => (
-								<option key={model} value={model} className='bg-gray-800'>
+								<option key={model} value={model} className='bg-ink-800'>
 									{model}
 								</option>
 							))}
@@ -149,7 +147,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 
 					{/* API Key */}
 					<div className='space-y-2'>
-						<label className='block text-sm font-medium text-white'>
+						<label className='block text-sm font-medium text-ivory'>
 							API Key
 						</label>
 						<Input
@@ -157,9 +155,9 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 							value={tempConfig.apiKey}
 							onChange={e => handleApiKeyChange(e.target.value)}
 							placeholder={`Enter your ${currentProvider.name} API key`}
-							className='bg-black bg-opacity-30 border-white border-opacity-20 text-white'
+							className='bg-ink-800 border-line text-ivory'
 						/>
-						<p className='text-xs text-purple-300'>
+						<p className='text-xs text-ivory-dim'>
 							Your API key is stored locally and never sent to our servers.
 						</p>
 					</div>
@@ -168,7 +166,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 					<div className='flex gap-2 pt-2'>
 						<Button
 							onClick={handleSaveConfig}
-							className='flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600'
+							className='flex-1 bg-brass text-ink-900 hover:bg-brass-bright font-medium'
 						>
 							Save Configuration
 						</Button>
@@ -178,7 +176,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 								setIsExpanded(false);
 							}}
 							variant='ghost'
-							className='text-purple-200 hover:text-white'
+							className='text-ivory-dim hover:text-ivory'
 						>
 							Cancel
 						</Button>
@@ -195,7 +193,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 								config.apiKey ? 'bg-green-400' : 'bg-red-400'
 							}`}
 						/>
-						<span className='text-purple-200'>
+						<span className='text-ivory-dim'>
 							{config.apiKey ? 'Ready to play' : 'API key required'}
 						</span>
 					</div>

@@ -860,11 +860,11 @@ const ChessGame: React.FC = () => {
 			title={title}
 			subtitle={subtitle}
 			titleClassName='text-ivory'
-			subtitleClassName='text-purple-100'
+			subtitleClassName='text-ivory-dim'
 			currentMode={gameMode}
 			onModeChange={toggleToMode}
 			showModeToggle={showModeToggle}
-			inactiveModeClassName='text-purple-100 hover:bg-white hover:bg-opacity-20'
+			inactiveModeClassName='text-ivory-dim hover:bg-ink-600'
 			aiSettingsButton={
 				<AISettingsDialog
 					aiPlayer={aiPlayer}
@@ -1010,7 +1010,7 @@ const ChessGame: React.FC = () => {
 									>
 										🤝 Draw
 									</button>
-									<span className='text-gray-400 self-center'>
+									<span className='text-ivory-dim self-center'>
 										(Shift+D to toggle)
 									</span>
 								</div>

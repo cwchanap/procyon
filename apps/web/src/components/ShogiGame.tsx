@@ -817,11 +817,11 @@ const ShogiGame: React.FC = () => {
 			title={title}
 			subtitle={subtitle}
 			titleClassName='text-ivory'
-			subtitleClassName='text-orange-100'
+			subtitleClassName='text-ivory-dim'
 			currentMode={gameMode}
 			onModeChange={toggleToMode}
 			showModeToggle={showModeToggle}
-			inactiveModeClassName='text-orange-100 hover:bg-white hover:bg-opacity-20'
+			inactiveModeClassName='text-ivory-dim hover:bg-ink-600'
 			aiSettingsButton={
 				<AISettingsDialog
 					aiPlayer={aiPlayer}
@@ -853,8 +853,8 @@ const ShogiGame: React.FC = () => {
 				<div className='flex flex-col gap-4 max-w-2xl mx-auto'>
 					<div className='text-center'>
 						{isAIThinking && (
-							<div className='flex items-center justify-center gap-2 text-cyan-200'>
-								<div className='animate-spin w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full'></div>
+							<div className='flex items-center justify-center gap-2 text-ivory-dim'>
+								<div className='animate-spin w-4 h-4 border-2 border-brass border-t-transparent rounded-full'></div>
 								AI is thinking...
 							</div>
 						)}
@@ -870,10 +870,10 @@ const ShogiGame: React.FC = () => {
 						<button
 							key={demoItem.id}
 							onClick={() => handleDemoChange(demoItem.id)}
-							className={`glass-effect px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 hover:scale-105 border border-white border-opacity-30 ${
+							className={`bg-ink-700 border border-line px-4 py-2 rounded-xl text-sm font-medium transition-colors duration-150 ${
 								currentDemo === demoItem.id
-									? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
-									: 'text-orange-100 hover:bg-white hover:bg-opacity-20'
+									? 'bg-shogi text-ivory border-shogi shadow-lg'
+									: 'text-ivory-dim hover:bg-ink-600'
 							}`}
 						>
 							{demoItem.title}
@@ -885,7 +885,7 @@ const ShogiGame: React.FC = () => {
 			<div className='w-full max-w-4xl mx-auto space-y-6'>
 				{gameMode === 'ai' ? (
 					<>
-						<div className='text-sm text-orange-200 text-center max-w-2xl mx-auto space-y-2 bg-black bg-opacity-20 rounded-lg p-4 backdrop-blur-sm border border-white border-opacity-10'>
+						<div className='text-sm text-ivory-dim text-center max-w-2xl mx-auto space-y-2 bg-ink-700 rounded-lg p-4 border border-line'>
 							<p className='flex items-center justify-center gap-2'>
 								Click on a piece to select it, then click on a highlighted
 								square to move.
@@ -909,23 +909,23 @@ const ShogiGame: React.FC = () => {
 					</>
 				) : (
 					<>
-						<div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-							<h2 className='text-2xl font-bold text-white mb-3'>
+						<div className='bg-ink-700 border border-line p-6 rounded-2xl'>
+							<h2 className='text-2xl font-bold text-ivory mb-3'>
 								{getCurrentDemo().title}
 							</h2>
-							<div className='bg-black bg-opacity-30 p-4 rounded-xl border border-orange-500 border-opacity-30'>
-								<p className='text-orange-200 leading-relaxed'>
+							<div className='bg-ink-800 p-4 rounded-xl border border-shogi/30'>
+								<p className='text-ivory-dim leading-relaxed'>
 									{getCurrentDemo().explanation}
 								</p>
 							</div>
 						</div>
 
-						<div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-							<h3 className='text-xl font-semibold text-white mb-3 flex items-center gap-2'>
+						<div className='bg-ink-700 border border-line p-6 rounded-2xl'>
+							<h3 className='text-xl font-semibold text-ivory mb-3 flex items-center gap-2'>
 								<span>🎯</span>
 								How to Use This Demo
 							</h3>
-							<div className='space-y-3 text-orange-200'>
+							<div className='space-y-3 text-ivory-dim'>
 								<p className='flex items-center gap-3'>
 									<span className='text-green-400'>•</span>
 									Click on any piece to see its possible moves
@@ -935,7 +935,7 @@ const ShogiGame: React.FC = () => {
 									Green highlights show legal moves
 								</p>
 								<p className='flex items-center gap-3'>
-									<span className='text-purple-400'>•</span>
+									<span className='text-shogi'>•</span>
 									Red outlines indicate capture moves
 								</p>
 								<p className='flex items-center gap-3'>
@@ -945,12 +945,12 @@ const ShogiGame: React.FC = () => {
 							</div>
 						</div>
 
-						<div className='glass-effect p-6 rounded-2xl border border-white border-opacity-20'>
-							<h3 className='text-xl font-semibold text-white mb-3 flex items-center gap-2'>
+						<div className='bg-ink-700 border border-line p-6 rounded-2xl'>
+							<h3 className='text-xl font-semibold text-ivory mb-3 flex items-center gap-2'>
 								<span>💡</span>
 								Shogi Wisdom
 							</h3>
-							<div className='space-y-2 text-orange-200 text-sm'>
+							<div className='space-y-2 text-ivory-dim text-sm'>
 								<p>
 									"Promotion is key - advance your pieces to gain strength in
 									the enemy camp."
@@ -982,15 +982,15 @@ const ShogiGame: React.FC = () => {
 						role='dialog'
 						aria-modal='true'
 						aria-labelledby='promotion-title'
-						className='glass-effect p-6 rounded-2xl border border-white border-opacity-30 max-w-sm mx-4'
+						className='bg-ink-700 border border-line p-6 rounded-2xl max-w-sm mx-4'
 					>
 						<h3
 							id='promotion-title'
-							className='text-xl font-bold text-white mb-2 text-center'
+							className='text-xl font-bold text-ivory mb-2 text-center'
 						>
 							成りますか？
 						</h3>
-						<p className='text-orange-200 text-center mb-4'>
+						<p className='text-ivory-dim text-center mb-4'>
 							Promote your{' '}
 							{gameState.pendingPromotion.piece.type.replace('_', ' ')}?
 						</p>
@@ -1000,7 +1000,7 @@ const ShogiGame: React.FC = () => {
 								onClick={() => handlePromotionChoice(true)}
 								autoFocus
 								aria-label='Promote piece'
-								className='bg-gradient-to-r from-orange-500 to-red-500 hover:from-red-500 hover:to-orange-500 px-6 py-2 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
+								className='bg-shogi text-ivory px-6 py-2 font-semibold rounded-xl transition-colors duration-150 shadow-lg hover:bg-[#4a6fa8]'
 							>
 								✓ Promote
 							</button>
@@ -1008,7 +1008,7 @@ const ShogiGame: React.FC = () => {
 								type='button'
 								onClick={() => handlePromotionChoice(false)}
 								aria-label='Decline promotion'
-								className='glass-effect px-6 py-2 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
+								className='bg-ink-600 border border-line px-6 py-2 text-ivory font-semibold rounded-xl hover:bg-ink-500 transition-colors duration-150'
 							>
 								✗ Decline
 							</button>
@@ -1079,7 +1079,7 @@ const ShogiGame: React.FC = () => {
 						<div className='flex gap-4 justify-center'>
 							<button
 								onClick={handleStartOrReset}
-								className='glass-effect px-6 py-3 text-white font-semibold rounded-xl hover:bg-white hover:bg-opacity-20 hover:scale-105 transition-all duration-300 border border-white border-opacity-30'
+								className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-xl hover:bg-ink-600 transition-colors duration-150'
 							>
 								{hasGameStarted ? '🆕 New Game' : '▶️ Start'}
 							</button>
@@ -1087,10 +1087,10 @@ const ShogiGame: React.FC = () => {
 							{aiConfig.enabled && aiConfig.apiKey && (
 								<button
 									onClick={() => setIsDebugMode(!isDebugMode)}
-									className={`glass-effect px-4 py-2 text-xs font-medium rounded-lg hover:scale-105 transition-all duration-300 border border-opacity-30 ${
+									className={`bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 ${
 										isDebugMode
-											? 'bg-yellow-500 bg-opacity-20 text-yellow-300 border-yellow-400'
-											: 'text-gray-300 border-gray-400 hover:bg-white hover:bg-opacity-10'
+											? 'bg-yellow-500/20 text-yellow-300 border-yellow-400'
+											: 'text-ivory-dim border-line hover:bg-ink-600'
 									}`}
 								>
 									🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
@@ -1100,7 +1100,7 @@ const ShogiGame: React.FC = () => {
 							{isGameOver && (
 								<button
 									onClick={resetGame}
-									className='bg-gradient-to-r from-orange-500 to-red-500 hover:from-red-500 hover:to-orange-500 px-6 py-3 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-300 shadow-lg'
+									className='bg-brass text-ink-900 px-6 py-3 font-semibold rounded-xl hover:bg-brass-bright transition-colors duration-150 shadow-lg'
 								>
 									🎮 Play Again
 								</button>
@@ -1132,7 +1132,7 @@ const ShogiGame: React.FC = () => {
 									>
 										🤝 Draw
 									</button>
-									<span className='text-gray-400 self-center'>
+									<span className='text-ivory-dim self-center'>
 										(Shift+D to toggle)
 									</span>
 								</div>
