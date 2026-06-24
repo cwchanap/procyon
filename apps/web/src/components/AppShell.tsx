@@ -8,9 +8,12 @@ interface NavItem {
 	icon: string; // unicode glyph
 }
 
-const NAV: NavItem[] = [
+const PUBLIC_NAV: NavItem[] = [
 	{ label: 'Play', href: '/', icon: '♟' },
 	{ label: 'Puzzles', href: '/puzzles', icon: '◆' },
+];
+
+const AUTHED_NAV: NavItem[] = [
 	{ label: 'History', href: '/play-history', icon: '≡' },
 	{ label: 'Profile', href: '/profile', icon: '◐' },
 ];
@@ -34,6 +37,14 @@ export function AppShell() {
 
 	const isActive = (href: string) =>
 		href === '/' ? path === '/' : path.startsWith(href);
+
+	// History and Profile require authentication; hide them until the auth
+	// state resolves and only show them for authenticated users.
+	const navItems = loading
+		? PUBLIC_NAV
+		: isAuthenticated
+			? [...PUBLIC_NAV, ...AUTHED_NAV]
+			: PUBLIC_NAV;
 
 	const handleLogout = async () => {
 		const result = await logout();
@@ -79,7 +90,7 @@ export function AppShell() {
 					</span>
 				</a>
 				<nav className='flex flex-1 flex-col gap-1'>
-					{NAV.map(item => (
+					{navItems.map(item => (
 						<a
 							key={item.href}
 							href={item.href}
@@ -100,7 +111,7 @@ export function AppShell() {
 
 			{/* Mobile bottom tab bar */}
 			<nav className='fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-800/95 backdrop-blur lg:hidden'>
-				{NAV.map(item => (
+				{navItems.map(item => (
 					<a
 						key={item.href}
 						href={item.href}
