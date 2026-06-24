@@ -198,17 +198,18 @@ export class AuthHelper {
 	}
 
 	/**
-	 * Check if user is authenticated by looking for user info in AuthNav
+	 * Check if user is authenticated by looking for user info in the app shell.
+	 *
+	 * Note: The Nocturne app shell only renders the username (not the email)
+	 * in the user chip, so only the username is asserted here. The email
+	 * parameter is retained for signature compatibility with existing callers.
 	 */
-	async expectAuthenticated(username: string, email: string): Promise<void> {
+	async expectAuthenticated(username: string, _email: string): Promise<void> {
 		// Wait for auth nav to load first
 		await this.waitForAuthNav();
 
-		// Check for username and email text being visible on the page
+		// Check for username text being visible on the page
 		await expect(this.page.locator(`text=${username}`).first()).toBeVisible({
-			timeout: 15000,
-		});
-		await expect(this.page.locator(`text=${email}`).first()).toBeVisible({
 			timeout: 15000,
 		});
 	}

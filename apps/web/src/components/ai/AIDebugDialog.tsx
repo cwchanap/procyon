@@ -36,9 +36,9 @@ const AIDebugDialog: React.FC<AIDebugDialogProps> = ({
 
 	return (
 		<div
-			className={`mt-4 p-4 bg-black bg-opacity-40 rounded-xl border border-white border-opacity-10 ${className}`}
+			className={`mt-4 p-4 bg-ink-900/40 rounded-xl border border-line ${className}`}
 		>
-			<h4 className='text-sm font-semibold text-cyan-200 mb-3 flex items-center gap-2'>
+			<h4 className='text-sm font-semibold text-brass mb-3 flex items-center gap-2'>
 				<span>🤖</span>
 				AI Move History
 			</h4>
@@ -48,8 +48,8 @@ const AIDebugDialog: React.FC<AIDebugDialogProps> = ({
 						key={`${move.moveNumber}-${move.timestamp}-${idx}`}
 						className={`p-3 rounded-lg border ${
 							move.isAI
-								? 'bg-blue-900 bg-opacity-30 border-blue-500 border-opacity-30'
-								: 'bg-gray-900 bg-opacity-30 border-gray-500 border-opacity-30'
+								? 'bg-ink-700/40 border-line-brass'
+								: 'bg-ink-700/40 border-line'
 						}`}
 					>
 						<div className='flex items-center justify-between mb-2'>
@@ -57,34 +57,36 @@ const AIDebugDialog: React.FC<AIDebugDialogProps> = ({
 								<span
 									className={`text-xs px-2 py-1 rounded-full ${
 										move.isAI
-											? 'bg-blue-500 text-white'
-											: 'bg-gray-500 text-white'
+											? 'bg-brass text-ink-900'
+											: 'bg-ink-600 text-ivory'
 									}`}
 								>
 									{move.isAI ? '🤖 AI' : '👤 Human'}
 								</span>
-								<span className='text-xs font-medium text-white'>
+								<span className='text-xs font-medium text-ivory'>
 									Move {move.moveNumber}
 								</span>
 							</div>
-							<span className='text-xs text-gray-400'>
+							<span className='text-xs text-ivory-dim'>
 								{formatTime(move.timestamp)}
 							</span>
 						</div>
 
 						<div className='text-sm'>
-							<div className='text-white font-medium mb-1'>
+							<div className='text-ivory font-medium mb-1'>
 								{move.player}: <span className='font-mono'>{move.move}</span>
 							</div>
 
 							{move.thinking && (
-								<div className='text-cyan-300 text-xs mt-1 italic'>
+								<div className='text-brass text-xs mt-1 italic'>
 									💭 "{move.thinking}"
 								</div>
 							)}
 
 							{move.error && (
-								<div className='text-red-300 text-xs mt-1'>❌ {move.error}</div>
+								<div className='text-[#C8402F] text-xs mt-1'>
+									❌ {move.error}
+								</div>
 							)}
 						</div>
 					</div>
@@ -92,7 +94,7 @@ const AIDebugDialog: React.FC<AIDebugDialogProps> = ({
 			</div>
 
 			{moves.length > 10 && (
-				<div className='text-xs text-gray-400 text-center mt-2'>
+				<div className='text-xs text-ivory-dim text-center mt-2'>
 					Showing last 10 moves (total: {moves.length})
 				</div>
 			)}

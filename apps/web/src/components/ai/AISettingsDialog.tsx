@@ -127,6 +127,20 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 		setIsOpen(!isOpen);
 	};
 
+	const closeDialog = () => setIsOpen(false);
+
+	// Close on Escape key
+	useEffect(() => {
+		if (!isOpen) return;
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				closeDialog();
+			}
+		};
+		document.addEventListener('keydown', handleKeyDown);
+		return () => document.removeEventListener('keydown', handleKeyDown);
+	}, [isOpen]);
+
 	return (
 		<>
 			<button
@@ -145,18 +159,27 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 					{/* Backdrop */}
 					<div
 						className='fixed inset-0 bg-ink-900/70 z-40'
-						onClick={() => setIsOpen(false)}
+						onClick={closeDialog}
 					/>
 
 					{/* Dialog */}
 					<div className='fixed inset-0 flex items-center justify-center z-50 pointer-events-none'>
-						<div className='bg-ink-700 border border-line shadow-panel p-6 rounded-2xl w-full max-w-md pointer-events-auto'>
+						<div
+							role='dialog'
+							aria-modal='true'
+							aria-labelledby='ai-settings-title'
+							className='bg-ink-700 border border-line shadow-panel p-6 rounded-2xl w-full max-w-md pointer-events-auto'
+						>
 							<div className='flex justify-between items-center mb-6'>
-								<h2 className='text-2xl font-bold text-ivory font-display'>
+								<h2
+									id='ai-settings-title'
+									className='text-2xl font-bold text-ivory font-display'
+								>
 									AI Settings
 								</h2>
 								<button
-									onClick={() => setIsOpen(false)}
+									onClick={closeDialog}
+									aria-label='Close'
 									className='text-ivory-dim hover:text-ivory text-2xl leading-none'
 								>
 									×
@@ -244,7 +267,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 
 							<div className='mt-6 flex justify-end'>
 								<button
-									onClick={() => setIsOpen(false)}
+									onClick={closeDialog}
 									className='bg-ink-700 border border-line text-ivory hover:bg-ink-600 px-6 py-2 rounded-xl transition-colors'
 								>
 									Close

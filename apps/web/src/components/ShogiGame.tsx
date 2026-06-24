@@ -975,7 +975,7 @@ const ShogiGame: React.FC = () => {
 
 			{/* Promotion Dialog */}
 			{gameState.pendingPromotion && (
-				<div className='fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50'>
+				<div className='fixed inset-0 flex items-center justify-center z-50 bg-ink-900/50'>
 					<div
 						ref={modalRef}
 						tabIndex={-1}
@@ -1008,7 +1008,7 @@ const ShogiGame: React.FC = () => {
 								type='button'
 								onClick={() => handlePromotionChoice(false)}
 								aria-label='Decline promotion'
-								className='bg-ink-600 border border-line px-6 py-2 text-ivory font-semibold rounded-xl hover:bg-ink-500 transition-colors duration-150'
+								className='bg-ink-600 border border-line px-6 py-2 text-ivory font-semibold rounded-xl hover:bg-ink-700 transition-colors duration-150'
 							>
 								✗ Decline
 							</button>

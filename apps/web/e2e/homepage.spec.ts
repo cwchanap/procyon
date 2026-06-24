@@ -8,9 +8,7 @@ test.describe('Homepage', () => {
 		await expect(
 			page.getByRole('heading', { name: 'Procyon Chess' })
 		).toBeVisible();
-		await expect(
-			page.getByText('Experience chess like never before')
-		).toBeVisible();
+		await expect(page.getByText('Four games. One board room.')).toBeVisible();
 	});
 
 	test('should display chess game options', async ({ page }) => {
