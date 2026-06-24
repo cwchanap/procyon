@@ -535,7 +535,7 @@ export function ProfilePage() {
 						</div>
 
 						{configStatus === 'saved' && (
-							<p className='text-sm text-green-400 mt-2'>
+							<p className='text-sm text-jungle mt-2'>
 								✓ Configuration saved successfully
 							</p>
 						)}
