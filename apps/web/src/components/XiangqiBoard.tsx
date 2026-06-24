@@ -69,10 +69,12 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 				: 'bg-[#241513]';
 
 		return (
-			<div
+			<button
+				type='button'
 				key={`${row}-${col}`}
+				aria-label={`Square ${row}-${col}`}
 				className={`
-                    w-12 h-12 flex items-center justify-center cursor-pointer relative
+                    w-12 h-12 flex items-center justify-center cursor-pointer relative p-0
                     border border-[#C8402F]/20
                     ${baseBg}
                     ${isSelected ? 'ring-2 ring-xiangqi ring-inset' : ''}
@@ -159,7 +161,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 				{row === 5 && (
 					<div className='absolute top-0 left-0 right-0 h-px bg-[#C8402F]/60' />
 				)}
-			</div>
+			</button>
 		);
 	};
 

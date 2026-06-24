@@ -76,7 +76,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 
 		const baseClasses = `
             w-16 h-16 border-2 flex items-center justify-center text-2xl font-bold
-            cursor-pointer transition-all duration-200 relative
+            cursor-pointer transition-all duration-200 relative p-0
             ${getTerrainColor(terrainData)}
         `;
 
@@ -160,8 +160,10 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 							{row.map((piece, colIndex) => {
 								const terrainData = terrain[rowIndex]![colIndex];
 								return (
-									<div
+									<button
+										type='button'
 										key={`${rowIndex}-${colIndex}`}
+										aria-label={`Square ${rowIndex}-${colIndex}`}
 										className={getSquareClasses(rowIndex, colIndex)}
 										onClick={() =>
 											onSquareClick({
@@ -195,7 +197,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 										{isPossibleMove(rowIndex, colIndex) && piece && (
 											<div className='absolute inset-0 border-2 border-[#C8402F] rounded'></div>
 										)}
-									</div>
+									</button>
 								);
 							})}
 						</div>

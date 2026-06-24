@@ -895,7 +895,7 @@ const ShogiGame: React.FC = () => {
 								Click on pieces in your hand to drop them on the board.
 							</p>
 							<p className='flex items-center justify-center gap-2'>
-								<span className='w-3 h-3 bg-jungle rounded-full inline-block'></span>
+								<span className='w-3 h-3 bg-shogi/70 rounded-full inline-block'></span>
 								Possible moves
 								<span className='mx-2'>•</span>
 								<span className='w-3 h-3 border-2 border-[#C8402F] rounded inline-block'></span>

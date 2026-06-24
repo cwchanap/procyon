@@ -53,8 +53,10 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
 
 			<div className='flex flex-wrap gap-1 justify-center'>
 				{Object.entries(groupedPieces).map(([type, { piece, count }]) => (
-					<div
+					<button
+						type='button'
 						key={type}
+						aria-label={`Hand piece ${type}`}
 						className={`
                             flex flex-col items-center justify-center p-1 rounded cursor-pointer
                             transition-colors duration-150
@@ -79,7 +81,7 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
 								{count}
 							</div>
 						)}
-					</div>
+					</button>
 				))}
 			</div>
 

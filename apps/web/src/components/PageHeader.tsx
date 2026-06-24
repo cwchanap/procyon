@@ -1,13 +1,21 @@
 import React from 'react';
+import { cva } from 'class-variance-authority';
 import { cn } from '../lib/utils';
 
-const ruleColor: Record<string, string> = {
-	chess: 'bg-chess',
-	xiangqi: 'bg-xiangqi',
-	shogi: 'bg-shogi',
-	jungle: 'bg-jungle',
-	brass: 'bg-brass',
-};
+const accentBar = cva('mt-5 h-px w-24', {
+	variants: {
+		accent: {
+			chess: 'bg-chess',
+			xiangqi: 'bg-xiangqi',
+			shogi: 'bg-shogi',
+			jungle: 'bg-jungle',
+			brass: 'bg-brass',
+		},
+	},
+	defaultVariants: {
+		accent: 'brass',
+	},
+});
 
 export interface PageHeaderProps {
 	eyebrow?: string;
@@ -39,7 +47,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 			>
 				{title}
 			</h1>
-			<div className={cn('mt-5 h-px w-24', ruleColor[accent])} />
+			<div className={accentBar({ accent })} />
 		</header>
 	);
 };
