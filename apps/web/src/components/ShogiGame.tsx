@@ -932,7 +932,7 @@ const ShogiGame: React.FC = () => {
 								</p>
 								<p className='flex items-center gap-3'>
 									<span className='text-shogi'>•</span>
-									Green highlights show legal moves
+									Highlighted squares show legal moves
 								</p>
 								<p className='flex items-center gap-3'>
 									<span className='text-shogi'>•</span>
@@ -940,7 +940,7 @@ const ShogiGame: React.FC = () => {
 								</p>
 								<p className='flex items-center gap-3'>
 									<span className='text-brass'>•</span>
-									Yellow rings show tutorial highlights
+									Accent rings show tutorial highlights
 								</p>
 							</div>
 						</div>
