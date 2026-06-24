@@ -76,7 +76,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
                     border border-[#C8402F]/20
                     ${baseBg}
                     ${isSelected ? 'ring-2 ring-xiangqi ring-inset' : ''}
-                    ${isHighlighted ? 'ring-2 ring-[#C8A24B]/60 ring-inset' : ''}
+                    ${isHighlighted ? 'ring-2 ring-xiangqi/60 ring-inset' : ''}
                     transition-colors duration-150
                 `}
 				onClick={() => onSquareClick({ row, col })}

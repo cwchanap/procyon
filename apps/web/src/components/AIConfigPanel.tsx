@@ -135,7 +135,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 						<select
 							value={tempConfig.model}
 							onChange={e => handleModelChange(e.target.value)}
-							className='w-full p-2 rounded-lg bg-ink-800 border border-line text-ivory focus:border-brass focus:ring-1 focus-visible:ring-brass'
+							className='w-full p-2 rounded-lg bg-ink-800 border border-line text-ivory focus-visible:border-brass focus-visible:ring-1 focus-visible:ring-brass'
 						>
 							{currentProvider.models.map(model => (
 								<option key={model} value={model} className='bg-ink-800'>
