@@ -8,6 +8,7 @@ interface ChessBoardProps {
 	possibleMoves: Position[];
 	onSquareClick: (position: Position) => void;
 	highlightSquares?: Position[];
+	disabled?: boolean;
 }
 
 const ChessBoard: React.FC<ChessBoardProps> = ({
@@ -16,6 +17,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 	possibleMoves,
 	onSquareClick,
 	highlightSquares = [],
+	disabled = false,
 }) => {
 	const isSquareSelected = (row: number, col: number): boolean => {
 		return selectedSquare?.row === row && selectedSquare?.col === col;
@@ -70,11 +72,13 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 				type='button'
 				key={`${row}-${col}`}
 				aria-label={`Square ${row}-${col}`}
+				disabled={disabled}
 				className={`
           w-16 h-16 flex items-center justify-center cursor-pointer relative p-0
           ${squareColor}
           ${isSelected ? 'ring-2 ring-brass ring-inset' : ''}
           ${isHighlighted ? 'ring-2 ring-chess ring-opacity-60 ring-inset' : ''}
+          ${disabled ? 'cursor-not-allowed' : ''}
           transition-colors duration-150
         `}
 				onClick={() => onSquareClick({ row, col })}
@@ -87,8 +91,10 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 				{/* Piece */}
 				{piece && (
 					<span
-						className={`text-4xl select-none filter drop-shadow-lg ${
-							piece.color === 'white' ? 'text-ivory' : 'text-ink-900'
+						className={`text-4xl select-none ${
+							piece.color === 'white'
+								? 'text-ivory filter drop-shadow-lg'
+								: 'text-ink-900 [text-shadow:0_0_2px_rgba(237,230,214,0.9),0_0_1px_rgba(237,230,214,0.9)]'
 						}`}
 					>
 						{getPieceSymbol(piece)}
