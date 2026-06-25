@@ -36,7 +36,7 @@ const AIDebugDialog: React.FC<AIDebugDialogProps> = ({
 
 	return (
 		<div
-			className={`mt-4 p-4 bg-ink-900/40 rounded-xl border border-line ${className}`}
+			className={`mt-4 p-4 bg-ink-900/40 rounded-lg border border-line ${className}`}
 		>
 			<h4 className='text-sm font-semibold text-brass mb-3 flex items-center gap-2'>
 				<span>🤖</span>

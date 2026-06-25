@@ -870,7 +870,7 @@ const ShogiGame: React.FC = () => {
 						<button
 							key={demoItem.id}
 							onClick={() => handleDemoChange(demoItem.id)}
-							className={`bg-ink-700 border border-line px-4 py-2 rounded-xl text-sm font-medium transition-colors duration-150 ${
+							className={`bg-ink-700 border border-line px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 ${
 								currentDemo === demoItem.id
 									? 'bg-shogi text-ivory border-shogi shadow-lg'
 									: 'text-ivory-dim hover:bg-ink-600'
@@ -909,18 +909,18 @@ const ShogiGame: React.FC = () => {
 					</>
 				) : (
 					<>
-						<div className='bg-ink-700 border border-line p-6 rounded-2xl'>
+						<div className='bg-ink-700 border border-line p-6 rounded-lg'>
 							<h2 className='text-2xl font-bold text-ivory mb-3'>
 								{getCurrentDemo().title}
 							</h2>
-							<div className='bg-ink-800 p-4 rounded-xl border border-shogi/30'>
+							<div className='bg-ink-800 p-4 rounded-lg border border-shogi/30'>
 								<p className='text-ivory-dim leading-relaxed'>
 									{getCurrentDemo().explanation}
 								</p>
 							</div>
 						</div>
 
-						<div className='bg-ink-700 border border-line p-6 rounded-2xl'>
+						<div className='bg-ink-700 border border-line p-6 rounded-lg'>
 							<h3 className='text-xl font-semibold text-ivory mb-3 flex items-center gap-2'>
 								<span>🎯</span>
 								How to Use This Demo
@@ -945,7 +945,7 @@ const ShogiGame: React.FC = () => {
 							</div>
 						</div>
 
-						<div className='bg-ink-700 border border-line p-6 rounded-2xl'>
+						<div className='bg-ink-700 border border-line p-6 rounded-lg'>
 							<h3 className='text-xl font-semibold text-ivory mb-3 flex items-center gap-2'>
 								<span>💡</span>
 								Shogi Wisdom
@@ -982,7 +982,7 @@ const ShogiGame: React.FC = () => {
 						role='dialog'
 						aria-modal='true'
 						aria-labelledby='promotion-title'
-						className='bg-ink-700 border border-line p-6 rounded-2xl max-w-sm mx-4'
+						className='bg-ink-700 border border-line p-6 rounded-lg max-w-sm mx-4'
 					>
 						<h3
 							id='promotion-title'
@@ -1000,7 +1000,7 @@ const ShogiGame: React.FC = () => {
 								onClick={() => handlePromotionChoice(true)}
 								autoFocus
 								aria-label='Promote piece'
-								className='bg-shogi text-ivory px-6 py-2 font-semibold rounded-xl transition-colors duration-150 shadow-lg hover:bg-shogi-light'
+								className='bg-shogi text-ivory px-6 py-2 font-semibold rounded-lg transition-colors duration-150 shadow-lg hover:bg-shogi-light'
 							>
 								✓ Promote
 							</button>
@@ -1008,7 +1008,7 @@ const ShogiGame: React.FC = () => {
 								type='button'
 								onClick={() => handlePromotionChoice(false)}
 								aria-label='Decline promotion'
-								className='bg-ink-600 border border-line px-6 py-2 text-ivory font-semibold rounded-xl hover:bg-ink-700 transition-colors duration-150'
+								className='bg-ink-600 border border-line px-6 py-2 text-ivory font-semibold rounded-lg hover:bg-ink-700 transition-colors duration-150'
 							>
 								✗ Decline
 							</button>
@@ -1079,7 +1079,7 @@ const ShogiGame: React.FC = () => {
 						<div className='flex gap-4 justify-center'>
 							<button
 								onClick={handleStartOrReset}
-								className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-xl hover:bg-ink-600 transition-colors duration-150'
+								className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150'
 							>
 								{hasGameStarted ? '🆕 New Game' : '▶️ Start'}
 							</button>
@@ -1100,7 +1100,7 @@ const ShogiGame: React.FC = () => {
 							{isGameOver && (
 								<button
 									onClick={resetGame}
-									className='bg-brass text-ink-900 px-6 py-3 font-semibold rounded-xl hover:bg-brass-bright transition-colors duration-150 shadow-lg'
+									className='bg-brass text-ink-900 px-6 py-3 font-semibold rounded-lg hover:bg-brass-bright transition-colors duration-150 shadow-lg'
 								>
 									🎮 Play Again
 								</button>

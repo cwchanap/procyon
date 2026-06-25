@@ -27,7 +27,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 		<div className='flex gap-4 justify-center flex-wrap'>
 			<button
 				onClick={onStartOrReset}
-				className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-xl hover:bg-ink-600 transition-colors duration-150'
+				className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150'
 			>
 				{hasGameStarted ? '🆕 New Game' : '▶️ Start'}
 			</button>
@@ -35,7 +35,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 			{isGameOver && (
 				<button
 					onClick={onReset}
-					className='bg-brass text-ink-900 px-6 py-3 font-semibold rounded-xl hover:bg-brass-bright transition-colors duration-150 shadow-lg'
+					className='bg-brass text-ink-900 px-6 py-3 font-semibold rounded-lg hover:bg-brass-bright transition-colors duration-150 shadow-lg'
 				>
 					🎮 Play Again
 				</button>

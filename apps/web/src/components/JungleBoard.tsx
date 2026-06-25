@@ -81,7 +81,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
         `;
 
 		if (isSelected(row, col)) {
-			return `${baseClasses} ring-4 ring-brass ring-opacity-75 scale-105 z-10`;
+			return `${baseClasses} ring-4 ring-brass ring-opacity-75 z-10`;
 		}
 
 		if (isPossibleMove(row, col)) {

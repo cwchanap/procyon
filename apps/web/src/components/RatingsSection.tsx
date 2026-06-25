@@ -112,7 +112,7 @@ export function RatingsSection() {
 				{ratings.map(rating => (
 					<div
 						key={rating.id}
-						className='bg-ink-600 rounded-xl p-4 border border-line'
+						className='bg-ink-600 rounded-lg p-4 border border-line'
 					>
 						<div className='flex items-center justify-between mb-3'>
 							<div className='flex items-center gap-2'>
