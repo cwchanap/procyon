@@ -23,11 +23,24 @@ export default {
           DEFAULT: 'rgba(237,230,214,0.08)',
           brass: 'rgba(200,162,75,0.45)',
         },
-        // per-variant jewel accents
+        // per-variant jewel accents (DEFAULT preserves existing token usage;
+        // light/board/deep/water/den tints replace previously inlined hex)
         chess: '#C8A24B',
-        xiangqi: '#C8402F',
-        shogi: '#3E5C8A',
-        jungle: '#3E8C6F',
+        xiangqi: {
+          DEFAULT: '#C8402F',
+          light: '#E0654F', // red-player piece tint (Jungle)
+        },
+        shogi: {
+          DEFAULT: '#3E5C8A',
+          light: '#7BA0D6', // blue-player piece tint (Jungle)
+          board: '#23283A', // shogi board square
+          deep: '#181B26', // shogi promotion-zone square
+        },
+        jungle: {
+          DEFAULT: '#3E8C6F',
+          water: '#16323B', // jungle water square
+          den: '#1F3029', // jungle den / normal-land square
+        },
         // shadcn semantic tokens (values from :root, see Layout.astro)
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',

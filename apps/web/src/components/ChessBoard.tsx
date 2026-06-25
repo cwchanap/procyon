@@ -97,7 +97,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 
 				{/* Capture indicator */}
 				{isPossible && piece && (
-					<div className='absolute inset-0 border-4 border-[#C8402F] rounded pointer-events-none' />
+					<div className='absolute inset-0 border-4 border-xiangqi rounded pointer-events-none' />
 				)}
 			</button>
 		);

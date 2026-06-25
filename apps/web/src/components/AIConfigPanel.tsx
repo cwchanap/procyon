@@ -190,7 +190,7 @@ const AIConfigPanel: React.FC<AIConfigPanelProps> = ({
 					<div className='flex items-center gap-2 text-sm'>
 						<div
 							className={`w-2 h-2 rounded-full ${
-								config.apiKey ? 'bg-jungle' : 'bg-[#C8402F]'
+								config.apiKey ? 'bg-jungle' : 'bg-xiangqi'
 							}`}
 						/>
 						<span className='text-ivory-dim'>

@@ -40,12 +40,12 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
 	return (
 		<div
 			className={`flex flex-col items-center p-2 bg-ink-700 border ${
-				color === 'sente' ? 'border-shogi/40' : 'border-[#C8402F]/40'
+				color === 'sente' ? 'border-shogi/40' : 'border-xiangqi/40'
 			} rounded-lg shadow-sm min-h-[100px] w-48`}
 		>
 			<div
 				className={`text-sm font-bold mb-2 ${
-					color === 'sente' ? 'text-shogi' : 'text-[#C8402F]'
+					color === 'sente' ? 'text-shogi' : 'text-xiangqi'
 				}`}
 			>
 				{color === 'sente' ? '先手の持ち駒' : '後手の持ち駒'}
@@ -71,7 +71,7 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
 					>
 						<div
 							className={`text-base font-bold ${
-								color === 'sente' ? 'text-ivory' : 'text-[#C8402F]'
+								color === 'sente' ? 'text-ivory' : 'text-xiangqi'
 							}`}
 						>
 							{getPieceDisplay(piece)}

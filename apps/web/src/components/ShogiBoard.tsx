@@ -32,9 +32,9 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 	};
 
 	const getSquareColor = (_row: number, _col: number): string => {
-		// Nocturne board tones for Shogi: #23283A / #181B26
+		// Nocturne board tones for Shogi: shogi-board / shogi-deep
 		// Use alternating tones for promotion zone vs regular zone
-		return 'bg-[#23283A] border border-[#3E5C8A]/40';
+		return 'bg-shogi-board border border-shogi/40';
 	};
 
 	const getPieceDisplay = (piece: ShogiPiece | null): string => {
@@ -63,9 +63,9 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
           w-12 h-12 flex items-center justify-center cursor-pointer relative text-xs p-0
           ${squareColor}
           ${isSelected ? 'ring-2 ring-shogi ring-inset' : ''}
-          ${isHighlighted ? 'ring-2 ring-[#3E5C8A]/80 ring-inset' : ''}
-          ${isPossible ? 'bg-[#3E5C8A]/20' : ''}
-          ${isPromotionZone ? 'bg-[#181B26]' : ''}
+          ${isHighlighted ? 'ring-2 ring-shogi/80 ring-inset' : ''}
+          ${isPossible ? 'bg-shogi/20' : ''}
+          ${isPromotionZone ? 'bg-shogi-deep' : ''}
           transition-colors duration-150
         `}
 				onClick={() => onSquareClick({ row, col })}
@@ -79,9 +79,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 				{piece && (
 					<div
 						className={`flex flex-col items-center justify-center select-none ${
-							piece.color === 'sente'
-								? 'text-ivory'
-								: 'text-[#C8402F] rotate-180'
+							piece.color === 'sente' ? 'text-ivory' : 'text-xiangqi rotate-180'
 						}`}
 					>
 						<span className='text-lg font-bold leading-none'>
@@ -92,7 +90,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 
 				{/* Capture indicator */}
 				{isPossible && piece && (
-					<div className='absolute inset-0 border-2 border-[#C8402F] rounded pointer-events-none' />
+					<div className='absolute inset-0 border-2 border-xiangqi rounded pointer-events-none' />
 				)}
 
 				{/* File and Rank labels */}
@@ -130,7 +128,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 
 	return (
 		<div className='flex flex-col items-center'>
-			<div className='mb-2 text-sm font-bold text-[#C8402F]'>後手 (Gote)</div>
+			<div className='mb-2 text-sm font-bold text-xiangqi'>後手 (Gote)</div>
 			<div className='inline-block border-2 border-line rounded-lg overflow-hidden shadow-lg bg-ink-800 p-1'>
 				<div className='rounded overflow-hidden'>{renderBoard()}</div>
 			</div>

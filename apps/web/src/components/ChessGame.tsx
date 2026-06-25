@@ -887,13 +887,13 @@ const ChessGame: React.FC = () => {
 			{providerError && (
 				<div className='w-full max-w-4xl mx-auto mb-4'>
 					<div
-						className='flex items-start justify-between gap-4 rounded-lg border border-[#C8402F]/40 bg-[#C8402F]/10 px-4 py-3 text-ivory'
+						className='flex items-start justify-between gap-4 rounded-lg border border-xiangqi/40 bg-xiangqi/10 px-4 py-3 text-ivory'
 						role='alert'
 					>
 						<p className='text-sm'>{providerError}</p>
 						<button
 							type='button'
-							className='text-xs font-semibold uppercase tracking-wide text-[#C8402F] hover:text-ivory'
+							className='text-xs font-semibold uppercase tracking-wide text-xiangqi hover:text-ivory'
 							onClick={() => setProviderError(null)}
 						>
 							Dismiss
@@ -998,7 +998,7 @@ const ChessGame: React.FC = () => {
 									</button>
 									<button
 										onClick={triggerDebugLoss}
-										className='px-3 py-1 bg-[#C8402F] hover:opacity-90 text-ivory rounded'
+										className='px-3 py-1 bg-xiangqi hover:opacity-90 text-ink-900 rounded'
 										title='Debug: Loss'
 									>
 										💀 Loss

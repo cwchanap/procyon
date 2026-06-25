@@ -23,7 +23,7 @@ const AIGameInstructions: React.FC<AIGameInstructionsProps> = ({
 				<span className='w-3 h-3 bg-jungle rounded-full inline-block'></span>
 				Possible moves
 				<span className='mx-2'>•</span>
-				<span className='w-3 h-3 border-2 border-[#C8402F] rounded inline-block'></span>
+				<span className='w-3 h-3 border-2 border-xiangqi rounded inline-block'></span>
 				Captures
 			</p>
 			{children}
