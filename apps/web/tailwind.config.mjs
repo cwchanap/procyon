@@ -25,10 +25,17 @@ export default {
         },
         // per-variant jewel accents (DEFAULT preserves existing token usage;
         // light/board/deep/water/den tints replace previously inlined hex)
-        chess: '#C8A24B',
+        chess: {
+          DEFAULT: '#C8A24B',
+          board: '#2A2620', // chess light square
+          deep: '#1C1916', // chess dark square
+        },
         xiangqi: {
           DEFAULT: '#C8402F',
           light: '#E0654F', // red-player piece tint (Jungle)
+          board: '#241513', // xiangqi base square
+          river: '#2D1A16', // xiangqi river square
+          palace: '#3A211C', // xiangqi palace square
         },
         shogi: {
           DEFAULT: '#3E5C8A',

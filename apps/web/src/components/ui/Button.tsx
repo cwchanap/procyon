@@ -8,7 +8,8 @@ const buttonVariants = cva(
 		variants: {
 			variant: {
 				default: 'bg-brass text-ink-900 hover:bg-brass-bright',
-				destructive: 'bg-xiangqi text-ink-900 hover:bg-xiangqi-light',
+				destructive:
+					'bg-xiangqi text-white hover:bg-xiangqi-light hover:text-ink-900',
 				outline:
 					'border border-line-brass bg-transparent text-ivory hover:bg-ink-600',
 				secondary: 'bg-ink-600 text-ivory hover:bg-ink-700',
@@ -39,11 +40,10 @@ export interface ButtonProps
 		| 'ghost'
 		| 'link';
 	size?: 'default' | 'sm' | 'lg' | 'icon';
-	asChild?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-	({ className, variant, size, asChild: _asChild = false, ...props }, ref) => {
+	({ className, variant, size, ...props }, ref) => {
 		return (
 			<button
 				className={cn(buttonVariants({ variant, size, className }))}

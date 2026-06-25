@@ -61,12 +61,12 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 		const inPalace = isInPalace(row, col);
 		const onRiver = isRiverLine(row);
 
-		// Nocturne board tones for Xiangqi: #3A211C / #241513
+		// Nocturne board tones for Xiangqi: palace / river / base
 		const baseBg = inPalace
-			? 'bg-[#3A211C]'
+			? 'bg-xiangqi-palace'
 			: onRiver
-				? 'bg-[#2D1A16]'
-				: 'bg-[#241513]';
+				? 'bg-xiangqi-river'
+				: 'bg-xiangqi-board';
 
 		return (
 			<button
@@ -136,7 +136,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
                             w-10 h-10 rounded-full flex items-center justify-center
                             ${
 															piece.color === 'red'
-																? 'bg-xiangqi text-ivory'
+																? 'bg-xiangqi text-white'
 																: 'bg-ink-700 border border-line text-ivory'
 														}
                             border-2 border-line shadow-lg

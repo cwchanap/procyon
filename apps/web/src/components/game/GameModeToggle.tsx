@@ -11,7 +11,7 @@ interface GameModeToggleProps {
 }
 
 const baseButtonClass =
-	'bg-ink-700 border border-line px-6 py-3 rounded-xl font-medium transition-colors duration-150';
+	'bg-ink-700 border border-line px-6 py-3 rounded-lg font-medium transition-colors duration-150';
 
 const GameModeToggle: React.FC<GameModeToggleProps> = ({
 	currentMode,

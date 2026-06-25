@@ -184,7 +184,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 		<>
 			<button
 				onClick={handleButtonClick}
-				className={`px-6 py-3 rounded-xl font-medium transition-colors border border-line ${
+				className={`px-6 py-3 rounded-lg font-medium transition-colors border border-line ${
 					isActive
 						? 'bg-brass text-ink-900 shadow-lg'
 						: 'bg-ink-700 text-ivory hover:bg-ink-600'
@@ -209,7 +209,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 							aria-modal='true'
 							aria-labelledby='ai-settings-title'
 							tabIndex={-1}
-							className='bg-ink-700 border border-line shadow-panel p-6 rounded-2xl w-full max-w-md pointer-events-auto'
+							className='bg-ink-700 border border-line shadow-panel p-6 rounded-lg w-full max-w-md pointer-events-auto'
 						>
 							<div className='flex justify-between items-center mb-6'>
 								<h2
@@ -238,7 +238,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 									</p>
 									<button
 										onClick={() => (window.location.href = '/profile')}
-										className='mt-4 px-4 py-2 rounded-xl bg-brass text-ink-900 hover:bg-brass-bright font-medium transition-colors'
+										className='mt-4 px-4 py-2 rounded-lg bg-brass text-ink-900 hover:bg-brass-bright font-medium transition-colors'
 									>
 										Go to Profile
 									</button>
@@ -252,7 +252,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 										<select
 											value={aiPlayer}
 											onChange={e => onAIPlayerChange(e.target.value)}
-											className='w-full px-4 py-2 rounded-xl bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
+											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
 										>
 											{aiPlayerOptions.map(option => (
 												<option key={option.value} value={option.value}>
@@ -277,7 +277,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 													onModelChange(models[0].value);
 												}
 											}}
-											className='w-full px-4 py-2 rounded-xl bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
+											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
 										>
 											{PROVIDER_OPTIONS.map(option => (
 												<option key={option.value} value={option.value}>
@@ -294,7 +294,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 										<select
 											value={currentModel}
 											onChange={e => onModelChange(e.target.value)}
-											className='w-full px-4 py-2 rounded-xl bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
+											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
 										>
 											{availableModels.map(option => (
 												<option key={option.value} value={option.value}>
@@ -309,7 +309,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 							<div className='mt-6 flex justify-end'>
 								<button
 									onClick={closeDialog}
-									className='bg-ink-700 border border-line text-ivory hover:bg-ink-600 px-6 py-2 rounded-xl transition-colors'
+									className='bg-ink-700 border border-line text-ivory hover:bg-ink-600 px-6 py-2 rounded-lg transition-colors'
 								>
 									Close
 								</button>

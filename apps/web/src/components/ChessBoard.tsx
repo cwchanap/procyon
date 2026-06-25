@@ -33,8 +33,8 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 
 	const getSquareColor = (row: number, col: number): string => {
 		const isLight = (row + col) % 2 === 0;
-		// Nocturne board tones: light #2A2620, dark #1C1916
-		return isLight ? 'bg-[#2A2620]' : 'bg-[#1C1916]';
+		// Nocturne board tones: light chess-board, dark chess-deep
+		return isLight ? 'bg-chess-board' : 'bg-chess-deep';
 	};
 
 	const getPieceSymbol = (piece: ChessPiece | null): string => {
@@ -88,7 +88,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 				{piece && (
 					<span
 						className={`text-4xl select-none filter drop-shadow-lg ${
-							piece.color === 'white' ? 'text-ivory' : 'text-ivory-dim'
+							piece.color === 'white' ? 'text-ivory' : 'text-ink-900'
 						}`}
 					>
 						{getPieceSymbol(piece)}
