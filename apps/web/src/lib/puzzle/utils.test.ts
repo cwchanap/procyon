@@ -16,7 +16,7 @@ describe('DIFFICULTY_BADGE_STYLES', () => {
 		expect(DIFFICULTY_BADGE_STYLES['intermediate']).toContain('brass');
 	});
 
-	test('advanced style contains cinnabar color classes', () => {
+	test('advanced style contains xiangqi color classes', () => {
 		expect(DIFFICULTY_BADGE_STYLES['advanced']).toContain('xiangqi');
 	});
 

@@ -44,18 +44,14 @@ test.describe('AI Configuration Management', () => {
 	});
 
 	test.describe('Profile Navigation', () => {
-		test('should navigate to profile page from user dropdown', async ({
+		test('should navigate to profile page via the nav link', async ({
 			page,
 		}) => {
-			// Click on user dropdown
-			await page
-				.getByRole('button', {
-					name: new RegExp(`${testUser.username}.*${testUser.email}`),
-				})
-				.click();
-
-			// Click on Profile option
-			await page.getByRole('button', { name: 'Profile' }).click();
+			// The Nocturne AppShell exposes Profile as a direct nav link
+			// (rendered in the desktop <aside> and mobile <nav> once
+			// authenticated), not a user dropdown. Take the first visible one.
+			const profileLinks = page.getByRole('link', { name: 'Profile' });
+			await profileLinks.first().click();
 
 			// Should be on profile page
 			await expect(page).toHaveURL('/profile');
@@ -71,14 +67,12 @@ test.describe('AI Configuration Management', () => {
 
 	test.describe('AI Configuration Form', () => {
 		test.beforeEach(async ({ page }) => {
-			// Navigate to profile page
-			await page
-				.getByRole('button', {
-					name: new RegExp(`${testUser.username}.*${testUser.email}`),
-				})
-				.click();
-			await page.getByRole('button', { name: 'Profile' }).click();
-			await expect(page).toHaveURL('/profile');
+			// Navigate directly to the profile page. The Nocturne AppShell
+			// uses a direct Profile nav link (not a user dropdown), so we
+			// navigate by URL — the AI form selectors on ProfilePage are
+			// unchanged. This mirrors critical-user-journeys.spec.ts /
+			// rating-system.spec.ts.
+			await page.goto('/profile');
 			await waitForProfileReady(page);
 		});
 
@@ -143,14 +137,9 @@ test.describe('AI Configuration Management', () => {
 
 	test.describe('Save AI Configuration', () => {
 		test.beforeEach(async ({ page }) => {
-			// Navigate to profile page
-			await page
-				.getByRole('button', {
-					name: new RegExp(`${testUser.username}.*${testUser.email}`),
-				})
-				.click();
-			await page.getByRole('button', { name: 'Profile' }).click();
-			await expect(page).toHaveURL('/profile');
+			// Navigate directly to the profile page (see AI Configuration
+			// Form beforeEach for rationale).
+			await page.goto('/profile');
 			await waitForProfileReady(page);
 		});
 

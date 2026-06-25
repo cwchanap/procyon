@@ -1,6 +1,7 @@
 import React from 'react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/utils';
+import type { Accent } from '../../lib/ai/game-variant-types';
 
 const panelVariants = cva('rounded-lg border border-line', {
 	variants: {
@@ -22,7 +23,7 @@ const panelVariants = cva('rounded-lg border border-line', {
 });
 
 export interface PanelProps extends React.HTMLAttributes<HTMLDivElement> {
-	accent?: 'chess' | 'xiangqi' | 'shogi' | 'jungle' | 'brass';
+	accent?: Accent;
 	raised?: boolean;
 }
 

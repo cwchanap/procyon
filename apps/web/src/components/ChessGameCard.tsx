@@ -2,13 +2,12 @@ import React from 'react';
 import { Button } from './ui/Button';
 import { Panel } from './ui/Panel';
 import ChessBoardPreview from './ChessBoardPreview';
-
-type Variant = 'chess' | 'xiangqi' | 'shogi' | 'jungle';
+import type { GameVariant } from '../lib/ai/game-variant-types';
 
 interface ChessGameCardProps {
 	title: string;
 	description: string;
-	variant?: Variant;
+	variant?: GameVariant;
 	onPlay: () => void;
 }
 

@@ -23,8 +23,9 @@ export default {
           DEFAULT: 'rgba(237,230,214,0.08)',
           brass: 'rgba(200,162,75,0.45)',
         },
-        // per-variant jewel accents (DEFAULT preserves existing token usage;
-        // light/board/deep/water/den tints replace previously inlined hex)
+        // per-variant jewel accents. These tokens are net-new in the Nocturne
+        // redesign; light/board/deep/water/den tints consolidate hex values
+        // that were previously inlined per-component.
         chess: {
           DEFAULT: '#C8A24B',
           board: '#2A2620', // chess light square

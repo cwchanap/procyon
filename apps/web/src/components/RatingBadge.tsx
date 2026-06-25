@@ -1,8 +1,14 @@
 import { cva } from 'class-variance-authority';
 
-interface RankTier {
+// Server-provided tier color, constrained to the set the UI actually styles.
+// Unknown server values are normalized to 'gray' once at the API boundary
+// (see RatingsSection), so this component can trust its input without a
+// runtime fallback or cast.
+export type TierColor = 'gold' | 'purple' | 'blue' | 'green' | 'gray';
+
+export interface RankTier {
 	tier: string;
-	color: string;
+	color: TierColor;
 	minRating: number;
 }
 
@@ -25,7 +31,7 @@ const DEFAULT_TIER_COLORS: TierColorClasses = {
 	text: 'text-ivory-dim',
 };
 
-const TIER_COLORS: Record<string, TierColorClasses> = {
+const TIER_COLORS: Record<TierColor, TierColorClasses> = {
 	gold: {
 		bg: 'bg-brass',
 		border: 'border-brass/50',
@@ -55,16 +61,23 @@ const SIZE_CLASSES = {
 	lg: 'px-4 py-1.5 text-base gap-2',
 } as const;
 
+// Statically-declared tier variants (kept in sync with TIER_COLORS via the
+// helper above) so CVA retains literal-key inference instead of the previous
+// Object.fromEntries approach that defeated it.
+const tierVariant = (color: TierColor) =>
+	`${TIER_COLORS[color].bg} ${TIER_COLORS[color].border} ${TIER_COLORS[color].text}`;
+
 const ratingBadgeVariants = cva(
 	'inline-flex items-center rounded-full border font-semibold shadow-lg',
 	{
 		variants: {
-			tier: Object.fromEntries(
-				Object.entries(TIER_COLORS).map(([key, c]) => [
-					key,
-					`${c.bg} ${c.border} ${c.text}`,
-				])
-			),
+			tier: {
+				gold: tierVariant('gold'),
+				purple: tierVariant('purple'),
+				blue: tierVariant('blue'),
+				green: tierVariant('green'),
+				gray: tierVariant('gray'),
+			},
 			size: SIZE_CLASSES,
 		},
 		defaultVariants: {
@@ -80,15 +93,11 @@ export function RatingBadge({
 	size = 'md',
 	showLabel = true,
 }: RatingBadgeProps) {
+	// tier.color is already constrained to TierColor and normalized at the
+	// API boundary, so it can be passed directly — no runtime ternary or
+	// `as keyof typeof` cast needed.
 	return (
-		<div
-			className={ratingBadgeVariants({
-				tier: (TIER_COLORS[tier.color]
-					? tier.color
-					: 'gray') as keyof typeof TIER_COLORS,
-				size,
-			})}
-		>
+		<div className={ratingBadgeVariants({ tier: tier.color, size })}>
 			<span className='font-mono'>{rating}</span>
 			{showLabel && (
 				<span className='uppercase tracking-wide text-[0.7em] opacity-90'>
