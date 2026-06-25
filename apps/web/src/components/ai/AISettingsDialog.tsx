@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { env } from '../../lib/env';
 
 interface AISettingsDialogProps {
@@ -67,6 +67,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 }) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+	const dialogRef = useRef<HTMLDivElement>(null);
 
 	// Fetch available providers (those with API keys configured)
 	useEffect(() => {
@@ -141,6 +142,44 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 		return () => document.removeEventListener('keydown', handleKeyDown);
 	}, [isOpen]);
 
+	// Focus management: move focus into the dialog on open, trap Tab within
+	// it, and restore focus to the trigger when the dialog closes.
+	useEffect(() => {
+		if (!isOpen) return;
+		const previouslyFocused = document.activeElement as HTMLElement | null;
+
+		// Move focus to the first focusable element inside the dialog
+		const dialog = dialogRef.current;
+		if (dialog) {
+			const focusable = dialog.querySelector<HTMLElement>(
+				'button:not([disabled]), [href], select, textarea, input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+			);
+			(focusable ?? dialog).focus();
+		}
+
+		const handleTab = (e: KeyboardEvent) => {
+			if (e.key !== 'Tab' || !dialogRef.current) return;
+			const focusableEls = dialogRef.current.querySelectorAll<HTMLElement>(
+				'button:not([disabled]), [href], select, textarea, input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+			);
+			if (focusableEls.length === 0) return;
+			const first = focusableEls[0]!;
+			const last = focusableEls[focusableEls.length - 1]!;
+			if (e.shiftKey && document.activeElement === first) {
+				e.preventDefault();
+				last.focus();
+			} else if (!e.shiftKey && document.activeElement === last) {
+				e.preventDefault();
+				first.focus();
+			}
+		};
+		document.addEventListener('keydown', handleTab);
+		return () => {
+			document.removeEventListener('keydown', handleTab);
+			previouslyFocused?.focus?.();
+		};
+	}, [isOpen]);
+
 	return (
 		<>
 			<button
@@ -165,9 +204,11 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 					{/* Dialog */}
 					<div className='fixed inset-0 flex items-center justify-center z-50 pointer-events-none'>
 						<div
+							ref={dialogRef}
 							role='dialog'
 							aria-modal='true'
 							aria-labelledby='ai-settings-title'
+							tabIndex={-1}
 							className='bg-ink-700 border border-line shadow-panel p-6 rounded-2xl w-full max-w-md pointer-events-auto'
 						>
 							<div className='flex justify-between items-center mb-6'>

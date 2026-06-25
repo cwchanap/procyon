@@ -75,7 +75,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 				aria-label={`Square ${row}-${col}`}
 				className={`
                     w-12 h-12 flex items-center justify-center cursor-pointer relative p-0
-                    border border-[#C8402F]/20
+                    border border-xiangqi/20
                     ${baseBg}
                     ${isSelected ? 'ring-2 ring-xiangqi ring-inset' : ''}
                     ${isHighlighted ? 'ring-2 ring-xiangqi/60 ring-inset' : ''}
@@ -88,7 +88,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 					{/* Horizontal line */}
 					{col < XIANGQI_COLS - 1 && (
 						<div
-							className='absolute top-1/2 right-0 w-0 h-0 border-t border-[#C8402F]/50 translate-x-1/2 -translate-y-px'
+							className='absolute top-1/2 right-0 w-0 h-0 border-t border-xiangqi/50 translate-x-1/2 -translate-y-px'
 							style={{ width: '24px' }}
 						/>
 					)}
@@ -96,7 +96,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 					{/* Vertical line */}
 					{row < XIANGQI_ROWS - 1 && (
 						<div
-							className='absolute bottom-0 left-1/2 w-0 h-0 border-l border-[#C8402F]/50 translate-y-1/2 -translate-x-px'
+							className='absolute bottom-0 left-1/2 w-0 h-0 border-l border-xiangqi/50 translate-y-1/2 -translate-x-px'
 							style={{ height: '24px' }}
 						/>
 					)}
@@ -109,7 +109,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 								(row === 1 && col === 4) ||
 								(row === 8 && col === 4) ||
 								(row === 9 && col === 5)) && (
-								<div className='absolute top-0 left-0 w-full h-full border-r border-[#C8402F]/40 transform rotate-45 origin-center' />
+								<div className='absolute top-0 left-0 w-full h-full border-r border-xiangqi/40 transform rotate-45 origin-center' />
 							)}
 
 							{/* Top-right to bottom-left diagonal in palace */}
@@ -117,7 +117,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 								(row === 1 && col === 4) ||
 								(row === 8 && col === 4) ||
 								(row === 9 && col === 3)) && (
-								<div className='absolute top-0 right-0 w-full h-full border-l border-[#C8402F]/40 transform -rotate-45 origin-center' />
+								<div className='absolute top-0 right-0 w-full h-full border-l border-xiangqi/40 transform -rotate-45 origin-center' />
 							)}
 						</>
 					)}
@@ -136,7 +136,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
                             w-10 h-10 rounded-full flex items-center justify-center
                             ${
 															piece.color === 'red'
-																? 'bg-[#C8402F] text-ivory'
+																? 'bg-xiangqi text-ivory'
 																: 'bg-ink-700 border border-line text-ivory'
 														}
                             border-2 border-line shadow-lg
@@ -151,15 +151,15 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 
 				{/* Capture indicator */}
 				{isPossible && piece && (
-					<div className='absolute inset-0 border-4 border-[#C8402F] rounded pointer-events-none' />
+					<div className='absolute inset-0 border-4 border-xiangqi rounded pointer-events-none' />
 				)}
 
 				{/* River indicator */}
 				{row === 4 && (
-					<div className='absolute bottom-0 left-0 right-0 h-px bg-[#C8402F]/60' />
+					<div className='absolute bottom-0 left-0 right-0 h-px bg-xiangqi/60' />
 				)}
 				{row === 5 && (
-					<div className='absolute top-0 left-0 right-0 h-px bg-[#C8402F]/60' />
+					<div className='absolute top-0 left-0 right-0 h-px bg-xiangqi/60' />
 				)}
 			</button>
 		);
@@ -187,7 +187,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 		return (
 			<div className='absolute left-0 right-0 top-1/2 transform -translate-y-1/2 pointer-events-none'>
 				<div className='flex justify-center'>
-					<div className='bg-[#C8402F] text-ivory px-3 py-1 rounded-full text-xs font-bold shadow-lg opacity-80'>
+					<div className='bg-xiangqi text-ivory px-3 py-1 rounded-full text-xs font-bold shadow-lg opacity-80'>
 						楚河 汉界
 					</div>
 				</div>

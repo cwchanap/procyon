@@ -234,22 +234,6 @@ export class AuthHelper {
 	}
 
 	/**
-	 * Click Sign In button from the auth nav
-	 */
-	async clickSignInFromNav(): Promise<void> {
-		await this.page.getByRole('button', { name: 'Sign In' }).click();
-		await expect(this.page).toHaveURL('/login');
-	}
-
-	/**
-	 * Click Sign Up button from the auth nav
-	 */
-	async clickSignUpFromNav(): Promise<void> {
-		await this.page.getByRole('button', { name: 'Sign Up' }).click();
-		await expect(this.page).toHaveURL('/register');
-	}
-
-	/**
 	 * Check for error message on login/register forms
 	 */
 	async expectErrorMessage(message: string): Promise<void> {

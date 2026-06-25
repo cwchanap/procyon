@@ -112,6 +112,19 @@ export function AppShell() {
 				<div className='mt-6 border-t border-line pt-4'>{userChip}</div>
 			</aside>
 
+			{/* Mobile top wordmark bar (fills the pt-16 space left by the
+			    server-rendered fallback nav, which is hidden post-hydration) */}
+			<header className='fixed inset-x-0 top-0 z-40 flex h-16 items-center border-b border-line bg-ink-800 px-4 lg:hidden'>
+				<a href='/' className='flex items-center gap-3'>
+					<span className='flex h-8 w-8 items-center justify-center rounded-full bg-brass text-ink-900 text-lg'>
+						♔
+					</span>
+					<span className='font-display text-lg font-semibold tracking-wide text-ivory'>
+						PROCYON
+					</span>
+				</a>
+			</header>
+
 			{/* Mobile bottom tab bar */}
 			<nav
 				aria-label='Main navigation'

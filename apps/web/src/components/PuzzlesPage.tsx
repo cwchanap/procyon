@@ -181,7 +181,7 @@ export default function PuzzlesPage() {
 		return (
 			<div className='min-h-[60vh] flex items-center justify-center'>
 				<div className='bg-ink-700 border border-line rounded-lg p-8 text-center space-y-4'>
-					<p className='text-[#C8402F]'>{listError}</p>
+					<p className='text-xiangqi'>{listError}</p>
 					<button
 						onClick={() => window.location.reload()}
 						className='px-4 py-2 rounded-md bg-brass text-ink-900 text-sm hover:bg-brass-bright font-medium transition-colors'
@@ -226,7 +226,7 @@ export default function PuzzlesPage() {
 				</div>
 			)}
 			{puzzleError && (
-				<div className='mb-4 px-4 py-3 rounded-lg bg-[#C8402F]/10 border border-line text-[#C8402F] text-sm text-center'>
+				<div className='mb-4 px-4 py-3 rounded-lg bg-xiangqi/10 border border-line text-xiangqi text-sm text-center'>
 					{puzzleError}
 				</div>
 			)}

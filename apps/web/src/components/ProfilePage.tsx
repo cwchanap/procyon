@@ -540,7 +540,7 @@ export function ProfilePage() {
 							</p>
 						)}
 						{configStatus === 'error' && (
-							<p className='text-sm text-[#C8402F] mt-2'>
+							<p className='text-sm text-xiangqi mt-2'>
 								✗ Failed to save configuration
 							</p>
 						)}

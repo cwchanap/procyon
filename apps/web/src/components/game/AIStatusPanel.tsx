@@ -42,8 +42,8 @@ const AIStatusPanel: React.FC<AIStatusPanelProps> = ({
 						)}
 
 						{aiError && isAIPaused && (
-							<div className='flex flex-col items-center gap-3 p-4 bg-[#C8402F]/10 border border-[#C8402F]/30 rounded-lg'>
-								<div className='text-[#C8402F] text-center'>
+							<div className='flex flex-col items-center gap-3 p-4 bg-xiangqi/10 border border-xiangqi/30 rounded-lg'>
+								<div className='text-xiangqi text-center'>
 									<div className='font-semibold mb-1'>❌ AI Error</div>
 									<div className='text-sm opacity-90'>{aiError}</div>
 								</div>

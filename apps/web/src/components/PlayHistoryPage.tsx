@@ -35,7 +35,7 @@ const RESULT_STYLES: Record<
 	},
 	loss: {
 		label: 'Loss',
-		className: 'bg-[#C8402F]/20 text-[#C8402F] border border-[#C8402F]/30',
+		className: 'bg-xiangqi/20 text-xiangqi border border-xiangqi/30',
 	},
 	draw: {
 		label: 'Draw',
@@ -239,7 +239,7 @@ export default function PlayHistoryPage() {
 					<SummaryCard
 						label='Losses'
 						value={summary.losses}
-						accentClass='text-[#C8402F]'
+						accentClass='text-xiangqi'
 					/>
 					<SummaryCard
 						label='Win Rate'
@@ -293,7 +293,7 @@ export default function PlayHistoryPage() {
 											<div className='space-y-4'>
 												<p
 													data-testid='api-error'
-													className='text-[#C8402F] font-medium'
+													className='text-xiangqi font-medium'
 												>
 													{error}
 												</p>
@@ -354,7 +354,7 @@ export default function PlayHistoryPage() {
 																	entry.ratingChange > 0
 																		? 'text-jungle'
 																		: entry.ratingChange < 0
-																			? 'text-[#C8402F]'
+																			? 'text-xiangqi'
 																			: 'text-ivory-dim'
 																}
 																`}

@@ -84,9 +84,7 @@ const AIDebugDialog: React.FC<AIDebugDialogProps> = ({
 							)}
 
 							{move.error && (
-								<div className='text-[#C8402F] text-xs mt-1'>
-									❌ {move.error}
-								</div>
+								<div className='text-xiangqi text-xs mt-1'>❌ {move.error}</div>
 							)}
 						</div>
 					</div>

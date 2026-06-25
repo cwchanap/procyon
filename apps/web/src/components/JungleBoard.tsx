@@ -30,17 +30,17 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 	const getTerrainColor = (terrain: JungleTerrain): string => {
 		switch (terrain.type) {
 			case 'water':
-				return 'bg-[#16323B] border-[#3E5C8A]/40';
+				return 'bg-jungle-water border-shogi/40';
 			case 'trap':
 				return terrain.owner === 'red'
-					? 'bg-[#C8402F]/15 border-[#C8402F]/40'
-					: 'bg-[#3E5C8A]/15 border-[#3E5C8A]/40';
+					? 'bg-xiangqi/15 border-xiangqi/40'
+					: 'bg-shogi/15 border-shogi/40';
 			case 'den':
 				return terrain.owner === 'red'
-					? 'bg-[#C8402F]/25 border-[#C8402F]/60'
-					: 'bg-[#3E5C8A]/25 border-[#3E5C8A]/60';
+					? 'bg-xiangqi/25 border-xiangqi/60'
+					: 'bg-shogi/25 border-shogi/60';
 			default:
-				return 'bg-[#1F3029] border-[#3E8C6F]/30';
+				return 'bg-jungle-den border-jungle/30';
 		}
 	};
 
@@ -49,7 +49,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 	};
 
 	const getPieceColor = (piece: JunglePiece): string => {
-		return piece.color === 'red' ? 'text-[#E0654F]' : 'text-[#7BA0D6]';
+		return piece.color === 'red' ? 'text-xiangqi-light' : 'text-shogi-light';
 	};
 
 	const isSelected = (row: number, col: number): boolean => {
@@ -111,15 +111,15 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 	const getTerrainSymbolColor = (terrain: JungleTerrain): string => {
 		switch (terrain.type) {
 			case 'water':
-				return 'text-[#7BA0D6]/30';
+				return 'text-shogi-light/30';
 			case 'trap':
 				return terrain.owner === 'red'
-					? 'text-[#E0654F]/40'
-					: 'text-[#7BA0D6]/40';
+					? 'text-xiangqi-light/40'
+					: 'text-shogi-light/40';
 			case 'den':
 				return terrain.owner === 'red'
-					? 'text-[#E0654F]/50'
-					: 'text-[#7BA0D6]/50';
+					? 'text-xiangqi-light/50'
+					: 'text-shogi-light/50';
 			default:
 				return '';
 		}
@@ -195,7 +195,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 
 										{/* Capture indicator */}
 										{isPossibleMove(rowIndex, colIndex) && piece && (
-											<div className='absolute inset-0 border-2 border-[#C8402F] rounded'></div>
+											<div className='absolute inset-0 border-2 border-xiangqi rounded'></div>
 										)}
 									</button>
 								);
@@ -212,27 +212,27 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 				</h3>
 				<div className='grid grid-cols-2 gap-2 text-xs text-ivory-dim'>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-[#1F3029] border border-[#3E8C6F]/30'></div>
+						<div className='w-4 h-4 bg-jungle-den border border-jungle/30'></div>
 						<span>Normal Land</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-[#16323B] border border-[#3E5C8A]/40'></div>
+						<div className='w-4 h-4 bg-jungle-water border border-shogi/40'></div>
 						<span>Water (only rats can enter)</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-[#C8402F]/15 border border-[#C8402F]/40'></div>
+						<div className='w-4 h-4 bg-xiangqi/15 border border-xiangqi/40'></div>
 						<span>Red Trap</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-[#3E5C8A]/15 border border-[#3E5C8A]/40'></div>
+						<div className='w-4 h-4 bg-shogi/15 border border-shogi/40'></div>
 						<span>Blue Trap</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-[#C8402F]/25 border border-[#C8402F]/60'></div>
+						<div className='w-4 h-4 bg-xiangqi/25 border border-xiangqi/60'></div>
 						<span>Red Den</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 bg-[#3E5C8A]/25 border border-[#3E5C8A]/60'></div>
+						<div className='w-4 h-4 bg-shogi/25 border border-shogi/60'></div>
 						<span>Blue Den</span>
 					</div>
 				</div>

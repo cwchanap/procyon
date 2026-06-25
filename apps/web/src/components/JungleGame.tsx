@@ -671,7 +671,7 @@ const JungleGame: React.FC = () => {
 									</button>
 									<button
 										onClick={triggerDebugLoss}
-										className='px-3 py-1 bg-[#C8402F] hover:opacity-90 text-ivory rounded'
+										className='px-3 py-1 bg-xiangqi hover:opacity-90 text-ink-900 rounded'
 										title='Debug: Loss'
 									>
 										💀 Loss

@@ -17,7 +17,7 @@ describe('DIFFICULTY_BADGE_STYLES', () => {
 	});
 
 	test('advanced style contains cinnabar color classes', () => {
-		expect(DIFFICULTY_BADGE_STYLES['advanced']).toContain('C8402F');
+		expect(DIFFICULTY_BADGE_STYLES['advanced']).toContain('xiangqi');
 	});
 
 	test('all badge styles are non-empty strings', () => {
