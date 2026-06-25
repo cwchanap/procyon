@@ -1,9 +1,24 @@
-import type { GameState as ChessGameState, ChessPiece, Move as ChessMove } from '../chess/types';
-import type { XiangqiGameState, XiangqiPiece, XiangqiMove } from '../xiangqi/types';
+import type {
+	GameState as ChessGameState,
+	ChessPiece,
+	Move as ChessMove,
+} from '../chess/types';
+import type {
+	XiangqiGameState,
+	XiangqiPiece,
+	XiangqiMove,
+} from '../xiangqi/types';
 import type { ShogiGameState, ShogiPiece, ShogiMove } from '../shogi';
 import type { JungleGameState, JunglePiece, JungleMove } from '../jungle/types';
 
 export type GameVariant = 'chess' | 'xiangqi' | 'shogi' | 'jungle';
+
+// UI accent tokens derived from the game variants plus the shared "brass"
+// accent used across Panel/PageHeader/cards. Defined once here so every
+// accent-consuming component shares a single source of truth (previously each
+// component re-declared the union inline, and GamePageLayout even dropped
+// "jungle" — see #2 in the Nocturne review).
+export type Accent = GameVariant | 'brass';
 
 export interface GamePosition {
 	row: number;
@@ -17,7 +32,11 @@ export type AnyGamePiece = ChessPiece | XiangqiPiece | ShogiPiece | JunglePiece;
 export type AnyGameMove = ChessMove | XiangqiMove | ShogiMove | JungleMove;
 
 // Union type for all game states
-export type AnyGameState = ChessGameState | XiangqiGameState | ShogiGameState | JungleGameState;
+export type AnyGameState =
+	| ChessGameState
+	| XiangqiGameState
+	| ShogiGameState
+	| JungleGameState;
 
 // Generic piece interface for adapter use
 export interface GamePiece {

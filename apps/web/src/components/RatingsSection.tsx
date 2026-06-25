@@ -1,13 +1,7 @@
 import { useState, useEffect } from 'react';
 import { env } from '../lib/env';
-import { RatingBadge } from './RatingBadge';
+import { RatingBadge, type RankTier, type TierColor } from './RatingBadge';
 import type { GameVariant } from '../lib/ai/game-variant-types';
-
-interface RankTier {
-	tier: string;
-	color: string;
-	minRating: number;
-}
 
 interface PlayerRating {
 	id: number;
@@ -21,6 +15,22 @@ interface PlayerRating {
 	peakRating: number;
 	tier: RankTier;
 }
+
+// Normalize an untrusted server-provided tier color to the constrained
+// TierColor union. This is the single API boundary that guards the rest of
+// the app (RatingBadge) from unknown colors, which collapse to 'gray'.
+const KNOWN_TIER_COLORS: readonly TierColor[] = [
+	'gold',
+	'purple',
+	'blue',
+	'green',
+	'gray',
+];
+const normalizeTierColor = (raw: unknown): TierColor =>
+	typeof raw === 'string' &&
+	(KNOWN_TIER_COLORS as readonly string[]).includes(raw)
+		? (raw as TierColor)
+		: 'gray';
 
 const VARIANT_LABELS: Record<string, string> = {
 	chess: 'Classical Chess',
@@ -58,7 +68,18 @@ export function RatingsSection() {
 				if (response.ok) {
 					const data = await response.json();
 					if (!isActive || controller.signal.aborted) return;
-					setRatings(data.ratings || []);
+					// Normalize tier colors once at this API boundary so unknown
+					// server values collapse to 'gray' before reaching components.
+					const normalized = (data.ratings || []).map(
+						(r: PlayerRating & { tier?: { color?: unknown } }) => ({
+							...r,
+							tier: {
+								...(r.tier ?? { tier: '', minRating: 0 }),
+								color: normalizeTierColor(r?.tier?.color),
+							},
+						})
+					);
+					setRatings(normalized);
 				} else {
 					if (!isActive || controller.signal.aborted) return;
 					setError('Failed to load ratings');

@@ -5,12 +5,7 @@ import ShogiGame from '../components/ShogiGame.tsx';
 ---
 
 <Layout title='Shogi Game'>
-  <GamePageLayout
-    title='Shogi Game'
-    variant='shogi'
-    showBackButton={false}
-    client:load
-  >
+  <GamePageLayout variant='shogi' showBackButton={false} client:load>
     <ShogiGame client:load />
   </GamePageLayout>
 </Layout>

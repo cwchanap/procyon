@@ -32,8 +32,9 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 	};
 
 	const getSquareColor = (_row: number, _col: number): string => {
-		// Nocturne board tones for Shogi: shogi-board / shogi-deep
-		// Use alternating tones for promotion zone vs regular zone
+		// Nocturne base board tone for every Shogi square. The promotion-zone
+		// differentiation is applied in renderSquare (isPromotionZone ->
+		// bg-shogi-deep), not here.
 		return 'bg-shogi-board border border-shogi/40';
 	};
 

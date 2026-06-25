@@ -1,6 +1,7 @@
 import React from 'react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../lib/utils';
+import type { Accent } from '../lib/ai/game-variant-types';
 
 const accentBar = cva('mt-5 h-px w-24', {
 	variants: {
@@ -21,7 +22,7 @@ export interface PageHeaderProps {
 	eyebrow?: string;
 	title: string;
 	titleClassName?: string;
-	accent?: 'chess' | 'xiangqi' | 'shogi' | 'jungle' | 'brass';
+	accent?: Accent;
 	className?: string;
 }
 

@@ -226,7 +226,7 @@ export default function PuzzlesPage() {
 				</div>
 			)}
 			{puzzleError && (
-				<div className='mb-4 px-4 py-3 rounded-lg bg-xiangqi/10 border border-line text-xiangqi text-sm text-center'>
+				<div className='mb-4 px-4 py-3 rounded-lg bg-xiangqi/10 border border-xiangqi/30 text-xiangqi text-sm text-center'>
 					{puzzleError}
 				</div>
 			)}

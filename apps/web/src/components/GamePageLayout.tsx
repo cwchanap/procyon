@@ -1,21 +1,24 @@
 import React from 'react';
+import type { GameVariant } from '../lib/ai/game-variant-types';
 
 interface GamePageLayoutProps {
-	variant: 'chess' | 'shogi' | 'xiangqi';
-	title?: string;
+	variant: GameVariant;
 	showBackButton?: boolean;
 	children: React.ReactNode;
 }
 
-const accentBar: Record<GamePageLayoutProps['variant'], string> = {
+// Exhaustive accent map keyed by GameVariant. Previously this only listed
+// chess/shogi/xiangqi, silently dropping jungle; typing the key as
+// GameVariant + Record<...> now enforces all four at compile time.
+const accentBar: Record<GameVariant, string> = {
 	chess: 'bg-chess',
 	shogi: 'bg-shogi',
 	xiangqi: 'bg-xiangqi',
+	jungle: 'bg-jungle',
 };
 
 export default function GamePageLayout({
 	variant,
-	title: _title,
 	showBackButton = true,
 	children,
 }: GamePageLayoutProps) {

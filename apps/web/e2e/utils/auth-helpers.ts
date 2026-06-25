@@ -208,8 +208,11 @@ export class AuthHelper {
 		// Wait for auth nav to load first
 		await this.waitForAuthNav();
 
-		// Check for username text being visible on the page
-		await expect(this.page.locator(`text=${username}`).first()).toBeVisible({
+		// The username is rendered in the AppShell user chip (<aside> on
+		// desktop). Scope the assertion to the app shell so we don't match
+		// unrelated page text (matches the scoping used by the other helpers).
+		const shellLocator = this.page.locator('aside, nav');
+		await expect(shellLocator.locator(`text=${username}`).first()).toBeVisible({
 			timeout: 15000,
 		});
 	}
