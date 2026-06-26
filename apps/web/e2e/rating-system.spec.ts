@@ -192,9 +192,9 @@ test.describe('ELO Rating System', () => {
 			const ratingText = await ratingCell.textContent();
 			expect(ratingText).toMatch(/\+/);
 
-			// Verify positive CSS indicator (green color class)
+			// Verify positive CSS indicator (jungle color class — Nocturne token for positive)
 			await expect(ratingCell.locator('span').first()).toHaveClass(
-				/text-green/
+				/text-jungle/
 			);
 		});
 	});
@@ -228,7 +228,7 @@ test.describe('ELO Rating System', () => {
 			// Verify there's at least 1 game played
 			const chessRatingCard = page
 				.getByRole('heading', { name: 'Classical Chess' })
-				.locator('xpath=ancestor::div[contains(@class, "rounded-xl")][1]');
+				.locator('xpath=ancestor::div[contains(@class, "rounded-lg")][1]');
 			await expect(chessRatingCard).toBeVisible();
 
 			const gamesStat = chessRatingCard.locator('div').filter({
