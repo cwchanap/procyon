@@ -17,6 +17,7 @@ interface JungleBoardProps {
 	possibleMoves: JunglePosition[];
 	onSquareClick: (position: JunglePosition) => void;
 	highlightSquares?: JunglePosition[];
+	disabled?: boolean;
 }
 
 const JungleBoard: React.FC<JungleBoardProps> = ({
@@ -26,6 +27,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 	possibleMoves,
 	onSquareClick,
 	highlightSquares = [],
+	disabled = false,
 }) => {
 	const getTerrainColor = (terrain: JungleTerrain): string => {
 		switch (terrain.type) {
@@ -78,6 +80,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
             w-16 h-16 border-2 flex items-center justify-center text-2xl font-bold
             cursor-pointer transition-all duration-200 relative p-0
             ${getTerrainColor(terrainData)}
+            ${disabled ? 'cursor-not-allowed' : ''}
         `;
 
 		if (isSelected(row, col)) {
@@ -164,6 +167,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 										type='button'
 										key={`${rowIndex}-${colIndex}`}
 										aria-label={`Square ${rowIndex}-${colIndex}`}
+										disabled={disabled}
 										className={getSquareClasses(rowIndex, colIndex)}
 										onClick={() =>
 											onSquareClick({

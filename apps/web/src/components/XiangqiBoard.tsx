@@ -14,6 +14,7 @@ interface XiangqiBoardProps {
 	possibleMoves: XiangqiPosition[];
 	onSquareClick: (position: XiangqiPosition) => void;
 	highlightSquares?: XiangqiPosition[];
+	disabled?: boolean;
 }
 
 const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
@@ -22,6 +23,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 	possibleMoves,
 	onSquareClick,
 	highlightSquares = [],
+	disabled = false,
 }) => {
 	const isSquareSelected = (row: number, col: number): boolean => {
 		return selectedSquare?.row === row && selectedSquare?.col === col;
@@ -73,12 +75,14 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 				type='button'
 				key={`${row}-${col}`}
 				aria-label={`Square ${row}-${col}`}
+				disabled={disabled}
 				className={`
                     w-12 h-12 flex items-center justify-center cursor-pointer relative p-0
                     border border-xiangqi/20
                     ${baseBg}
                     ${isSelected ? 'ring-2 ring-xiangqi ring-inset' : ''}
                     ${isHighlighted ? 'ring-2 ring-xiangqi/60 ring-inset' : ''}
+                    ${disabled ? 'cursor-not-allowed' : ''}
                     transition-colors duration-150
                 `}
 				onClick={() => onSquareClick({ row, col })}

@@ -889,6 +889,7 @@ const XiangqiGame: React.FC = () => {
 						possibleMoves={gameState.possibleMoves}
 						onSquareClick={handleSquareClick}
 						highlightSquares={currentHighlightSquares}
+						disabled={!hasGameStarted && gameMode !== 'tutorial'}
 					/>
 				</GameStartOverlay>
 			</div>
