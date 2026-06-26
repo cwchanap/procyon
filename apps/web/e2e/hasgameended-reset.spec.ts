@@ -78,8 +78,14 @@ test.describe('hasGameEnded reset flow', () => {
 		await expect(aiSettingsButton).toBeVisible();
 		await aiSettingsButton.click();
 
-		// Close the AI settings dialog so we can interact with the board and controls again
-		const closeButton = page.getByRole('button', { name: 'Close' });
+		// Close the AI settings dialog so we can interact with the board and controls again.
+		// The dialog has both an icon button (aria-label='Close', text '×') and a footer
+		// text button ('Close'); target the footer button by text to avoid a strict-mode
+		// violation on the ambiguous accessible name.
+		const closeButton = page
+			.getByRole('dialog')
+			.getByRole('button')
+			.filter({ hasText: 'Close' });
 		await expect(closeButton).toBeVisible();
 		await closeButton.click();
 
