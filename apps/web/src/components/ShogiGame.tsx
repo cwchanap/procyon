@@ -1026,11 +1026,8 @@ const ShogiGame: React.FC = () => {
 									pieces={gameState.goteHand}
 									color='gote'
 									selectedPiece={gameState.selectedHandPiece}
-									onPieceClick={
-										hasGameStarted || gameMode === 'tutorial'
-											? handleHandPieceClick
-											: () => {}
-									}
+									onPieceClick={handleHandPieceClick}
+									disabled={!hasGameStarted && gameMode !== 'tutorial'}
 								/>
 							</div>
 
@@ -1051,11 +1048,8 @@ const ShogiGame: React.FC = () => {
 									pieces={gameState.senteHand}
 									color='sente'
 									selectedPiece={gameState.selectedHandPiece}
-									onPieceClick={
-										hasGameStarted || gameMode === 'tutorial'
-											? handleHandPieceClick
-											: () => {}
-									}
+									onPieceClick={handleHandPieceClick}
+									disabled={!hasGameStarted && gameMode !== 'tutorial'}
 								/>
 							</div>
 						</div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { cva } from 'class-variance-authority';
 
 export interface AIMove {
 	moveNumber: number;
@@ -15,6 +16,26 @@ interface AIDebugDialogProps {
 	isVisible: boolean;
 	className?: string;
 }
+
+type MoveSource = 'ai' | 'human';
+
+const moveCardVariants = cva('p-3 rounded-lg border bg-ink-700/40', {
+	variants: {
+		source: {
+			ai: 'border-line-brass',
+			human: 'border-line',
+		},
+	},
+});
+
+const moveBadgeVariants = cva('text-xs px-2 py-1 rounded-full', {
+	variants: {
+		source: {
+			ai: 'bg-brass text-ink-900',
+			human: 'bg-ink-600 text-ivory',
+		},
+	},
+});
 
 const AIDebugDialog: React.FC<AIDebugDialogProps> = ({
 	moves,
@@ -43,52 +64,47 @@ const AIDebugDialog: React.FC<AIDebugDialogProps> = ({
 				AI Move History
 			</h4>
 			<div className='max-h-64 overflow-y-auto space-y-3'>
-				{moves.slice(-10).map((move, idx) => (
-					<div
-						key={`${move.moveNumber}-${move.timestamp}-${idx}`}
-						className={`p-3 rounded-lg border ${
-							move.isAI
-								? 'bg-ink-700/40 border-line-brass'
-								: 'bg-ink-700/40 border-line'
-						}`}
-					>
-						<div className='flex items-center justify-between mb-2'>
-							<div className='flex items-center gap-2'>
-								<span
-									className={`text-xs px-2 py-1 rounded-full ${
-										move.isAI
-											? 'bg-brass text-ink-900'
-											: 'bg-ink-600 text-ivory'
-									}`}
-								>
-									{move.isAI ? '🤖 AI' : '👤 Human'}
-								</span>
-								<span className='text-xs font-medium text-ivory'>
-									Move {move.moveNumber}
-								</span>
-							</div>
-							<span className='text-xs text-ivory-dim'>
-								{formatTime(move.timestamp)}
-							</span>
-						</div>
-
-						<div className='text-sm'>
-							<div className='text-ivory font-medium mb-1'>
-								{move.player}: <span className='font-mono'>{move.move}</span>
-							</div>
-
-							{move.thinking && (
-								<div className='text-brass text-xs mt-1 italic'>
-									💭 "{move.thinking}"
+				{moves.slice(-10).map((move, idx) => {
+					const source: MoveSource = move.isAI ? 'ai' : 'human';
+					return (
+						<div
+							key={`${move.moveNumber}-${move.timestamp}-${idx}`}
+							className={moveCardVariants({ source })}
+						>
+							<div className='flex items-center justify-between mb-2'>
+								<div className='flex items-center gap-2'>
+									<span className={moveBadgeVariants({ source })}>
+										{move.isAI ? '🤖 AI' : '👤 Human'}
+									</span>
+									<span className='text-xs font-medium text-ivory'>
+										Move {move.moveNumber}
+									</span>
 								</div>
-							)}
+								<span className='text-xs text-ivory-dim'>
+									{formatTime(move.timestamp)}
+								</span>
+							</div>
 
-							{move.error && (
-								<div className='text-xiangqi text-xs mt-1'>❌ {move.error}</div>
-							)}
+							<div className='text-sm'>
+								<div className='text-ivory font-medium mb-1'>
+									{move.player}: <span className='font-mono'>{move.move}</span>
+								</div>
+
+								{move.thinking && (
+									<div className='text-brass text-xs mt-1 italic'>
+										💭 "{move.thinking}"
+									</div>
+								)}
+
+								{move.error && (
+									<div className='text-xiangqi text-xs mt-1'>
+										❌ {move.error}
+									</div>
+								)}
+							</div>
 						</div>
-					</div>
-				))}
+					);
+				})}
 			</div>
 
 			{moves.length > 10 && (

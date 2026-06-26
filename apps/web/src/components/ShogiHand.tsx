@@ -1,4 +1,5 @@
 import React from 'react';
+import { cva } from 'class-variance-authority';
 import type { ShogiPiece } from '../lib/shogi';
 import { PIECE_UNICODE } from '../lib/shogi';
 
@@ -7,13 +8,66 @@ interface ShogiHandProps {
 	color: 'sente' | 'gote';
 	selectedPiece: ShogiPiece | null;
 	onPieceClick: (piece: ShogiPiece) => void;
+	/**
+	 * When true, hand piece buttons are rendered with the native `disabled`
+	 * attribute so they are removed from the tab order and cannot be activated.
+	 * This replaces the previous pattern of swapping in a no-op click handler,
+	 * which left the controls focusable and visually interactive.
+	 */
+	disabled?: boolean;
 }
+
+const handContainerVariants = cva(
+	'flex flex-col items-center p-2 bg-ink-700 border rounded-lg shadow-sm min-h-[100px] w-48',
+	{
+		variants: {
+			color: {
+				sente: 'border-shogi/40',
+				gote: 'border-xiangqi/40',
+			},
+		},
+	}
+);
+
+const handTitleVariants = cva('text-sm font-bold mb-2', {
+	variants: {
+		color: {
+			sente: 'text-shogi',
+			gote: 'text-xiangqi',
+		},
+	},
+});
+
+const pieceButtonVariants = cva(
+	'flex flex-col items-center justify-center p-1 rounded transition-colors duration-150 min-w-[32px] min-h-[32px] disabled:cursor-not-allowed disabled:opacity-50',
+	{
+		variants: {
+			selected: {
+				true: 'bg-shogi/20 ring-2 ring-shogi',
+				false: 'bg-ink-600 hover:bg-ink-700 cursor-pointer',
+			},
+		},
+		defaultVariants: {
+			selected: false,
+		},
+	}
+);
+
+const pieceTextVariants = cva('text-base font-bold', {
+	variants: {
+		color: {
+			sente: 'text-ivory',
+			gote: 'text-xiangqi',
+		},
+	},
+});
 
 const ShogiHand: React.FC<ShogiHandProps> = ({
 	pieces,
 	color,
 	selectedPiece,
 	onPieceClick,
+	disabled = false,
 }) => {
 	const groupedPieces = pieces.reduce(
 		(acc, piece) => {
@@ -38,16 +92,8 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
 	};
 
 	return (
-		<div
-			className={`flex flex-col items-center p-2 bg-ink-700 border ${
-				color === 'sente' ? 'border-shogi/40' : 'border-xiangqi/40'
-			} rounded-lg shadow-sm min-h-[100px] w-48`}
-		>
-			<div
-				className={`text-sm font-bold mb-2 ${
-					color === 'sente' ? 'text-shogi' : 'text-xiangqi'
-				}`}
-			>
+		<div className={handContainerVariants({ color })}>
+			<div className={handTitleVariants({ color })}>
 				{color === 'sente' ? '先手の持ち駒' : '後手の持ち駒'}
 			</div>
 
@@ -57,23 +103,11 @@ const ShogiHand: React.FC<ShogiHandProps> = ({
 						type='button'
 						key={type}
 						aria-label={`Hand piece ${type}`}
-						className={`
-                            flex flex-col items-center justify-center p-1 rounded cursor-pointer
-                            transition-colors duration-150
-                            ${
-															isSelected(piece)
-																? 'bg-shogi/20 ring-2 ring-shogi'
-																: 'bg-ink-600 hover:bg-ink-700'
-														}
-                            min-w-[32px] min-h-[32px]
-                        `}
+						disabled={disabled}
+						className={pieceButtonVariants({ selected: isSelected(piece) })}
 						onClick={() => onPieceClick(piece)}
 					>
-						<div
-							className={`text-base font-bold ${
-								color === 'sente' ? 'text-ivory' : 'text-xiangqi'
-							}`}
-						>
+						<div className={pieceTextVariants({ color })}>
 							{getPieceDisplay(piece)}
 						</div>
 						{count > 1 && (
