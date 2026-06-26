@@ -1,5 +1,13 @@
-import { describe, test, expect, beforeAll, afterAll, mock } from 'bun:test';
-import { render, fireEvent } from '@testing-library/react';
+import {
+	describe,
+	test,
+	expect,
+	beforeAll,
+	afterAll,
+	afterEach,
+	mock,
+} from 'bun:test';
+import { render, fireEvent, cleanup } from '@testing-library/react';
 import { Window } from 'happy-dom';
 import React from 'react';
 import ShogiHand from './ShogiHand';
@@ -33,6 +41,17 @@ beforeAll(() => {
 	g.MutationObserver = happyWindow.MutationObserver;
 	g.NodeFilter = happyWindow.NodeFilter;
 	g.getComputedStyle = happyWindow.getComputedStyle.bind(happyWindow);
+});
+
+// RTL auto-cleanup registers `afterEach(cleanup)` only when `afterEach` is
+// available as a global at module-load time. Under some bun:test versions used
+// in CI that hook does not fire, so containers from prior tests accumulate in
+// `document.body` (the `baseElement` that render()'s queries bind to). The
+// accumulated duplicate buttons then cause `getByLabelText` to throw
+// "Found multiple elements". Registering cleanup explicitly here guarantees
+// test isolation regardless of whether RTL's auto-cleanup hook fires.
+afterEach(() => {
+	cleanup();
 });
 
 afterAll(() => {
