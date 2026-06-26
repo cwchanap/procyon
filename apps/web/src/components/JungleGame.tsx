@@ -639,6 +639,7 @@ const JungleGame: React.FC = () => {
 						possibleMoves={gameState.possibleMoves}
 						onSquareClick={handleSquareClick}
 						highlightSquares={currentHighlightSquares}
+						disabled={!gameStarted && gameMode !== 'tutorial'}
 					/>
 				</GameStartOverlay>
 			</div>
