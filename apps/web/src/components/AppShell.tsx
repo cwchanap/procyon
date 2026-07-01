@@ -45,8 +45,11 @@ export function AppShell() {
 	const isActive = (href: string) =>
 		href === '/' ? path === '/' : path.startsWith(href);
 
-	const isGamePage = (p: string) =>
-		['/chess', '/xiangqi', '/shogi', '/jungle'].some(g => p.startsWith(g));
+	// Only Chess has been migrated to the cross-island ai-config-store; the
+	// other variants still drive AI settings through AISettingsDialog. Showing
+	// SidebarAIConfig on those pages would write to a store nobody reads and
+	// duplicate the dialog, so scope the rail panel to /chess only.
+	const isChessPage = (p: string) => p.startsWith('/chess');
 
 	// History and Profile require authentication; hide them until the auth
 	// state resolves and only show them for authenticated users.
@@ -119,7 +122,7 @@ export function AppShell() {
 						</a>
 					))}
 				</nav>
-				{isGamePage(path) && (
+				{isChessPage(path) && (
 					<div className='mt-6'>
 						<SidebarAIConfig />
 					</div>

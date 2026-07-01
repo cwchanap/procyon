@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { resolveInitialTheme, setTheme, type Theme } from '../lib/theme';
+import {
+	resolveInitialTheme,
+	applyTheme,
+	setTheme,
+	type Theme,
+} from '../lib/theme';
 import { cn } from '../lib/utils';
 
 const ThemeToggle: React.FC = () => {
@@ -8,7 +13,11 @@ const ThemeToggle: React.FC = () => {
 	useEffect(() => {
 		const initial = resolveInitialTheme();
 		setThemeState(initial);
-		setTheme(initial);
+		// Apply the resolved theme to the DOM without persisting it. Writing to
+		// localStorage here would stamp a user "choice" that didn't happen and
+		// freeze out later OS-preference changes. Persistence is reserved for
+		// the explicit toggle handler below.
+		applyTheme(initial);
 	}, []);
 
 	const toggle = () => {

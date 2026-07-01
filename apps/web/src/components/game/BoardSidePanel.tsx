@@ -23,6 +23,7 @@ const BoardSidePanel: React.FC<BoardSidePanelProps> = ({
 				<button
 					type='button'
 					onClick={() => onModeChange('tutorial')}
+					aria-pressed={gameMode === 'tutorial'}
 					className={cn(
 						base,
 						gameMode === 'tutorial'
@@ -36,6 +37,7 @@ const BoardSidePanel: React.FC<BoardSidePanelProps> = ({
 					type='button'
 					onClick={() => onModeChange('ai')}
 					aria-label='Play vs AI'
+					aria-pressed={gameMode === 'ai'}
 					className={cn(
 						base,
 						gameMode === 'ai'

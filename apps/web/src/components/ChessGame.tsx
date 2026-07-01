@@ -50,9 +50,7 @@ const ChessGame: React.FC = () => {
 	const { config: aiConfig, aiPlayer } = useAIConfigStore();
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
-	const [_aiRejectionCount, setAiRejectionCount] = useState(0);
 	const [isAiPaused, setIsAiPaused] = useState(false);
-	const [_isLoadingConfig, setIsLoadingConfig] = useState(true);
 	const [aiError, setAiError] = useState<string | null>(null);
 	const gameExporterRef = useRef<GameExporter | null>(null);
 	const [hasGameEnded, setHasGameEnded] = useState(false);
@@ -87,7 +85,7 @@ const ChessGame: React.FC = () => {
 	// below ("Update AI service when debug mode changes") already pushes
 	// `aiConfig` into the service whenever it (or isDebugMode) changes.
 	useEffect(() => {
-		void hydrateAIConfig().finally(() => setIsLoadingConfig(false));
+		void hydrateAIConfig();
 	}, []);
 
 	// Save play history when game ends
@@ -449,7 +447,6 @@ const ChessGame: React.FC = () => {
 	const retryAIMove = useCallback(() => {
 		setAiError(null);
 		setIsAiPaused(false);
-		setAiRejectionCount(0);
 		// The effect will trigger makeAIMoveAsync automatically
 	}, []);
 
@@ -476,7 +473,6 @@ const ChessGame: React.FC = () => {
 		(newMode: ChessGameMode) => {
 			setGameMode(newMode);
 			setGameStarted(false);
-			setAiRejectionCount(0);
 			setIsAiPaused(false);
 			setAiDebugMoves([]);
 			setHasGameEnded(false);
@@ -610,7 +606,6 @@ const ChessGame: React.FC = () => {
 		setAiDebugMoves([]);
 		setIsAiPaused(false);
 		setAiError(null);
-		setAiRejectionCount(0);
 		setHasGameEnded(false);
 	}, [gameMode, aiPlayer]);
 

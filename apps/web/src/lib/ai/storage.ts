@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { AIConfig } from './types';
+import type { AIConfig, AIProvider } from './types';
 import { env } from '../env';
 
 const AI_CONFIG_KEY = 'procyon_ai_config';
@@ -23,9 +23,14 @@ export function saveAIConfig(config: AIConfig): void {
 	}
 }
 
-export async function loadAIConfig(): Promise<AIConfig> {
+export interface AIConfigLoadResult {
+	config: AIConfig;
+	availableProviders: AIProvider[];
+}
+
+export async function loadAIConfigWithProviders(): Promise<AIConfigLoadResult> {
 	if (typeof window === 'undefined') {
-		return defaultAIConfig;
+		return { config: defaultAIConfig, availableProviders: [] };
 	}
 
 	try {
@@ -39,7 +44,19 @@ export async function loadAIConfig(): Promise<AIConfig> {
 
 		if (response.ok) {
 			const data = await response.json();
-			const configurations = data.configurations || [];
+			const configurations = (data.configurations || []) as Array<{
+				id?: string;
+				provider?: AIProvider;
+				isActive?: boolean;
+				hasApiKey?: boolean;
+			}>;
+			const availableProviders = [
+				...new Set(
+					configurations
+						.filter(c => c.hasApiKey && c.provider)
+						.map(c => c.provider as AIProvider)
+				),
+			];
 			const activeConfig = configurations.find(
 				(config: any) => config.isActive
 			);
@@ -59,28 +76,51 @@ export async function loadAIConfig(): Promise<AIConfig> {
 				if (fullConfigResponse.ok) {
 					const fullConfig = await fullConfigResponse.json();
 					return {
-						provider: fullConfig.provider,
-						apiKey: fullConfig.apiKey,
-						model: fullConfig.modelName,
-						enabled: true,
-						gameVariant: fullConfig.gameVariant,
+						config: {
+							provider: fullConfig.provider,
+							apiKey: fullConfig.apiKey,
+							model: fullConfig.modelName,
+							enabled: true,
+							gameVariant: fullConfig.gameVariant,
+						},
+						availableProviders,
 					};
 				}
 			}
+
+			// No active config with a key; fall through to localStorage but
+			// still surface the providers that have keys configured.
+			const saved = localStorage.getItem(AI_CONFIG_KEY);
+			if (saved) {
+				const parsed = JSON.parse(saved);
+				return {
+					config: { ...defaultAIConfig, ...parsed },
+					availableProviders,
+				};
+			}
+
+			return { config: defaultAIConfig, availableProviders };
 		}
 
 		// Fallback to localStorage for backward compatibility
 		const saved = localStorage.getItem(AI_CONFIG_KEY);
 		if (saved) {
 			const parsed = JSON.parse(saved);
-			return { ...defaultAIConfig, ...parsed };
+			return {
+				config: { ...defaultAIConfig, ...parsed },
+				availableProviders: [],
+			};
 		}
 	} catch (error) {
 		// eslint-disable-next-line no-console
 		console.error('Failed to load AI config:', error);
 	}
 
-	return defaultAIConfig;
+	return { config: defaultAIConfig, availableProviders: [] };
+}
+
+export async function loadAIConfig(): Promise<AIConfig> {
+	return (await loadAIConfigWithProviders()).config;
 }
 
 export function clearAIConfig(): void {
