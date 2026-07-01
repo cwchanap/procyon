@@ -57,7 +57,6 @@ const ChessGame: React.FC = () => {
 	const gameExporterRef = useRef<GameExporter | null>(null);
 	const [hasGameEnded, setHasGameEnded] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
-	const [providerError, setProviderError] = useState<string | null>(null);
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -745,22 +744,6 @@ const ChessGame: React.FC = () => {
 				</h1>
 				<p className='text-xl font-medium text-ivory-dim'>{subtitle}</p>
 			</div>
-
-			{providerError && (
-				<div
-					className='mx-auto mb-4 flex max-w-4xl items-start justify-between gap-4 rounded-lg border border-xiangqi/40 bg-xiangqi/10 px-4 py-3 text-ivory'
-					role='alert'
-				>
-					<p className='text-sm'>{providerError}</p>
-					<button
-						type='button'
-						className='text-xs font-semibold uppercase tracking-wide text-xiangqi hover:text-ivory'
-						onClick={() => setProviderError(null)}
-					>
-						Dismiss
-					</button>
-				</div>
-			)}
 
 			<div className='flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-center'>
 				{/* Board column */}

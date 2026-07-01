@@ -120,7 +120,7 @@ export function AppShell() {
 					))}
 				</nav>
 				{isGamePage(path) && (
-					<div className='mt-6 border-t border-line pt-4'>
+					<div className='mt-6'>
 						<SidebarAIConfig />
 					</div>
 				)}
