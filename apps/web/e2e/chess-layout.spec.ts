@@ -35,9 +35,18 @@ test.describe('Chess page layout', () => {
 			.locator('canvas, .chess-board, [class*="board"]')
 			.first();
 		const tutorialBtn = page.getByRole('button', { name: /^Tutorial$/ });
-		// Board renders above; tutorial button exists (panel rendered, stacked below).
 		await expect(board).toBeVisible();
 		await expect(tutorialBtn).toBeVisible();
+		// Assert vertical stacking order: the board's bottom edge sits at or
+		// above the tutorial button's top edge (panel is below the board, not
+		// beside it, on mobile widths).
+		const boardBox = await board.boundingBox();
+		const tutorialBox = await tutorialBtn.boundingBox();
+		expect(boardBox).not.toBeNull();
+		expect(tutorialBox).not.toBeNull();
+		expect(tutorialBox!.y).toBeGreaterThanOrEqual(
+			boardBox!.y + boardBox!.height - 1
+		);
 	});
 
 	test('Back to Game Selection link is absent', async ({ page }) => {

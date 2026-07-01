@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
 	useAIConfigStore,
 	setProvider,
@@ -7,7 +7,6 @@ import {
 } from '../../lib/ai/ai-config-store';
 import type { AIProvider } from '../../lib/ai/types';
 import { useAuth } from '../../lib/auth';
-import { env } from '../../lib/env';
 
 const MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
 	gemini: [
@@ -53,41 +52,13 @@ const AI_PLAYER_OPTIONS = [
 ];
 
 const SidebarAIConfig: React.FC = () => {
-	const { config, aiPlayer } = useAIConfigStore();
+	const { config, aiPlayer, availableProviders } = useAIConfigStore();
 	const { isAuthenticated } = useAuth();
-	const [availableProviders, setAvailableProviders] = useState<AIProvider[]>(
-		[]
-	);
 	const [error, setError] = useState<string | null>(null);
 
-	useEffect(() => {
-		let cancelled = false;
-		(async () => {
-			try {
-				const res = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
-					headers: { 'Content-Type': 'application/json' },
-					credentials: 'include',
-				});
-				if (!res.ok) return;
-				const data = await res.json();
-				const providers = (
-					(data.configurations || []) as Array<{
-						provider: AIProvider;
-						hasApiKey: boolean;
-					}>
-				)
-					.filter(c => c.hasApiKey)
-					.map(c => c.provider);
-				if (!cancelled) setAvailableProviders([...new Set(providers)]);
-			} catch {
-				/* leave empty */
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, []);
-
+	// `availableProviders` is populated once by the store's hydrate() (called
+	// from AppShell on mount), which fetches /ai-config. Reading it from the
+	// store avoids a redundant second /ai-config request on every game page.
 	const providerOptions =
 		availableProviders.length > 0
 			? ALL_PROVIDER_OPTIONS.filter(p => availableProviders.includes(p.value))

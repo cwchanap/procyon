@@ -1,16 +1,22 @@
 import { useSyncExternalStore } from 'react';
 import type { AIConfig, AIProvider } from './types';
-import { defaultAIConfig, loadAIConfig, saveAIConfig } from './storage';
+import {
+	defaultAIConfig,
+	loadAIConfigWithProviders,
+	saveAIConfig,
+} from './storage';
 import { env } from '../env';
 
 export interface AIConfigState {
 	config: AIConfig;
 	aiPlayer: 'white' | 'black';
+	availableProviders: AIProvider[];
 }
 
 const initialState: AIConfigState = {
 	config: defaultAIConfig,
 	aiPlayer: 'black',
+	availableProviders: [],
 };
 
 let state: AIConfigState = initialState;
@@ -54,8 +60,8 @@ export async function hydrate(): Promise<void> {
 	if (hydrated) return;
 	hydrated = true;
 	try {
-		const config = await loadAIConfig();
-		setState({ ...state, config });
+		const { config, availableProviders } = await loadAIConfigWithProviders();
+		setState({ ...state, config, availableProviders });
 	} catch {
 		// keep defaults
 	}
