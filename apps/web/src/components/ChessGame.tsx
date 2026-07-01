@@ -20,12 +20,18 @@ import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
 import AISettingsDialog from './ai/AISettingsDialog';
 import type { AIMove } from './ai/AIDebugDialog';
-import type { AIConfig, AIProvider } from '../lib/ai/types';
+import type { AIProvider } from '../lib/ai/types';
 import { createChessAI } from '../lib/ai';
-import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
+import { defaultAIConfig } from '../lib/ai/storage';
+import {
+	useAIConfigStore,
+	hydrate as hydrateAIConfig,
+	setAIPlayer as setStoreAIPlayer,
+	setProvider,
+	setModel,
+} from '../lib/ai/ai-config-store';
 import { GameExporter } from '../lib/ai/game-export';
 import { useAuth } from '../lib/auth';
-import { AI_PROVIDERS } from '../lib/ai/types';
 import { env } from '../lib/env';
 
 interface LogicDemo {
@@ -47,8 +53,8 @@ const ChessGame: React.FC = () => {
 		createInitialGameState()
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
-	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
-	const [aiConfig, setAIConfig] = useState<AIConfig>(defaultAIConfig);
+	const { config: aiConfig, aiPlayer } = useAIConfigStore();
+	const setAIPlayer = (player: 'white' | 'black') => setStoreAIPlayer(player);
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
 	const [_aiRejectionCount, setAiRejectionCount] = useState(0);
@@ -63,101 +69,15 @@ const ChessGame: React.FC = () => {
 
 	const handleProviderChange = useCallback(
 		async (newProvider: AIProvider) => {
-			const providerInfo = AI_PROVIDERS[newProvider];
-			const fallbackModel =
-				providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
-
 			setProviderError(null);
-
-			try {
-				if (!isAuthenticated) {
-					setProviderError('Please sign in to manage your AI settings.');
-					return;
-				}
-
-				const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					credentials: 'include',
-				});
-
-				if (!response.ok) {
-					// eslint-disable-next-line no-console
-					console.error(
-						`Failed to fetch AI configurations for provider ${newProvider}:`,
-						response.status,
-						response.statusText
-					);
-					setProviderError(
-						"We couldn't load your saved AI settings. Please try again from AI Settings."
-					);
-					return;
-				}
-
-				const data = await response.json();
-				const configurations = (data.configurations || []) as Array<{
-					id?: string;
-					provider?: AIProvider;
-					hasApiKey?: boolean;
-				}>;
-				const providerConfig = configurations.find(
-					config => config.provider === newProvider && config.hasApiKey
-				);
-
-				if (!providerConfig?.id) {
-					// eslint-disable-next-line no-console
-					console.warn(
-						'No stored API key found for provider; prompt user to add one:',
-						newProvider
-					);
-					setProviderError(
-						'Add an API key for this provider in AI Settings to reuse it here.'
-					);
-					return;
-				}
-
-				const fullConfigResponse = await fetch(
-					`${env.PUBLIC_API_URL}/ai-config/${providerConfig.id}/full`,
-					{
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						credentials: 'include',
-					}
-				);
-
-				if (!fullConfigResponse.ok) {
-					// eslint-disable-next-line no-console
-					console.error(
-						`Failed to fetch full AI configuration for provider ${newProvider}:`,
-						fullConfigResponse.status,
-						fullConfigResponse.statusText
-					);
-					setProviderError(
-						"We couldn't load your saved API key details. Please try again."
-					);
-					return;
-				}
-
-				const fullConfig = await fullConfigResponse.json();
-				const resolvedModel = fullConfig.modelName || fallbackModel;
-
-				setAIConfig(prev => ({
-					...prev,
-					provider: newProvider,
-					model: resolvedModel,
-					apiKey: fullConfig.apiKey || '',
-				}));
-			} catch (_error) {
-				// eslint-disable-next-line no-console
-				console.error('Failed to load AI provider configuration', _error);
-				setProviderError(
-					'Something went wrong loading AI settings. Please try again.'
-				);
+			if (!isAuthenticated) {
+				setProviderError('Please sign in to manage your AI settings.');
+				return;
 			}
+			const err = await setProvider(newProvider);
+			if (err) setProviderError(err);
 		},
-		[aiConfig.model, isAuthenticated]
+		[isAuthenticated]
 	);
 
 	// Helper function to convert move history to debug format
@@ -185,16 +105,12 @@ const ChessGame: React.FC = () => {
 	);
 	const [aiService] = useState(() => createChessAI(defaultAIConfig));
 
-	// Load AI config on client side only to avoid SSR hydration mismatch
+	// Hydrate the cross-island AI config store on mount. The existing effect
+	// below ("Update AI service when debug mode changes") already pushes
+	// `aiConfig` into the service whenever it (or isDebugMode) changes.
 	useEffect(() => {
-		const loadConfig = async () => {
-			const config = await loadAIConfig();
-			setAIConfig(config);
-			aiService.updateConfig({ ...config, debug: isDebugMode });
-			setIsLoadingConfig(false);
-		};
-		loadConfig();
-	}, [aiService, isDebugMode]);
+		void hydrateAIConfig().finally(() => setIsLoadingConfig(false));
+	}, []);
 
 	// Save play history when game ends
 	useEffect(() => {
@@ -453,18 +369,6 @@ const ChessGame: React.FC = () => {
 	const getCurrentDemo = useCallback((): LogicDemo => {
 		return logicDemos.find(demo => demo.id === currentDemo) ?? logicDemos[0];
 	}, [currentDemo, logicDemos]);
-
-	// AI Configuration handlers
-	const _handleAIConfigChange = useCallback(
-		async (newConfig: AIConfig) => {
-			setAIConfig(newConfig);
-			// Note: Saving should be done through profile page, not here
-			// This is kept for backward compatibility only
-			saveAIConfig(newConfig);
-			aiService.updateConfig(newConfig);
-		},
-		[aiService]
-	);
 
 	// AI Move handling
 	const makeAIMoveAsync = useCallback(async () => {
@@ -874,7 +778,7 @@ const ChessGame: React.FC = () => {
 					onProviderChange={provider =>
 						handleProviderChange(provider as AIProvider)
 					}
-					onModelChange={model => setAIConfig(prev => ({ ...prev, model }))}
+					onModelChange={model => setModel(model)}
 					aiPlayerOptions={[
 						{ value: 'black', label: 'AI plays Black' },
 						{ value: 'white', label: 'AI plays White' },

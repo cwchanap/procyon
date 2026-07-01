@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { cn } from '../lib/utils';
 import ThemeToggle from './ThemeToggle';
+import SidebarAIConfig from './game/SidebarAIConfig';
+import { hydrate as hydrateAIConfig } from '../lib/ai/ai-config-store';
 
 interface NavItem {
 	label: string;
@@ -28,6 +30,10 @@ export function AppShell() {
 	}, []);
 
 	useEffect(() => {
+		void hydrateAIConfig();
+	}, []);
+
+	useEffect(() => {
 		if (loading) return;
 		// Signal to Layout.astro CSS that the React nav has hydrated and is
 		// ready to be displayed.  The server-rendered static nav is hidden via
@@ -38,6 +44,9 @@ export function AppShell() {
 
 	const isActive = (href: string) =>
 		href === '/' ? path === '/' : path.startsWith(href);
+
+	const isGamePage = (p: string) =>
+		['/chess', '/xiangqi', '/shogi', '/jungle'].some(g => p.startsWith(g));
 
 	// History and Profile require authentication; hide them until the auth
 	// state resolves and only show them for authenticated users.
@@ -110,6 +119,11 @@ export function AppShell() {
 						</a>
 					))}
 				</nav>
+				{isGamePage(path) && (
+					<div className='mt-6 border-t border-line pt-4'>
+						<SidebarAIConfig />
+					</div>
+				)}
 				<div className='mt-6 border-t border-line pt-4 space-y-4'>
 					{userChip}
 					<div className='flex justify-end'>
