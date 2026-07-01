@@ -19,7 +19,7 @@ const accentBar: Record<GameVariant, string> = {
 
 export default function GamePageLayout({
 	variant,
-	showBackButton = true,
+	showBackButton = false,
 	children,
 }: GamePageLayoutProps) {
 	return (
