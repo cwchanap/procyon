@@ -7,6 +7,7 @@ import {
 } from '../../lib/ai/ai-config-store';
 import type { AIProvider } from '../../lib/ai/types';
 import { useAuth } from '../../lib/auth';
+import { env } from '../../lib/env';
 
 const MODEL_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
 	gemini: [
@@ -63,7 +64,7 @@ const SidebarAIConfig: React.FC = () => {
 		let cancelled = false;
 		(async () => {
 			try {
-				const res = await fetch(`${import.meta.env.PUBLIC_API_URL}/ai-config`, {
+				const res = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 					headers: { 'Content-Type': 'application/json' },
 					credentials: 'include',
 				});
