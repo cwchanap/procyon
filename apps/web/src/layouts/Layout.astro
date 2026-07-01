@@ -9,6 +9,7 @@ export interface Props {
 const { title = 'Procyon', showNav = true } = Astro.props;
 const initialAuthScript =
   'document.documentElement.classList.add("procyon-auth-client-pending");window.__PROCYON_INITIAL_AUTH_USER__=null;';
+const themeBootstrap = `(function(){try{var k='procyon-theme';var s=localStorage.getItem(k);var t=(s==='light'||s==='dark')?s:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');var c=document.documentElement.classList;c.add(t);c.remove(t==='light'?'dark':'light');}catch(e){document.documentElement.classList.add('dark');}})()`;
 ---
 
 <!doctype html>
@@ -22,6 +23,7 @@ const initialAuthScript =
     <meta name='viewport' content='width=device-width, initial-scale=1.0' />
     <link rel='icon' type='image/svg+xml' href='/favicon.svg' />
     <title>{title}</title>
+    <script is:inline set:html={themeBootstrap} />
     <link rel='preconnect' href='https://fonts.googleapis.com' />
     <link rel='preconnect' href='https://fonts.gstatic.com' crossorigin />
     <link
@@ -75,7 +77,7 @@ const initialAuthScript =
 </html>
 
 <style is:global>
-  :root {
+  .dark {
     --background: 42 12% 5%;
     --foreground: 42 38% 88%;
     --card: 40 12% 10%;
@@ -96,6 +98,55 @@ const initialAuthScript =
     --input: 40 10% 16%;
     --ring: 42 53% 54%;
     --radius: 0.375rem;
+    /* Nocturne palette */
+    --ink-900: 42 12% 5%;
+    --ink-800: 40 12% 7%;
+    --ink-700: 38 11% 10%;
+    --ink-600: 36 10% 14%;
+    --ivory: 42 38% 88%;
+    --ivory-dim: 40 14% 64%;
+    --line: 42 38% 88%;
+    --line-brass: 42 53% 54%;
+    --brass: 42 53% 54%;
+    --brass-bright: 45 68% 66%;
+  }
+
+  .light {
+    --background: 40 35% 92%;
+    --foreground: 30 30% 14%;
+    --card: 44 50% 96%;
+    --card-foreground: 30 30% 14%;
+    --popover: 44 50% 96%;
+    --popover-foreground: 30 30% 14%;
+    --primary: 38 58% 36%;
+    --primary-foreground: 40 35% 92%;
+    --secondary: 38 30% 87%;
+    --secondary-foreground: 30 30% 14%;
+    --muted: 38 30% 87%;
+    --muted-foreground: 34 12% 37%;
+    --accent: 36 26% 82%;
+    --accent-foreground: 30 30% 14%;
+    --destructive: 8 62% 42%;
+    --destructive-foreground: 40 35% 92%;
+    --border: 30 20% 30%;
+    --input: 30 20% 30%;
+    --ring: 38 58% 36%;
+    --radius: 0.375rem;
+    /* Vellum palette (warm aged-paper) */
+    --ink-900: 40 35% 92%;
+    --ink-800: 38 30% 87%;
+    --ink-700: 44 50% 96%;
+    --ink-600: 36 26% 82%;
+    --ivory: 30 30% 14%;
+    --ivory-dim: 34 12% 37%;
+    --line: 30 30% 14%;
+    --line-brass: 38 60% 32%;
+    --brass: 38 58% 36%;
+    --brass-bright: 42 53% 45%;
+  }
+
+  html {
+    background: hsl(var(--ink-900));
   }
 
   * {
