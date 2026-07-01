@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { cn } from '../lib/utils';
+import ThemeToggle from './ThemeToggle';
 
 interface NavItem {
 	label: string;
@@ -109,12 +110,17 @@ export function AppShell() {
 						</a>
 					))}
 				</nav>
-				<div className='mt-6 border-t border-line pt-4'>{userChip}</div>
+				<div className='mt-6 border-t border-line pt-4 space-y-4'>
+					{userChip}
+					<div className='flex justify-end'>
+						<ThemeToggle />
+					</div>
+				</div>
 			</aside>
 
 			{/* Mobile top wordmark bar (fills the pt-16 space left by the
 			    server-rendered fallback nav, which is hidden post-hydration) */}
-			<header className='fixed inset-x-0 top-0 z-40 flex h-16 items-center border-b border-line bg-ink-800 px-4 lg:hidden'>
+			<header className='fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between border-b border-line bg-ink-800 px-4 lg:hidden'>
 				<a href='/' className='flex items-center gap-3'>
 					<span className='flex h-8 w-8 items-center justify-center rounded-full bg-brass text-ink-900 text-lg'>
 						♔
@@ -123,6 +129,7 @@ export function AppShell() {
 						PROCYON
 					</span>
 				</a>
+				<ThemeToggle />
 			</header>
 
 			{/* Mobile bottom tab bar */}
