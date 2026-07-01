@@ -1,31 +1,31 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: ['./src/**/*.{astro,html,js,jsx,md,mdx,svelte,ts,tsx,vue}'],
   theme: {
     extend: {
       colors: {
-        // Nocturne palette (explicit, for new work)
+        // Nocturne palette — CSS-variable-backed so .light/.dark flip the theme.
         ink: {
-          900: '#0E0D0B',
-          800: '#141210',
-          700: '#1C1916',
-          600: '#26221D',
+          900: 'hsl(var(--ink-900) / <alpha-value>)',
+          800: 'hsl(var(--ink-800) / <alpha-value>)',
+          700: 'hsl(var(--ink-700) / <alpha-value>)',
+          600: 'hsl(var(--ink-600) / <alpha-value>)',
         },
         ivory: {
-          DEFAULT: '#EDE6D6',
-          dim: '#B8AE9C',
+          DEFAULT: 'hsl(var(--ivory) / <alpha-value>)',
+          dim: 'hsl(var(--ivory-dim) / <alpha-value>)',
         },
         brass: {
-          DEFAULT: '#C8A24B',
-          bright: '#E3C06B',
+          DEFAULT: 'hsl(var(--brass) / <alpha-value>)',
+          bright: 'hsl(var(--brass-bright) / <alpha-value>)',
         },
         line: {
-          DEFAULT: 'rgba(237,230,214,0.08)',
-          brass: 'rgba(200,162,75,0.45)',
+          // Subtle borders: alpha baked in (no /alpha usage exists in the codebase).
+          DEFAULT: 'hsl(var(--line) / 0.08)',
+          brass: 'hsl(var(--line-brass) / 0.45)',
         },
-        // per-variant jewel accents. These tokens are net-new in the Nocturne
-        // redesign; light/board/deep/water/den tints consolidate hex values
-        // that were previously inlined per-component.
+        // per-variant accents + board square hexes — constant across themes:
         chess: {
           DEFAULT: '#C8A24B',
           board: '#2A2620', // chess light square
