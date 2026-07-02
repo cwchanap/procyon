@@ -11,7 +11,7 @@ import {
 } from '../lib/chess/game';
 import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
-import BoardSidePanel from './game/BoardSidePanel';
+import BoardSidePanel, { type Mode } from './game/BoardSidePanel';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIStatusPanel from './game/AIStatusPanel';
 import GameControls from './game/GameControls';
@@ -38,7 +38,7 @@ interface LogicDemo {
 	explanation: string;
 }
 
-type ChessGameMode = 'tutorial' | 'ai';
+type ChessGameMode = Mode;
 
 const ChessGame: React.FC = () => {
 	const [gameMode, setGameMode] = useState<ChessGameMode>('ai');

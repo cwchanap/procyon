@@ -5,7 +5,6 @@ import {
 	beforeEach,
 	beforeAll,
 	afterAll,
-	mock,
 } from 'bun:test';
 import { Window } from 'happy-dom';
 import {
@@ -74,9 +73,6 @@ describe('theme helpers', () => {
 	});
 
 	test('resolveInitialTheme falls back to system', () => {
-		mock.module('globalThis', () => ({
-			matchMedia: () => ({ matches: true }),
-		}));
 		// getSystemTheme reads matchMedia('(prefers-color-scheme: light)')
 		Object.defineProperty(window, 'matchMedia', {
 			value: () => ({ matches: true }),

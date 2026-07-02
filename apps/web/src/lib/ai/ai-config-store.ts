@@ -4,8 +4,9 @@ import {
 	defaultAIConfig,
 	loadAIConfigWithProviders,
 	saveAIConfig,
+	fetchAIConfigList,
+	fetchFullAIConfig,
 } from './storage';
-import { env } from '../env';
 
 export interface AIConfigState {
 	config: AIConfig;
@@ -13,6 +14,10 @@ export interface AIConfigState {
 	availableProviders: AIProvider[];
 	/** True once hydrate() has resolved (success or failure). */
 	hydrated: boolean;
+	/** True when hydrate() failed to load the provider list. Distinct from
+	 * `hydrated && availableProviders.length === 0` (no keys configured) so
+	 * the UI can show an error/retry state instead of an empty-state prompt. */
+	hydrateError: boolean;
 }
 
 const initialState: AIConfigState = {
@@ -20,6 +25,7 @@ const initialState: AIConfigState = {
 	aiPlayer: 'black',
 	availableProviders: [],
 	hydrated: false,
+	hydrateError: false,
 };
 
 let state: AIConfigState = initialState;
@@ -47,8 +53,9 @@ function setState(next: AIConfigState): void {
 }
 
 export function setConfig(patch: Partial<AIConfig>): void {
-	setState({ ...state, config: { ...state.config, ...patch } });
-	saveAIConfig(state.config);
+	const merged = { ...state.config, ...patch };
+	setState({ ...state, config: merged });
+	saveAIConfig(merged);
 }
 
 export function setModel(model: string): void {
@@ -61,60 +68,65 @@ export function setAIPlayer(aiPlayer: 'white' | 'black'): void {
 
 export async function hydrate(): Promise<void> {
 	if (hydrated) return;
+	await runHydrate();
+}
+
+/**
+ * Force a fresh hydrate regardless of prior state. Used by the UI retry
+ * button after a failed hydrate; safe to call multiple times.
+ */
+export async function rehydrate(): Promise<void> {
+	hydrated = false;
+	await runHydrate();
+}
+
+async function runHydrate(): Promise<void> {
 	hydrated = true;
 	try {
-		const { config, availableProviders } = await loadAIConfigWithProviders();
-		setState({ ...state, config, availableProviders, hydrated: true });
+		const { config, availableProviders, fromFallback } =
+			await loadAIConfigWithProviders();
+		setState({
+			...state,
+			config,
+			availableProviders,
+			hydrated: true,
+			hydrateError: fromFallback,
+		});
 	} catch {
-		// keep defaults, but mark hydrated so consumers can distinguish
-		// "still loading" from "loaded with no configured providers".
-		setState({ ...state, hydrated: true });
+		// loadAIConfigWithProviders normally swallows backend errors and
+		// returns defaults with fromFallback=true. This catch only fires if
+		// something beyond the network layer throws (e.g. a corrupted
+		// localStorage cache parse) — treat it the same as a failed hydrate.
+		setState({ ...state, hydrated: true, hydrateError: true });
 	}
 }
 
 export async function setProvider(
 	provider: AIProvider
 ): Promise<string | null> {
+	let configurations;
 	try {
-		const res = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
-			headers: { 'Content-Type': 'application/json' },
-			credentials: 'include',
-		});
-		if (!res.ok) {
-			return "We couldn't load your saved AI settings. Please try again from AI Settings.";
-		}
-		const data = await res.json();
-		const configurations = (data.configurations || []) as Array<{
-			id?: string;
-			provider?: AIProvider;
-			hasApiKey?: boolean;
-		}>;
-		const providerConfig = configurations.find(
-			c => c.provider === provider && c.hasApiKey
-		);
-		if (!providerConfig?.id) {
-			return 'Add an API key for this provider in AI Settings to reuse it here.';
-		}
-		const fullRes = await fetch(
-			`${env.PUBLIC_API_URL}/ai-config/${providerConfig.id}/full`,
-			{
-				headers: { 'Content-Type': 'application/json' },
-				credentials: 'include',
-			}
-		);
-		if (!fullRes.ok) {
-			return "We couldn't load your saved API key details. Please try again.";
-		}
-		const full = await fullRes.json();
+		configurations = await fetchAIConfigList();
+	} catch {
+		return "We couldn't load your saved AI settings. Please try again from AI Settings.";
+	}
+	const providerConfig = configurations.find(
+		c => c.provider === provider && c.hasApiKey
+	);
+	if (!providerConfig?.id) {
+		return 'Add an API key for this provider in AI Settings to reuse it here.';
+	}
+	try {
+		const full = await fetchFullAIConfig(providerConfig.id);
 		setConfig({
 			provider,
-			model: full.modelName || state.config.model,
+			model: full.model || state.config.model,
 			apiKey: full.apiKey || '',
 			enabled: true,
 		});
 		return null;
 	} catch {
-		return 'Something went wrong loading AI settings. Please try again.';
+		return "We couldn't load your saved API key details. Please try again.";
 	}
 }
 
