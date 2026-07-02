@@ -24,6 +24,7 @@ const AUTHED_NAV: NavItem[] = [
 export function AppShell() {
 	const { user, logout, isAuthenticated, loading } = useAuth();
 	const [path, setPath] = useState('/');
+	const [mobileAIOpen, setMobileAIOpen] = useState(false);
 
 	useEffect(() => {
 		setPath(window.location.pathname);
@@ -146,8 +147,42 @@ export function AppShell() {
 						PROCYON
 					</span>
 				</a>
-				<ThemeToggle />
+				<div className='flex items-center gap-2'>
+					{isChessPage(path) && (
+						<button
+							type='button'
+							onClick={() => setMobileAIOpen(o => !o)}
+							aria-expanded={mobileAIOpen}
+							aria-label='Toggle AI config'
+							aria-controls='procyon-mobile-ai-config'
+							className={cn(
+								'rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+								mobileAIOpen
+									? 'border-brass bg-brass text-ink-900'
+									: 'border-line text-ivory-dim hover:text-ivory'
+							)}
+						>
+							AI
+						</button>
+					)}
+					<ThemeToggle />
+				</div>
 			</header>
+
+			{/* Mobile AI config panel (chess pages only). The desktop rail
+			    renders SidebarAIConfig inside a `hidden lg:flex` aside, so below
+			    the lg breakpoint there is no other surface to change AI side /
+			    provider / model before starting a chess AI game. This collapsible
+			    panel mirrors the desktop rail panel using the same store-backed
+			    component. */}
+			{isChessPage(path) && mobileAIOpen && (
+				<div
+					id='procyon-mobile-ai-config'
+					className='fixed inset-x-0 top-16 z-30 border-b border-line bg-ink-800 px-4 py-4 lg:hidden'
+				>
+					<SidebarAIConfig />
+				</div>
+			)}
 
 			{/* Mobile bottom tab bar */}
 			<nav

@@ -52,17 +52,26 @@ const AI_PLAYER_OPTIONS = [
 ];
 
 const SidebarAIConfig: React.FC = () => {
-	const { config, aiPlayer, availableProviders } = useAIConfigStore();
+	const { config, aiPlayer, availableProviders, hydrated } = useAIConfigStore();
 	const { isAuthenticated } = useAuth();
 	const [error, setError] = useState<string | null>(null);
 
 	// `availableProviders` is populated once by the store's hydrate() (called
 	// from AppShell on mount), which fetches /ai-config. Reading it from the
 	// store avoids a redundant second /ai-config request on every game page.
+	//
+	// Before hydration completes we show every provider so users aren't shown
+	// a false "no providers" state while the fetch is in flight. Once hydrated,
+	// an empty `availableProviders` means the user has no API keys configured
+	// and we surface the dedicated empty-state prompt.
 	const providerOptions =
-		availableProviders.length > 0
-			? ALL_PROVIDER_OPTIONS.filter(p => availableProviders.includes(p.value))
-			: ALL_PROVIDER_OPTIONS;
+		!hydrated || availableProviders.length > 0
+			? ALL_PROVIDER_OPTIONS.filter(
+					p =>
+						availableProviders.length === 0 ||
+						availableProviders.includes(p.value)
+				)
+			: [];
 
 	const models = MODEL_OPTIONS[config.provider] || MODEL_OPTIONS.gemini;
 	const currentModel = models.some(m => m.value === config.model)
