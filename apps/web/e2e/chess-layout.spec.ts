@@ -6,8 +6,12 @@ test.describe('Chess page layout', () => {
 		// matching the brief's "default is dark" assumption.
 		await page.emulateMedia({ colorScheme: 'dark' });
 		await page.goto('/chess');
-		// Default is dark (or system). Toggle to light.
-		const toggle = page.getByTestId('theme-toggle');
+		// Default is dark (or system). Toggle to light. Scope to the
+		// desktop rail aside: the shell renders two ThemeToggle instances
+		// (desktop rail and mobile header), both sharing
+		// `data-testid="theme-toggle"`, and Playwright strict mode rejects
+		// the multi-match.
+		const toggle = page.locator('aside').getByTestId('theme-toggle');
 		await toggle.click();
 		await expect(page.locator('html')).toHaveClass(/light/);
 		// Persist across reload
