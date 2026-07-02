@@ -786,7 +786,7 @@ const ChessGame: React.FC = () => {
 								</button>
 								<button
 									onClick={triggerDebugLoss}
-									className='px-3 py-1 bg-xiangqi hover:opacity-90 text-ink-900 rounded'
+									className='px-3 py-1 bg-destructive hover:opacity-90 text-ivory rounded'
 									title='Debug: Loss'
 								>
 									Loss

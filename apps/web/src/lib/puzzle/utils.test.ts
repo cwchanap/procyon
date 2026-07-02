@@ -16,8 +16,8 @@ describe('DIFFICULTY_BADGE_STYLES', () => {
 		expect(DIFFICULTY_BADGE_STYLES['intermediate']).toContain('brass');
 	});
 
-	test('advanced style contains xiangqi color classes', () => {
-		expect(DIFFICULTY_BADGE_STYLES['advanced']).toContain('xiangqi');
+	test('advanced style contains accent-red color classes', () => {
+		expect(DIFFICULTY_BADGE_STYLES['advanced']).toContain('accent-red');
 	});
 
 	test('all badge styles are non-empty strings', () => {

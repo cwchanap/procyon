@@ -77,10 +77,7 @@ test.describe('AI Configuration Management', () => {
 		});
 
 		test('should display all available AI providers', async ({ page }) => {
-			const providerOptions = page
-				.getByRole('combobox')
-				.first()
-				.locator('option');
+			const providerOptions = page.getByLabel('Provider').locator('option');
 			const providerOptionTexts = await providerOptions.allTextContents();
 			expect(providerOptionTexts).toContain('Google Gemini');
 			expect(providerOptionTexts).toContain('OpenRouter');
@@ -90,7 +87,7 @@ test.describe('AI Configuration Management', () => {
 		test('should display updated Gemini models including latest versions', async ({
 			page,
 		}) => {
-			const modelOptions = page.getByRole('combobox').nth(1).locator('option');
+			const modelOptions = page.getByLabel('Model').locator('option');
 			const modelOptionTexts = await modelOptions.allTextContents();
 			expect(modelOptionTexts).toContain('Gemini 2.0 Flash');
 			expect(modelOptionTexts).toContain('Gemini 2.5 Flash');
@@ -172,11 +169,11 @@ test.describe('AI Configuration Management', () => {
 			).toBeVisible();
 
 			// Change to OpenAI provider
-			const providerDropdown = page.getByRole('combobox').first();
+			const providerDropdown = page.getByLabel('Provider');
 			await providerDropdown.selectOption({ label: 'OpenAI' });
 
 			// Select OpenAI model
-			const modelDropdown = page.getByRole('combobox').nth(1);
+			const modelDropdown = page.getByLabel('Model');
 			await waitForModelOption(page, 'GPT-4o');
 			await modelDropdown.selectOption({ label: 'GPT-4o' });
 

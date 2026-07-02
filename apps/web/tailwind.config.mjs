@@ -67,6 +67,9 @@ export default {
           DEFAULT: 'hsl(var(--destructive) / <alpha-value>)',
           foreground: 'hsl(var(--destructive-foreground) / <alpha-value>)',
         },
+        'accent-red': {
+          DEFAULT: 'hsl(var(--accent-red) / <alpha-value>)',
+        },
         muted: {
           DEFAULT: 'hsl(var(--muted))',
           foreground: 'hsl(var(--muted-foreground))',

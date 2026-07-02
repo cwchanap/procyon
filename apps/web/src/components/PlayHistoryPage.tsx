@@ -35,7 +35,7 @@ const RESULT_STYLES: Record<
 	},
 	loss: {
 		label: 'Loss',
-		className: 'bg-xiangqi/20 text-destructive border border-xiangqi/30',
+		className: 'bg-accent-red/20 text-accent-red border border-accent-red/30',
 	},
 	draw: {
 		label: 'Draw',

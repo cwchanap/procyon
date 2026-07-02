@@ -212,9 +212,9 @@ test.describe('Critical user journeys', () => {
 		await page.goto('/profile');
 		await waitForProfileReady(page);
 
-		await page.getByRole('combobox').first().selectOption({ label: 'OpenAI' });
+		await page.getByLabel('Provider').selectOption({ label: 'OpenAI' });
 		await waitForModelOption(page, 'GPT-4o');
-		await page.getByRole('combobox').nth(1).selectOption({ label: 'GPT-4o' });
+		await page.getByLabel('Model').selectOption({ label: 'GPT-4o' });
 		await page
 			.getByPlaceholder('Enter your API key')
 			.fill('openai-test-key-12345');
@@ -231,7 +231,7 @@ test.describe('Critical user journeys', () => {
 		).toBeVisible({ timeout: 15000 });
 		await expect(page.getByText('AI Player')).toBeVisible();
 		await expect(page.getByText('AI Provider')).toBeVisible();
-		const aiPlayerSelect = page.getByRole('combobox').first();
+		const aiPlayerSelect = page.getByLabel('AI Player');
 		const providerSelect = await waitForConfiguredAIProviders(page);
 		await aiPlayerSelect
 			.locator('option', { hasText: 'AI plays Gote (後手)' })

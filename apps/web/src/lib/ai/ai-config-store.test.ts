@@ -2,7 +2,8 @@ import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import {
 	subscribeConfig,
 	subscribeAIPlayer,
-	getSnapshot,
+	getConfigSlice,
+	getAIPlayer,
 	setConfig,
 	setModel,
 	setAIPlayer,
@@ -21,18 +22,18 @@ describe('ai-config-store', () => {
 	});
 
 	test('initial snapshot is defaults with black AI', () => {
-		expect(getSnapshot().config).toEqual(defaultAIConfig);
-		expect(getSnapshot().aiPlayer).toBe('black');
+		expect(getConfigSlice().config).toEqual(defaultAIConfig);
+		expect(getAIPlayer()).toBe('black');
 	});
 
 	test('setModel updates config', () => {
 		setModel('gemini-2.5-pro');
-		expect(getSnapshot().config.model).toBe('gemini-2.5-pro');
+		expect(getConfigSlice().config.model).toBe('gemini-2.5-pro');
 	});
 
 	test('setAIPlayer updates aiPlayer', () => {
 		setAIPlayer('white');
-		expect(getSnapshot().aiPlayer).toBe('white');
+		expect(getAIPlayer()).toBe('white');
 	});
 
 	test('config subscribers are notified on config changes only', () => {
@@ -58,15 +59,24 @@ describe('ai-config-store', () => {
 	});
 
 	test('setProvider returns error message when fetch fails', async () => {
+		// Mock fetch to reject so setProvider's fetchAIConfigList fails
+		// deterministically — without this, bun's built-in fetch makes real
+		// network calls to the API server.
+		const originalFetch = globalThis.fetch;
+		// @ts-expect-error -- test-only: replace global fetch with failing mock
+		globalThis.fetch = mock(() => Promise.reject(new Error('Network error')));
+
 		const err = await setProvider('openai');
-		// No auth / no network in test → expect a non-null error string
+
+		// @ts-expect-error -- test-only: restore global fetch
+		globalThis.fetch = originalFetch;
 		expect(typeof err).toBe('string');
 		expect(err!.length).toBeGreaterThan(0);
 	});
 
 	test('hydrate does not throw and leaves a valid snapshot', async () => {
 		await expect(hydrate()).resolves.toBeUndefined();
-		expect(getSnapshot().config).toBeTruthy();
+		expect(getConfigSlice().config).toBeTruthy();
 	});
 });
 
@@ -133,7 +143,7 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 
 		await hydrate();
 
-		const snap = getSnapshot();
+		const snap = getConfigSlice();
 		expect(snap.hydrated).toBe(true);
 		expect(snap.hydrateError).toBe(false);
 		expect(snap.availableProviders).toEqual(['gemini', 'openai']);
@@ -147,7 +157,7 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 
 		await hydrate();
 
-		const snap = getSnapshot();
+		const snap = getConfigSlice();
 		expect(snap.hydrated).toBe(true);
 		expect(snap.hydrateError).toBe(true);
 		expect(snap.availableProviders).toEqual([]);
@@ -164,7 +174,7 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 
 		await hydrate();
 
-		const snap = getSnapshot();
+		const snap = getConfigSlice();
 		expect(snap.hydrated).toBe(true);
 		expect(snap.hydrateError).toBe(false);
 		expect(snap.availableProviders).toEqual([]);

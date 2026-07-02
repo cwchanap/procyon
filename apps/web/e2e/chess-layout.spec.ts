@@ -7,7 +7,7 @@ test.describe('Chess page layout', () => {
 		await page.emulateMedia({ colorScheme: 'dark' });
 		await page.goto('/chess');
 		// Default is dark (or system). Toggle to light.
-		const toggle = page.getByRole('button', { name: /switch to/i }).first();
+		const toggle = page.getByTestId('theme-toggle');
 		await toggle.click();
 		await expect(page.locator('html')).toHaveClass(/light/);
 		// Persist across reload
