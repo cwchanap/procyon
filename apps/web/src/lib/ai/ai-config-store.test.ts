@@ -7,11 +7,13 @@ import {
 	setAIPlayer,
 	setProvider,
 	hydrate,
+	resetAIConfigStore,
 } from './ai-config-store';
 import { defaultAIConfig } from './storage';
 
 describe('ai-config-store', () => {
 	beforeEach(() => {
+		resetAIConfigStore();
 		// reset to defaults via setConfig
 		setConfig(defaultAIConfig);
 		setAIPlayer('black');

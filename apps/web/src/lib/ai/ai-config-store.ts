@@ -121,3 +121,13 @@ export async function setProvider(
 export function useAIConfigStore(): AIConfigState {
 	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
+
+/**
+ * Reset the store to its initial (un-hydrated) state. Intended for tests so
+ * each test file starts from a clean slate regardless of execution order or
+ * whether the module registry is shared across files (e.g. under coverage).
+ */
+export function resetAIConfigStore(): void {
+	hydrated = false;
+	setState({ ...initialState });
+}

@@ -2,7 +2,11 @@ import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../../test/reactSetup';
-import { setConfig, setAIPlayer } from '../../lib/ai/ai-config-store';
+import {
+	setConfig,
+	setAIPlayer,
+	resetAIConfigStore,
+} from '../../lib/ai/ai-config-store';
 import SidebarAIConfig from './SidebarAIConfig';
 
 setupReactDom();
@@ -17,6 +21,8 @@ mock.module('../../lib/auth', () => ({
 
 describe('SidebarAIConfig', () => {
 	beforeEach(() => {
+		resetAIConfigStore();
+
 		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
 			Promise.resolve({
 				ok: true,
