@@ -11,12 +11,15 @@ export interface AIConfigState {
 	config: AIConfig;
 	aiPlayer: 'white' | 'black';
 	availableProviders: AIProvider[];
+	/** True once hydrate() has resolved (success or failure). */
+	hydrated: boolean;
 }
 
 const initialState: AIConfigState = {
 	config: defaultAIConfig,
 	aiPlayer: 'black',
 	availableProviders: [],
+	hydrated: false,
 };
 
 let state: AIConfigState = initialState;
@@ -61,9 +64,11 @@ export async function hydrate(): Promise<void> {
 	hydrated = true;
 	try {
 		const { config, availableProviders } = await loadAIConfigWithProviders();
-		setState({ ...state, config, availableProviders });
+		setState({ ...state, config, availableProviders, hydrated: true });
 	} catch {
-		// keep defaults
+		// keep defaults, but mark hydrated so consumers can distinguish
+		// "still loading" from "loaded with no configured providers".
+		setState({ ...state, hydrated: true });
 	}
 }
 
