@@ -22,7 +22,8 @@ import type { AIMove } from './ai/AIDebugDialog';
 import { createChessAI } from '../lib/ai';
 import { defaultAIConfig } from '../lib/ai/storage';
 import {
-	useAIConfigStore,
+	useAIConfig,
+	useAIPlayer,
 	hydrate as hydrateAIConfig,
 } from '../lib/ai/ai-config-store';
 import { GameExporter } from '../lib/ai/game-export';
@@ -47,7 +48,8 @@ const ChessGame: React.FC = () => {
 		createInitialGameState()
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
-	const { config: aiConfig, aiPlayer } = useAIConfigStore();
+	const { config: aiConfig } = useAIConfig();
+	const aiPlayer = useAIPlayer();
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
 	const [isAiPaused, setIsAiPaused] = useState(false);

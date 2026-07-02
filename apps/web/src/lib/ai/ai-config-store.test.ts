@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import {
-	subscribe,
+	subscribeConfig,
+	subscribeAIPlayer,
 	getSnapshot,
 	setConfig,
 	setModel,
@@ -34,15 +35,26 @@ describe('ai-config-store', () => {
 		expect(getSnapshot().aiPlayer).toBe('white');
 	});
 
-	test('subscribe is notified on change and unsubscribes', () => {
-		let calls = 0;
-		const unsub = subscribe(() => calls++);
+	test('config subscribers are notified on config changes only', () => {
+		let configCalls = 0;
+		let aiPlayerCalls = 0;
+		const unsubConfig = subscribeConfig(() => configCalls++);
+		const unsubAIPlayer = subscribeAIPlayer(() => aiPlayerCalls++);
+
 		setModel('gpt-4o');
+		// setAIPlayer('white') is a no-op when already white after reset; flip
+		// to the opposite of the default 'black' to guarantee a notification.
 		setAIPlayer('white');
-		expect(calls).toBe(2);
-		unsub();
+
+		expect(configCalls).toBe(1); // only setModel
+		expect(aiPlayerCalls).toBe(1); // only setAIPlayer
+
+		unsubConfig();
+		unsubAIPlayer();
 		setModel('gemini-2.5-pro');
-		expect(calls).toBe(2);
+		setAIPlayer('black');
+		expect(configCalls).toBe(1);
+		expect(aiPlayerCalls).toBe(1);
 	});
 
 	test('setProvider returns error message when fetch fails', async () => {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
-	useAIConfigStore,
+	useAIConfig,
+	useAIPlayer,
 	setProvider,
 	setModel,
 	setAIPlayer,
@@ -71,8 +72,8 @@ function resolveProviderOptions(
 }
 
 const SidebarAIConfig: React.FC = () => {
-	const { config, aiPlayer, availableProviders, hydrated, hydrateError } =
-		useAIConfigStore();
+	const { config, availableProviders, hydrated, hydrateError } = useAIConfig();
+	const aiPlayer = useAIPlayer();
 	const { isAuthenticated } = useAuth();
 	const [error, setError] = useState<string | null>(null);
 

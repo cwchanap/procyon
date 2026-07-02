@@ -20,41 +20,79 @@ export interface AIConfigState {
 	hydrateError: boolean;
 }
 
-const initialState: AIConfigState = {
+/**
+ * Config-side slice of the store. Changes to this slice (via `setConfig`,
+ * `setModel`, `setProvider`, or `hydrate`) only notify config subscribers,
+ * not components that solely read `aiPlayer`.
+ */
+export interface AIConfigSlice {
+	config: AIConfig;
+	availableProviders: AIProvider[];
+	hydrated: boolean;
+	hydrateError: boolean;
+}
+
+const initialConfigSlice: AIConfigSlice = {
 	config: defaultAIConfig,
-	aiPlayer: 'black',
 	availableProviders: [],
 	hydrated: false,
 	hydrateError: false,
 };
 
-let state: AIConfigState = initialState;
+let configSlice: AIConfigSlice = initialConfigSlice;
+let aiPlayer: 'white' | 'black' = 'black';
 let hydrated = false;
-const listeners = new Set<() => void>();
 
-export function subscribe(cb: () => void): () => void {
-	listeners.add(cb);
+const configListeners = new Set<() => void>();
+const aiPlayerListeners = new Set<() => void>();
+
+export function subscribeConfig(cb: () => void): () => void {
+	configListeners.add(cb);
 	return () => {
-		listeners.delete(cb);
+		configListeners.delete(cb);
 	};
 }
 
+export function subscribeAIPlayer(cb: () => void): () => void {
+	aiPlayerListeners.add(cb);
+	return () => {
+		aiPlayerListeners.delete(cb);
+	};
+}
+
+export function getConfigSlice(): AIConfigSlice {
+	return configSlice;
+}
+
+export function getAIPlayer(): 'white' | 'black' {
+	return aiPlayer;
+}
+
+/**
+ * Combined snapshot for tests and legacy consumers. Prefer the slice-specific
+ * hooks ({@link useAIConfig} / {@link useAIPlayer}) in components to avoid
+ * cross-slice re-renders.
+ */
 export function getSnapshot(): AIConfigState {
-	return state;
+	return { ...configSlice, aiPlayer };
 }
 
-function emit(): void {
-	for (const cb of listeners) cb();
+function emitConfig(): void {
+	for (const cb of configListeners) cb();
 }
 
-function setState(next: AIConfigState): void {
-	state = next;
-	emit();
+function emitAIPlayer(): void {
+	for (const cb of aiPlayerListeners) cb();
+}
+
+function setConfigSlice(next: AIConfigSlice): void {
+	configSlice = next;
+	emitConfig();
 }
 
 export function setConfig(patch: Partial<AIConfig>): void {
-	const merged = { ...state.config, ...patch };
-	setState({ ...state, config: merged });
+	const merged = { ...configSlice.config, ...patch };
+	setConfigSlice({ ...configSlice, config: merged });
 	saveAIConfig(merged);
 }
 
@@ -62,8 +100,10 @@ export function setModel(model: string): void {
 	setConfig({ model });
 }
 
-export function setAIPlayer(aiPlayer: 'white' | 'black'): void {
-	setState({ ...state, aiPlayer });
+export function setAIPlayer(next: 'white' | 'black'): void {
+	if (next === aiPlayer) return;
+	aiPlayer = next;
+	emitAIPlayer();
 }
 
 export async function hydrate(): Promise<void> {
@@ -85,8 +125,8 @@ async function runHydrate(): Promise<void> {
 	try {
 		const { config, availableProviders, fromFallback } =
 			await loadAIConfigWithProviders();
-		setState({
-			...state,
+		setConfigSlice({
+			...configSlice,
 			config,
 			availableProviders,
 			hydrated: true,
@@ -97,7 +137,7 @@ async function runHydrate(): Promise<void> {
 		// returns defaults with fromFallback=true. This catch only fires if
 		// something beyond the network layer throws (e.g. a corrupted
 		// localStorage cache parse) — treat it the same as a failed hydrate.
-		setState({ ...state, hydrated: true, hydrateError: true });
+		setConfigSlice({ ...configSlice, hydrated: true, hydrateError: true });
 	}
 }
 
@@ -120,7 +160,7 @@ export async function setProvider(
 		const full = await fetchFullAIConfig(providerConfig.id);
 		setConfig({
 			provider,
-			model: full.model || state.config.model,
+			model: full.model || configSlice.config.model,
 			apiKey: full.apiKey || '',
 			enabled: true,
 		});
@@ -130,8 +170,25 @@ export async function setProvider(
 	}
 }
 
+/** Subscribe to config-slice changes only (config, providers, hydration). */
+export function useAIConfig(): AIConfigSlice {
+	return useSyncExternalStore(subscribeConfig, getConfigSlice, getConfigSlice);
+}
+
+/** Subscribe to aiPlayer changes only. */
+export function useAIPlayer(): 'white' | 'black' {
+	return useSyncExternalStore(subscribeAIPlayer, getAIPlayer, getAIPlayer);
+}
+
+/**
+ * @deprecated Use {@link useAIConfig} and/or {@link useAIPlayer} instead.
+ * Subscribes to both slices, so changes to either re-render the component.
+ * Kept for backward compatibility during migration.
+ */
 export function useAIConfigStore(): AIConfigState {
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+	const config = useAIConfig();
+	const player = useAIPlayer();
+	return { ...config, aiPlayer: player };
 }
 
 /**
@@ -141,5 +198,7 @@ export function useAIConfigStore(): AIConfigState {
  */
 export function resetAIConfigStore(): void {
 	hydrated = false;
-	setState({ ...initialState });
+	aiPlayer = 'black';
+	setConfigSlice({ ...initialConfigSlice });
+	emitAIPlayer();
 }

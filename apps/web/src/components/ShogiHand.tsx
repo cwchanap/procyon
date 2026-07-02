@@ -33,7 +33,7 @@ const handTitleVariants = cva('text-sm font-bold mb-2', {
 	variants: {
 		color: {
 			sente: 'text-shogi',
-			gote: 'text-destructive',
+			gote: 'text-xiangqi',
 		},
 	},
 });
@@ -57,7 +57,7 @@ const pieceTextVariants = cva('text-base font-bold', {
 	variants: {
 		color: {
 			sente: 'text-ivory',
-			gote: 'text-destructive',
+			gote: 'text-xiangqi',
 		},
 	},
 });
