@@ -5,23 +5,29 @@ import { setupReactDom } from '../../test/reactSetup';
 import {
 	setConfig,
 	setAIPlayer,
+	hydrate,
 	resetAIConfigStore,
 } from '../../lib/ai/ai-config-store';
 import SidebarAIConfig from './SidebarAIConfig';
 
 setupReactDom();
 
+// Mutable auth state so individual tests can flip isAuthenticated to exercise
+// the unauth guard without re-registering the module mock.
+const authState = {
+	isAuthenticated: true,
+	user: { username: 'tester' },
+	loading: false,
+};
+
 mock.module('../../lib/auth', () => ({
-	useAuth: () => ({
-		isAuthenticated: true,
-		user: { username: 'tester' },
-		loading: false,
-	}),
+	useAuth: () => authState,
 }));
 
 describe('SidebarAIConfig', () => {
 	beforeEach(() => {
 		resetAIConfigStore();
+		authState.isAuthenticated = true;
 
 		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
 			Promise.resolve({
@@ -69,5 +75,60 @@ describe('SidebarAIConfig', () => {
 		// Flush the mount-time useEffect's async fetch so its state update
 		// settles inside act() rather than leaking after the test body.
 		await waitFor(() => expect(modelSelect).toBeTruthy());
+	});
+
+	test('shows retry prompt when hydration fails (hydrateError)', async () => {
+		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
+			Promise.reject(new Error('Network error'))) as unknown as typeof fetch;
+
+		await hydrate();
+
+		const { getByText, queryByLabelText } = render(<SidebarAIConfig />);
+		expect(getByText(/couldn[\u2019']t load your AI settings/i)).toBeTruthy();
+		expect(getByText(/Retry/i)).toBeTruthy();
+		// Provider select must not render in the error/retry state.
+		expect(queryByLabelText(/AI Provider/i)).toBeNull();
+	});
+
+	test('shows empty-providers prompt when hydrated with no keyed providers', async () => {
+		// Default beforeEach fetch mock returns { configurations: [] } (ok),
+		// which hydrate treats as a successful load with zero providers.
+		await hydrate();
+
+		const { getByText, queryByLabelText } = render(<SidebarAIConfig />);
+		expect(getByText(/No AI providers configured/i)).toBeTruthy();
+		expect(getByText(/Manage API keys/i)).toBeTruthy();
+		// Provider select must not render in the empty-state.
+		expect(queryByLabelText(/AI Provider/i)).toBeNull();
+	});
+
+	test('blocks provider change and shows error when unauthenticated', async () => {
+		authState.isAuthenticated = false;
+
+		const { getByLabelText, getByText } = render(<SidebarAIConfig />);
+		const providerSelect = getByLabelText(/AI Provider/i) as HTMLSelectElement;
+		fireEvent.change(providerSelect, { target: { value: 'openai' } });
+
+		await waitFor(() => {
+			expect(
+				getByText(/Please sign in to manage your AI settings/i)
+			).toBeTruthy();
+		});
+	});
+
+	test('shows error message when setProvider fails to load config list', async () => {
+		// Render first (un-hydrated → ALL_PROVIDER_OPTIONS visible), then make
+		// fetch throw so setProvider's fetchAIConfigList rejects.
+		const { getByLabelText, getByText } = render(<SidebarAIConfig />);
+		const providerSelect = getByLabelText(/AI Provider/i) as HTMLSelectElement;
+
+		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
+			Promise.reject(new Error('Network error'))) as unknown as typeof fetch;
+
+		fireEvent.change(providerSelect, { target: { value: 'openai' } });
+
+		await waitFor(() => {
+			expect(getByText(/couldn't load your saved AI settings/i)).toBeTruthy();
+		});
 	});
 });

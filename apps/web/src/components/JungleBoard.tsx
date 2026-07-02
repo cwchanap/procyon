@@ -51,7 +51,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 	};
 
 	const getPieceColor = (piece: JunglePiece): string => {
-		return piece.color === 'red' ? 'text-destructive' : 'text-shogi-light';
+		return piece.color === 'red' ? 'text-xiangqi-light' : 'text-shogi-light';
 	};
 
 	const isSelected = (row: number, col: number): boolean => {
@@ -117,11 +117,11 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 				return 'text-shogi-light/30';
 			case 'trap':
 				return terrain.owner === 'red'
-					? 'text-destructive/40'
+					? 'text-xiangqi-light/40'
 					: 'text-shogi-light/40';
 			case 'den':
 				return terrain.owner === 'red'
-					? 'text-destructive/50'
+					? 'text-xiangqi-light/50'
 					: 'text-shogi-light/50';
 			default:
 				return '';

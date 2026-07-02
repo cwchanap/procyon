@@ -80,9 +80,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 				{piece && (
 					<div
 						className={`flex flex-col items-center justify-center select-none ${
-							piece.color === 'sente'
-								? 'text-ivory'
-								: 'text-destructive rotate-180'
+							piece.color === 'sente' ? 'text-ivory' : 'text-xiangqi rotate-180'
 						}`}
 					>
 						<span className='text-lg font-bold leading-none'>
@@ -131,7 +129,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 
 	return (
 		<div className='flex flex-col items-center'>
-			<div className='mb-2 text-sm font-bold text-destructive'>後手 (Gote)</div>
+			<div className='mb-2 text-sm font-bold text-xiangqi'>後手 (Gote)</div>
 			<div className='inline-block border-2 border-line rounded-lg overflow-hidden shadow-lg bg-ink-800 p-1'>
 				<div className='rounded overflow-hidden'>{renderBoard()}</div>
 			</div>
