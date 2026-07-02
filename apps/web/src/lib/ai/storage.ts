@@ -133,6 +133,14 @@ export async function loadAIConfigWithProviders(): Promise<AIConfigLoadResult> {
 		];
 		const activeConfig = configurations.find(c => c.isActive);
 
+		// True when the list fetch succeeded but the subsequent
+		// `/ai-config/:id/full` call for the active keyed config failed. The
+		// fall-through below then serves localStorage/defaults, but callers
+		// (e.g. hydrate) must still see `fromFallback: true` so the sidebar
+		// surfaces a retry/error state instead of treating a stale or
+		// disabled-key cache as a clean load.
+		let fullLoadFailed = false;
+
 		if (activeConfig?.id && activeConfig.hasApiKey) {
 			try {
 				const full = await fetchFullAIConfig(activeConfig.id);
@@ -148,20 +156,24 @@ export async function loadAIConfigWithProviders(): Promise<AIConfigLoadResult> {
 					fromFallback: false,
 				};
 			} catch {
-				// Full load failed; fall through to localStorage below.
+				// Full load failed; fall through to localStorage below, but
+				// mark it as a fallback so callers don't mistake a stale
+				// cache/default for a clean load.
+				fullLoadFailed = true;
 			}
 		}
 
-		// No active config with a key; fall through to localStorage but
-		// still surface the providers that have keys configured. The list
-		// fetch itself succeeded, so this is not a fallback.
-		const local = readLocalConfig(availableProviders, false);
+		// No active config with a key (or the full load failed); fall through
+		// to localStorage but still surface the providers that have keys
+		// configured. The list fetch itself succeeded, so the no-active-config
+		// branch is not a fallback; the full-load-failed branch is.
+		const local = readLocalConfig(availableProviders, fullLoadFailed);
 		if (local) return local;
 
 		return {
 			config: defaultAIConfig,
 			availableProviders,
-			fromFallback: false,
+			fromFallback: fullLoadFailed,
 		};
 	} catch (error) {
 		// eslint-disable-next-line no-console

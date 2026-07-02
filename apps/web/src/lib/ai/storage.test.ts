@@ -6,8 +6,13 @@ mock.module('../auth', () => ({
 }));
 
 // Now import storage after the mock is set up
-const { defaultAIConfig, saveAIConfig, clearAIConfig, loadAIConfig } =
-	await import('./storage');
+const {
+	defaultAIConfig,
+	saveAIConfig,
+	clearAIConfig,
+	loadAIConfig,
+	loadAIConfigWithProviders,
+} = await import('./storage');
 import type { AIConfig } from './types';
 
 // ---------------------------------------------------------------------------
@@ -225,6 +230,94 @@ describe('AI Storage', () => {
 
 			expect(result).toEqual(defaultAIConfig);
 			expect(localStorageStore['procyon_ai_config']).toBeUndefined();
+		});
+
+		test('should mark fromFallback=true when /ai-config/:id/full fails after list succeeds', async () => {
+			// List fetch succeeds with an active keyed config, but the
+			// subsequent /full fetch fails. The fall-through must surface
+			// fromFallback=true so the sidebar shows a retry/error state
+			// instead of treating a stale localStorage cache as a clean load.
+			let callCount = 0;
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async (url: string) => {
+				callCount++;
+				if (callCount === 1) {
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [
+								{
+									id: 'cfg-1',
+									isActive: true,
+									hasApiKey: true,
+									provider: 'openai',
+								},
+							],
+						}),
+					};
+				}
+				// Second call: /full fails
+				expect(url).toContain('/cfg-1/full');
+				return { ok: false, json: async () => ({}) };
+			});
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(callCount).toBe(2);
+			expect(result.fromFallback).toBe(true);
+			// Providers with keys are still surfaced from the list response.
+			expect(result.availableProviders).toEqual(['openai']);
+		});
+
+		test('should mark fromFallback=true when /ai-config/:id/full throws after list succeeds with no localStorage', async () => {
+			// Same as above but the /full fetch throws (network) and there is
+			// no localStorage cache, so the default-config return path must
+			// still carry fromFallback=true.
+			let callCount = 0;
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async (url: string) => {
+				callCount++;
+				if (callCount === 1) {
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [
+								{
+									id: 'cfg-1',
+									isActive: true,
+									hasApiKey: true,
+									provider: 'gemini',
+								},
+							],
+						}),
+					};
+				}
+				expect(url).toContain('/cfg-1/full');
+				throw new Error('Network error on /full');
+			});
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(callCount).toBe(2);
+			expect(result.fromFallback).toBe(true);
+			expect(result.config).toEqual(defaultAIConfig);
+		});
+
+		test('should keep fromFallback=false when list succeeds with no active keyed config', async () => {
+			// List succeeds but no entry is active+keyed: the fall-through is
+			// NOT a fallback (the list fetch itself succeeded), so
+			// fromFallback must stay false. This guards against the fix
+			// over-flagging the no-active-config branch.
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async () => ({
+				ok: true,
+				json: async () => ({ configurations: [] }),
+			}));
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(result.fromFallback).toBe(false);
+			expect(result.config).toEqual(defaultAIConfig);
 		});
 	});
 
