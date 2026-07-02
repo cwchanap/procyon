@@ -90,6 +90,29 @@ describe('SidebarAIConfig', () => {
 		expect(queryByLabelText(/AI Provider/i)).toBeNull();
 	});
 
+	test('shows sign-in prompt (not retry) when unauthenticated and hydration fails', async () => {
+		// A signed-out visitor on /chess hits the protected /ai-config endpoint,
+		// which 401s and sets hydrateError. The sidebar should surface a
+		// sign-in prompt rather than a connection/retry error, since
+		// unauthenticated is the expected state for a public page.
+		authState.isAuthenticated = false;
+		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
+			Promise.reject(new Error('Network error'))) as unknown as typeof fetch;
+
+		await hydrate();
+
+		const { getByText, queryByText, queryByLabelText } = render(
+			<SidebarAIConfig />
+		);
+		expect(getByText(/Sign in to configure your AI provider/i)).toBeTruthy();
+		expect(getByText(/Sign in →/i)).toBeTruthy();
+		// The connection-error/retry copy must not appear for unauth users.
+		expect(queryByText(/couldn[\u2019']t load your AI settings/i)).toBeNull();
+		expect(queryByText(/Retry/i)).toBeNull();
+		// Provider select must not render in the sign-in state.
+		expect(queryByLabelText(/AI Provider/i)).toBeNull();
+	});
+
 	test('shows empty-providers prompt when hydrated with no keyed providers', async () => {
 		// Default beforeEach fetch mock returns { configurations: [] } (ok),
 		// which hydrate treats as a successful load with zero providers.

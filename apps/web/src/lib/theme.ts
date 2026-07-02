@@ -37,3 +37,50 @@ export function setTheme(theme: Theme): void {
 	}
 	applyTheme(theme);
 }
+
+/**
+ * Shared, module-level theme store so every ThemeToggle instance (desktop
+ * rail + mobile header in AppShell) tracks the same value. Without this, each
+ * toggle holds its own local state: toggling on mobile then crossing the
+ * desktop breakpoint leaves the newly visible toggle showing a stale
+ * label/icon, and its first click toggles from the stale value back to the
+ * theme that is already applied (a no-op). The store is read via
+ * {@link useTheme} (useSyncExternalStore) and mutated via {@link toggleTheme}.
+ */
+const themeListeners = new Set<() => void>();
+let cachedTheme: Theme | null = null;
+
+function resolveCachedTheme(): Theme {
+	if (cachedTheme === null) cachedTheme = resolveInitialTheme();
+	return cachedTheme;
+}
+
+function emitTheme(): void {
+	for (const cb of themeListeners) cb();
+}
+
+export function subscribeTheme(cb: () => void): () => void {
+	themeListeners.add(cb);
+	return () => {
+		themeListeners.delete(cb);
+	};
+}
+
+export function getThemeSnapshot(): Theme {
+	return resolveCachedTheme();
+}
+
+/** Flip the shared theme to the opposite value and persist it. */
+export function toggleTheme(): void {
+	const next: Theme = resolveCachedTheme() === 'dark' ? 'light' : 'dark';
+	cachedTheme = next;
+	setTheme(next);
+	emitTheme();
+}
+
+/** Reset the shared store cache. Intended for tests so each file starts from
+ * a clean slate regardless of execution order. */
+export function resetThemeStore(): void {
+	cachedTheme = null;
+	themeListeners.clear();
+}

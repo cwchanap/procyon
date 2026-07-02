@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useSyncExternalStore } from 'react';
 import {
-	resolveInitialTheme,
 	applyTheme,
-	setTheme,
-	type Theme,
+	subscribeTheme,
+	getThemeSnapshot,
+	toggleTheme,
 } from '../lib/theme';
 import { cn } from '../lib/utils';
 
@@ -42,7 +42,15 @@ const MoonIcon = () => (
 );
 
 const ThemeToggle: React.FC = () => {
-	const [theme, setThemeState] = useState<Theme>(() => resolveInitialTheme());
+	// Subscribe to the shared theme store so the desktop rail and mobile
+	// header toggles always reflect the same value. Toggling one updates the
+	// other via the store's emit, so crossing the responsive breakpoint never
+	// surfaces a stale label/icon or a no-op first click.
+	const theme = useSyncExternalStore(
+		subscribeTheme,
+		getThemeSnapshot,
+		getThemeSnapshot
+	);
 
 	useEffect(() => {
 		// Apply the resolved theme to the DOM without persisting it. Writing to
@@ -50,20 +58,17 @@ const ThemeToggle: React.FC = () => {
 		// freeze out later OS-preference changes. Persistence is reserved for
 		// the explicit toggle handler below.
 		applyTheme(theme);
+		// Mount-only: apply the resolved theme to the DOM once without
+		// persisting it. Re-runs are unnecessary; the shared store drives
+		// subsequent updates via useSyncExternalStore.
 	}, []);
-
-	const toggle = () => {
-		const next: Theme = theme === 'dark' ? 'light' : 'dark';
-		setThemeState(next);
-		setTheme(next);
-	};
 
 	const nextLabel = theme === 'dark' ? 'light' : 'dark';
 	return (
 		<button
 			type='button'
 			data-testid='theme-toggle'
-			onClick={toggle}
+			onClick={toggleTheme}
 			aria-label={`Switch to ${nextLabel} mode`}
 			title={`Switch to ${nextLabel} mode`}
 			className={cn(

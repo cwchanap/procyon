@@ -26,11 +26,23 @@ export function AppShell() {
 	const [path, setPath] = useState('/');
 	const [mobileAIOpen, setMobileAIOpen] = useState(false);
 
+	// Only Chess has been migrated to the cross-island ai-config-store; the
+	// other variants still drive AI settings through AISettingsDialog. Showing
+	// SidebarAIConfig on those pages would write to a store nobody reads and
+	// duplicate the dialog, so scope the rail panel to /chess only.
+	const isChessPage = (p: string) => p.startsWith('/chess');
+
 	useEffect(() => {
 		setPath(window.location.pathname);
 	}, []);
 
+	// The AI config store is only consumed on /chess (SidebarAIConfig in the
+	// rail and mobile panel). Hydrating it on every route would call
+	// /ai-config/:id/full — which returns the user's raw provider API key —
+	// for authenticated users visiting non-chess pages, holding that key in
+	// client memory with no consumer. Scope the call to the chess route.
 	useEffect(() => {
+		if (!isChessPage(window.location.pathname)) return;
 		void hydrateAIConfig();
 	}, []);
 
@@ -45,12 +57,6 @@ export function AppShell() {
 
 	const isActive = (href: string) =>
 		href === '/' ? path === '/' : path.startsWith(href);
-
-	// Only Chess has been migrated to the cross-island ai-config-store; the
-	// other variants still drive AI settings through AISettingsDialog. Showing
-	// SidebarAIConfig on those pages would write to a store nobody reads and
-	// duplicate the dialog, so scope the rail panel to /chess only.
-	const isChessPage = (p: string) => p.startsWith('/chess');
 
 	// History and Profile require authentication; hide them until the auth
 	// state resolves and only show them for authenticated users.
