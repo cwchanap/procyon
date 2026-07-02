@@ -24,6 +24,15 @@ describe('BoardSidePanel', () => {
 		expect(onModeChange).toHaveBeenCalledWith('tutorial');
 	});
 
+	test('clicking Play vs AI calls onModeChange', () => {
+		const onModeChange = mock();
+		const { getByRole } = render(
+			<BoardSidePanel gameMode='tutorial' onModeChange={onModeChange} />
+		);
+		fireEvent.click(getByRole('button', { name: /play vs ai/i }));
+		expect(onModeChange).toHaveBeenCalledWith('ai');
+	});
+
 	test('renders children', () => {
 		const { getByText } = render(
 			<BoardSidePanel gameMode='ai' onModeChange={() => {}}>

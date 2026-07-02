@@ -4,6 +4,7 @@ import {
 	setProvider,
 	setModel,
 	setAIPlayer,
+	rehydrate,
 } from '../../lib/ai/ai-config-store';
 import type { AIProvider } from '../../lib/ai/types';
 import { useAuth } from '../../lib/auth';
@@ -52,7 +53,8 @@ const AI_PLAYER_OPTIONS = [
 ];
 
 const SidebarAIConfig: React.FC = () => {
-	const { config, aiPlayer, availableProviders, hydrated } = useAIConfigStore();
+	const { config, aiPlayer, availableProviders, hydrated, hydrateError } =
+		useAIConfigStore();
 	const { isAuthenticated } = useAuth();
 	const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +65,8 @@ const SidebarAIConfig: React.FC = () => {
 	// Before hydration completes we show every provider so users aren't shown
 	// a false "no providers" state while the fetch is in flight. Once hydrated,
 	// an empty `availableProviders` means the user has no API keys configured
-	// and we surface the dedicated empty-state prompt.
+	// and we surface the dedicated empty-state prompt. A failed hydrate
+	// (`hydrateError`) is shown as a distinct error/retry state instead.
 	const providerOptions =
 		!hydrated || availableProviders.length > 0
 			? ALL_PROVIDER_OPTIONS.filter(
@@ -94,7 +97,24 @@ const SidebarAIConfig: React.FC = () => {
 				AI Config
 			</h2>
 
-			{providerOptions.length === 0 ? (
+			{hydrated && hydrateError ? (
+				<div className='text-sm text-ivory-dim' role='alert'>
+					<p className='mb-2'>
+						We couldn&rsquo;t load your AI settings. Check your connection and
+						try again.
+					</p>
+					<button
+						type='button'
+						onClick={() => {
+							setError(null);
+							void rehydrate();
+						}}
+						className='text-brass hover:underline'
+					>
+						Retry
+					</button>
+				</div>
+			) : providerOptions.length === 0 ? (
 				<div className='text-sm text-ivory-dim'>
 					<p className='mb-2'>No AI providers configured.</p>
 					<a href='/profile' className='text-brass hover:underline'>

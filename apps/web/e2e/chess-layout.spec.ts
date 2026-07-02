@@ -31,9 +31,7 @@ test.describe('Chess page layout', () => {
 	test('board-side panel stacks below board on mobile', async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 800 });
 		await page.goto('/chess');
-		const board = page
-			.locator('canvas, .chess-board, [class*="board"]')
-			.first();
+		const board = page.getByTestId('chess-board');
 		const tutorialBtn = page.getByRole('button', { name: /^Tutorial$/ });
 		await expect(board).toBeVisible();
 		await expect(tutorialBtn).toBeVisible();

@@ -128,7 +128,10 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 	};
 
 	return (
-		<div className='inline-block border-2 border-line rounded-lg overflow-hidden shadow-2xl bg-ink-700 p-1'>
+		<div
+			data-testid='chess-board'
+			className='inline-block border-2 border-line rounded-lg overflow-hidden shadow-2xl bg-ink-700 p-1'
+		>
 			<div className='rounded overflow-hidden'>{renderBoard()}</div>
 		</div>
 	);
