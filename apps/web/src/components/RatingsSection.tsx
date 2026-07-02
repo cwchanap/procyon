@@ -114,7 +114,7 @@ export function RatingsSection() {
 	}
 
 	if (error) {
-		return <div className='p-6 text-center text-xiangqi'>{error}</div>;
+		return <div className='p-6 text-center text-destructive'>{error}</div>;
 	}
 
 	if (ratings.length === 0) {

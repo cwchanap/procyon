@@ -44,7 +44,7 @@
 
 **Deleted files:**
 
-- `apps/web/src/components/ai/AISettingsDialog.tsx` — contents move to `SidebarAIConfig`.
+- `apps/web/src/components/ai/AISettingsDialog.tsx` — contents move to `SidebarAIConfig`. **(SUPERSEDED — see Task 10: still used by Xiangqi/Shogi/Jungle, not deleted.)**
 
 ---
 
@@ -1731,6 +1731,13 @@ git commit -m "chore(web): remove Back to Game Selection link from game pages"
 ---
 
 ### Task 10: Retire AISettingsDialog
+
+> **SUPERSEDED — do not execute.** This task assumed Task 8 removed the last
+> `AISettingsDialog` usage, but only the chess page was migrated to
+> `SidebarAIConfig`. `XiangqiGame`, `ShogiGame`, and `JungleGame` still import
+> and render `AISettingsDialog` for their AI settings. Deleting it would break
+> the other three variants. This task is deferred until those variants are
+> also migrated to the sidebar store (out of scope for this redesign).
 
 **Files:**
 

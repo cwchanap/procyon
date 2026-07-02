@@ -21,7 +21,7 @@ const statusBanner = cva(
 				playing: 'bg-ink-600 text-ivory-dim',
 				opponent: 'bg-ink-600 text-ivory-dim',
 				solved: 'bg-jungle/20 text-jungle',
-				failed: 'bg-xiangqi/20 text-xiangqi',
+				failed: 'bg-xiangqi/20 text-destructive',
 			},
 		},
 	}
@@ -34,7 +34,7 @@ const difficultyBadge = cva(
 			difficulty: {
 				beginner: 'bg-jungle/20 text-jungle border-jungle/30',
 				intermediate: 'bg-brass/20 text-brass border-brass/30',
-				advanced: 'bg-xiangqi/20 text-xiangqi border-xiangqi/30',
+				advanced: 'bg-xiangqi/20 text-destructive border-xiangqi/30',
 			},
 		},
 		defaultVariants: {

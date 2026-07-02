@@ -786,7 +786,7 @@ const XiangqiGame: React.FC = () => {
 						<p className='text-sm'>{errorMsg}</p>
 						<button
 							type='button'
-							className='text-xs font-semibold uppercase tracking-wide text-xiangqi hover:text-ivory'
+							className='text-xs font-semibold uppercase tracking-wide text-destructive hover:text-ivory'
 							onClick={() => setErrorMsg(null)}
 						>
 							Dismiss
