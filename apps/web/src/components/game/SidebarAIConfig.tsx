@@ -104,22 +104,33 @@ const SidebarAIConfig: React.FC = () => {
 			</h2>
 
 			{hydrated && hydrateError ? (
-				<div className='text-sm text-ivory-dim' role='alert'>
-					<p className='mb-2'>
-						We couldn&rsquo;t load your AI settings. Check your connection and
-						try again.
-					</p>
-					<button
-						type='button'
-						onClick={() => {
-							setError(null);
-							void rehydrate();
-						}}
-						className='text-brass hover:underline'
-					>
-						Retry
-					</button>
-				</div>
+				!isAuthenticated ? (
+					<div className='text-sm text-ivory-dim'>
+						<p className='mb-2'>
+							Sign in to configure your AI provider and API keys.
+						</p>
+						<a href='/login' className='text-brass hover:underline'>
+							Sign in →
+						</a>
+					</div>
+				) : (
+					<div className='text-sm text-ivory-dim' role='alert'>
+						<p className='mb-2'>
+							We couldn&rsquo;t load your AI settings. Check your connection and
+							try again.
+						</p>
+						<button
+							type='button'
+							onClick={() => {
+								setError(null);
+								void rehydrate();
+							}}
+							className='text-brass hover:underline'
+						>
+							Retry
+						</button>
+					</div>
+				)
 			) : providerOptions.length === 0 ? (
 				<div className='text-sm text-ivory-dim'>
 					<p className='mb-2'>No AI providers configured.</p>
