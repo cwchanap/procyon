@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { cn } from '../lib/utils';
+import ThemeToggle from './ThemeToggle';
+import SidebarAIConfig from './game/SidebarAIConfig';
+import { hydrate as hydrateAIConfig } from '../lib/ai/ai-config-store';
 
 interface NavItem {
 	label: string;
@@ -21,9 +24,14 @@ const AUTHED_NAV: NavItem[] = [
 export function AppShell() {
 	const { user, logout, isAuthenticated, loading } = useAuth();
 	const [path, setPath] = useState('/');
+	const [mobileAIOpen, setMobileAIOpen] = useState(false);
 
 	useEffect(() => {
 		setPath(window.location.pathname);
+	}, []);
+
+	useEffect(() => {
+		void hydrateAIConfig();
 	}, []);
 
 	useEffect(() => {
@@ -37,6 +45,12 @@ export function AppShell() {
 
 	const isActive = (href: string) =>
 		href === '/' ? path === '/' : path.startsWith(href);
+
+	// Only Chess has been migrated to the cross-island ai-config-store; the
+	// other variants still drive AI settings through AISettingsDialog. Showing
+	// SidebarAIConfig on those pages would write to a store nobody reads and
+	// duplicate the dialog, so scope the rail panel to /chess only.
+	const isChessPage = (p: string) => p.startsWith('/chess');
 
 	// History and Profile require authentication; hide them until the auth
 	// state resolves and only show them for authenticated users.
@@ -109,12 +123,22 @@ export function AppShell() {
 						</a>
 					))}
 				</nav>
-				<div className='mt-6 border-t border-line pt-4'>{userChip}</div>
+				{isChessPage(path) && (
+					<div className='mt-6'>
+						<SidebarAIConfig />
+					</div>
+				)}
+				<div className='mt-6 border-t border-line pt-4 space-y-4'>
+					{userChip}
+					<div className='flex justify-end'>
+						<ThemeToggle />
+					</div>
+				</div>
 			</aside>
 
 			{/* Mobile top wordmark bar (fills the pt-16 space left by the
 			    server-rendered fallback nav, which is hidden post-hydration) */}
-			<header className='fixed inset-x-0 top-0 z-40 flex h-16 items-center border-b border-line bg-ink-800 px-4 lg:hidden'>
+			<header className='fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between border-b border-line bg-ink-800 px-4 lg:hidden'>
 				<a href='/' className='flex items-center gap-3'>
 					<span className='flex h-8 w-8 items-center justify-center rounded-full bg-brass text-ink-900 text-lg'>
 						♔
@@ -123,7 +147,42 @@ export function AppShell() {
 						PROCYON
 					</span>
 				</a>
+				<div className='flex items-center gap-2'>
+					{isChessPage(path) && (
+						<button
+							type='button'
+							onClick={() => setMobileAIOpen(o => !o)}
+							aria-expanded={mobileAIOpen}
+							aria-label='Toggle AI config'
+							aria-controls='procyon-mobile-ai-config'
+							className={cn(
+								'rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+								mobileAIOpen
+									? 'border-brass bg-brass text-ink-900'
+									: 'border-line text-ivory-dim hover:text-ivory'
+							)}
+						>
+							AI
+						</button>
+					)}
+					<ThemeToggle />
+				</div>
 			</header>
+
+			{/* Mobile AI config panel (chess pages only). The desktop rail
+			    renders SidebarAIConfig inside a `hidden lg:flex` aside, so below
+			    the lg breakpoint there is no other surface to change AI side /
+			    provider / model before starting a chess AI game. This collapsible
+			    panel mirrors the desktop rail panel using the same store-backed
+			    component. */}
+			{isChessPage(path) && mobileAIOpen && (
+				<div
+					id='procyon-mobile-ai-config'
+					className='fixed inset-x-0 top-16 z-30 border-b border-line bg-ink-800 px-4 py-4 lg:hidden'
+				>
+					<SidebarAIConfig />
+				</div>
+			)}
 
 			{/* Mobile bottom tab bar */}
 			<nav

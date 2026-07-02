@@ -11,21 +11,21 @@ import {
 } from '../lib/chess/game';
 import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
-import GameScaffold from './game/GameScaffold';
+import BoardSidePanel from './game/BoardSidePanel';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIStatusPanel from './game/AIStatusPanel';
 import GameControls from './game/GameControls';
 import DemoSelector from './game/DemoSelector';
 import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
-import AISettingsDialog from './ai/AISettingsDialog';
 import type { AIMove } from './ai/AIDebugDialog';
-import type { AIConfig, AIProvider } from '../lib/ai/types';
 import { createChessAI } from '../lib/ai';
-import { loadAIConfig, saveAIConfig, defaultAIConfig } from '../lib/ai/storage';
+import { defaultAIConfig } from '../lib/ai/storage';
+import {
+	useAIConfigStore,
+	hydrate as hydrateAIConfig,
+} from '../lib/ai/ai-config-store';
 import { GameExporter } from '../lib/ai/game-export';
-import { useAuth } from '../lib/auth';
-import { AI_PROVIDERS } from '../lib/ai/types';
 import { env } from '../lib/env';
 
 interface LogicDemo {
@@ -47,118 +47,14 @@ const ChessGame: React.FC = () => {
 		createInitialGameState()
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
-	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
-	const [aiConfig, setAIConfig] = useState<AIConfig>(defaultAIConfig);
+	const { config: aiConfig, aiPlayer } = useAIConfigStore();
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
-	const [_aiRejectionCount, setAiRejectionCount] = useState(0);
 	const [isAiPaused, setIsAiPaused] = useState(false);
-	const [isLoadingConfig, setIsLoadingConfig] = useState(true);
 	const [aiError, setAiError] = useState<string | null>(null);
 	const gameExporterRef = useRef<GameExporter | null>(null);
 	const [hasGameEnded, setHasGameEnded] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
-	const { isAuthenticated } = useAuth();
-	const [providerError, setProviderError] = useState<string | null>(null);
-
-	const handleProviderChange = useCallback(
-		async (newProvider: AIProvider) => {
-			const providerInfo = AI_PROVIDERS[newProvider];
-			const fallbackModel =
-				providerInfo.models[0] || providerInfo.defaultModel || aiConfig.model;
-
-			setProviderError(null);
-
-			try {
-				if (!isAuthenticated) {
-					setProviderError('Please sign in to manage your AI settings.');
-					return;
-				}
-
-				const response = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					credentials: 'include',
-				});
-
-				if (!response.ok) {
-					// eslint-disable-next-line no-console
-					console.error(
-						`Failed to fetch AI configurations for provider ${newProvider}:`,
-						response.status,
-						response.statusText
-					);
-					setProviderError(
-						"We couldn't load your saved AI settings. Please try again from AI Settings."
-					);
-					return;
-				}
-
-				const data = await response.json();
-				const configurations = (data.configurations || []) as Array<{
-					id?: string;
-					provider?: AIProvider;
-					hasApiKey?: boolean;
-				}>;
-				const providerConfig = configurations.find(
-					config => config.provider === newProvider && config.hasApiKey
-				);
-
-				if (!providerConfig?.id) {
-					// eslint-disable-next-line no-console
-					console.warn(
-						'No stored API key found for provider; prompt user to add one:',
-						newProvider
-					);
-					setProviderError(
-						'Add an API key for this provider in AI Settings to reuse it here.'
-					);
-					return;
-				}
-
-				const fullConfigResponse = await fetch(
-					`${env.PUBLIC_API_URL}/ai-config/${providerConfig.id}/full`,
-					{
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						credentials: 'include',
-					}
-				);
-
-				if (!fullConfigResponse.ok) {
-					// eslint-disable-next-line no-console
-					console.error(
-						`Failed to fetch full AI configuration for provider ${newProvider}:`,
-						fullConfigResponse.status,
-						fullConfigResponse.statusText
-					);
-					setProviderError(
-						"We couldn't load your saved API key details. Please try again."
-					);
-					return;
-				}
-
-				const fullConfig = await fullConfigResponse.json();
-				const resolvedModel = fullConfig.modelName || fallbackModel;
-
-				setAIConfig(prev => ({
-					...prev,
-					provider: newProvider,
-					model: resolvedModel,
-					apiKey: fullConfig.apiKey || '',
-				}));
-			} catch (_error) {
-				// eslint-disable-next-line no-console
-				console.error('Failed to load AI provider configuration', _error);
-				setProviderError(
-					'Something went wrong loading AI settings. Please try again.'
-				);
-			}
-		},
-		[aiConfig.model, isAuthenticated]
-	);
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -185,16 +81,12 @@ const ChessGame: React.FC = () => {
 	);
 	const [aiService] = useState(() => createChessAI(defaultAIConfig));
 
-	// Load AI config on client side only to avoid SSR hydration mismatch
+	// Hydrate the cross-island AI config store on mount. The existing effect
+	// below ("Update AI service when debug mode changes") already pushes
+	// `aiConfig` into the service whenever it (or isDebugMode) changes.
 	useEffect(() => {
-		const loadConfig = async () => {
-			const config = await loadAIConfig();
-			setAIConfig(config);
-			aiService.updateConfig({ ...config, debug: isDebugMode });
-			setIsLoadingConfig(false);
-		};
-		loadConfig();
-	}, [aiService, isDebugMode]);
+		void hydrateAIConfig();
+	}, []);
 
 	// Save play history when game ends
 	useEffect(() => {
@@ -454,18 +346,6 @@ const ChessGame: React.FC = () => {
 		return logicDemos.find(demo => demo.id === currentDemo) ?? logicDemos[0];
 	}, [currentDemo, logicDemos]);
 
-	// AI Configuration handlers
-	const _handleAIConfigChange = useCallback(
-		async (newConfig: AIConfig) => {
-			setAIConfig(newConfig);
-			// Note: Saving should be done through profile page, not here
-			// This is kept for backward compatibility only
-			saveAIConfig(newConfig);
-			aiService.updateConfig(newConfig);
-		},
-		[aiService]
-	);
-
 	// AI Move handling
 	const makeAIMoveAsync = useCallback(async () => {
 		if (!isAITurn(gameState) || gameState.isAiThinking) {
@@ -567,7 +447,6 @@ const ChessGame: React.FC = () => {
 	const retryAIMove = useCallback(() => {
 		setAiError(null);
 		setIsAiPaused(false);
-		setAiRejectionCount(0);
 		// The effect will trigger makeAIMoveAsync automatically
 	}, []);
 
@@ -594,7 +473,6 @@ const ChessGame: React.FC = () => {
 		(newMode: ChessGameMode) => {
 			setGameMode(newMode);
 			setGameStarted(false);
-			setAiRejectionCount(0);
 			setIsAiPaused(false);
 			setAiDebugMoves([]);
 			setHasGameEnded(false);
@@ -728,7 +606,6 @@ const ChessGame: React.FC = () => {
 		setAiDebugMoves([]);
 		setIsAiPaused(false);
 		setAiError(null);
-		setAiRejectionCount(0);
 		setHasGameEnded(false);
 	}, [gameMode, aiPlayer]);
 
@@ -853,125 +730,31 @@ const ChessGame: React.FC = () => {
 			: gameStarted
 				? getStatusMessage()
 				: '';
-	const showModeToggle = gameMode === 'tutorial' || !gameStarted;
 
 	return (
-		<GameScaffold
-			title={title}
-			subtitle={subtitle}
-			titleClassName='text-ivory'
-			subtitleClassName='text-ivory-dim'
-			currentMode={gameMode}
-			onModeChange={toggleToMode}
-			showModeToggle={showModeToggle}
-			inactiveModeClassName='text-ivory-dim hover:bg-ink-600'
-			aiSettingsButton={
-				<AISettingsDialog
-					aiPlayer={aiPlayer}
-					onAIPlayerChange={player => setAIPlayer(player as 'white' | 'black')}
-					provider={aiConfig.provider}
-					model={aiConfig.model}
-					onProviderChange={provider =>
-						handleProviderChange(provider as AIProvider)
-					}
-					onModelChange={model => setAIConfig(prev => ({ ...prev, model }))}
-					aiPlayerOptions={[
-						{ value: 'black', label: 'AI plays Black' },
-						{ value: 'white', label: 'AI plays White' },
-					]}
-					isActive={gameMode === 'ai'}
-					onActivate={() => toggleToMode('ai')}
-				/>
-			}
-		>
-			{providerError && (
-				<div className='w-full max-w-4xl mx-auto mb-4'>
-					<div
-						className='flex items-start justify-between gap-4 rounded-lg border border-xiangqi/40 bg-xiangqi/10 px-4 py-3 text-ivory'
-						role='alert'
-					>
-						<p className='text-sm'>{providerError}</p>
-						<button
-							type='button'
-							className='text-xs font-semibold uppercase tracking-wide text-xiangqi hover:text-ivory'
-							onClick={() => setProviderError(null)}
-						>
-							Dismiss
-						</button>
-					</div>
-				</div>
-			)}
-			{gameMode === 'ai' &&
-				!gameStarted &&
-				!isLoadingConfig &&
-				(!aiConfig.enabled || !aiConfig.apiKey) && (
-					<div className='text-center'>
-						<div className='text-brass text-sm'>
-							⚠ AI not configured - Configure API key in Profile to enable AI
-							gameplay
-						</div>
-					</div>
-				)}
-
-			{gameMode === 'ai' && (
-				<AIStatusPanel
-					aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
-					hasGameStarted={gameStarted}
-					isAIThinking={gameState.isAiThinking}
-					isAIPaused={isAiPaused}
-					aiError={aiError}
-					aiDebugMoves={aiDebugMoves}
-					isDebugMode={isDebugMode}
-					onRetry={retryAIMove}
-				/>
-			)}
-
-			{gameMode === 'tutorial' && (
-				<DemoSelector
-					demos={logicDemos}
-					currentDemo={currentDemo}
-					onDemoChange={handleDemoChange}
-				/>
-			)}
-
-			<div className='w-full max-w-4xl mx-auto space-y-6'>
-				{gameMode === 'ai' ? (
-					<AIGameInstructions
-						providerName={aiConfig.provider}
-						modelName={aiConfig.model}
-						aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-					/>
-				) : (
-					<TutorialInstructions
-						title={getCurrentDemo().title}
-						explanation={getCurrentDemo().explanation}
-						tips={[
-							'"Control the center and develop your pieces early."',
-							'"Castle early to protect your king and connect your rooks."',
-							'"Look for forks, pins, and skewers to gain material advantages."',
-							'"Always consider your opponent\'s best move before making yours."',
-						]}
-						tipsTitle='Chess Tips'
-					/>
-				)}
+		<div className='mx-auto w-full max-w-7xl px-4 py-6'>
+			<div className='mb-6 text-center'>
+				<h1 className='mb-2 font-display text-4xl font-bold text-ivory'>
+					{title}
+				</h1>
+				<p className='text-xl font-medium text-ivory-dim'>{subtitle}</p>
 			</div>
 
-			<div className='flex justify-center'>
-				<GameStartOverlay active={!gameStarted && gameMode !== 'tutorial'}>
-					<ChessBoard
-						board={currentBoard}
-						selectedSquare={gameState.selectedSquare}
-						possibleMoves={gameState.possibleMoves}
-						onSquareClick={handleSquareClick}
-						highlightSquares={currentHighlightSquares}
-						disabled={!gameStarted && gameMode !== 'tutorial'}
-					/>
-				</GameStartOverlay>
-			</div>
+			<div className='flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-center'>
+				{/* Board column */}
+				<div className='flex flex-col items-center gap-6'>
+					<GameStartOverlay active={!gameStarted && gameMode !== 'tutorial'}>
+						<ChessBoard
+							board={currentBoard}
+							selectedSquare={gameState.selectedSquare}
+							possibleMoves={gameState.possibleMoves}
+							onSquareClick={handleSquareClick}
+							highlightSquares={currentHighlightSquares}
+							disabled={!gameStarted && gameMode !== 'tutorial'}
+						/>
+					</GameStartOverlay>
 
-			<div className='w-full max-w-4xl mx-auto space-y-6'>
-				{gameMode === 'ai' && (
-					<>
+					{gameMode === 'ai' && (
 						<GameControls
 							hasGameStarted={gameStarted}
 							isGameOver={isGameOver}
@@ -985,41 +768,81 @@ const ChessGame: React.FC = () => {
 								gameExporterRef.current?.exportAndDownload(gameState.status)
 							}
 						/>
-						{import.meta.env.DEV &&
-							showDebugWinButton &&
-							gameStarted &&
-							!isGameOver && (
-								<div className='flex gap-2 justify-center text-xs'>
-									<button
-										onClick={triggerDebugWin}
-										className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
-										title='Debug: Win'
-									>
-										🏆 Win
-									</button>
-									<button
-										onClick={triggerDebugLoss}
-										className='px-3 py-1 bg-xiangqi hover:opacity-90 text-ink-900 rounded'
-										title='Debug: Loss'
-									>
-										💀 Loss
-									</button>
-									<button
-										onClick={triggerDebugDraw}
-										className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
-										title='Debug: Draw'
-									>
-										🤝 Draw
-									</button>
-									<span className='text-ivory-dim self-center'>
-										(Shift+D to toggle)
-									</span>
-								</div>
-							)}
-					</>
-				)}
+					)}
+
+					{import.meta.env.DEV &&
+						showDebugWinButton &&
+						gameStarted &&
+						!isGameOver && (
+							<div className='flex gap-2 justify-center text-xs'>
+								<button
+									onClick={triggerDebugWin}
+									className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
+									title='Debug: Win'
+								>
+									Win
+								</button>
+								<button
+									onClick={triggerDebugLoss}
+									className='px-3 py-1 bg-xiangqi hover:opacity-90 text-ink-900 rounded'
+									title='Debug: Loss'
+								>
+									Loss
+								</button>
+								<button
+									onClick={triggerDebugDraw}
+									className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
+									title='Debug: Draw'
+								>
+									Draw
+								</button>
+							</div>
+						)}
+				</div>
+
+				{/* Board-side panel */}
+				<BoardSidePanel gameMode={gameMode} onModeChange={toggleToMode}>
+					{gameMode === 'ai' ? (
+						<>
+							<AIStatusPanel
+								aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
+								hasGameStarted={gameStarted}
+								isAIThinking={gameState.isAiThinking}
+								isAIPaused={isAiPaused}
+								aiError={aiError}
+								aiDebugMoves={aiDebugMoves}
+								isDebugMode={isDebugMode}
+								onRetry={retryAIMove}
+							/>
+							<AIGameInstructions
+								providerName={aiConfig.provider}
+								modelName={aiConfig.model}
+								aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+							/>
+						</>
+					) : (
+						<>
+							<DemoSelector
+								demos={logicDemos}
+								currentDemo={currentDemo}
+								onDemoChange={handleDemoChange}
+							/>
+							<TutorialInstructions
+								title={getCurrentDemo().title}
+								explanation={getCurrentDemo().explanation}
+								tips={[
+									'"Control the center and develop your pieces early."',
+									'"Castle early to protect your king and connect your rooks."',
+									'"Look for forks, pins, and skewers to gain material advantages."',
+									'"Always consider your opponent\'s best move before making yours."',
+								]}
+								tipsTitle='Chess Tips'
+							/>
+						</>
+					)}
+				</BoardSidePanel>
 			</div>
-		</GameScaffold>
+		</div>
 	);
 };
 
