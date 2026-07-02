@@ -58,12 +58,22 @@ function readLocalConfig(
 ): AIConfigLoadResult | null {
 	const saved = localStorage.getItem(AI_CONFIG_KEY);
 	if (!saved) return null;
-	const parsed = JSON.parse(saved);
-	return {
-		config: { ...defaultAIConfig, ...parsed },
-		availableProviders,
-		fromFallback,
-	};
+	try {
+		const parsed = JSON.parse(saved);
+		return {
+			config: { ...defaultAIConfig, ...parsed },
+			availableProviders,
+			fromFallback,
+		};
+	} catch (error) {
+		// Corrupt cache: drop it so subsequent loads fall through to defaults
+		// instead of re-throwing on every retry and trapping the user in the
+		// error state. Logging mirrors saveAIConfig/clearAIConfig's behavior.
+		// eslint-disable-next-line no-console
+		console.error('Corrupt AI config in localStorage, removing:', error);
+		localStorage.removeItem(AI_CONFIG_KEY);
+		return null;
+	}
 }
 
 /**

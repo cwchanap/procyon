@@ -52,6 +52,24 @@ const AI_PLAYER_OPTIONS = [
 	{ value: 'white', label: 'AI plays White' },
 ];
 
+/**
+ * Resolve the provider dropdown options from the store's hydration state.
+ *
+ * Before hydration completes we show every provider so users aren't shown a
+ * false "no providers" state while the fetch is in flight. Once hydrated, an
+ * empty `availableProviders` means the user has no API keys configured and
+ * the caller surfaces the dedicated empty-state prompt (so we return []).
+ * Otherwise we filter the full list down to the providers that have keys.
+ */
+function resolveProviderOptions(
+	availableProviders: AIProvider[],
+	hydrated: boolean
+): Array<{ value: AIProvider; label: string }> {
+	if (hydrated && availableProviders.length === 0) return [];
+	if (availableProviders.length === 0) return ALL_PROVIDER_OPTIONS;
+	return ALL_PROVIDER_OPTIONS.filter(p => availableProviders.includes(p.value));
+}
+
 const SidebarAIConfig: React.FC = () => {
 	const { config, aiPlayer, availableProviders, hydrated, hydrateError } =
 		useAIConfigStore();
@@ -61,20 +79,7 @@ const SidebarAIConfig: React.FC = () => {
 	// `availableProviders` is populated once by the store's hydrate() (called
 	// from AppShell on mount), which fetches /ai-config. Reading it from the
 	// store avoids a redundant second /ai-config request on every game page.
-	//
-	// Before hydration completes we show every provider so users aren't shown
-	// a false "no providers" state while the fetch is in flight. Once hydrated,
-	// an empty `availableProviders` means the user has no API keys configured
-	// and we surface the dedicated empty-state prompt. A failed hydrate
-	// (`hydrateError`) is shown as a distinct error/retry state instead.
-	const providerOptions =
-		!hydrated || availableProviders.length > 0
-			? ALL_PROVIDER_OPTIONS.filter(
-					p =>
-						availableProviders.length === 0 ||
-						availableProviders.includes(p.value)
-				)
-			: [];
+	const providerOptions = resolveProviderOptions(availableProviders, hydrated);
 
 	const models = MODEL_OPTIONS[config.provider] || MODEL_OPTIONS.gemini;
 	const currentModel = models.some(m => m.value === config.model)
@@ -187,7 +192,7 @@ const SidebarAIConfig: React.FC = () => {
 			)}
 
 			{error && (
-				<p className='text-xs text-xiangqi' role='alert'>
+				<p className='text-xs text-destructive' role='alert'>
 					{error}
 				</p>
 			)}

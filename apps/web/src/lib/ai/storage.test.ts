@@ -194,6 +194,38 @@ describe('AI Storage', () => {
 
 			expect(result).toEqual(defaultAIConfig);
 		});
+
+		test('should return defaultAIConfig when localStorage holds corrupt JSON (try path)', async () => {
+			// Corrupt cache on the try-path (fetch succeeds, no active config,
+			// readLocalConfig is called at the fall-through). Must not throw.
+			localStorageStore['procyon_ai_config'] = '{not valid json';
+			// @ts-expect-error -- test-only: replace global fetch with empty-list mock
+			globalThis.fetch = mock(async () => ({
+				ok: true,
+				json: async () => ({ configurations: [] }),
+			}));
+
+			const result = await loadAIConfig();
+
+			expect(result).toEqual(defaultAIConfig);
+			// Corrupt entry should be purged so retries don't re-trigger.
+			expect(localStorageStore['procyon_ai_config']).toBeUndefined();
+		});
+
+		test('should return defaultAIConfig when localStorage holds corrupt JSON (catch fallback)', async () => {
+			// Corrupt cache on the catch fallback path (fetch itself fails,
+			// readLocalConfig is called inside the catch). Must not re-throw.
+			localStorageStore['procyon_ai_config'] = '{not valid json';
+			// @ts-expect-error -- test-only: replace global fetch with failing mock
+			globalThis.fetch = mock(async () => {
+				throw new Error('Network error');
+			});
+
+			const result = await loadAIConfig();
+
+			expect(result).toEqual(defaultAIConfig);
+			expect(localStorageStore['procyon_ai_config']).toBeUndefined();
+		});
 	});
 
 	describe('saveAIConfig (browser-side)', () => {
