@@ -7,17 +7,49 @@ import {
 } from '../lib/theme';
 import { cn } from '../lib/utils';
 
+const SunIcon = () => (
+	<svg
+		className='w-4 h-4'
+		fill='none'
+		stroke='currentColor'
+		viewBox='0 0 24 24'
+		strokeWidth={2}
+		aria-hidden='true'
+	>
+		<circle cx='12' cy='12' r='4' />
+		<path
+			strokeLinecap='round'
+			d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'
+		/>
+	</svg>
+);
+
+const MoonIcon = () => (
+	<svg
+		className='w-4 h-4'
+		fill='none'
+		stroke='currentColor'
+		viewBox='0 0 24 24'
+		strokeWidth={2}
+		aria-hidden='true'
+	>
+		<path
+			strokeLinecap='round'
+			strokeLinejoin='round'
+			d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'
+		/>
+	</svg>
+);
+
 const ThemeToggle: React.FC = () => {
-	const [theme, setThemeState] = useState<Theme>('dark');
+	const [theme, setThemeState] = useState<Theme>(() => resolveInitialTheme());
 
 	useEffect(() => {
-		const initial = resolveInitialTheme();
-		setThemeState(initial);
 		// Apply the resolved theme to the DOM without persisting it. Writing to
 		// localStorage here would stamp a user "choice" that didn't happen and
 		// freeze out later OS-preference changes. Persistence is reserved for
 		// the explicit toggle handler below.
-		applyTheme(initial);
+		applyTheme(theme);
 	}, []);
 
 	const toggle = () => {
@@ -30,6 +62,7 @@ const ThemeToggle: React.FC = () => {
 	return (
 		<button
 			type='button'
+			data-testid='theme-toggle'
 			onClick={toggle}
 			aria-label={`Switch to ${nextLabel} mode`}
 			title={`Switch to ${nextLabel} mode`}
@@ -38,7 +71,7 @@ const ThemeToggle: React.FC = () => {
 				'text-ivory-dim transition-colors hover:bg-ink-600 hover:text-ivory'
 			)}
 		>
-			<span aria-hidden='true'>{theme === 'dark' ? '\u2600' : '\u263E'}</span>
+			{theme === 'dark' ? <SunIcon /> : <MoonIcon />}
 		</button>
 	);
 };

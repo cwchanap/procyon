@@ -17,7 +17,7 @@ const waitForPlayHistoryData = async (page: Page) => {
 	const loadingRow = page.getByText('Loading your games...');
 	await expect(loadingRow).not.toBeVisible({ timeout: 15000 });
 
-	const retryButton = page.getByText('Retry').first();
+	const retryButton = page.getByRole('button', { name: 'Retry' });
 	if (await retryButton.isVisible().catch(() => false)) {
 		const errorElement = page.getByTestId('api-error');
 		const errorText = (await errorElement.textContent()) ?? 'unknown error';
@@ -193,9 +193,9 @@ test.describe('ELO Rating System', () => {
 			expect(ratingText).toMatch(/\+/);
 
 			// Verify positive CSS indicator (jungle color class — Nocturne token for positive)
-			await expect(ratingCell.locator('span').first()).toHaveClass(
-				/text-jungle/
-			);
+			await expect(
+				ratingCell.locator('span', { hasText: /\+/ }).first()
+			).toHaveClass(/text-jungle/);
 		});
 	});
 
@@ -248,8 +248,11 @@ test.describe('ELO Rating System', () => {
 			// Go to play history
 			await page.goto('/play-history');
 
-			// Check for Win badge in the results
-			await expect(page.getByText('Win').first()).toBeVisible({
+			// Check for Win badge in the results — scope to the first data row
+			// so the assertion targets a specific result badge, not any "Win"
+			// text that might appear elsewhere on the page.
+			const firstDataRow = page.locator('tbody tr').first();
+			await expect(firstDataRow.getByText('Win')).toBeVisible({
 				timeout: 10000,
 			});
 		});

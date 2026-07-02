@@ -444,6 +444,7 @@ export function ProfilePage() {
 									Provider
 								</label>
 								<select
+									aria-label='Provider'
 									value={selectedProvider}
 									onChange={e => {
 										setSelectedProvider(e.target.value as AiProvider);
@@ -465,6 +466,7 @@ export function ProfilePage() {
 									Model
 								</label>
 								<select
+									aria-label='Model'
 									value={selectedModel}
 									onChange={e => setSelectedModel(e.target.value)}
 									className='w-full p-2 bg-ink-600 border border-line rounded-md text-ivory'

@@ -44,7 +44,7 @@ test.describe.skip('Chess AI Integration', () => {
 		await expect(page.getByText('OpenRouter - gpt-oss-120b')).toBeVisible();
 
 		// Check model dropdown updated
-		const modelSelect = page.locator('select').first();
+		const modelSelect = page.getByLabel('AI Model');
 		await expect(modelSelect).toBeVisible();
 		await expect(
 			modelSelect.locator('option[value="gpt-oss-120b"]')
@@ -139,7 +139,7 @@ test.describe.skip('Chess AI Integration', () => {
 		await page.getByRole('button', { name: 'OpenRouter gpt-oss-120b' }).click();
 
 		// Change model
-		const modelSelect = page.locator('select').first();
+		const modelSelect = page.getByLabel('AI Model');
 		await modelSelect.selectOption('claude-3-haiku');
 
 		// Add API key and save

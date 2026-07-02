@@ -250,6 +250,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 											AI Player
 										</label>
 										<select
+											aria-label='AI Player'
 											value={aiPlayer}
 											onChange={e => onAIPlayerChange(e.target.value)}
 											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
@@ -267,6 +268,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 											AI Provider
 										</label>
 										<select
+											aria-label='AI Provider'
 											value={currentProvider}
 											onChange={e => {
 												const newProvider = e.target.value;
@@ -292,6 +294,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 											AI Model
 										</label>
 										<select
+											aria-label='AI Model'
 											value={currentModel}
 											onChange={e => onModelChange(e.target.value)}
 											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'

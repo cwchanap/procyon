@@ -68,15 +68,6 @@ export function getAIPlayer(): 'white' | 'black' {
 	return aiPlayer;
 }
 
-/**
- * Combined snapshot for tests and legacy consumers. Prefer the slice-specific
- * hooks ({@link useAIConfig} / {@link useAIPlayer}) in components to avoid
- * cross-slice re-renders.
- */
-export function getSnapshot(): AIConfigState {
-	return { ...configSlice, aiPlayer };
-}
-
 function emitConfig(): void {
 	for (const cb of configListeners) cb();
 }
