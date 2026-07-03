@@ -21,10 +21,33 @@ const AUTHED_NAV: NavItem[] = [
 	{ label: 'Profile', href: '/profile', icon: '◐' },
 ];
 
+/**
+ * Track the Tailwind `lg` breakpoint (1024px) so we can avoid mounting
+ * SidebarAIConfig in the desktop rail on mobile (the rail is `hidden lg:flex`,
+ * so the component would otherwise mount but stay invisible, duplicating the
+ * mobile panel's store subscription). AppShell is `client:only='react'`, so
+ * `window` is always available.
+ */
+function useIsDesktop(): boolean {
+	const [isDesktop, setIsDesktop] = useState(() =>
+		typeof window !== 'undefined'
+			? window.matchMedia('(min-width: 1024px)').matches
+			: false
+	);
+	useEffect(() => {
+		const mql = window.matchMedia('(min-width: 1024px)');
+		const onChange = () => setIsDesktop(mql.matches);
+		mql.addEventListener('change', onChange);
+		return () => mql.removeEventListener('change', onChange);
+	}, []);
+	return isDesktop;
+}
+
 export function AppShell() {
 	const { user, logout, isAuthenticated, loading } = useAuth();
 	const [path, setPath] = useState('/');
 	const [mobileAIOpen, setMobileAIOpen] = useState(false);
+	const isDesktop = useIsDesktop();
 
 	// Only Chess has been migrated to the cross-island ai-config-store; the
 	// other variants still drive AI settings through AISettingsDialog. Showing
@@ -40,11 +63,14 @@ export function AppShell() {
 	// rail and mobile panel). Hydrating it on every route would call
 	// /ai-config/:id/full — which returns the user's raw provider API key —
 	// for authenticated users visiting non-chess pages, holding that key in
-	// client memory with no consumer. Scope the call to the chess route.
+	// client memory with no consumer. Scope the call to the chess route, and
+	// gate on auth: /ai-config is protected, so hydrating for anonymous
+	// visitors guarantees a 401 and a console error with no consumer.
 	useEffect(() => {
+		if (loading || !isAuthenticated) return;
 		if (!isChessPage(window.location.pathname)) return;
 		void hydrateAIConfig();
-	}, []);
+	}, [loading, isAuthenticated]);
 
 	useEffect(() => {
 		if (loading) return;
@@ -54,6 +80,18 @@ export function AppShell() {
 		document.documentElement.classList.add('procyon-auth-hydrated');
 		document.documentElement.classList.remove('procyon-auth-client-pending');
 	}, [loading]);
+
+	// Close the mobile AI config panel on Escape so keyboard users aren't
+	// trapped in the collapsible bar (it has no overlay/role=dialog, but
+	// Escape is a cheap, expected dismissal affordance).
+	useEffect(() => {
+		if (!mobileAIOpen) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') setMobileAIOpen(false);
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	}, [mobileAIOpen]);
 
 	const isActive = (href: string) =>
 		href === '/' ? path === '/' : path.startsWith(href);
@@ -129,7 +167,7 @@ export function AppShell() {
 						</a>
 					))}
 				</nav>
-				{isChessPage(path) && (
+				{isChessPage(path) && isDesktop && (
 					<div className='mt-6'>
 						<SidebarAIConfig />
 					</div>
@@ -181,7 +219,7 @@ export function AppShell() {
 			    provider / model before starting a chess AI game. This collapsible
 			    panel mirrors the desktop rail panel using the same store-backed
 			    component. */}
-			{isChessPage(path) && mobileAIOpen && (
+			{isChessPage(path) && mobileAIOpen && !isDesktop && (
 				<div
 					id='procyon-mobile-ai-config'
 					className='fixed inset-x-0 top-16 z-30 border-b border-line bg-ink-800 px-4 py-4 lg:hidden'

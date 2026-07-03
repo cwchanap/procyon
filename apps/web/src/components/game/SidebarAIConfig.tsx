@@ -198,7 +198,7 @@ const SidebarAIConfig: React.FC = () => {
 						href='/profile'
 						className='block text-xs text-brass hover:underline'
 					>
-						Manage API keys
+						Manage API keys →
 					</a>
 				</>
 			)}
