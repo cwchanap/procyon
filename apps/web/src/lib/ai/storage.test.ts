@@ -166,7 +166,7 @@ describe('AI Storage', () => {
 			expect(result).toEqual(defaultAIConfig);
 		});
 
-		test('should fall back to localStorage when API returns non-ok response', async () => {
+		test('should fall back to localStorage (sanitized) when API returns non-ok response', async () => {
 			const savedConfig: AIConfig = {
 				provider: 'openrouter',
 				apiKey: 'or-key',
@@ -184,7 +184,13 @@ describe('AI Storage', () => {
 			const result = await loadAIConfig();
 
 			expect(result.provider).toBe('openrouter');
-			expect(result.apiKey).toBe('or-key');
+			// Legacy cached apiKey must be stripped on read — never surfaced
+			// from localStorage — and the cache re-saved without it.
+			expect(result.apiKey).toBe('');
+			const reSaved = JSON.parse(
+				localStorageStore['procyon_ai_config']!
+			) as AIConfig;
+			expect(reSaved.apiKey).toBe('');
 		});
 
 		test('should return defaultAIConfig when no config is active and localStorage is empty', async () => {
@@ -333,7 +339,7 @@ describe('AI Storage', () => {
 			cleanup();
 		});
 
-		test('should save config to localStorage', () => {
+		test('should save config to localStorage without persisting apiKey', () => {
 			const config: AIConfig = {
 				provider: 'openai',
 				apiKey: 'sk-test-key',
@@ -348,7 +354,8 @@ describe('AI Storage', () => {
 
 			const parsed = JSON.parse(stored!) as AIConfig;
 			expect(parsed.provider).toBe('openai');
-			expect(parsed.apiKey).toBe('sk-test-key');
+			// apiKey must never be persisted to localStorage
+			expect(parsed.apiKey).toBe('');
 			expect(parsed.model).toBe('gpt-4o-mini');
 			expect(parsed.enabled).toBe(true);
 		});
@@ -376,7 +383,7 @@ describe('AI Storage', () => {
 			expect(parsed.enabled).toBe(false);
 		});
 
-		test('should save different providers correctly', () => {
+		test('should save different providers correctly without apiKey', () => {
 			const testCases: AIConfig[] = [
 				{
 					provider: 'gemini',
@@ -403,7 +410,8 @@ describe('AI Storage', () => {
 				const stored = localStorageStore['procyon_ai_config'];
 				const parsed = JSON.parse(stored!) as AIConfig;
 				expect(parsed.provider).toBe(config.provider);
-				expect(parsed.apiKey).toBe(config.apiKey);
+				// apiKey is never persisted
+				expect(parsed.apiKey).toBe('');
 			}
 		});
 	});

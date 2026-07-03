@@ -21,7 +21,11 @@ import AIGameInstructions from './game/AIGameInstructions';
 import type { AIMove } from './ai/AIDebugDialog';
 import { createChessAI } from '../lib/ai';
 import { defaultAIConfig } from '../lib/ai/storage';
-import { useAIConfig, useAIPlayer } from '../lib/ai/ai-config-store';
+import {
+	useAIConfig,
+	useAIPlayer,
+	setGameActive,
+} from '../lib/ai/ai-config-store';
 import { useAuth } from '../lib/auth';
 import { GameExporter } from '../lib/ai/game-export';
 import { env } from '../lib/env';
@@ -90,6 +94,7 @@ const ChessGame: React.FC = () => {
 
 		if (isGameOver && !hasGameEnded) {
 			setHasGameEnded(true);
+			setGameActive(false);
 
 			const savePlayHistory = async () => {
 				try {
@@ -469,6 +474,7 @@ const ChessGame: React.FC = () => {
 			setIsAiPaused(false);
 			setAiDebugMoves([]);
 			setHasGameEnded(false);
+			setGameActive(false);
 
 			if (newMode === 'tutorial') {
 				const demo = getCurrentDemo();
@@ -600,6 +606,7 @@ const ChessGame: React.FC = () => {
 		setIsAiPaused(false);
 		setAiError(null);
 		setHasGameEnded(false);
+		setGameActive(false);
 	}, [gameMode, aiPlayer]);
 
 	const triggerDebugWin = useCallback(() => {
@@ -657,8 +664,10 @@ const ChessGame: React.FC = () => {
 			// Starting the game - ensure game state is properly initialized
 			if (gameMode === 'ai') {
 				setGameState(createInitialGameState('human-vs-ai', aiPlayer));
+				setGameActive(true);
 			} else {
 				setGameState(createInitialGameState('human-vs-human'));
+				setGameActive(false);
 			}
 			setGameStarted(true);
 			setHasGameEnded(false);

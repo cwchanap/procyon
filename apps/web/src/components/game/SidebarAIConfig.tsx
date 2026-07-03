@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
 	useAIConfig,
 	useAIPlayer,
+	useGameActive,
 	setProvider,
 	setModel,
 	setAIPlayer,
@@ -74,6 +75,7 @@ function resolveProviderOptions(
 const SidebarAIConfig: React.FC = () => {
 	const { config, availableProviders, hydrated, hydrateError } = useAIConfig();
 	const aiPlayer = useAIPlayer();
+	const gameActive = useGameActive();
 	const { isAuthenticated } = useAuth();
 	const [error, setError] = useState<string | null>(null);
 
@@ -184,7 +186,8 @@ const SidebarAIConfig: React.FC = () => {
 							aria-label='AI plays'
 							value={aiPlayer}
 							onChange={e => setAIPlayer(e.target.value as 'white' | 'black')}
-							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass'
+							disabled={gameActive}
+							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
 						>
 							{AI_PLAYER_OPTIONS.map(o => (
 								<option key={o.value} value={o.value}>
@@ -192,6 +195,11 @@ const SidebarAIConfig: React.FC = () => {
 								</option>
 							))}
 						</select>
+						{gameActive && (
+							<p className='mt-1 text-xs text-ivory-dim'>
+								Reset the game to switch sides.
+							</p>
+						)}
 					</div>
 
 					<a

@@ -5,6 +5,7 @@ import { setupReactDom } from '../../test/reactSetup';
 import {
 	setConfig,
 	setAIPlayer,
+	setGameActive,
 	hydrate,
 	resetAIConfigStore,
 } from '../../lib/ai/ai-config-store';
@@ -153,5 +154,21 @@ describe('SidebarAIConfig', () => {
 		await waitFor(() => {
 			expect(getByText(/couldn't load your saved AI settings/i)).toBeTruthy();
 		});
+	});
+
+	test('disables AI-plays select and shows hint while a game is active', async () => {
+		setGameActive(true);
+		const { getByLabelText, getByText } = render(<SidebarAIConfig />);
+		const aiPlaysSelect = getByLabelText(/AI plays/i) as HTMLSelectElement;
+		expect(aiPlaysSelect.disabled).toBe(true);
+		expect(getByText(/Reset the game to switch sides/i)).toBeTruthy();
+	});
+
+	test('AI-plays select is enabled when no game is active', async () => {
+		setGameActive(false);
+		const { getByLabelText, queryByText } = render(<SidebarAIConfig />);
+		const aiPlaysSelect = getByLabelText(/AI plays/i) as HTMLSelectElement;
+		expect(aiPlaysSelect.disabled).toBe(false);
+		expect(queryByText(/Reset the game to switch sides/i)).toBeNull();
 	});
 });
