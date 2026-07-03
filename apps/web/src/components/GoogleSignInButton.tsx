@@ -127,7 +127,7 @@ export function GoogleSignInButton({
 		>
 			{loading && <div className='text-ivory-dim text-sm'>Signing in...</div>}
 			{error && (
-				<div className='text-destructive text-sm text-center bg-xiangqi/10 border border-xiangqi/30 rounded-lg p-3'>
+				<div className='text-destructive text-sm text-center bg-destructive/10 border border-destructive/30 rounded-lg p-3'>
 					{error}
 				</div>
 			)}

@@ -309,4 +309,41 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.hydrateError).toBe(false);
 		expect(snap.availableProviders).toEqual([]);
 	});
+
+	test('resetAIConfigStore ignores a stale in-flight hydrate', async () => {
+		// Hold the list fetch pending so we can interleave a logout/reset
+		// while runHydrate is still awaiting it.
+		let resolveFetch: (v: unknown) => void = () => {};
+		const pending = new Promise(resolve => {
+			resolveFetch = resolve;
+		});
+		// @ts-expect-error -- test-only: replace global fetch with a controllable pending response
+		globalThis.fetch = mock(async () => pending);
+
+		// Start hydrate but don't await — it's now in flight.
+		const hydratePromise = hydrate();
+
+		// Logout (or a session reset) clears the store while the fetch is
+		// still pending. This bumps the hydrate generation token.
+		resetAIConfigStore();
+
+		// Now release the stale fetch with User A's provider list. Without
+		// the generation guard, runHydrate would write this back into the
+		// store after the reset already cleared it.
+		resolveFetch({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{ id: 'cfg-g', provider: 'gemini', hasApiKey: true, isActive: false },
+				],
+			}),
+		});
+		await hydratePromise;
+
+		const snap = getConfigSlice();
+		// Reset cleared the slice; the stale hydrate must not have re-populated it.
+		expect(snap.hydrated).toBe(false);
+		expect(snap.availableProviders).toEqual([]);
+		expect(snap.config).toEqual(defaultAIConfig);
+	});
 });

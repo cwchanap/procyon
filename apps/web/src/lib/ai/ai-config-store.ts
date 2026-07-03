@@ -117,6 +117,15 @@ export function setGameActive(next: boolean): void {
 }
 
 let inFlight: Promise<void> | null = null;
+/**
+ * Monotonic generation token. Incremented by `resetAIConfigStore` (logout) so
+ * any `runHydrate` still in flight from the previous session can detect it is
+ * stale and skip its `setConfigSlice` call. Without this, clearing `inFlight`
+ * only drops the reference — the underlying promise still resolves and writes
+ * the old user's config (including the raw API key fetched by hydrate) back
+ * into the store after the reset has already cleared it.
+ */
+let hydrateGeneration = 0;
 
 export async function hydrate(): Promise<void> {
 	if (hydrated) return;
@@ -144,10 +153,15 @@ export async function rehydrate(): Promise<void> {
 }
 
 async function runHydrate(): Promise<void> {
+	const gen = hydrateGeneration;
 	hydrated = true;
 	try {
 		const { config, availableProviders, fromFallback } =
 			await loadAIConfigWithProviders();
+		// A reset/logout (or a newer rehydrate) bumped the generation while
+		// the fetch was in flight — drop this result so a stale session's
+		// config (incl. API key) can't clobber the freshly-cleared store.
+		if (gen !== hydrateGeneration) return;
 		setConfigSlice({
 			...configSlice,
 			config,
@@ -160,6 +174,7 @@ async function runHydrate(): Promise<void> {
 		// returns defaults with fromFallback=true. This catch only fires if
 		// something beyond the network layer throws (e.g. a corrupted
 		// localStorage cache parse) — treat it the same as a failed hydrate.
+		if (gen !== hydrateGeneration) return;
 		setConfigSlice({ ...configSlice, hydrated: true, hydrateError: true });
 	}
 }
@@ -233,6 +248,9 @@ export function useGameActive(): boolean {
  * registry is shared across files (e.g. under coverage).
  */
 export function resetAIConfigStore(): void {
+	// Bump the generation first so any runHydrate() still in flight from the
+	// previous session sees a stale `gen` and skips its setConfigSlice call.
+	hydrateGeneration++;
 	hydrated = false;
 	inFlight = null;
 	aiPlayer = 'black';
