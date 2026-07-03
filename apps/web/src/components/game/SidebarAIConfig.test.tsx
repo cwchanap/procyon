@@ -126,18 +126,20 @@ describe('SidebarAIConfig', () => {
 		expect(queryByLabelText(/AI Provider/i)).toBeNull();
 	});
 
-	test('blocks provider change and shows error when unauthenticated', async () => {
+	test('shows sign-in prompt (not controls) when unauthenticated and not hydrated', async () => {
+		// Signed-out visitors never hydrate (AppShell gates hydrate on auth),
+		// so `hydrated` stays false. The sidebar must surface the sign-in
+		// prompt directly rather than rendering provider/model controls that
+		// onProviderChange would reject after the fact.
 		authState.isAuthenticated = false;
 
-		const { getByLabelText, getByText } = render(<SidebarAIConfig />);
-		const providerSelect = getByLabelText(/AI Provider/i) as HTMLSelectElement;
-		fireEvent.change(providerSelect, { target: { value: 'openai' } });
-
-		await waitFor(() => {
-			expect(
-				getByText(/Please sign in to manage your AI settings/i)
-			).toBeTruthy();
-		});
+		const { getByText, queryByLabelText } = render(<SidebarAIConfig />);
+		expect(getByText(/Sign in to configure your AI provider/i)).toBeTruthy();
+		expect(getByText(/Sign in →/i)).toBeTruthy();
+		// Provider/model/AI-plays selects must not render for unauth users.
+		expect(queryByLabelText(/AI Provider/i)).toBeNull();
+		expect(queryByLabelText(/AI Model/i)).toBeNull();
+		expect(queryByLabelText(/AI plays/i)).toBeNull();
 	});
 
 	test('shows error message when setProvider fails to load config list', async () => {
