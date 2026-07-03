@@ -76,7 +76,7 @@ const SidebarAIConfig: React.FC = () => {
 	const { config, availableProviders, hydrated, hydrateError } = useAIConfig();
 	const aiPlayer = useAIPlayer();
 	const gameActive = useGameActive();
-	const { isAuthenticated } = useAuth();
+	const { isAuthenticated, loading } = useAuth();
 	const [error, setError] = useState<string | null>(null);
 
 	// `availableProviders` is populated once by the store's hydrate() (called
@@ -105,34 +105,38 @@ const SidebarAIConfig: React.FC = () => {
 				AI Config
 			</h2>
 
-			{hydrated && hydrateError ? (
-				!isAuthenticated ? (
-					<div className='text-sm text-ivory-dim'>
-						<p className='mb-2'>
-							Sign in to configure your AI provider and API keys.
-						</p>
-						<a href='/login' className='text-brass hover:underline'>
-							Sign in →
-						</a>
-					</div>
-				) : (
-					<div className='text-sm text-ivory-dim' role='alert'>
-						<p className='mb-2'>
-							We couldn&rsquo;t load your AI settings. Check your connection and
-							try again.
-						</p>
-						<button
-							type='button'
-							onClick={() => {
-								setError(null);
-								void rehydrate();
-							}}
-							className='text-brass hover:underline'
-						>
-							Retry
-						</button>
-					</div>
-				)
+			{!loading && !isAuthenticated ? (
+				// Signed-out visitors never hydrate the AI config store (AppShell
+				// gates hydrate() on isAuthenticated, since /ai-config is protected
+				// and would 401). Without this branch, `hydrated` stays false and
+				// resolveProviderOptions returns every provider, rendering controls
+				// that onProviderChange then rejects after the fact. Surface the
+				// sign-in prompt directly instead.
+				<div className='text-sm text-ivory-dim'>
+					<p className='mb-2'>
+						Sign in to configure your AI provider and API keys.
+					</p>
+					<a href='/login' className='text-brass hover:underline'>
+						Sign in →
+					</a>
+				</div>
+			) : hydrated && hydrateError ? (
+				<div className='text-sm text-ivory-dim' role='alert'>
+					<p className='mb-2'>
+						We couldn&rsquo;t load your AI settings. Check your connection and
+						try again.
+					</p>
+					<button
+						type='button'
+						onClick={() => {
+							setError(null);
+							void rehydrate();
+						}}
+						className='text-brass hover:underline'
+					>
+						Retry
+					</button>
+				</div>
 			) : providerOptions.length === 0 ? (
 				<div className='text-sm text-ivory-dim'>
 					<p className='mb-2'>No AI providers configured.</p>
