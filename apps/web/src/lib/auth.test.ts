@@ -51,6 +51,9 @@ beforeAll(() => {
 	g.DOMRect = happyWindow.DOMRect;
 	g.MutationObserver = happyWindow.MutationObserver;
 	g.NodeFilter = happyWindow.NodeFilter;
+	// Map localStorage so clearAIConfig() (called on logout) can access it
+	// without a bare-global ReferenceError in the happy-dom test env.
+	g.localStorage = happyWindow.localStorage;
 });
 
 afterAll(() => {
@@ -69,6 +72,7 @@ afterAll(() => {
 	delete g.DOMRect;
 	delete g.MutationObserver;
 	delete g.NodeFilter;
+	delete g.localStorage;
 	happyWindow.close();
 });
 

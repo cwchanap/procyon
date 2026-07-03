@@ -15,7 +15,16 @@ export function saveAIConfig(config: AIConfig): void {
 	if (typeof window === 'undefined') return;
 
 	try {
-		localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(config));
+		// Never persist the provider API key to localStorage. The key is
+		// fetched from the protected `/ai-config/:id/full` endpoint on
+		// hydrate and held in memory for the current session; writing it to
+		// localStorage would let a later anonymous/shared-browser session
+		// reuse the previous user's provider key (logout does clear the
+		// cache, but tab-close without logout would leave it behind). We
+		// still cache the non-secret preferences (provider/model/enabled/
+		// gameVariant) so the fallback path can surface them.
+		const sanitized: AIConfig = { ...config, apiKey: '' };
+		localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(sanitized));
 	} catch (error) {
 		// eslint-disable-next-line no-console
 		console.error('Failed to save AI config:', error);
@@ -60,6 +69,13 @@ function readLocalConfig(
 	if (!saved) return null;
 	try {
 		const parsed = JSON.parse(saved);
+		// Drop any cached API key from a legacy entry written before
+		// saveAIConfig started sanitizing. Re-save the sanitized form so
+		// the stale key is evicted from localStorage on the next read.
+		if (parsed && typeof parsed === 'object' && parsed.apiKey) {
+			parsed.apiKey = '';
+			localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(parsed));
+		}
 		return {
 			config: { ...defaultAIConfig, ...parsed },
 			availableProviders,

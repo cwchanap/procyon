@@ -6,6 +6,7 @@ import {
 	type AuthUser,
 	type GoogleLoginResult,
 } from './auth-helpers';
+import { clearAIConfig } from './ai/storage';
 
 const API_BASE_URL = resolveApiBaseUrl(env.PUBLIC_API_URL);
 
@@ -176,6 +177,10 @@ export function useAuth(options?: UseAuthOptions) {
 		if (success) {
 			setUser(null);
 			dispatchAuthChange(null);
+			// Wipe any cached AI config so a subsequent anonymous/shared-browser
+			// session can't reuse the previous user's provider preferences or
+			// a legacy-cached API key.
+			clearAIConfig();
 		}
 		return { success };
 	}, []);
