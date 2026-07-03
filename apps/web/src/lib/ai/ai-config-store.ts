@@ -212,9 +212,12 @@ export function useGameActive(): boolean {
 }
 
 /**
- * Reset the store to its initial (un-hydrated) state. Intended for tests so
- * each test file starts from a clean slate regardless of execution order or
- * whether the module registry is shared across files (e.g. under coverage).
+ * Reset the store to its initial (un-hydrated) state. Used on logout (so the
+ * in-memory config — including the raw API key fetched by hydrate — is dropped
+ * and a later hydrate for a new user re-fetches instead of short-circuiting
+ * on the previous user's stale state) and in tests so each test file starts
+ * from a clean slate regardless of execution order or whether the module
+ * registry is shared across files (e.g. under coverage).
  */
 export function resetAIConfigStore(): void {
 	hydrated = false;

@@ -7,6 +7,7 @@ import {
 	type GoogleLoginResult,
 } from './auth-helpers';
 import { clearAIConfig } from './ai/storage';
+import { resetAIConfigStore } from './ai/ai-config-store';
 
 const API_BASE_URL = resolveApiBaseUrl(env.PUBLIC_API_URL);
 
@@ -179,8 +180,13 @@ export function useAuth(options?: UseAuthOptions) {
 			dispatchAuthChange(null);
 			// Wipe any cached AI config so a subsequent anonymous/shared-browser
 			// session can't reuse the previous user's provider preferences or
-			// a legacy-cached API key.
+			// a legacy-cached API key. clearAIConfig drops the localStorage
+			// cache; resetAIConfigStore also clears the in-memory
+			// ai-config-store (which holds the raw API key fetched by hydrate)
+			// and resets the `hydrated` flag so a later hydrate for a new user
+			// actually re-fetches instead of short-circuiting on stale state.
 			clearAIConfig();
+			resetAIConfigStore();
 		}
 		return { success };
 	}, []);
