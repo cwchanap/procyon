@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { AIConfig, AIProvider } from './types';
+import { AI_PROVIDERS } from './types';
 import {
 	defaultAIConfig,
 	loadAIConfigWithProviders,
@@ -180,9 +181,21 @@ export async function setProvider(
 	}
 	try {
 		const full = await fetchFullAIConfig(providerConfig.id);
+		// Derive a provider-specific default model rather than reusing the
+		// prior provider's model. If `full.model` is empty (e.g. a legacy
+		// backend row with no model) the previous fallback
+		// (`configSlice.config.model`) would carry the *old* provider's model
+		// into the new provider's config — the model dropdown then shows the
+		// new provider's first model (SidebarAIConfig falls back to
+		// `models[0]` when `config.model` isn't in the new provider's list)
+		// while the AI service still receives the stale model, which can fail
+		// against the new provider's endpoint. AI_PROVIDERS guarantees a
+		// `models[0]`/`defaultModel` for every provider.
+		const providerInfo = AI_PROVIDERS[provider];
+		const fallbackModel = providerInfo.models[0] || providerInfo.defaultModel;
 		setConfig({
 			provider,
-			model: full.model || configSlice.config.model,
+			model: full.model || fallbackModel,
 			apiKey: full.apiKey || '',
 			enabled: true,
 		});

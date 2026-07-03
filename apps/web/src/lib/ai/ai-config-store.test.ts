@@ -12,6 +12,7 @@ import {
 	resetAIConfigStore,
 } from './ai-config-store';
 import { defaultAIConfig } from './storage';
+import { AI_PROVIDERS } from './types';
 
 describe('ai-config-store', () => {
 	beforeEach(() => {
@@ -77,6 +78,135 @@ describe('ai-config-store', () => {
 	test('hydrate does not throw and leaves a valid snapshot', async () => {
 		await expect(hydrate()).resolves.toBeUndefined();
 		expect(getConfigSlice().config).toBeTruthy();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// setProvider model fallback. When /ai-config/:id/full returns no model,
+// setProvider must derive a provider-specific default rather than reuse the
+// prior provider's stale model — otherwise the dropdown shows the new
+// provider's first model while the AI service receives the old model.
+// ---------------------------------------------------------------------------
+describe('ai-config-store setProvider model fallback', () => {
+	const localStorageStore: Record<string, string> = {};
+	const ls = {
+		getItem: (k: string) => localStorageStore[k] ?? null,
+		setItem: (k: string, v: string) => {
+			localStorageStore[k] = v;
+		},
+		removeItem: (k: string) => {
+			delete localStorageStore[k];
+		},
+	};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalWindow: any;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalFetch: any;
+
+	beforeEach(() => {
+		resetAIConfigStore();
+		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
+		// @ts-expect-error -- test-only: capture existing window/fetch to restore
+		originalWindow = globalThis.window;
+		// @ts-expect-error -- test-only: capture existing fetch to restore later
+		originalFetch = globalThis.fetch;
+		// @ts-expect-error -- test-only override: simulate browser window in Node
+		globalThis.window = { localStorage: ls };
+		// @ts-expect-error -- test-only override: expose localStorage as a global
+		globalThis.localStorage = ls;
+		// Seed the store with a prior provider's model so the fallback path is
+		// distinguishable from the new provider's default.
+		setConfig({
+			provider: 'gemini',
+			apiKey: '',
+			model: 'gemini-2.5-flash-lite',
+			enabled: false,
+			gameVariant: 'chess',
+		});
+	});
+
+	afterEach(() => {
+		// @ts-expect-error -- test-only restore: reset window/fetch to original
+		globalThis.window = originalWindow;
+		// @ts-expect-error -- test-only restore: reset fetch to original value
+		globalThis.fetch = originalFetch;
+		// @ts-expect-error -- test-only restore: drop test-only localStorage global
+		delete globalThis.localStorage;
+	});
+
+	test('falls back to the new provider default when full.model is empty', async () => {
+		// First call → /ai-config list; second call → /:id/full with no model.
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					// modelName intentionally omitted to exercise the fallback
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		const err = await setProvider('openai');
+
+		expect(err).toBeNull();
+		const { config } = getConfigSlice();
+		expect(config.provider).toBe('openai');
+		// Must be an OpenAI model, NOT the stale 'gemini-2.5-flash-lite'.
+		expect(config.model).toBe(AI_PROVIDERS.openai.models[0]!);
+		expect(config.model).not.toBe('gemini-2.5-flash-lite');
+	});
+
+	test('uses full.model when the backend returns one', async () => {
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		const err = await setProvider('openai');
+
+		expect(err).toBeNull();
+		expect(getConfigSlice().config.model).toBe('gpt-4o');
 	});
 });
 
