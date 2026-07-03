@@ -4,6 +4,9 @@ interface GameControlsProps {
 	hasGameStarted: boolean;
 	isGameOver: boolean;
 	aiConfigured: boolean;
+	/** Disable the Start button while the AI config is still loading so the
+	 * game can't start with stale/default config (no API key). */
+	startDisabled?: boolean;
 	isDebugMode: boolean;
 	canExport: boolean;
 	onStartOrReset: () => void;
@@ -16,6 +19,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 	hasGameStarted,
 	isGameOver,
 	aiConfigured,
+	startDisabled = false,
 	isDebugMode,
 	canExport,
 	onStartOrReset,
@@ -27,9 +31,14 @@ const GameControls: React.FC<GameControlsProps> = ({
 		<div className='flex gap-4 justify-center flex-wrap'>
 			<button
 				onClick={onStartOrReset}
-				className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150'
+				disabled={startDisabled}
+				className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
 			>
-				{hasGameStarted ? '🆕 New Game' : '▶️ Start'}
+				{startDisabled
+					? '⏳ Loading AI config…'
+					: hasGameStarted
+						? '🆕 New Game'
+						: '▶️ Start'}
 			</button>
 
 			{isGameOver && (

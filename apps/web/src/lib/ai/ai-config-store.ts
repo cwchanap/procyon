@@ -8,18 +8,6 @@ import {
 	fetchFullAIConfig,
 } from './storage';
 
-export interface AIConfigState {
-	config: AIConfig;
-	aiPlayer: 'white' | 'black';
-	availableProviders: AIProvider[];
-	/** True once hydrate() has resolved (success or failure). */
-	hydrated: boolean;
-	/** True when hydrate() failed to load the provider list. Distinct from
-	 * `hydrated && availableProviders.length === 0` (no keys configured) so
-	 * the UI can show an error/retry state instead of an empty-state prompt. */
-	hydrateError: boolean;
-}
-
 /**
  * Config-side slice of the store. Changes to this slice (via `setConfig`,
  * `setModel`, `setProvider`, or `hydrate`) only notify config subscribers,
@@ -97,18 +85,31 @@ export function setAIPlayer(next: 'white' | 'black'): void {
 	emitAIPlayer();
 }
 
+let inFlight: Promise<void> | null = null;
+
 export async function hydrate(): Promise<void> {
 	if (hydrated) return;
-	await runHydrate();
+	if (inFlight) return inFlight;
+	inFlight = runHydrate().finally(() => {
+		inFlight = null;
+	});
+	return inFlight;
 }
 
 /**
  * Force a fresh hydrate regardless of prior state. Used by the UI retry
- * button after a failed hydrate; safe to call multiple times.
+ * button after a failed hydrate; safe to call multiple times. If a hydrate
+ * is already in flight, wait for it to resolve before starting a fresh load
+ * so the two fetches don't race and clobber each other's setConfigSlice
+ * with stale state.
  */
 export async function rehydrate(): Promise<void> {
+	if (inFlight) await inFlight;
 	hydrated = false;
-	await runHydrate();
+	inFlight = runHydrate().finally(() => {
+		inFlight = null;
+	});
+	return inFlight;
 }
 
 async function runHydrate(): Promise<void> {
@@ -172,23 +173,13 @@ export function useAIPlayer(): 'white' | 'black' {
 }
 
 /**
- * @deprecated Use {@link useAIConfig} and/or {@link useAIPlayer} instead.
- * Subscribes to both slices, so changes to either re-render the component.
- * Kept for backward compatibility during migration.
- */
-export function useAIConfigStore(): AIConfigState {
-	const config = useAIConfig();
-	const player = useAIPlayer();
-	return { ...config, aiPlayer: player };
-}
-
-/**
  * Reset the store to its initial (un-hydrated) state. Intended for tests so
  * each test file starts from a clean slate regardless of execution order or
  * whether the module registry is shared across files (e.g. under coverage).
  */
 export function resetAIConfigStore(): void {
 	hydrated = false;
+	inFlight = null;
 	aiPlayer = 'black';
 	setConfigSlice({ ...initialConfigSlice });
 	emitAIPlayer();

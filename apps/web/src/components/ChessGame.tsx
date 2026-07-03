@@ -21,11 +21,8 @@ import AIGameInstructions from './game/AIGameInstructions';
 import type { AIMove } from './ai/AIDebugDialog';
 import { createChessAI } from '../lib/ai';
 import { defaultAIConfig } from '../lib/ai/storage';
-import {
-	useAIConfig,
-	useAIPlayer,
-	hydrate as hydrateAIConfig,
-} from '../lib/ai/ai-config-store';
+import { useAIConfig, useAIPlayer } from '../lib/ai/ai-config-store';
+import { useAuth } from '../lib/auth';
 import { GameExporter } from '../lib/ai/game-export';
 import { env } from '../lib/env';
 
@@ -48,8 +45,9 @@ const ChessGame: React.FC = () => {
 		createInitialGameState()
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
-	const { config: aiConfig } = useAIConfig();
+	const { config: aiConfig, hydrated: aiConfigHydrated } = useAIConfig();
 	const aiPlayer = useAIPlayer();
+	const { isAuthenticated } = useAuth();
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
 	const [isAiPaused, setIsAiPaused] = useState(false);
@@ -82,13 +80,6 @@ const ChessGame: React.FC = () => {
 		[gameState.moveHistory.length, gameState.currentPlayer]
 	);
 	const [aiService] = useState(() => createChessAI(defaultAIConfig));
-
-	// Hydrate the cross-island AI config store on mount. The existing effect
-	// below ("Update AI service when debug mode changes") already pushes
-	// `aiConfig` into the service whenever it (or isDebugMode) changes.
-	useEffect(() => {
-		void hydrateAIConfig();
-	}, []);
 
 	// Save play history when game ends
 	useEffect(() => {
@@ -653,8 +644,16 @@ const ChessGame: React.FC = () => {
 		};
 	}, [triggerDebugWin]);
 
+	// In AI mode, authenticated users must wait for the AI config store to
+	// hydrate before starting — otherwise aiConfig still holds defaults (no
+	// apiKey, enabled=false) and the first AI move would fail. Anonymous
+	// visitors never hydrate (the call is gated in AppShell), so they fall
+	// through to the human-vs-human fallback and are not blocked here.
+	const aiStarting = gameMode === 'ai' && isAuthenticated && !aiConfigHydrated;
+
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {
+			if (aiStarting) return; // config still loading; Start is disabled
 			// Starting the game - ensure game state is properly initialized
 			if (gameMode === 'ai') {
 				setGameState(createInitialGameState('human-vs-ai', aiPlayer));
@@ -670,7 +669,7 @@ const ChessGame: React.FC = () => {
 			// Resetting the game
 			resetGame();
 		}
-	}, [gameStarted, resetGame, gameMode, aiPlayer, aiConfig]);
+	}, [gameStarted, resetGame, gameMode, aiPlayer, aiConfig, aiStarting]);
 
 	const handleDemoChange = useCallback(
 		(demoId: string) => {
@@ -761,6 +760,7 @@ const ChessGame: React.FC = () => {
 							hasGameStarted={gameStarted}
 							isGameOver={isGameOver}
 							aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
+							startDisabled={aiStarting}
 							isDebugMode={isDebugMode}
 							canExport={gameStarted && !!gameExporterRef.current}
 							onStartOrReset={handleStartOrReset}
