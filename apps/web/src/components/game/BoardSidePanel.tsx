@@ -57,7 +57,6 @@ const BoardSidePanel: React.FC<BoardSidePanelProps> = ({
 				</ModeToggle>
 				<ModeToggle
 					onClick={() => onModeChange('ai')}
-					aria-label='Play vs AI'
 					aria-pressed={gameMode === 'ai'}
 					active={gameMode === 'ai'}
 				>

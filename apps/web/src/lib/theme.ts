@@ -45,7 +45,8 @@ export function setTheme(theme: Theme): void {
  * desktop breakpoint leaves the newly visible toggle showing a stale
  * label/icon, and its first click toggles from the stale value back to the
  * theme that is already applied (a no-op). The store is read via
- * {@link useTheme} (useSyncExternalStore) and mutated via {@link toggleTheme}.
+ * `useSyncExternalStore(subscribeTheme, getThemeSnapshot, getThemeSnapshot)`
+ * (see ThemeToggle.tsx) and mutated via {@link toggleTheme}.
  */
 const themeListeners = new Set<() => void>();
 let cachedTheme: Theme | null = null;
