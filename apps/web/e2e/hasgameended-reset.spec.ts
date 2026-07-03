@@ -64,30 +64,20 @@ test.describe('hasGameEnded reset flow', () => {
 		// Reset back to a fresh state
 		await playAgainButton.click();
 
-		// Switch to tutorial mode
+		// Switch to tutorial mode via the board-side panel toggle
 		const tutorialModeButton = page.getByRole('button', {
-			name: '📚 Tutorial Mode',
+			name: /^Tutorial$/,
 		});
 		await expect(tutorialModeButton).toBeVisible();
 		await tutorialModeButton.click();
 
-		// Switch back to AI mode via AI Settings (which activates AI mode when not active)
-		const aiSettingsButton = page.getByRole('button', {
-			name: '⚙️ AI Settings',
+		// Switch back to AI mode via the board-side panel toggle (the chess
+		// redesign moved mode switching out of the AI Settings dialog)
+		const playVsAiButton = page.getByRole('button', {
+			name: /Play vs AI/i,
 		});
-		await expect(aiSettingsButton).toBeVisible();
-		await aiSettingsButton.click();
-
-		// Close the AI settings dialog so we can interact with the board and controls again.
-		// The dialog has both an icon button (aria-label='Close', text '×') and a footer
-		// text button ('Close'); target the footer button by text to avoid a strict-mode
-		// violation on the ambiguous accessible name.
-		const closeButton = page
-			.getByRole('dialog')
-			.getByRole('button')
-			.filter({ hasText: 'Close' });
-		await expect(closeButton).toBeVisible();
-		await closeButton.click();
+		await expect(playVsAiButton).toBeVisible();
+		await playVsAiButton.click();
 
 		// --- Second game after mode switches ---
 		await startButton.click();
