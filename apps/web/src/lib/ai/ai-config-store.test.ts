@@ -1,12 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import {
 	subscribeConfig,
-	subscribeAIPlayer,
 	getConfigSlice,
-	getAIPlayer,
 	setConfig,
 	setModel,
-	setAIPlayer,
 	setProvider,
 	hydrate,
 	resetAIConfigStore,
@@ -19,12 +16,10 @@ describe('ai-config-store', () => {
 		resetAIConfigStore();
 		// reset to defaults via setConfig
 		setConfig(defaultAIConfig);
-		setAIPlayer('black');
 	});
 
-	test('initial snapshot is defaults with black AI', () => {
+	test('initial snapshot is defaults', () => {
 		expect(getConfigSlice().config).toEqual(defaultAIConfig);
-		expect(getAIPlayer()).toBe('black');
 	});
 
 	test('setModel updates config', () => {
@@ -32,31 +27,16 @@ describe('ai-config-store', () => {
 		expect(getConfigSlice().config.model).toBe('gemini-2.5-pro');
 	});
 
-	test('setAIPlayer updates aiPlayer', () => {
-		setAIPlayer('white');
-		expect(getAIPlayer()).toBe('white');
-	});
-
-	test('config subscribers are notified on config changes only', () => {
+	test('config subscribers are notified on config changes', () => {
 		let configCalls = 0;
-		let aiPlayerCalls = 0;
 		const unsubConfig = subscribeConfig(() => configCalls++);
-		const unsubAIPlayer = subscribeAIPlayer(() => aiPlayerCalls++);
 
 		setModel('gpt-4o');
-		// setAIPlayer('white') is a no-op when already white after reset; flip
-		// to the opposite of the default 'black' to guarantee a notification.
-		setAIPlayer('white');
-
-		expect(configCalls).toBe(1); // only setModel
-		expect(aiPlayerCalls).toBe(1); // only setAIPlayer
+		expect(configCalls).toBe(1);
 
 		unsubConfig();
-		unsubAIPlayer();
 		setModel('gemini-2.5-pro');
-		setAIPlayer('black');
 		expect(configCalls).toBe(1);
-		expect(aiPlayerCalls).toBe(1);
 	});
 
 	test('setProvider returns error message when fetch fails', async () => {

@@ -11,8 +11,7 @@ import {
 
 /**
  * Config-side slice of the store. Changes to this slice (via `setConfig`,
- * `setModel`, `setProvider`, or `hydrate`) only notify config subscribers,
- * not components that solely read `aiPlayer`.
+ * `setModel`, `setProvider`, or `hydrate`) only notify config subscribers.
  */
 export interface AIConfigSlice {
 	config: AIConfig;
@@ -29,20 +28,9 @@ const initialConfigSlice: AIConfigSlice = {
 };
 
 let configSlice: AIConfigSlice = initialConfigSlice;
-let aiPlayer: 'white' | 'black' = 'black';
 let hydrated = false;
-/**
- * True while a chess AI game is in progress. Set by ChessGame on start and
- * cleared on reset/end/mode-switch. SidebarAIConfig reads this to disable
- * the "AI plays" select mid-game — switching sides after `gameState.aiPlayer`
- * has been captured at start desynchronizes the store `aiPlayer` from
- * `gameState.aiPlayer` (used by `isAITurn`), stalling the AI move effect.
- */
-let gameActive = false;
 
 const configListeners = new Set<() => void>();
-const aiPlayerListeners = new Set<() => void>();
-const gameActiveListeners = new Set<() => void>();
 
 export function subscribeConfig(cb: () => void): () => void {
 	configListeners.add(cb);
@@ -51,42 +39,12 @@ export function subscribeConfig(cb: () => void): () => void {
 	};
 }
 
-export function subscribeAIPlayer(cb: () => void): () => void {
-	aiPlayerListeners.add(cb);
-	return () => {
-		aiPlayerListeners.delete(cb);
-	};
-}
-
-export function subscribeGameActive(cb: () => void): () => void {
-	gameActiveListeners.add(cb);
-	return () => {
-		gameActiveListeners.delete(cb);
-	};
-}
-
 export function getConfigSlice(): AIConfigSlice {
 	return configSlice;
 }
 
-export function getAIPlayer(): 'white' | 'black' {
-	return aiPlayer;
-}
-
-export function getGameActive(): boolean {
-	return gameActive;
-}
-
 function emitConfig(): void {
 	for (const cb of configListeners) cb();
-}
-
-function emitAIPlayer(): void {
-	for (const cb of aiPlayerListeners) cb();
-}
-
-function emitGameActive(): void {
-	for (const cb of gameActiveListeners) cb();
 }
 
 function setConfigSlice(next: AIConfigSlice): void {
@@ -102,18 +60,6 @@ export function setConfig(patch: Partial<AIConfig>): void {
 
 export function setModel(model: string): void {
 	setConfig({ model });
-}
-
-export function setAIPlayer(next: 'white' | 'black'): void {
-	if (next === aiPlayer) return;
-	aiPlayer = next;
-	emitAIPlayer();
-}
-
-export function setGameActive(next: boolean): void {
-	if (next === gameActive) return;
-	gameActive = next;
-	emitGameActive();
 }
 
 let inFlight: Promise<void> | null = null;
@@ -225,20 +171,6 @@ export function useAIConfig(): AIConfigSlice {
 	return useSyncExternalStore(subscribeConfig, getConfigSlice, getConfigSlice);
 }
 
-/** Subscribe to aiPlayer changes only. */
-export function useAIPlayer(): 'white' | 'black' {
-	return useSyncExternalStore(subscribeAIPlayer, getAIPlayer, getAIPlayer);
-}
-
-/** Subscribe to gameActive changes only. */
-export function useGameActive(): boolean {
-	return useSyncExternalStore(
-		subscribeGameActive,
-		getGameActive,
-		getGameActive
-	);
-}
-
 /**
  * Reset the store to its initial (un-hydrated) state. Used on logout (so the
  * in-memory config — including the raw API key fetched by hydrate — is dropped
@@ -253,9 +185,5 @@ export function resetAIConfigStore(): void {
 	hydrateGeneration++;
 	hydrated = false;
 	inFlight = null;
-	aiPlayer = 'black';
-	gameActive = false;
 	setConfigSlice({ ...initialConfigSlice });
-	emitAIPlayer();
-	emitGameActive();
 }
