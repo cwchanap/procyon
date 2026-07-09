@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `ai-config-store` the single AI-config mechanism and `usePlayHistory` the single play-history mechanism across all four game components; centralize `resolveOpponentLlmId`; fix three hook-layer drift bugs; delete the bypassed `useGameAI` hook.
+**Goal:** Make `ai-config-store` the single AI-config mechanism and `usePlayHistory` the single play-history mechanism across all four game components; centralize `resolveOpponentLlmId`; fix three hook-layer drift bugs; make the chess global sidebar (`SidebarAIConfig`) config-only while moving chess's AI-side selection inline into `ChessGame`; delete the bypassed `useGameAI` hook.
 
-**Architecture:** The store (`lib/ai/ai-config-store.ts`) already hydrates at the app level (`AppShell.tsx`) and owns config (provider/model/apiKey/enabled/gameVariant). It becomes the single source of truth — but **config-only**: the chess-specific `aiPlayer`/`gameActive` slices move to per-component local state. `usePlayHistory` is reshaped to take an `enabled` flag + `debugVariantKey`, use the real `env` and the shared `resolveOpponentLlmId`, and apply the normalized save guards. Each game component drops its inline config-load/provider-change/play-history copies and wires the shared mechanisms.
+**Architecture:** The store (`lib/ai/ai-config-store.ts`) already hydrates at the app level (`AppShell.tsx`) and owns config (provider/model/apiKey/enabled/gameVariant). It becomes the single source of truth — but **config-only**: the chess-specific `aiPlayer`/`gameActive` slices move to per-component local state. `SidebarAIConfig` (rendered by `AppShell` only on `/chess`) drops its `aiPlayer`/`gameActive` controls and becomes provider/model-only; `ChessGame` gains a small inline "AI plays" `<select>` (local state, locked while a game is active) so the chess AI-side feature is preserved in-component, matching how the other three games already own their AI-side picker. `usePlayHistory` is reshaped to take an `enabled` flag + `debugVariantKey`, use the real `env` and the shared `resolveOpponentLlmId`, and apply the normalized save guards. Each game component drops its inline config-load/provider-change/play-history copies and wires the shared mechanisms.
 
 **Tech Stack:** TypeScript (strict), React 18, Astro SSR, Bun test runner, `useSyncExternalStore` store.
 
@@ -18,6 +18,7 @@
 - TypeScript strict; no `any` in new code.
 - Existing tests (`apps/web/src/**/*.test.ts`, `*.test.tsx`, E2E `apps/web/e2e/*.spec.ts`) must stay green after each task.
 - Result-determination equivalence: in checkmate the **winner is the side opposite `gameState.currentPlayer`** (the checkmated side). `getWinnerColor` must return that opposite color.
+- Chess AI-side ownership: `ChessGame` owns `aiPlayer` in local state and renders an inline "AI plays" `<select>` (disabled while `gameActive`). `SidebarAIConfig` must NOT reference the store's `useAIPlayer`/`useGameActive`/`setAIPlayer` — it is provider/model-only.
 - All commits use conventional-commit prefixes (`feat:`, `refactor:`, `test:`, `chore:`).
 
 ## File Structure
@@ -31,9 +32,13 @@
 
 - `apps/web/src/hooks/usePlayHistory.ts` — reshape options (`enabled`, `debugVariantKey`), real `env`, shared `resolveOpponentLlmId`, normalized guards.
 - `apps/web/src/hooks/usePlayHistory.test.ts` — import the real helper instead of mirroring it.
+- `apps/web/src/components/ChessGame.tsx` — adopt `usePlayHistory`; move `aiPlayer`/`gameActive` to local state; add inline "AI plays" `<select>`.
+- `apps/web/src/components/game/SidebarAIConfig.tsx` — drop `aiPlayer`/`gameActive` (provider/model-only).
+- `apps/web/src/components/game/SidebarAIConfig.test.tsx` — drop `aiPlayer`/`gameActive` assertions/tests.
+- `apps/web/src/components/AppShell.tsx` — update stale "AI side" comments.
+- `apps/web/src/components/{Xiangqi,Shogi,Jungle}Game.tsx` — adopt store + `usePlayHistory`; delete inline copies.
 - `apps/web/src/lib/ai/ai-config-store.ts` — remove `aiPlayer`/`gameActive` slices (config-only).
 - `apps/web/src/lib/ai/ai-config-store.test.ts` — drop `aiPlayer` assertions.
-- `apps/web/src/components/{Chess,Xiangqi,Shogi,Jungle}Game.tsx` — adopt store + `usePlayHistory`; delete inline copies.
 - `apps/web/src/hooks/index.ts` — drop `useGameAI` export.
 
 **Deleted:**
@@ -294,8 +299,8 @@ export function usePlayHistory({
 
 - [ ] **Step 4: Run the hook's test + full unit suite**
 
-Run: `cd apps/web && bun test src/hooks/usePlayHistory.test.ts && bun test`
-Expected: PASS — hook logic-mirror tests green; no regressions across the suite.
+Run: `cd apps/web && bun test src/hooks/usePlayHistory.test.ts && bun test src/`
+Expected: PASS — hook logic-mirror tests green; no regressions across the suite. (Use `bun test src/` for the unit suite — bare `bun test` also collects Playwright e2e specs.)
 
 - [ ] **Step 5: Commit**
 
@@ -306,9 +311,9 @@ git commit -m "refactor(hooks): reshape usePlayHistory to shared env + resolveOp
 
 ---
 
-### Task 3: Migrate ChessGame to local `aiPlayer`/`gameActive` + `usePlayHistory`
+### Task 3: Migrate ChessGame to local `aiPlayer`/`gameActive` + `usePlayHistory` + inline AI-side picker
 
-ChessGame already reads config from the store (`useAIConfig`). This task moves `aiPlayer` and `gameActive` to local state (per the approved design), adopts `usePlayHistory`, and deletes the inline play-history effect (which also fixes bug 7.3 — the missing `gameMode==='ai' && gameStarted` guard, now enforced by the hook's `enabled` flag).
+ChessGame already reads config from the store (`useAIConfig`). This task moves `aiPlayer` and `gameActive` to local state, adopts `usePlayHistory`, deletes the inline play-history effect (which also fixes bug 7.3 — the missing `gameMode==='ai' && gameStarted` guard, now enforced by the hook's `enabled` flag), AND adds a small inline "AI plays" `<select>` so the chess AI-side feature — previously controlled via the global `SidebarAIConfig` through the store — is preserved in-component (Task 4 makes the sidebar config-only).
 
 **Files:**
 
@@ -318,7 +323,7 @@ ChessGame already reads config from the store (`useAIConfig`). This task moves `
 **Interfaces:**
 
 - Consumes: `usePlayHistory` (Task 2).
-- Produces: ChessGame no longer imports `useAIPlayer` / `setGameActive` from the store (unblocks Task 7).
+- Produces: ChessGame no longer imports `useAIPlayer` / `setGameActive` from the store (unblocks Task 8).
 
 - [ ] **Step 1: Update imports**
 
@@ -347,16 +352,16 @@ import { env } from '../lib/env';
 
 (`env` was only used by the deleted play-history fetch.)
 
-- [ ] **Step 2: Move `aiPlayer` to local state**
+- [ ] **Step 2: Move `aiPlayer`/`gameActive` to local state (with setters)**
 
-Replace line 53 `const aiPlayer = useAIPlayer();` with a local state declaration. Add it alongside the other `useState` calls (e.g. immediately after line 52):
+Replace line 53 `const aiPlayer = useAIPlayer();` with local state declarations. Add them alongside the other `useState` calls (e.g. immediately after the `useAIConfig` line):
 
 ```ts
 const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
 const [gameActive, setGameActive] = useState(false);
 ```
 
-(ChessGame never calls `setAIPlayer`/`setGameActive` from the store today; the local `setGameActive` replaces the imported one used at lines 97, 477, 609, 667, 670. `setAIPlayer` is declared for completeness but chess keeps a fixed `'black'` AI side — matching current behavior.)
+(`gameActive` MUST be destructured to its value (not discarded) — Step 4 uses it to disable the AI-side picker. `setGameActive` replaces the imported one used at the existing call sites; `setAIPlayer` is wired in Step 4. Chess's AI side stays default `'black'` unless the user picks White via the new inline select.)
 
 - [ ] **Step 3: Delete the inline play-history effect and adopt the hook**
 
@@ -389,26 +394,122 @@ useEffect(() => {
 }, [gameState.status, hasGameEnded]);
 ```
 
-- [ ] **Step 4: Verify typecheck + lint**
+- [ ] **Step 4: Add the inline "AI plays" picker to the AI-mode panel**
+
+In the render, inside the `<BoardSidePanel>`'s `gameMode === 'ai'` branch (the `<>` fragment that currently begins with `<AIStatusPanel .../>`), insert this control as the **first** child (before `<AIStatusPanel />`):
+
+```tsx
+<div className='flex items-center justify-between gap-3'>
+  <label htmlFor='chess-ai-side' className='text-sm font-medium text-ivory-dim'>
+    AI plays
+  </label>
+  <select
+    id='chess-ai-side'
+    value={aiPlayer}
+    onChange={e => setAIPlayer(e.target.value as 'white' | 'black')}
+    disabled={gameActive}
+    className='rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
+  >
+    <option value='black'>Black</option>
+    <option value='white'>White</option>
+  </select>
+</div>
+```
+
+(This restores, in-component, the AI-side control that previously lived in `SidebarAIConfig`. It is locked while `gameActive` — matching the old sidebar's mid-game lock. `gameMode === 'ai'` gates it so it only shows for AI games.)
+
+- [ ] **Step 5: Verify typecheck + lint**
 
 Run: `cd apps/web && bunx tsc --noEmit && bun run lint`
-Expected: no errors. (If `setAIPlayer` is flagged unused, prefix it `_setAIPlayer` or remove it — chess uses a fixed `'black'` AI side, so the setter is not required.)
+Expected: no NEW errors. (Two pre-existing tsc errors in ChessGame.tsx — `LogicDemo | undefined` and `boolean | undefined` — exist on the base branch and are out of scope; do not fix them here.)
 
-- [ ] **Step 5: Run the chess E2E + unit suites**
+- [ ] **Step 6: Run the chess E2E + unit suites**
 
-Run: `cd apps/web && bun test` then `bun run test:e2e -- chess-ai critical-user-journeys rating-system`
-Expected: PASS. The `__PROCYON_DEBUG_CHESS_SAVE_COUNT__` counter is still bumped (now by the hook via `debugVariantKey: 'CHESS'`), and the debug-win-triggered save fires in DEV.
+Run: `cd apps/web && bun test src/` then `cd apps/web && bun run test:e2e -- chess-ai critical-user-journeys rating-system`
+Expected: PASS. The `__PROCYON_DEBUG_CHESS_SAVE_COUNT__` counter is still bumped (now by the hook via `debugVariantKey: 'CHESS'`), and the debug-win-triggered save fires in DEV. (If E2E can't run in the environment, run unit + tsc + lint and report E2E deferred.)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add apps/web/src/components/ChessGame.tsx
-git commit -m "refactor(chess): adopt usePlayHistory; move aiPlayer/gameActive to local state"
+git commit -m "refactor(chess): adopt usePlayHistory; own aiPlayer/gameActive locally with inline AI-side picker"
 ```
 
 ---
 
-### Task 4: Migrate XiangqiGame to the store + `usePlayHistory`
+### Task 4: Make `SidebarAIConfig` config-only
+
+`SidebarAIConfig` is rendered by `AppShell` only on `/chess` (desktop rail + mobile panel). It currently also controls chess's AI side via the store (`useAIPlayer`/`setAIPlayer`/`useGameActive`). Now that `ChessGame` owns its AI side inline (Task 3), the sidebar becomes provider/model-only. This task also unblocks Task 8 (which removes those store exports).
+
+**Files:**
+
+- Modify: `apps/web/src/components/game/SidebarAIConfig.tsx`
+- Modify: `apps/web/src/components/game/SidebarAIConfig.test.tsx`
+- Modify: `apps/web/src/components/AppShell.tsx` (comments only)
+
+**Interfaces:**
+
+- Produces: `SidebarAIConfig` imports only `useAIConfig`, `setProvider`, `setModel`, `rehydrate` from the store. The `useAIPlayer`/`useGameActive`/`setAIPlayer` imports and the "AI plays" UI are gone.
+
+- [ ] **Step 1: Drop the aiPlayer/gameActive store usage from `SidebarAIConfig.tsx`**
+
+Change the import (lines 2-10) from:
+
+```ts
+import {
+  useAIConfig,
+  useAIPlayer,
+  useGameActive,
+  setProvider,
+  setModel,
+  setAIPlayer,
+  rehydrate,
+} from '../../lib/ai/ai-config-store';
+```
+
+to:
+
+```ts
+import {
+  useAIConfig,
+  setProvider,
+  setModel,
+  rehydrate,
+} from '../../lib/ai/ai-config-store';
+```
+
+Delete `const aiPlayer = useAIPlayer();` and `const gameActive = useGameActive();` (lines 77-78). Delete the `AI_PLAYER_OPTIONS` constant (lines 52-55). Delete the entire "AI plays" `<div>` block (the `<div>` containing the `aria-label='AI plays'` select, the `disabled={gameActive}`, and the "Reset the game to switch sides." hint — lines 185-207).
+
+- [ ] **Step 2: Update `SidebarAIConfig.test.tsx`**
+
+- Remove `setAIPlayer` and `setGameActive` from the store import (lines 7-8) — keep `setConfig`, `hydrate`, `resetAIConfigStore`.
+- In `beforeEach`, delete `setAIPlayer('black');` (line 54).
+- In the test `'renders provider, model, and AI-plays selects plus manage-keys link'`, delete the assertion `expect(getByLabelText(/AI plays/i)).toBeTruthy();` (line 67) and rename the test to `'renders provider and model selects plus manage-keys link'`.
+- In the test `'shows sign-in prompt (not controls) when unauthenticated and not hydrated'`, delete `expect(queryByLabelText(/AI plays/i)).toBeNull();` (line 142) and update its leading comment to drop the "AI-plays" mention.
+- Delete the two tests entirely: `'disables AI-plays select and shows hint while a game is active'` (lines 161-167) and `'AI-plays select is enabled when no game is active'` (lines 169-175).
+
+- [ ] **Step 3: Update the stale "AI side" comments in `AppShell.tsx`**
+
+In `apps/web/src/components/AppShell.tsx`:
+
+- Lines 52-55 comment ("Only Chess has been migrated ... so scope the rail panel to /chess only."): leave the `/chess` rationale; no AI-side mention here — verify nothing references AI side. (No change expected unless the text mentions AI side.)
+- Lines 216-221 comment ("...there is no other surface to change AI side / provider / model before starting a chess AI game..."): change to drop "AI side /" so it reads "no other surface to change provider / model before starting a chess AI game" (chess now owns AI side inline in `ChessGame`).
+
+- [ ] **Step 4: Verify typecheck + lint + tests**
+
+Run: `cd apps/web && bunx tsc --noEmit && bun run lint && bun test src/`
+Expected: no NEW errors; `SidebarAIConfig.test.tsx` passes with the AI-plays/gameActive tests removed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/src/components/game/SidebarAIConfig.tsx apps/web/src/components/game/SidebarAIConfig.test.tsx apps/web/src/components/AppShell.tsx
+git commit -m "refactor(sidebar): make SidebarAIConfig config-only (provider/model); move chess AI-side inline"
+```
+
+---
+
+### Task 5: Migrate XiangqiGame to the store + `usePlayHistory`
 
 XiangqiGame currently uses local `aiConfig` state + `loadAIConfig()` + a 97-line inline `handleProviderChange` + a ~60-line inline play-history effect. All replaced by the store + hook. (The store is hydrated app-wide by `AppShell.tsx`, so no per-component hydrate is needed.)
 
@@ -523,7 +624,7 @@ Expected: no errors. Remove any now-unused imports flagged by the linter (e.g. `
 
 - [ ] **Step 7: Run E2E + unit suites**
 
-Run: `cd apps/web && bun test && bun run test:e2e -- xiangqi-ai critical-user-journeys`
+Run: `cd apps/web && bun test src/ && bun run test:e2e -- xiangqi-ai critical-user-journeys`
 Expected: PASS. The xiangqi provider-change flow now goes through the store's `setProvider` (which surfaces the same user-facing error strings via `setErrorMsg`).
 
 - [ ] **Step 8: Commit**
@@ -535,16 +636,16 @@ git commit -m "refactor(xiangqi): adopt ai-config-store + usePlayHistory; drop i
 
 ---
 
-### Task 5: Migrate ShogiGame to the store + `usePlayHistory`
+### Task 6: Migrate ShogiGame to the store + `usePlayHistory`
 
-Same shape as Task 4. Adopting the hook also fixes bug 7.2: Shogi's inline `isGameOver` only checked `checkmate || draw` (missing `stalemate`); the hook's `isGameOverStatus` checks all three (harmless for shogi, which never produces stalemate, but consistent).
+Same shape as Task 5. Adopting the hook also fixes bug 7.2: Shogi's inline `isGameOver` only checked `checkmate || draw` (missing `stalemate`); the hook's `isGameOverStatus` checks all three (harmless for shogi, which never produces stalemate, but consistent).
 
 **Files:**
 
 - Modify: `apps/web/src/components/ShogiGame.tsx`
 - Test: `apps/web/e2e/shogi-ai.spec.ts`, `apps/web/e2e/critical-user-journeys.spec.ts`
 
-**Interfaces:** same as Task 4 (consumes store + hook).
+**Interfaces:** same as Task 5 (consumes store + hook).
 
 - [ ] **Step 1: Update imports**
 
@@ -614,7 +715,7 @@ ShogiGame does not define a standalone `handleProviderChange` (its `AISettingsDi
 						onModelChange={model => setAIModel(model)}
 ```
 
-(If ShogiGame exposes an error-state setter for provider failures, assign the returned string to it instead — mirroring Xiangqi Task 4 Step 5. Inspect the existing `<AISettingsDialog>` block to confirm; the default above is the no-error-banner path.)
+(If ShogiGame exposes an error-state setter for provider failures, assign the returned string to it instead — mirroring Xiangqi Task 5 Step 5. Inspect the existing `<AISettingsDialog>` block to confirm; the default above is the no-error-banner path.)
 
 - [ ] **Step 6: Verify typecheck + lint**
 
@@ -623,7 +724,7 @@ Expected: no errors. Remove unused imports the linter flags.
 
 - [ ] **Step 7: Run E2E + unit suites**
 
-Run: `cd apps/web && bun test && bun run test:e2e -- shogi-ai critical-user-journeys`
+Run: `cd apps/web && bun test src/ && bun run test:e2e -- shogi-ai critical-user-journeys`
 Expected: PASS.
 
 - [ ] **Step 8: Commit**
@@ -635,16 +736,16 @@ git commit -m "refactor(shogi): adopt ai-config-store + usePlayHistory; fix miss
 
 ---
 
-### Task 6: Migrate JungleGame to the store + `usePlayHistory`
+### Task 7: Migrate JungleGame to the store + `usePlayHistory`
 
-Same shape as Tasks 4–5.
+Same shape as Tasks 5–6.
 
 **Files:**
 
 - Modify: `apps/web/src/components/JungleGame.tsx`
 - Test: `apps/web/e2e/critical-user-journeys.spec.ts`
 
-**Interfaces:** same as Task 4.
+**Interfaces:** same as Task 5.
 
 - [ ] **Step 1: Update imports**
 
@@ -710,7 +811,7 @@ Locate JungleGame's `<AISettingsDialog ...>` JSX and update `onProviderChange`/`
 						onModelChange={model => setAIModel(model)}
 ```
 
-(If JungleGame has a provider-error banner setter, assign `setAIProvider`'s returned string to it — mirroring Xiangqi Task 4 Step 5.)
+(If JungleGame has a provider-error banner setter, assign `setAIProvider`'s returned string to it — mirroring Xiangqi Task 5 Step 5.)
 
 - [ ] **Step 6: Verify typecheck + lint**
 
@@ -719,7 +820,7 @@ Expected: no errors.
 
 - [ ] **Step 7: Run E2E + unit suites**
 
-Run: `cd apps/web && bun test && bun run test:e2e -- critical-user-journeys`
+Run: `cd apps/web && bun test src/ && bun run test:e2e -- critical-user-journeys`
 Expected: PASS.
 
 - [ ] **Step 8: Commit**
@@ -731,9 +832,9 @@ git commit -m "refactor(jungle): adopt ai-config-store + usePlayHistory; drop in
 
 ---
 
-### Task 7: Generalize `ai-config-store` to config-only
+### Task 8: Generalize `ai-config-store` to config-only
 
-Now that no component reads `useAIPlayer`/`useGameActive` (Tasks 3–6), remove the `aiPlayer` and `gameActive` slices so the store owns config only.
+Now that no component reads `useAIPlayer`/`useGameActive` (Tasks 3–7), remove the `aiPlayer` and `gameActive` slices so the store owns config only.
 
 **Files:**
 
@@ -799,7 +900,7 @@ git rm apps/web/src/lib/ai/ai-config-store-slices.test.tsx
 
 - [ ] **Step 5: Verify typecheck + lint + tests**
 
-Run: `cd apps/web && bunx tsc --noEmit && bun run lint && bun test`
+Run: `cd apps/web && bunx tsc --noEmit && bun run lint && bun test src/`
 Expected: no errors; all unit tests PASS.
 
 - [ ] **Step 6: Commit**
@@ -811,9 +912,9 @@ git commit -m "refactor(ai-store): make ai-config-store config-only; move aiPlay
 
 ---
 
-### Task 8: Delete `useGameAI` + clean up the hooks barrel
+### Task 9: Delete `useGameAI` + clean up the hooks barrel
 
-`useGameAI` is now fully subsumed by the store (Tasks 4–6 use `setProvider`/`setModel`; Task 7 made the store config-only). No component imports it.
+`useGameAI` is now fully subsumed by the store (Tasks 5–7 use `setProvider`/`setModel`; Task 8 made the store config-only). No component imports it.
 
 **Files:**
 
@@ -846,7 +947,7 @@ Expected: `no references`.
 
 - [ ] **Step 4: Verify typecheck + lint + full suite**
 
-Run: `cd apps/web && bunx tsc --noEmit && bun run lint && bun test`
+Run: `cd apps/web && bunx tsc --noEmit && bun run lint && bun test src/`
 Expected: no errors; PASS.
 
 - [ ] **Step 5: Commit**
@@ -860,13 +961,16 @@ git commit -m "chore(hooks): delete subsumed useGameAI hook"
 
 ## Final Verification
 
-- [ ] **Full unit suite:** `cd apps/web && bun test` — all green.
-- [ ] **Typecheck + lint:** `cd apps/web && bunx tsc --noEmit && bun run lint` — clean.
+- [ ] **Full unit suite:** `cd apps/web && bun test src/` — all green.
+- [ ] **Typecheck + lint:** `cd apps/web && bunx tsc --noEmit && bun run lint` — no NEW errors (two pre-existing ChessGame.tsx tsc errors are out of scope).
 - [ ] **E2E (mocked AI):** `cd apps/web && bun run test:e2e -- chess-ai xiangqi-ai shogi-ai critical-user-journeys rating-system` — all green. The `__PROCYON_DEBUG_<VARIANT>_SAVE_COUNT__` counters still increment (now via the hook's `debugVariantKey`).
-- [ ] **Manual smoke:** start `bun run web:dev` + `bun run api:dev`, play an AI game in each variant to checkmate, confirm a play-history record is created; switch provider in each variant's AI Settings and confirm the key loads.
+- [ ] **Chess AI-side smoke:** on `/chess`, confirm the inline "AI plays" `<select>` in the board-side panel switches the AI side (start a game, verify the AI moves for the chosen color) and is disabled mid-game.
+- [ ] **Sidebar smoke:** on `/chess`, confirm `SidebarAIConfig` shows only provider/model (no "AI plays" control) and the provider/model selects still work.
 
 ## Out of Scope (tracked elsewhere)
 
 - Engine/board-layer bugs (chess shallow `copyBoard`, duplicate `algebraicToPosition`, `border-xiangqi`) — HPA-154 (Tier 2) / HPA-155 (Tier 4).
 - React lifecycle/layout extraction (`useGameLifecycle`, `GameLayout`, `BoardGrid`) — HPA-155 (Tier 4).
 - AI adapter / rule-guardian dedup — HPA-156 (Tier 3).
+- Showing `SidebarAIConfig` on non-chess game pages (all games now use the store, but the `/chess` gating is a deliberate UX scope held for Tier 4) — HPA-155 (Tier 4).
+- Converting `usePlayHistory.test.ts`'s remaining local-replica describe blocks (`determineResult`, `save preconditions`, `isGameOver`) into real hook integration tests — test-hygiene follow-up.
