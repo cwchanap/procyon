@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
 import {
 	useAIConfig,
-	useAIPlayer,
-	useGameActive,
 	setProvider,
 	setModel,
-	setAIPlayer,
 	rehydrate,
 } from '../../lib/ai/ai-config-store';
 import type { AIProvider } from '../../lib/ai/types';
@@ -49,11 +46,6 @@ const ALL_PROVIDER_OPTIONS: Array<{ value: AIProvider; label: string }> = [
 	{ value: 'chutes', label: 'Chutes.ai' },
 ];
 
-const AI_PLAYER_OPTIONS = [
-	{ value: 'black', label: 'AI plays Black' },
-	{ value: 'white', label: 'AI plays White' },
-];
-
 /**
  * Resolve the provider dropdown options from the store's hydration state.
  *
@@ -74,8 +66,6 @@ function resolveProviderOptions(
 
 const SidebarAIConfig: React.FC = () => {
 	const { config, availableProviders, hydrated, hydrateError } = useAIConfig();
-	const aiPlayer = useAIPlayer();
-	const gameActive = useGameActive();
 	const { isAuthenticated, loading } = useAuth();
 	const [error, setError] = useState<string | null>(null);
 
@@ -180,30 +170,6 @@ const SidebarAIConfig: React.FC = () => {
 								</option>
 							))}
 						</select>
-					</div>
-
-					<div>
-						<label className='mb-1 block text-xs font-medium text-ivory-dim'>
-							AI plays
-						</label>
-						<select
-							aria-label='AI plays'
-							value={aiPlayer}
-							onChange={e => setAIPlayer(e.target.value as 'white' | 'black')}
-							disabled={gameActive}
-							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
-						>
-							{AI_PLAYER_OPTIONS.map(o => (
-								<option key={o.value} value={o.value}>
-									{o.label}
-								</option>
-							))}
-						</select>
-						{gameActive && (
-							<p className='mt-1 text-xs text-ivory-dim'>
-								Reset the game to switch sides.
-							</p>
-						)}
 					</div>
 
 					<a

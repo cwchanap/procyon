@@ -215,8 +215,8 @@ export function AppShell() {
 
 			{/* Mobile AI config panel (chess pages only). The desktop rail
 			    renders SidebarAIConfig inside a `hidden lg:flex` aside, so below
-			    the lg breakpoint there is no other surface to change AI side /
-			    provider / model before starting a chess AI game. This collapsible
+			    the lg breakpoint there is no other surface to change provider /
+			    model before starting a chess AI game. This collapsible
 			    panel mirrors the desktop rail panel using the same store-backed
 			    component. */}
 			{isChessPage(path) && mobileAIOpen && !isDesktop && (
