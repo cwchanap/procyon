@@ -12,9 +12,14 @@ import {
 } from '../lib/jungle/game';
 import { createInitialTerrain } from '../lib/jungle/types';
 import { createInitialBoard } from '../lib/jungle/board';
-import { createJungleAI, defaultAIConfig, loadAIConfig } from '../lib/ai';
-import { env } from '../lib/env';
-import type { AIConfig } from '../lib/ai/types';
+import { createJungleAI } from '../lib/ai';
+import {
+	useAIConfig,
+	setProvider as setAIProvider,
+	setModel as setAIModel,
+} from '../lib/ai/ai-config-store';
+import { usePlayHistory } from '../hooks/usePlayHistory';
+import type { AIProvider } from '../lib/ai/types';
 import JungleBoard from './JungleBoard';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
@@ -46,34 +51,15 @@ const JungleGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<JunglePieceColor>('blue');
-	const [aiConfig, setAIConfig] = useState<AIConfig>({
-		...defaultAIConfig,
-		gameVariant: 'jungle',
-	});
+	const { config: aiConfig } = useAIConfig();
 	const [aiService] = useState(() => createJungleAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
-	const [_isLoadingConfig, setIsLoadingConfig] = useState(true);
 	const [_aiRejectionCount, setAiRejectionCount] = useState(0);
 	const [_isAiPaused, setIsAiPaused] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
-	const [hasGameEnded, setHasGameEnded] = useState(false);
-
-	// Load AI config on client side only to avoid SSR hydration mismatch
-	useEffect(() => {
-		const loadConfig = async () => {
-			const config = await loadAIConfig();
-			setAIConfig({ ...config, gameVariant: 'jungle' });
-			aiService.updateConfig({
-				...config,
-				gameVariant: 'jungle',
-				debug: isDebugMode,
-			});
-			setIsLoadingConfig(false);
-		};
-		loadConfig();
-	}, [aiService, isDebugMode]);
+	const [_hasGameEnded, setHasGameEnded] = useState(false);
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
@@ -89,74 +75,16 @@ const JungleGame: React.FC = () => {
 		return () => window.removeEventListener('keydown', handleKeyDown);
 	}, []);
 
-	// Save play history when game ends
-	useEffect(() => {
-		const isGameOver =
-			gameState.status === 'checkmate' ||
-			gameState.status === 'stalemate' ||
-			gameState.status === 'draw';
-
-		if (isGameOver && gameStarted && gameMode === 'ai' && !hasGameEnded) {
-			setHasGameEnded(true);
-
-			const savePlayHistory = async () => {
-				try {
-					if (typeof window !== 'undefined') {
-						const global = window as unknown as {
-							__PROCYON_DEBUG_JUNGLE_SAVE_COUNT__?: number;
-						};
-						global.__PROCYON_DEBUG_JUNGLE_SAVE_COUNT__ =
-							(global.__PROCYON_DEBUG_JUNGLE_SAVE_COUNT__ ?? 0) + 1;
-					}
-
-					let status: 'win' | 'loss' | 'draw';
-					if (gameState.status === 'checkmate') {
-						status = gameState.currentPlayer === aiPlayer ? 'win' : 'loss';
-					} else {
-						status = 'draw';
-					}
-
-					// Map provider/model to valid OpponentLlmId enum values
-					let opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' = 'gemini-2.5-flash';
-					const providerModel =
-						`${aiConfig.provider}/${aiConfig.model}`.toLowerCase();
-					if (providerModel.includes('gpt-4o')) {
-						opponentLlmId = 'gpt-4o';
-					} else if (providerModel.includes('gemini')) {
-						opponentLlmId = 'gemini-2.5-flash';
-					}
-
-					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						credentials: 'include',
-						body: JSON.stringify({
-							chessId: 'jungle',
-							status,
-							date: new Date().toISOString(),
-							opponentLlmId,
-						}),
-					});
-				} catch (error) {
-					// eslint-disable-next-line no-console
-					console.error('Failed to save Jungle play history:', error);
-				}
-			};
-
-			void savePlayHistory();
-		}
-	}, [
-		gameState.status,
-		gameState.currentPlayer,
-		gameStarted,
-		gameMode,
-		hasGameEnded,
+	usePlayHistory({
+		gameVariant: 'jungle',
+		gameStatus: gameState.status,
 		aiPlayer,
-		aiConfig.provider,
-		aiConfig.model,
-	]);
+		aiConfig,
+		moveCount: gameState.moveHistory.length,
+		getWinnerColor: () => (gameState.currentPlayer === 'red' ? 'blue' : 'red'),
+		enabled: gameMode === 'ai' && gameStarted,
+		debugVariantKey: 'JUNGLE',
+	});
 
 	// AI setup and debug callback
 	useEffect(() => {
@@ -554,13 +482,10 @@ const JungleGame: React.FC = () => {
 					onAIPlayerChange={player => setAIPlayer(player as JunglePieceColor)}
 					provider={aiConfig.provider}
 					model={aiConfig.model}
-					onProviderChange={provider =>
-						setAIConfig({
-							...aiConfig,
-							provider: provider as AIConfig['provider'],
-						})
-					}
-					onModelChange={model => setAIConfig({ ...aiConfig, model })}
+					onProviderChange={async provider => {
+						await setAIProvider(provider as AIProvider);
+					}}
+					onModelChange={model => setAIModel(model)}
 					aiPlayerOptions={[
 						{ value: 'blue', label: 'AI plays Blue (蓝方)' },
 						{ value: 'red', label: 'AI plays Red (红方)' },
