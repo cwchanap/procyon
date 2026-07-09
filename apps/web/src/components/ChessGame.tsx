@@ -46,8 +46,8 @@ const ChessGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const { config: aiConfig, hydrated: aiConfigHydrated } = useAIConfig();
-	const [aiPlayer] = useState<'white' | 'black'>('black');
-	const [, setGameActive] = useState(false);
+	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
+	const [gameActive, setGameActive] = useState(false);
 	const { isAuthenticated } = useAuth();
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
@@ -763,6 +763,26 @@ const ChessGame: React.FC = () => {
 				<BoardSidePanel gameMode={gameMode} onModeChange={toggleToMode}>
 					{gameMode === 'ai' ? (
 						<>
+							<div className='flex items-center justify-between gap-3'>
+								<label
+									htmlFor='chess-ai-side'
+									className='text-sm font-medium text-ivory-dim'
+								>
+									AI plays
+								</label>
+								<select
+									id='chess-ai-side'
+									value={aiPlayer}
+									onChange={e =>
+										setAIPlayer(e.target.value as 'white' | 'black')
+									}
+									disabled={gameActive}
+									className='rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
+								>
+									<option value='black'>Black</option>
+									<option value='white'>White</option>
+								</select>
+							</div>
 							<AIStatusPanel
 								aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
 								hasGameStarted={gameStarted}
