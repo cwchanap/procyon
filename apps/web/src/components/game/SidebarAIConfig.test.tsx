@@ -4,8 +4,6 @@ import React from 'react';
 import { setupReactDom } from '../../test/reactSetup';
 import {
 	setConfig,
-	setAIPlayer,
-	setGameActive,
 	hydrate,
 	resetAIConfigStore,
 } from '../../lib/ai/ai-config-store';
@@ -51,20 +49,18 @@ describe('SidebarAIConfig', () => {
 			enabled: true,
 			gameVariant: 'chess',
 		});
-		setAIPlayer('black');
 	});
 
 	afterEach(() => {
 		delete (globalThis as Partial<typeof globalThis>).localStorage;
 	});
 
-	test('renders provider, model, and AI-plays selects plus manage-keys link', async () => {
+	test('renders provider and model selects plus manage-keys link', async () => {
 		const { getByLabelText, getByText } = render(<SidebarAIConfig />);
 		await waitFor(() => {
 			expect(getByLabelText(/AI Provider/i)).toBeTruthy();
 		});
 		expect(getByLabelText(/AI Model/i)).toBeTruthy();
-		expect(getByLabelText(/AI plays/i)).toBeTruthy();
 		expect(getByText(/Manage API keys/i)).toBeTruthy();
 	});
 
@@ -136,10 +132,9 @@ describe('SidebarAIConfig', () => {
 		const { getByText, queryByLabelText } = render(<SidebarAIConfig />);
 		expect(getByText(/Sign in to configure your AI provider/i)).toBeTruthy();
 		expect(getByText(/Sign in →/i)).toBeTruthy();
-		// Provider/model/AI-plays selects must not render for unauth users.
+		// Provider/model selects must not render for unauth users.
 		expect(queryByLabelText(/AI Provider/i)).toBeNull();
 		expect(queryByLabelText(/AI Model/i)).toBeNull();
-		expect(queryByLabelText(/AI plays/i)).toBeNull();
 	});
 
 	test('shows error message when setProvider fails to load config list', async () => {
@@ -156,21 +151,5 @@ describe('SidebarAIConfig', () => {
 		await waitFor(() => {
 			expect(getByText(/couldn't load your saved AI settings/i)).toBeTruthy();
 		});
-	});
-
-	test('disables AI-plays select and shows hint while a game is active', async () => {
-		setGameActive(true);
-		const { getByLabelText, getByText } = render(<SidebarAIConfig />);
-		const aiPlaysSelect = getByLabelText(/AI plays/i) as HTMLSelectElement;
-		expect(aiPlaysSelect.disabled).toBe(true);
-		expect(getByText(/Reset the game to switch sides/i)).toBeTruthy();
-	});
-
-	test('AI-plays select is enabled when no game is active', async () => {
-		setGameActive(false);
-		const { getByLabelText, queryByText } = render(<SidebarAIConfig />);
-		const aiPlaysSelect = getByLabelText(/AI plays/i) as HTMLSelectElement;
-		expect(aiPlaysSelect.disabled).toBe(false);
-		expect(queryByText(/Reset the game to switch sides/i)).toBeNull();
 	});
 });
