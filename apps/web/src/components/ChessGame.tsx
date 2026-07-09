@@ -21,14 +21,10 @@ import AIGameInstructions from './game/AIGameInstructions';
 import type { AIMove } from './ai/AIDebugDialog';
 import { createChessAI } from '../lib/ai';
 import { defaultAIConfig } from '../lib/ai/storage';
-import {
-	useAIConfig,
-	useAIPlayer,
-	setGameActive,
-} from '../lib/ai/ai-config-store';
+import { useAIConfig } from '../lib/ai/ai-config-store';
+import { usePlayHistory } from '../hooks/usePlayHistory';
 import { useAuth } from '../lib/auth';
 import { GameExporter } from '../lib/ai/game-export';
-import { env } from '../lib/env';
 
 interface LogicDemo {
 	id: string;
@@ -50,7 +46,8 @@ const ChessGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const { config: aiConfig, hydrated: aiConfigHydrated } = useAIConfig();
-	const aiPlayer = useAIPlayer();
+	const [aiPlayer] = useState<'white' | 'black'>('black');
+	const [, setGameActive] = useState(false);
 	const { isAuthenticated } = useAuth();
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
@@ -85,79 +82,30 @@ const ChessGame: React.FC = () => {
 	);
 	const [aiService] = useState(() => createChessAI(defaultAIConfig));
 
-	// Save play history when game ends
+	usePlayHistory({
+		gameVariant: 'chess',
+		gameStatus: gameState.status,
+		aiPlayer,
+		aiConfig,
+		moveCount: gameState.moveHistory.length,
+		getWinnerColor: () =>
+			gameState.currentPlayer === 'white' ? 'black' : 'white',
+		enabled: gameMode === 'ai' && gameStarted,
+		debugVariantKey: 'CHESS',
+	});
+
+	// Latch game-ended + clear gameActive when the game finishes (the hook owns
+	// the actual play-history save + dedup).
 	useEffect(() => {
-		const isGameOver =
+		const over =
 			gameState.status === 'checkmate' ||
 			gameState.status === 'stalemate' ||
 			gameState.status === 'draw';
-
-		if (isGameOver && !hasGameEnded) {
+		if (over && !hasGameEnded) {
 			setHasGameEnded(true);
 			setGameActive(false);
-
-			const savePlayHistory = async () => {
-				try {
-					// Dev-only debug counter for tests
-					if (typeof window !== 'undefined') {
-						const global = window as unknown as {
-							__PROCYON_DEBUG_CHESS_SAVE_COUNT__?: number;
-						};
-						global.__PROCYON_DEBUG_CHESS_SAVE_COUNT__ =
-							(global.__PROCYON_DEBUG_CHESS_SAVE_COUNT__ ?? 0) + 1;
-					}
-
-					// Determine game result from current player's perspective
-					let status: 'win' | 'loss' | 'draw';
-					if (gameState.status === 'checkmate') {
-						// Current player is in checkmate (they lost)
-						// If AI player is in checkmate, human won
-						// If human player is in checkmate, AI won
-						status = gameState.currentPlayer === aiPlayer ? 'win' : 'loss';
-					} else {
-						// Stalemate or draw
-						status = 'draw';
-					}
-
-					// Map provider/model to valid OpponentLlmId enum values
-					let opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' = 'gemini-2.5-flash';
-					const providerModel =
-						`${aiConfig.provider}/${aiConfig.model}`.toLowerCase();
-					if (providerModel.includes('gpt-4o')) {
-						opponentLlmId = 'gpt-4o';
-					} else if (providerModel.includes('gemini')) {
-						opponentLlmId = 'gemini-2.5-flash';
-					}
-
-					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						credentials: 'include',
-						body: JSON.stringify({
-							chessId: 'chess',
-							status,
-							date: new Date().toISOString(),
-							opponentLlmId,
-						}),
-					});
-				} catch (error) {
-					// eslint-disable-next-line no-console
-					console.error('Failed to save play history:', error);
-				}
-			};
-
-			void savePlayHistory();
 		}
-	}, [
-		gameState.status,
-		gameState.currentPlayer,
-		hasGameEnded,
-		aiPlayer,
-		aiConfig.provider,
-		aiConfig.model,
-	]);
+	}, [gameState.status, hasGameEnded]);
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
