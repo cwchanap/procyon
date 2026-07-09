@@ -1,11 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../lib/auth';
+import { env } from '../lib/env';
+import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
 import type { AIConfig } from '../lib/ai/types';
 import type { GameVariant, GameStatus } from '../lib/ai/game-variant-types';
-
-const env = {
-	PUBLIC_API_URL: import.meta.env.PUBLIC_API_URL || 'http://localhost:3501',
-};
 
 export interface UsePlayHistoryOptions {
 	gameVariant: GameVariant;
@@ -14,15 +12,24 @@ export interface UsePlayHistoryOptions {
 	aiConfig: AIConfig;
 	moveCount: number;
 	getWinnerColor: () => string | null;
+	/** True only while an AI game is in progress (gameMode === 'ai' && gameStarted). */
+	enabled: boolean;
+	/** When set, bumps window.__PROCYON_DEBUG_<KEY>_SAVE_COUNT__ before the fetch. */
+	debugVariantKey?: string;
 }
 
 export interface UsePlayHistoryReturn {
 	savePlayHistory: () => Promise<void>;
 }
 
+function isGameOverStatus(status: GameStatus): boolean {
+	return status === 'checkmate' || status === 'stalemate' || status === 'draw';
+}
+
 /**
- * Custom hook for saving play history to the API.
- * Automatically saves when a game ends (checkmate, stalemate, or draw).
+ * Auto-saves a play-history record when an AI game ends. Single source of
+ * truth for all four game variants. Save guards: enabled (AI game in
+ * progress), authenticated-or-DEV, game over, not already saved.
  */
 export function usePlayHistory({
 	gameVariant,
@@ -31,65 +38,43 @@ export function usePlayHistory({
 	aiConfig,
 	moveCount,
 	getWinnerColor,
+	enabled,
+	debugVariantKey,
 }: UsePlayHistoryOptions): UsePlayHistoryReturn {
 	const { isAuthenticated } = useAuth();
 	const savedRef = useRef(false);
 
-	const getOpponentLlmId = useCallback((): 'gpt-4o' | 'gemini-2.5-flash' => {
-		const providerModel =
-			`${aiConfig.provider}/${aiConfig.model}`.toLowerCase();
-		if (providerModel.includes('gpt-4o')) {
-			return 'gpt-4o';
-		}
-		return 'gemini-2.5-flash';
-	}, [aiConfig.provider, aiConfig.model]);
-
 	const savePlayHistory = useCallback(async () => {
-		if (
-			!isAuthenticated ||
-			!aiPlayer ||
-			!aiConfig.enabled ||
-			savedRef.current
-		) {
-			return;
-		}
-
-		const isGameOver =
-			gameStatus === 'checkmate' ||
-			gameStatus === 'stalemate' ||
-			gameStatus === 'draw';
-
-		if (!isGameOver) {
-			return;
-		}
+		if (!enabled || savedRef.current) return;
+		if (!(isAuthenticated || import.meta.env.DEV)) return;
+		if (!aiPlayer) return;
+		if (!isGameOverStatus(gameStatus)) return;
 
 		let result: 'win' | 'loss' | 'draw';
-
 		if (gameStatus === 'draw' || gameStatus === 'stalemate') {
 			result = 'draw';
 		} else {
-			// For checkmate, we need to determine the winner
 			const winnerColor = getWinnerColor();
-			if (winnerColor === null) {
-				return; // Bail out if we can't determine the winner for checkmate
-			}
-			if (winnerColor === aiPlayer) {
-				result = 'loss'; // AI won, player lost
-			} else {
-				result = 'win'; // Player won
-			}
+			if (winnerColor === null) return;
+			result = winnerColor === aiPlayer ? 'loss' : 'win';
 		}
 
-		// Set savedRef optimistically before the fetch to prevent race conditions
 		savedRef.current = true;
 
+		if (debugVariantKey && typeof window !== 'undefined') {
+			const w = window as unknown as Record<string, number | undefined>;
+			const key = `__PROCYON_DEBUG_${debugVariantKey}_SAVE_COUNT__`;
+			w[key] = (w[key] ?? 0) + 1;
+		}
+
 		try {
-			const opponentLlmId = getOpponentLlmId();
+			const opponentLlmId = resolveOpponentLlmId(
+				aiConfig.provider,
+				aiConfig.model
+			);
 			const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
+				headers: { 'Content-Type': 'application/json' },
 				credentials: 'include',
 				body: JSON.stringify({
 					chessId: gameVariant,
@@ -98,43 +83,32 @@ export function usePlayHistory({
 					opponentLlmId,
 				}),
 			});
-
 			if (!response.ok) {
-				// eslint-disable-next-line no-console
-				console.error('Failed to save play history:', response.statusText);
-				// Reset savedRef to allow retry on failure
 				savedRef.current = false;
 			}
 		} catch (error) {
-			// Reset savedRef to allow retry
 			savedRef.current = false;
 			// eslint-disable-next-line no-console
 			console.error('Error saving play history:', error);
 		}
 	}, [
+		enabled,
 		isAuthenticated,
 		aiPlayer,
-		aiConfig,
 		gameStatus,
+		aiConfig.provider,
+		aiConfig.model,
 		gameVariant,
-		getOpponentLlmId,
-		moveCount,
 		getWinnerColor,
+		debugVariantKey,
 	]);
 
-	// Auto-save when game ends
 	useEffect(() => {
-		const isGameOver =
-			gameStatus === 'checkmate' ||
-			gameStatus === 'stalemate' ||
-			gameStatus === 'draw';
-
-		if (isGameOver && !savedRef.current) {
-			savePlayHistory();
+		if (isGameOverStatus(gameStatus) && !savedRef.current) {
+			void savePlayHistory();
 		}
 	}, [gameStatus, savePlayHistory]);
 
-	// Reset saved flag when starting a new game
 	useEffect(() => {
 		if (gameStatus === 'playing' && moveCount === 0) {
 			savedRef.current = false;

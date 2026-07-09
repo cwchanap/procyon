@@ -1,57 +1,47 @@
 import { test, expect, describe } from 'bun:test';
 import type { GameVariant } from '../lib/ai/game-variant-types';
+import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
 
 // ─── Opponent LLM ID mapping logic ───────────────────────────────────────────
-// Mirrors the getOpponentLlmId() logic inside usePlayHistory
-
-function getOpponentLlmId(
-	provider: string,
-	model: string
-): 'gpt-4o' | 'gemini-2.5-flash' {
-	const providerModel = `${provider}/${model}`.toLowerCase();
-	if (providerModel.includes('gpt-4o')) {
-		return 'gpt-4o';
-	}
-	return 'gemini-2.5-flash';
-}
+// Imported from the shared helper (formerly mirrored here).
 
 describe('getOpponentLlmId mapping logic', () => {
 	test('returns gpt-4o when provider is openai and model is gpt-4o', () => {
-		expect(getOpponentLlmId('openai', 'gpt-4o')).toBe('gpt-4o');
+		expect(resolveOpponentLlmId('openai', 'gpt-4o')).toBe('gpt-4o');
 	});
 
 	test('returns gpt-4o for gpt-4o-mini variant', () => {
-		expect(getOpponentLlmId('openai', 'gpt-4o-mini')).toBe('gpt-4o');
+		expect(resolveOpponentLlmId('openai', 'gpt-4o-mini')).toBe('gpt-4o');
 	});
 
 	test('returns gpt-4o when combined provider/model contains gpt-4o', () => {
-		expect(getOpponentLlmId('openrouter', 'gpt-4o')).toBe('gpt-4o');
+		expect(resolveOpponentLlmId('openrouter', 'gpt-4o')).toBe('gpt-4o');
 	});
 
 	test('returns gemini-2.5-flash for gemini provider', () => {
-		expect(getOpponentLlmId('gemini', 'gemini-2.5-flash')).toBe(
+		expect(resolveOpponentLlmId('gemini', 'gemini-2.5-flash')).toBe(
 			'gemini-2.5-flash'
 		);
 	});
 
 	test('returns gemini-2.5-flash for chutes provider', () => {
-		expect(getOpponentLlmId('chutes', 'deepseek-ai/DeepSeek-R1')).toBe(
+		expect(resolveOpponentLlmId('chutes', 'deepseek-ai/DeepSeek-R1')).toBe(
 			'gemini-2.5-flash'
 		);
 	});
 
 	test('returns gemini-2.5-flash for openrouter with non-gpt-4o model', () => {
-		expect(getOpponentLlmId('openrouter', 'claude-3-haiku')).toBe(
+		expect(resolveOpponentLlmId('openrouter', 'claude-3-haiku')).toBe(
 			'gemini-2.5-flash'
 		);
 	});
 
 	test('is case-insensitive for gpt-4o detection', () => {
-		expect(getOpponentLlmId('OpenAI', 'GPT-4O')).toBe('gpt-4o');
+		expect(resolveOpponentLlmId('OpenAI', 'GPT-4O')).toBe('gpt-4o');
 	});
 
 	test('returns gemini-2.5-flash for unknown provider and model', () => {
-		expect(getOpponentLlmId('unknown', 'unknown-model')).toBe(
+		expect(resolveOpponentLlmId('unknown', 'unknown-model')).toBe(
 			'gemini-2.5-flash'
 		);
 	});
