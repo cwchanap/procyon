@@ -9,11 +9,16 @@ import {
 	makeAIMove as makeShogiAIMove,
 	SHOGI_BOARD_SIZE,
 } from '../lib/shogi';
-import { createShogiAI, defaultAIConfig, loadAIConfig } from '../lib/ai';
-import type { AIConfig, AIProvider } from '../lib/ai/types';
+import { createShogiAI } from '../lib/ai';
+import {
+	useAIConfig,
+	setProvider as setAIProvider,
+	setModel as setAIModel,
+} from '../lib/ai/ai-config-store';
+import { usePlayHistory } from '../hooks/usePlayHistory';
+import type { AIProvider } from '../lib/ai/types';
 import ShogiBoard from './ShogiBoard';
 import ShogiHand from './ShogiHand';
-import { env } from '../lib/env';
 import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
@@ -39,17 +44,13 @@ const ShogiGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<'sente' | 'gote'>('gote');
-	const [aiConfig, setAIConfig] = useState<AIConfig>({
-		...defaultAIConfig,
-		gameVariant: 'shogi',
-	});
+	const { config: aiConfig } = useAIConfig();
 	const [aiService] = useState(() => createShogiAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
-	const [_isLoadingConfig, setIsLoadingConfig] = useState(true);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
-	const [hasGameEnded, setHasGameEnded] = useState(false);
+	const [_hasGameEnded, setHasGameEnded] = useState(false);
 
 	// Refs for promotion modal focus management
 	const modalRef = useRef<HTMLDivElement>(null);
@@ -80,20 +81,17 @@ const ShogiGame: React.FC = () => {
 		[gameState.moveHistory.length, gameState.currentPlayer]
 	);
 
-	// Load AI config on client side only to avoid SSR hydration mismatch
-	useEffect(() => {
-		const loadConfig = async () => {
-			const config = await loadAIConfig();
-			setAIConfig({ ...config, gameVariant: 'shogi' });
-			aiService.updateConfig({
-				...config,
-				gameVariant: 'shogi',
-				debug: isDebugMode,
-			});
-			setIsLoadingConfig(false);
-		};
-		loadConfig();
-	}, [aiService, isDebugMode]);
+	usePlayHistory({
+		gameVariant: 'shogi',
+		gameStatus: gameState.status,
+		aiPlayer,
+		aiConfig,
+		moveCount: gameState.moveHistory.length,
+		getWinnerColor: () =>
+			gameState.currentPlayer === 'sente' ? 'gote' : 'sente',
+		enabled: gameMode === 'ai' && gameStarted,
+		debugVariantKey: 'SHOGI',
+	});
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
@@ -108,73 +106,6 @@ const ShogiGame: React.FC = () => {
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
 	}, []);
-
-	// Save play history when game ends
-	useEffect(() => {
-		const isGameOver =
-			gameState.status === 'checkmate' || gameState.status === 'draw';
-
-		if (isGameOver && gameStarted && gameMode === 'ai' && !hasGameEnded) {
-			setHasGameEnded(true);
-
-			const savePlayHistory = async () => {
-				try {
-					if (typeof window !== 'undefined') {
-						const global = window as unknown as {
-							__PROCYON_DEBUG_SHOGI_SAVE_COUNT__?: number;
-						};
-						global.__PROCYON_DEBUG_SHOGI_SAVE_COUNT__ =
-							(global.__PROCYON_DEBUG_SHOGI_SAVE_COUNT__ ?? 0) + 1;
-					}
-
-					let status: 'win' | 'loss' | 'draw';
-					if (gameState.status === 'checkmate') {
-						status = gameState.currentPlayer === aiPlayer ? 'win' : 'loss';
-					} else {
-						status = 'draw';
-					}
-
-					// Map provider/model to valid OpponentLlmId enum values
-					let opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' = 'gemini-2.5-flash';
-					const providerModel =
-						`${aiConfig.provider}/${aiConfig.model}`.toLowerCase();
-					if (providerModel.includes('gpt-4o')) {
-						opponentLlmId = 'gpt-4o';
-					} else if (providerModel.includes('gemini')) {
-						opponentLlmId = 'gemini-2.5-flash';
-					}
-
-					await fetch(`${env.PUBLIC_API_URL}/play-history`, {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						credentials: 'include',
-						body: JSON.stringify({
-							chessId: 'shogi',
-							status,
-							date: new Date().toISOString(),
-							opponentLlmId,
-						}),
-					});
-				} catch (error) {
-					// eslint-disable-next-line no-console
-					console.error('Failed to save Shogi play history:', error);
-				}
-			};
-
-			void savePlayHistory();
-		}
-	}, [
-		gameState.status,
-		gameState.currentPlayer,
-		gameStarted,
-		gameMode,
-		hasGameEnded,
-		aiPlayer,
-		aiConfig.provider,
-		aiConfig.model,
-	]);
 
 	const createCustomShogiBoard = useCallback(
 		(setup: string): (ShogiPiece | null)[][] => {
@@ -828,18 +759,10 @@ const ShogiGame: React.FC = () => {
 					onAIPlayerChange={player => setAIPlayer(player as 'sente' | 'gote')}
 					provider={aiConfig.provider}
 					model={aiConfig.model}
-					onProviderChange={provider =>
-						setAIConfig(prev => ({
-							...prev,
-							provider: provider as AIProvider,
-						}))
-					}
-					onModelChange={model =>
-						setAIConfig(prev => ({
-							...prev,
-							model,
-						}))
-					}
+					onProviderChange={async provider => {
+						await setAIProvider(provider as AIProvider);
+					}}
+					onModelChange={model => setAIModel(model)}
 					aiPlayerOptions={[
 						{ value: 'gote', label: 'AI plays Gote (後手)' },
 						{ value: 'sente', label: 'AI plays Sente (先手)' },
