@@ -1,6 +1,2 @@
-export {
-	usePlayHistory,
-	type UsePlayHistoryOptions,
-	type UsePlayHistoryReturn,
-} from './usePlayHistory';
+export { usePlayHistory, type UsePlayHistoryOptions } from './usePlayHistory';
 export { usePuzzle, readLocalPuzzleProgress } from './usePuzzle';

@@ -11,15 +11,11 @@ export interface UsePlayHistoryOptions {
 	aiPlayer: string | null | undefined;
 	aiConfig: AIConfig;
 	moveCount: number;
-	getWinnerColor: () => string | null;
+	getWinnerColor: () => string;
 	/** True only while an AI game is in progress (gameMode === 'ai' && gameStarted). */
 	enabled: boolean;
 	/** When set, bumps window.__PROCYON_DEBUG_<KEY>_SAVE_COUNT__ before the fetch. */
 	debugVariantKey?: string;
-}
-
-export interface UsePlayHistoryReturn {
-	savePlayHistory: () => Promise<void>;
 }
 
 function isGameOverStatus(status: GameStatus): boolean {
@@ -40,7 +36,7 @@ export function usePlayHistory({
 	getWinnerColor,
 	enabled,
 	debugVariantKey,
-}: UsePlayHistoryOptions): UsePlayHistoryReturn {
+}: UsePlayHistoryOptions): void {
 	const { isAuthenticated } = useAuth();
 	const savedRef = useRef(false);
 
@@ -55,7 +51,6 @@ export function usePlayHistory({
 			result = 'draw';
 		} else {
 			const winnerColor = getWinnerColor();
-			if (winnerColor === null) return;
 			result = winnerColor === aiPlayer ? 'loss' : 'win';
 		}
 
@@ -84,6 +79,10 @@ export function usePlayHistory({
 				}),
 			});
 			if (!response.ok) {
+				// eslint-disable-next-line no-console
+				console.warn(
+					`Play-history save failed: ${response.status} ${response.statusText}`
+				);
 				savedRef.current = false;
 			}
 		} catch (error) {
@@ -114,6 +113,4 @@ export function usePlayHistory({
 			savedRef.current = false;
 		}
 	}, [gameStatus, moveCount]);
-
-	return { savePlayHistory };
 }
