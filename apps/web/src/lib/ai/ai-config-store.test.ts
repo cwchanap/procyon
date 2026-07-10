@@ -49,7 +49,6 @@ describe('ai-config-store', () => {
 
 		const err = await setProvider('openai');
 
-		// @ts-expect-error -- test-only: restore global fetch
 		globalThis.fetch = originalFetch;
 		expect(typeof err).toBe('string');
 		expect(err!.length).toBeGreaterThan(0);
@@ -86,9 +85,7 @@ describe('ai-config-store setProvider model fallback', () => {
 	beforeEach(() => {
 		resetAIConfigStore();
 		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
-		// @ts-expect-error -- test-only: capture existing window/fetch to restore
 		originalWindow = globalThis.window;
-		// @ts-expect-error -- test-only: capture existing fetch to restore later
 		originalFetch = globalThis.fetch;
 		// @ts-expect-error -- test-only override: simulate browser window in Node
 		globalThis.window = { localStorage: ls };
@@ -106,9 +103,7 @@ describe('ai-config-store setProvider model fallback', () => {
 	});
 
 	afterEach(() => {
-		// @ts-expect-error -- test-only restore: reset window/fetch to original
 		globalThis.window = originalWindow;
-		// @ts-expect-error -- test-only restore: reset fetch to original value
 		globalThis.fetch = originalFetch;
 		// @ts-expect-error -- test-only restore: drop test-only localStorage global
 		delete globalThis.localStorage;
@@ -216,9 +211,7 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 	beforeEach(() => {
 		resetAIConfigStore();
 		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
-		// @ts-expect-error -- test-only: capture existing window/fetch to restore
 		originalWindow = globalThis.window;
-		// @ts-expect-error -- test-only: capture existing fetch to restore later
 		originalFetch = globalThis.fetch;
 		// storage.ts references bare `localStorage` (globalThis.localStorage)
 		// and `window`, so set both — mirroring storage.test.ts's setupBrowserMocks.
@@ -229,9 +222,7 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 	});
 
 	afterEach(() => {
-		// @ts-expect-error -- test-only restore: reset window/fetch to original
 		globalThis.window = originalWindow;
-		// @ts-expect-error -- test-only restore: reset fetch to original value
 		globalThis.fetch = originalFetch;
 		// @ts-expect-error -- test-only restore: drop test-only localStorage global
 		delete globalThis.localStorage;
