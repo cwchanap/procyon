@@ -204,6 +204,87 @@ describe('save deduplication guard', () => {
 	});
 });
 
+// ─── Retry trigger bound ──────────────────────────────────────────────────────
+// Mirrors the retryTrigger state + MAX_SAVE_ATTEMPTS guard in usePlayHistory:
+// a failed save increments the trigger up to the bound, then retries stop.
+
+const MAX_SAVE_ATTEMPTS = 3;
+
+describe('retry trigger bound', () => {
+	test('increments retry trigger on each failure up to MAX_SAVE_ATTEMPTS', () => {
+		let retryTrigger = 0;
+		const onFailure = () => {
+			retryTrigger =
+				retryTrigger < MAX_SAVE_ATTEMPTS ? retryTrigger + 1 : retryTrigger;
+		};
+
+		onFailure();
+		expect(retryTrigger).toBe(1);
+		onFailure();
+		expect(retryTrigger).toBe(2);
+		onFailure();
+		expect(retryTrigger).toBe(3);
+		// Bound reached — further failures do not increment.
+		onFailure();
+		expect(retryTrigger).toBe(3);
+	});
+
+	test('effect re-runs only while retryTrigger is below the bound', () => {
+		let retryTrigger = 0;
+		let saveCalls = 0;
+		const isGameOver = true;
+		const savedRef = () => false; // never saved (always failing)
+
+		const runEffect = () => {
+			if (isGameOver && !savedRef() && retryTrigger < MAX_SAVE_ATTEMPTS) {
+				saveCalls++;
+			}
+		};
+		const onFailure = () => {
+			retryTrigger =
+				retryTrigger < MAX_SAVE_ATTEMPTS ? retryTrigger + 1 : retryTrigger;
+		};
+
+		// Initial attempt at retryTrigger=0, plus retries at 1 and 2 = 3
+		// total save attempts; at retryTrigger=3 the guard blocks further runs.
+		runEffect(); // attempt 1 (retryTrigger=0)
+		onFailure(); // retryTrigger=1
+		runEffect(); // attempt 2 (retryTrigger=1)
+		onFailure(); // retryTrigger=2
+		runEffect(); // attempt 3 (retryTrigger=2)
+		onFailure(); // retryTrigger=3
+		runEffect(); // guard blocks (3 not < 3)
+		runEffect();
+
+		expect(saveCalls).toBe(3);
+		expect(retryTrigger).toBe(3);
+	});
+
+	test('resets retry trigger to 0 when a new game starts', () => {
+		let retryTrigger = 2;
+		const resetOnNewGame = (gameStatus: GameStatus, moveCount: number) => {
+			if (gameStatus === 'playing' && moveCount === 0) {
+				retryTrigger = 0;
+			}
+		};
+
+		resetOnNewGame('playing', 0);
+		expect(retryTrigger).toBe(0);
+	});
+
+	test('does not reset retry trigger mid-game', () => {
+		let retryTrigger = 2;
+		const resetOnNewGame = (gameStatus: GameStatus, moveCount: number) => {
+			if (gameStatus === 'playing' && moveCount === 0) {
+				retryTrigger = 0;
+			}
+		};
+
+		resetOnNewGame('playing', 5);
+		expect(retryTrigger).toBe(2);
+	});
+});
+
 // ─── isGameOver predicate ─────────────────────────────────────────────────────
 
 function isGameOver(status: GameStatus): boolean {
