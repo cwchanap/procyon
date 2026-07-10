@@ -50,7 +50,6 @@ const ShogiGame: React.FC = () => {
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
-	const [_hasGameEnded, setHasGameEnded] = useState(false);
 
 	// Refs for promotion modal focus management
 	const modalRef = useRef<HTMLDivElement>(null);
@@ -547,7 +546,6 @@ const ShogiGame: React.FC = () => {
 	const resetGame = useCallback(() => {
 		setGameState(createInitialGameState());
 		setGameStarted(false);
-		setHasGameEnded(false);
 	}, []);
 
 	const triggerDebugWin = useCallback(() => {
@@ -585,7 +583,6 @@ const ShogiGame: React.FC = () => {
 		// Helper for tests and manual debugging to force a human win
 		global.__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__ = () => {
 			setGameStarted(true);
-			setHasGameEnded(false);
 			setShowDebugWinButton(true);
 			triggerDebugWin();
 		};
@@ -593,7 +590,6 @@ const ShogiGame: React.FC = () => {
 		// Helper for tests to trigger promotion dialog
 		global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__ = () => {
 			setGameStarted(true);
-			setHasGameEnded(false);
 			setGameState(prev => ({
 				...prev,
 				pendingPromotion: {
@@ -644,7 +640,6 @@ const ShogiGame: React.FC = () => {
 			// Starting the game - ensure game state is properly initialized
 			setGameState(createInitialGameState());
 			setGameStarted(true);
-			setHasGameEnded(false);
 		} else {
 			// Resetting the game
 			resetGame();
@@ -657,7 +652,6 @@ const ShogiGame: React.FC = () => {
 			setGameStarted(false);
 			setIsAIThinking(false);
 			setAIDebugMoves([]);
-			setHasGameEnded(false);
 
 			if (newMode === 'tutorial') {
 				const demo = getCurrentDemo();

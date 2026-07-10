@@ -59,7 +59,6 @@ const XiangqiGame: React.FC = () => {
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
-	const [_hasGameEnded, setHasGameEnded] = useState(false);
 	const { isAuthenticated } = useAuth();
 
 	// Helper function to convert move history to debug format
@@ -380,7 +379,6 @@ const XiangqiGame: React.FC = () => {
 	const handleResetGame = useCallback(() => {
 		setGameState(resetGame());
 		setGameStarted(false);
-		setHasGameEnded(false);
 	}, []);
 
 	const triggerDebugWin = useCallback(() => {
@@ -417,7 +415,6 @@ const XiangqiGame: React.FC = () => {
 		// Helper for tests and manual debugging to force a human win
 		global.__PROCYON_DEBUG_XIANGQI_TRIGGER_WIN__ = () => {
 			setGameStarted(true);
-			setHasGameEnded(false);
 			setShowDebugWinButton(true);
 			triggerDebugWin();
 		};
@@ -459,7 +456,6 @@ const XiangqiGame: React.FC = () => {
 			// Starting the game - ensure game state is properly initialized
 			setGameState(resetGame());
 			setGameStarted(true);
-			setHasGameEnded(false);
 		} else {
 			// Resetting the game
 			handleResetGame();
@@ -472,7 +468,6 @@ const XiangqiGame: React.FC = () => {
 			setGameStarted(false);
 			setIsAIThinking(false);
 			setAIDebugMoves([]);
-			setHasGameEnded(false);
 
 			if (newMode === 'tutorial') {
 				const demo = getCurrentDemo();

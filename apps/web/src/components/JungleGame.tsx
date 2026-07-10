@@ -59,7 +59,6 @@ const JungleGame: React.FC = () => {
 	const [_aiRejectionCount, setAiRejectionCount] = useState(0);
 	const [_isAiPaused, setIsAiPaused] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
-	const [_hasGameEnded, setHasGameEnded] = useState(false);
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
@@ -315,7 +314,6 @@ const JungleGame: React.FC = () => {
 		setAiRejectionCount(0);
 		setIsAiPaused(false);
 		setAIDebugMoves([]);
-		setHasGameEnded(false);
 	}, []);
 
 	const triggerDebugWin = useCallback(() => {
@@ -352,7 +350,6 @@ const JungleGame: React.FC = () => {
 		// Helper for tests and manual debugging to force a human win
 		global.__PROCYON_DEBUG_JUNGLE_TRIGGER_WIN__ = () => {
 			setGameStarted(true);
-			setHasGameEnded(false);
 			setShowDebugWinButton(true);
 			triggerDebugWin();
 		};
@@ -363,7 +360,6 @@ const JungleGame: React.FC = () => {
 			// Starting game - ensure game state is properly initialized
 			setGameState(createInitialGameState());
 			setGameStarted(true);
-			setHasGameEnded(false);
 		} else {
 			// Resetting the game
 			handleResetGame();
@@ -393,7 +389,6 @@ const JungleGame: React.FC = () => {
 			setAiRejectionCount(0);
 			setIsAiPaused(false);
 			setAIDebugMoves([]);
-			setHasGameEnded(false);
 
 			if (newMode === 'tutorial') {
 				const demo = getCurrentDemo();
