@@ -49,26 +49,33 @@ export function AppShell() {
 	const [mobileAIOpen, setMobileAIOpen] = useState(false);
 	const isDesktop = useIsDesktop();
 
-	// Only Chess has been migrated to the cross-island ai-config-store; the
-	// other variants still drive AI settings through AISettingsDialog. Showing
-	// SidebarAIConfig on those pages would write to a store nobody reads and
-	// duplicate the dialog, so scope the rail panel to /chess only.
+	// SidebarAIConfig (the rail + mobile panel) is only rendered on /chess;
+	// the other variants still drive AI settings through AISettingsDialog.
+	// Showing SidebarAIConfig on those pages would duplicate the dialog, so
+	// scope the rail panel to /chess only.
 	const isChessPage = (p: string) => p.startsWith('/chess');
+
+	// All four game variants now consume the cross-island ai-config-store
+	// via useAIConfig(), so the store must hydrate on any game page.
+	const isGamePage = (p: string) =>
+		p.startsWith('/chess') ||
+		p.startsWith('/xiangqi') ||
+		p.startsWith('/shogi') ||
+		p.startsWith('/jungle');
 
 	useEffect(() => {
 		setPath(window.location.pathname);
 	}, []);
 
-	// The AI config store is only consumed on /chess (SidebarAIConfig in the
-	// rail and mobile panel). Hydrating it on every route would call
-	// /ai-config/:id/full — which returns the user's raw provider API key —
-	// for authenticated users visiting non-chess pages, holding that key in
-	// client memory with no consumer. Scope the call to the chess route, and
-	// gate on auth: /ai-config is protected, so hydrating for anonymous
-	// visitors guarantees a 401 and a console error with no consumer.
+	// Hydrate the AI config store on game pages for authenticated users.
+	// /ai-config/:id/full returns the user's raw provider API key, so we
+	// avoid calling it on non-game pages (puzzles, profile, history) where
+	// no consumer needs it. Gate on auth: /ai-config is protected, so
+	// hydrating for anonymous visitors guarantees a 401 and a console error
+	// with no consumer.
 	useEffect(() => {
 		if (loading || !isAuthenticated) return;
-		if (!isChessPage(window.location.pathname)) return;
+		if (!isGamePage(window.location.pathname)) return;
 		void hydrateAIConfig();
 	}, [loading, isAuthenticated]);
 
