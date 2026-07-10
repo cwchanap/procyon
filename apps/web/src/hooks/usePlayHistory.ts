@@ -75,6 +75,11 @@ export function usePlayHistory({
 			w[key] = (w[key] ?? 0) + 1;
 		}
 
+		// Bump the retry trigger so the auto-save effect re-runs,
+		// up to the bounded retry count.
+		const bumpRetry = () =>
+			setRetryTrigger(c => (c < MAX_SAVE_ATTEMPTS ? c + 1 : c));
+
 		try {
 			const opponentLlmId = resolveOpponentLlmId(
 				aiConfig.provider,
@@ -92,25 +97,20 @@ export function usePlayHistory({
 				}),
 			});
 			if (!response.ok) {
-				// eslint-disable-next-line no-console
-				console.warn(
-					`Play-history save failed: ${response.status} ${response.statusText}`
-				);
+				if (import.meta.env.DEV) {
+					// eslint-disable-next-line no-console
+					console.warn(
+						`Play-history save failed: ${response.status} ${response.statusText}`
+					);
+				}
 				savedRef.current = false;
-				// Bump the retry trigger so the auto-save effect re-runs,
-				// up to the bounded retry count.
-				setRetryTrigger(c => (c < MAX_SAVE_ATTEMPTS ? c + 1 : c));
-			} else {
-				// Save succeeded — clear the retry trigger for the next game.
-				setRetryTrigger(0);
+				bumpRetry();
 			}
 		} catch (error) {
 			savedRef.current = false;
 			// eslint-disable-next-line no-console
 			console.error('Error saving play history:', error);
-			// Bump the retry trigger so the auto-save effect re-runs,
-			// up to the bounded retry count.
-			setRetryTrigger(c => (c < MAX_SAVE_ATTEMPTS ? c + 1 : c));
+			bumpRetry();
 		}
 	}, [
 		enabled,

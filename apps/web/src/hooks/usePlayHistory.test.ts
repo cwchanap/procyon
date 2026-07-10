@@ -1,6 +1,12 @@
-import { test, expect, describe } from 'bun:test';
+import { test, expect, describe, beforeEach, afterEach, mock } from 'bun:test';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import type { GameVariant } from '../lib/ai/game-variant-types';
+import type { AIConfig } from '../lib/ai/types';
 import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
+import { setupReactDom } from '../test/reactSetup';
+import { usePlayHistory } from './usePlayHistory';
+
+setupReactDom();
 
 // ─── Opponent LLM ID mapping logic ───────────────────────────────────────────
 // Imported from the shared helper (formerly mirrored here).
@@ -381,5 +387,228 @@ describe('GameVariant values used in usePlayHistory', () => {
 		expect(validVariants).toContain('xiangqi');
 		expect(validVariants).toContain('shogi');
 		expect(validVariants).toContain('jungle');
+	});
+});
+
+// ─── React integration tests (renderHook) ────────────────────────────────────
+// Exercises the real hook with @testing-library/react's renderHook to verify
+// the auto-save useEffect, savedRef dedup/reset, and bounded retry behavior.
+// Auth state is driven through window.__PROCYON_INITIAL_AUTH_USER__ (same
+// strategy as ChessGame.test.tsx) to avoid mock.module's process-global leak.
+
+interface TestAuthUser {
+	id: string;
+	email: string;
+	username: string;
+	name: string;
+}
+
+const testAuthUser: TestAuthUser = {
+	id: 'u1',
+	email: 'test@example.com',
+	username: 'testuser',
+	name: 'Test User',
+};
+
+const testAIConfig: AIConfig = {
+	provider: 'gemini',
+	apiKey: 'test-key',
+	model: 'gemini-2.5-flash-lite',
+	enabled: true,
+};
+
+const stableGetWinnerColor = () => 'white';
+
+interface HookProps {
+	gameVariant: GameVariant;
+	gameStatus: GameStatus;
+	aiPlayer: string | null;
+	aiConfig: AIConfig;
+	moveCount: number;
+	getWinnerColor: () => string;
+	enabled: boolean;
+}
+
+function makeProps(overrides: Partial<HookProps> = {}): HookProps {
+	return {
+		gameVariant: 'chess',
+		gameStatus: 'playing',
+		aiPlayer: 'black',
+		aiConfig: testAIConfig,
+		moveCount: 0,
+		getWinnerColor: stableGetWinnerColor,
+		enabled: true,
+		...overrides,
+	};
+}
+
+describe('usePlayHistory — React integration (renderHook)', () => {
+	let originalFetch: typeof globalThis.fetch;
+	let fetchCallCount: number;
+	let fetchShouldSucceed: boolean;
+
+	beforeEach(() => {
+		originalFetch = globalThis.fetch;
+		fetchCallCount = 0;
+		fetchShouldSucceed = true;
+
+		(
+			window as unknown as Record<string, unknown>
+		).__PROCYON_INITIAL_AUTH_USER__ = testAuthUser;
+
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+			}
+			return Promise.resolve({
+				ok: fetchShouldSucceed,
+				status: fetchShouldSucceed ? 200 : 500,
+				statusText: fetchShouldSucceed ? 'OK' : 'Internal Server Error',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+	});
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		delete (window as unknown as Record<string, unknown>)
+			.__PROCYON_INITIAL_AUTH_USER__;
+	});
+
+	test('auto-save fires when game ends', async () => {
+		const { rerender } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'playing', moveCount: 0 }),
+		});
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(0);
+
+		rerender(makeProps({ gameStatus: 'checkmate', moveCount: 10 }));
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+	});
+
+	test('savedRef prevents duplicate saves on re-render with same props', async () => {
+		const props = makeProps({ gameStatus: 'checkmate', moveCount: 10 });
+		const { rerender } = renderHook(p => usePlayHistory(p), {
+			initialProps: props,
+		});
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		rerender(props);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+	});
+
+	test('savedRef resets when a new game starts', async () => {
+		const { rerender } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
+		});
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		rerender(makeProps({ gameStatus: 'playing', moveCount: 0 }));
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		rerender(makeProps({ gameStatus: 'checkmate', moveCount: 10 }));
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(2);
+	});
+
+	test('retry re-fires on fetch failure up to MAX_SAVE_ATTEMPTS', async () => {
+		fetchShouldSucceed = false;
+
+		renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
+		});
+
+		await waitFor(() => {
+			expect(fetchCallCount).toBe(3);
+		});
+	});
+
+	test('retry stops at MAX_SAVE_ATTEMPTS and does not exceed it', async () => {
+		fetchShouldSucceed = false;
+
+		renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
+		});
+
+		await waitFor(() => {
+			expect(fetchCallCount).toBe(3);
+		});
+
+		// Wait a bit more to ensure no further retries fire
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+		expect(fetchCallCount).toBe(3);
+	});
+
+	test('retry trigger resets when a new game starts', async () => {
+		fetchShouldSucceed = false;
+
+		const { rerender } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
+		});
+
+		await waitFor(() => {
+			expect(fetchCallCount).toBe(3);
+		});
+
+		rerender(makeProps({ gameStatus: 'playing', moveCount: 0 }));
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		rerender(makeProps({ gameStatus: 'checkmate', moveCount: 10 }));
+
+		await waitFor(() => {
+			expect(fetchCallCount).toBe(6);
+		});
+	});
+
+	test('does not save when enabled is false', async () => {
+		const { rerender } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'playing', enabled: false }),
+		});
+
+		rerender(makeProps({ gameStatus: 'checkmate', enabled: false }));
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(0);
+	});
+
+	test('does not save when aiPlayer is null', async () => {
+		const { rerender } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'playing', aiPlayer: null }),
+		});
+
+		rerender(makeProps({ gameStatus: 'checkmate', aiPlayer: null }));
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(0);
 	});
 });
