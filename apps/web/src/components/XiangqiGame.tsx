@@ -86,13 +86,18 @@ const XiangqiGame: React.FC = () => {
 		[gameState.moveHistory.length, gameState.currentPlayer]
 	);
 
+	const getWinnerColor = useCallback(
+		() => (gameState.currentPlayer === 'red' ? 'black' : 'red'),
+		[gameState.currentPlayer]
+	);
+
 	usePlayHistory({
 		gameVariant: 'xiangqi',
 		gameStatus: gameState.status,
 		aiPlayer,
 		aiConfig,
 		moveCount: gameState.moveHistory.length,
-		getWinnerColor: () => (gameState.currentPlayer === 'red' ? 'black' : 'red'),
+		getWinnerColor,
 		enabled: gameMode === 'ai' && gameStarted,
 		debugVariantKey: 'XIANGQI',
 	});

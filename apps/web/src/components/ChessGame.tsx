@@ -82,14 +82,18 @@ const ChessGame: React.FC = () => {
 	);
 	const [aiService] = useState(() => createChessAI(defaultAIConfig));
 
+	const getWinnerColor = useCallback(
+		() => (gameState.currentPlayer === 'white' ? 'black' : 'white'),
+		[gameState.currentPlayer]
+	);
+
 	usePlayHistory({
 		gameVariant: 'chess',
 		gameStatus: gameState.status,
 		aiPlayer,
 		aiConfig,
 		moveCount: gameState.moveHistory.length,
-		getWinnerColor: () =>
-			gameState.currentPlayer === 'white' ? 'black' : 'white',
+		getWinnerColor,
 		enabled: gameMode === 'ai' && gameStarted,
 		debugVariantKey: 'CHESS',
 	});
