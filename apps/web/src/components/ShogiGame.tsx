@@ -50,6 +50,7 @@ const ShogiGame: React.FC = () => {
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
+	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
 	// Refs for promotion modal focus management
 	const modalRef = useRef<HTMLDivElement>(null);
@@ -758,7 +759,8 @@ const ShogiGame: React.FC = () => {
 					provider={aiConfig.provider}
 					model={aiConfig.model}
 					onProviderChange={async provider => {
-						await setAIProvider(provider as AIProvider);
+						const err = await setAIProvider(provider as AIProvider);
+						setErrorMsg(err);
 					}}
 					onModelChange={model => setAIModel(model)}
 					aiPlayerOptions={[
@@ -770,6 +772,24 @@ const ShogiGame: React.FC = () => {
 				/>
 			}
 		>
+			{errorMsg && (
+				<div className='w-full max-w-4xl mx-auto mb-6'>
+					<div
+						className='flex items-start justify-between gap-4 rounded-lg border border-shogi/40 bg-shogi/10 px-4 py-3 text-ivory'
+						role='alert'
+					>
+						<p className='text-sm'>{errorMsg}</p>
+						<button
+							type='button'
+							className='text-xs font-semibold uppercase tracking-wide text-destructive hover:text-ivory'
+							onClick={() => setErrorMsg(null)}
+						>
+							Dismiss
+						</button>
+					</div>
+				</div>
+			)}
+
 			{gameMode === 'ai' && (
 				<div className='flex flex-col gap-4 max-w-2xl mx-auto'>
 					<div className='text-center'>

@@ -59,6 +59,7 @@ const JungleGame: React.FC = () => {
 	const [_aiRejectionCount, setAiRejectionCount] = useState(0);
 	const [_isAiPaused, setIsAiPaused] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
+	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
@@ -483,7 +484,8 @@ const JungleGame: React.FC = () => {
 					provider={aiConfig.provider}
 					model={aiConfig.model}
 					onProviderChange={async provider => {
-						await setAIProvider(provider as AIProvider);
+						const err = await setAIProvider(provider as AIProvider);
+						setErrorMsg(err);
 					}}
 					onModelChange={model => setAIModel(model)}
 					aiPlayerOptions={[
@@ -494,6 +496,24 @@ const JungleGame: React.FC = () => {
 				/>
 			}
 		>
+			{errorMsg && (
+				<div className='w-full max-w-4xl mx-auto mb-6'>
+					<div
+						className='flex items-start justify-between gap-4 rounded-lg border border-jungle/40 bg-jungle/10 px-4 py-3 text-ivory'
+						role='alert'
+					>
+						<p className='text-sm'>{errorMsg}</p>
+						<button
+							type='button'
+							className='text-xs font-semibold uppercase tracking-wide text-destructive hover:text-ivory'
+							onClick={() => setErrorMsg(null)}
+						>
+							Dismiss
+						</button>
+					</div>
+				</div>
+			)}
+
 			{gameMode === 'ai' && (
 				<AIStatusPanel
 					aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}

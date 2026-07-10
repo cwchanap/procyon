@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { env } from '../lib/env';
 import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
@@ -23,6 +23,15 @@ function isGameOverStatus(status: GameStatus): boolean {
 }
 
 /**
+ * Maximum number of save attempts (including the initial one) before giving
+ * up. A failed save (network error or non-2xx response) increments the retry
+ * trigger so the auto-save effect re-runs on the next render tick; once the
+ * trigger reaches this bound the effect stops retrying, preventing infinite
+ * retry loops against a persistently failing endpoint.
+ */
+const MAX_SAVE_ATTEMPTS = 3;
+
+/**
  * Auto-saves a play-history record when an AI game ends. Single source of
  * truth for all four game variants. Save guards: enabled (AI game in
  * progress), authenticated-or-DEV, game over, not already saved.
@@ -39,6 +48,10 @@ export function usePlayHistory({
 }: UsePlayHistoryOptions): void {
 	const { isAuthenticated } = useAuth();
 	const savedRef = useRef(false);
+	// State-based retry trigger: incremented when a save attempt fails so the
+	// auto-save effect re-runs (its deps include `retryTrigger`). Bounded by
+	// MAX_SAVE_ATTEMPTS to prevent infinite retry loops.
+	const [retryTrigger, setRetryTrigger] = useState(0);
 
 	const savePlayHistory = useCallback(async () => {
 		if (!enabled || savedRef.current) return;
@@ -84,11 +97,20 @@ export function usePlayHistory({
 					`Play-history save failed: ${response.status} ${response.statusText}`
 				);
 				savedRef.current = false;
+				// Bump the retry trigger so the auto-save effect re-runs,
+				// up to the bounded retry count.
+				setRetryTrigger(c => (c < MAX_SAVE_ATTEMPTS ? c + 1 : c));
+			} else {
+				// Save succeeded — clear the retry trigger for the next game.
+				setRetryTrigger(0);
 			}
 		} catch (error) {
 			savedRef.current = false;
 			// eslint-disable-next-line no-console
 			console.error('Error saving play history:', error);
+			// Bump the retry trigger so the auto-save effect re-runs,
+			// up to the bounded retry count.
+			setRetryTrigger(c => (c < MAX_SAVE_ATTEMPTS ? c + 1 : c));
 		}
 	}, [
 		enabled,
@@ -103,14 +125,24 @@ export function usePlayHistory({
 	]);
 
 	useEffect(() => {
-		if (isGameOverStatus(gameStatus) && !savedRef.current) {
+		// `retryTrigger` is included in the dep array so a failed save
+		// (which increments it) re-triggers this effect. The retryTrigger <
+		// MAX_SAVE_ATTEMPTS guard stops retries once the bound is reached.
+		if (
+			isGameOverStatus(gameStatus) &&
+			!savedRef.current &&
+			retryTrigger < MAX_SAVE_ATTEMPTS
+		) {
 			void savePlayHistory();
 		}
-	}, [gameStatus, savePlayHistory]);
+	}, [gameStatus, savePlayHistory, retryTrigger]);
 
 	useEffect(() => {
 		if (gameStatus === 'playing' && moveCount === 0) {
 			savedRef.current = false;
+			// Reset the retry trigger when a new game starts so a fresh
+			// game gets a full retry budget.
+			setRetryTrigger(0);
 		}
 	}, [gameStatus, moveCount]);
 }

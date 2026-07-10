@@ -49,14 +49,15 @@ Exported from `lib/ai/ai-config-store.ts`:
 
 `defaultAIConfig.gameVariant` keeps `'chess'` as the literal default but is overwritten by hydrate from the active backend config.
 
-### 4.3 Component adoption
+### 4.3 Hydration ownership & component adoption
+
+**Hydration is app-wide, owned by `AppShell` — not per-component.** `AppShell.tsx` calls `hydrate()` once on mount for authenticated users on any game page (`/chess`, `/xiangqi`, `/shogi`, `/jungle`). `/ai-config/:id/full` returns the user's raw provider API key, so hydration is gated on auth + game-page to avoid 401s and unnecessary key fetches on non-game pages. No game component calls `hydrate()` itself; this guarantees hydration occurs exactly once and all components reading `useAIConfig()` see the hydrated store. (The plan doc §"XiangqiGame adoption" and the `AppShell.tsx` implementation already reflect this; this section is reconciled to match.)
 
 All four game components:
 
-1. Call `hydrate()` on mount (once).
-2. Read `const { config: aiConfig, hydrated, hydrateError } = useAIConfig()`.
-3. Call `setProvider(provider)` on provider change (returns a user-facing error string or `null`) and `setModel(model)` on model change — replacing inline `handleProviderChange` / `loadAIConfig()` effects.
-4. Hold `aiPlayer` and `gameActive` as local `useState`.
+1. Read `const { config: aiConfig, hydrated, hydrateError } = useAIConfig()` — relying on `AppShell`'s app-wide `hydrate()` (no per-component hydrate call).
+2. Call `setProvider(provider)` on provider change (returns a user-facing error string or `null`) and `setModel(model)` on model change — replacing inline `handleProviderChange` / `loadAIConfig()` effects.
+3. Hold `aiPlayer` and `gameActive` as local `useState`.
 
 XiangqiGame, ShogiGame, JungleGame drop their inline `loadAIConfig()` effects (~13 lines × 3) and inline `handleProviderChange` flows. ChessGame drops its `useAIPlayer()`/`useGameActive()` reads in favor of local state.
 

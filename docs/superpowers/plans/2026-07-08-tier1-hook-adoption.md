@@ -881,7 +881,7 @@ test('config subscribers are notified on config changes', () => {
 - [ ] **Step 2: Run the store test to confirm it fails against the old module**
 
 Run: `cd apps/web && bun test src/lib/ai/ai-config-store.test.ts`
-Expected: FAIL — the old module still exports `setAIPlayer`/`getAIPlayer`/`subscribeAIPlayer`, but the test no longer references them; the failure is a typecheck/lint on the now-removed `aiPlayer` reset inside `resetAIConfigStore` only after Step 3. (If it passes here because the old exports are simply unused by the test, proceed — the real gate is Step 4.)
+Expected: likely PASS at this step — the rewritten test no longer references `setAIPlayer`/`getAIPlayer`/`subscribeAIPlayer`, so the old module still exporting them does not by itself cause a failure. (A test cannot fail merely because an unused export exists.) The real gate is Step 4: after Step 3 removes the `aiPlayer`/`gameActive` slices from the store module, verify those exports are **absent** from the module's API surface — e.g. `bunx tsc --noEmit` must report no references to the removed names, and a grep for `setAIPlayer`/`getAIPlayer`/`subscribeAIPlayer`/`useAIPlayer`/`useGameActive`/`setGameActive`/`getGameActive`/`subscribeGameActive` in `src/` must return no production imports. Update `resetAIConfigStore` and the store module first (Step 3), then confirm the absence.
 
 - [ ] **Step 3: Remove the `aiPlayer`/`gameActive` slices from the store**
 
