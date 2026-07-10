@@ -80,14 +80,18 @@ const ShogiGame: React.FC = () => {
 		[gameState.moveHistory.length, gameState.currentPlayer]
 	);
 
+	const getWinnerColor = useCallback(
+		() => (gameState.currentPlayer === 'sente' ? 'gote' : 'sente'),
+		[gameState.currentPlayer]
+	);
+
 	usePlayHistory({
 		gameVariant: 'shogi',
 		gameStatus: gameState.status,
 		aiPlayer,
 		aiConfig,
 		moveCount: gameState.moveHistory.length,
-		getWinnerColor: () =>
-			gameState.currentPlayer === 'sente' ? 'gote' : 'sente',
+		getWinnerColor,
 		enabled: gameMode === 'ai' && gameStarted,
 		debugVariantKey: 'SHOGI',
 	});

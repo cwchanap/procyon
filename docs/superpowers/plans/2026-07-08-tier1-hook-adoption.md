@@ -18,6 +18,7 @@
 - TypeScript strict; no `any` in new code.
 - Existing tests (`apps/web/src/**/*.test.ts`, `*.test.tsx`, E2E `apps/web/e2e/*.spec.ts`) must stay green after each task.
 - Result-determination equivalence: in checkmate the **winner is the side opposite `gameState.currentPlayer`** (the checkmated side). `getWinnerColor` must return that opposite color.
+- **Deviation from original spec (resolved):** The original spec typed `getWinnerColor` as `() => string | null` and guarded `if (winnerColor === null) return;`. The implemented hook tightens the contract to `() => string` and drops the null-guard. This is safe today — all four callers (Chess, Xiangqi, Shogi, Jungle) pass an inline arrow that always returns a non-null color derived from `gameState.currentPlayer`. The test replica in `usePlayHistory.test.ts` was reconciled to match (no null-guard, no null-case test).
 - Chess AI-side ownership: `ChessGame` owns `aiPlayer` in local state and renders an inline "AI plays" `<select>` (disabled while `gameActive`). `SidebarAIConfig` must NOT reference the store's `useAIPlayer`/`useGameActive`/`setAIPlayer` — it is provider/model-only.
 - All commits use conventional-commit prefixes (`feat:`, `refactor:`, `test:`, `chore:`).
 
@@ -189,7 +190,7 @@ export interface UsePlayHistoryOptions {
   aiPlayer: string | null | undefined;
   aiConfig: AIConfig;
   moveCount: number;
-  getWinnerColor: () => string | null;
+  getWinnerColor: () => string;
   /** True only while an AI game is in progress (gameMode === 'ai' && gameStarted). */
   enabled: boolean;
   /** When set, bumps window.__PROCYON_DEBUG_<KEY>_SAVE_COUNT__ before the fetch. */
@@ -233,7 +234,6 @@ export function usePlayHistory({
       result = 'draw';
     } else {
       const winnerColor = getWinnerColor();
-      if (winnerColor === null) return;
       result = winnerColor === aiPlayer ? 'loss' : 'win';
     }
 

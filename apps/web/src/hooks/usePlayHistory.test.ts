@@ -5,7 +5,7 @@ import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
 // ─── Opponent LLM ID mapping logic ───────────────────────────────────────────
 // Imported from the shared helper (formerly mirrored here).
 
-describe('getOpponentLlmId mapping logic', () => {
+describe('resolveOpponentLlmId mapping logic', () => {
 	test('returns gpt-4o when provider is openai and model is gpt-4o', () => {
 		expect(resolveOpponentLlmId('openai', 'gpt-4o')).toBe('gpt-4o');
 	});
@@ -55,7 +55,7 @@ type GameStatus = 'playing' | 'check' | 'checkmate' | 'stalemate' | 'draw';
 function determineResult(
 	gameStatus: GameStatus,
 	aiPlayer: string,
-	getWinnerColor: () => string | null
+	getWinnerColor: () => string
 ): 'win' | 'loss' | 'draw' | null {
 	const isGameOver =
 		gameStatus === 'checkmate' ||
@@ -68,9 +68,10 @@ function determineResult(
 		return 'draw';
 	}
 
-	// checkmate
+	// checkmate — winner is the side opposite the checkmated player.
+	// All four game variants pass a non-null color (the hook's contract is
+	// `() => string`, not `() => string | null`), so no null-guard here.
 	const winnerColor = getWinnerColor();
-	if (winnerColor === null) return null;
 
 	if (winnerColor === aiPlayer) {
 		return 'loss'; // AI won, player lost
@@ -80,19 +81,19 @@ function determineResult(
 
 describe('game result determination logic', () => {
 	test('returns null when game is still playing', () => {
-		expect(determineResult('playing', 'black', () => null)).toBeNull();
+		expect(determineResult('playing', 'black', () => 'white')).toBeNull();
 	});
 
 	test('returns null when game is in check', () => {
-		expect(determineResult('check', 'black', () => null)).toBeNull();
+		expect(determineResult('check', 'black', () => 'white')).toBeNull();
 	});
 
 	test('returns draw for draw status', () => {
-		expect(determineResult('draw', 'black', () => null)).toBe('draw');
+		expect(determineResult('draw', 'black', () => 'white')).toBe('draw');
 	});
 
 	test('returns draw for stalemate status', () => {
-		expect(determineResult('stalemate', 'black', () => null)).toBe('draw');
+		expect(determineResult('stalemate', 'black', () => 'white')).toBe('draw');
 	});
 
 	test('returns win when player wins (AI is black, white wins)', () => {
@@ -109,10 +110,6 @@ describe('game result determination logic', () => {
 
 	test('returns win when player wins (AI is white, black wins)', () => {
 		expect(determineResult('checkmate', 'white', () => 'black')).toBe('win');
-	});
-
-	test('returns null for checkmate when winner color cannot be determined', () => {
-		expect(determineResult('checkmate', 'black', () => null)).toBeNull();
 	});
 });
 

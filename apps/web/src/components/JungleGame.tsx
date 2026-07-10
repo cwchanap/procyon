@@ -74,13 +74,18 @@ const JungleGame: React.FC = () => {
 		return () => window.removeEventListener('keydown', handleKeyDown);
 	}, []);
 
+	const getWinnerColor = useCallback(
+		() => (gameState.currentPlayer === 'red' ? 'blue' : 'red'),
+		[gameState.currentPlayer]
+	);
+
 	usePlayHistory({
 		gameVariant: 'jungle',
 		gameStatus: gameState.status,
 		aiPlayer,
 		aiConfig,
 		moveCount: gameState.moveHistory.length,
-		getWinnerColor: () => (gameState.currentPlayer === 'red' ? 'blue' : 'red'),
+		getWinnerColor,
 		enabled: gameMode === 'ai' && gameStarted,
 		debugVariantKey: 'JUNGLE',
 	});
