@@ -656,6 +656,80 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.config.provider).toBe('openai');
 		expect(snap.config.apiKey).toBe('sk-test');
 		expect(snap.config.model).toBe('gpt-4o');
+		// setProvider must also complete the hydration state: runHydrate's
+		// generation guard discards its result (providerGen mismatch), so
+		// without setProvider writing hydrated=true the config slice would
+		// stay un-hydrated forever (module-level `hydrated` is true, so
+		// hydrate() short-circuits and never retries).
+		expect(snap.hydrated).toBe(true);
+	});
+
+	test('setProvider completes hydration when it wins the race against runHydrate', async () => {
+		// Hold the first /ai-config call (hydrate's list fetch) pending so
+		// we can interleave a setProvider while runHydrate is in flight.
+		let resolveHydrateList: (v: unknown) => void = () => {};
+		const hydrateListPending = new Promise(r => {
+			resolveHydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					return hydrateListPending;
+				}
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start hydrate but don't await — its list fetch is pending.
+		const hydratePromise = hydrate();
+
+		// While hydrate is in flight, the user switches to openai.
+		// setProvider bumps setProviderGeneration and writes to the store.
+		await setProvider('openai');
+
+		// Before releasing the stale hydrate, the config slice must already
+		// be hydrated — otherwise every game's Start control is disabled
+		// with no retry UI (hydrateError is false).
+		expect(getConfigSlice().hydrated).toBe(true);
+
+		// Release the stale hydrate list fetch — it must be discarded.
+		resolveHydrateList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{ id: 'cfg-g', provider: 'gemini', hasApiKey: true, isActive: false },
+				],
+			}),
+		});
+		await hydratePromise;
+
+		// Hydration must remain true after the stale hydrate resolves.
+		expect(getConfigSlice().hydrated).toBe(true);
 	});
 
 	test('resetAIConfigStore ignores a stale in-flight hydrate', async () => {
