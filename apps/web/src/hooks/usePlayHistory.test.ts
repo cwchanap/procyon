@@ -438,12 +438,16 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	// When set, overrides the default 500 status for failed responses so
 	// tests can exercise 4xx no-retry behavior.
 	let fetchFailStatus: number;
+	// Captured from renderHook so afterEach can unmount and
+	// clear any pending retry timers between tests.
+	let unmountHook: (() => void) | undefined;
 
 	beforeEach(() => {
 		originalFetch = globalThis.fetch;
 		fetchCallCount = 0;
 		fetchShouldSucceed = true;
 		fetchFailStatus = 500;
+		unmountHook = undefined;
 
 		globalThis.fetch = mock((url: string) => {
 			if (url.includes('/play-history')) {
@@ -459,6 +463,7 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	});
 
 	afterEach(() => {
+		unmountHook?.();
 		globalThis.fetch = originalFetch;
 	});
 
@@ -523,9 +528,10 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	test('retry re-fires on fetch failure up to MAX_SAVE_ATTEMPTS', async () => {
 		fetchShouldSucceed = false;
 
-		renderHook(props => usePlayHistory(props), {
+		const { unmount } = renderHook(props => usePlayHistory(props), {
 			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
 		});
+		unmountHook = unmount;
 
 		await waitFor(() => {
 			expect(fetchCallCount).toBe(3);
@@ -535,9 +541,10 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	test('retry stops at MAX_SAVE_ATTEMPTS and does not exceed it', async () => {
 		fetchShouldSucceed = false;
 
-		renderHook(props => usePlayHistory(props), {
+		const { unmount } = renderHook(props => usePlayHistory(props), {
 			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
 		});
+		unmountHook = unmount;
 
 		await waitFor(() => {
 			expect(fetchCallCount).toBe(3);
@@ -553,9 +560,10 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	test('retry trigger resets when a new game starts', async () => {
 		fetchShouldSucceed = false;
 
-		const { rerender } = renderHook(props => usePlayHistory(props), {
+		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
 			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
 		});
+		unmountHook = unmount;
 
 		await waitFor(() => {
 			expect(fetchCallCount).toBe(3);
@@ -613,6 +621,35 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			await new Promise(r => setTimeout(r, 0));
 		});
 		expect(fetchCallCount).toBe(0);
+	});
+
+	test('fetch rejection does not retry — only one fetch call', async () => {
+		// Replace the default fetch mock with one that rejects (network error)
+		// so we can verify the catch block suppresses retries.
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+			}
+			return Promise.reject(new Error('Network error'));
+		}) as unknown as typeof fetch;
+
+		const { unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
+		});
+		unmountHook = unmount;
+
+		// Wait for the initial save attempt to fire and reject.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// Wait beyond the retry window to ensure no retries fire (network
+		// errors are not retried to avoid duplicate play-history rows).
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 300));
+		});
+		expect(fetchCallCount).toBe(1);
 	});
 
 	test('4xx response does not retry — only one fetch call', async () => {

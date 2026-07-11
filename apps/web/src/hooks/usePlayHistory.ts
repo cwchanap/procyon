@@ -39,6 +39,23 @@ function isGameOverStatus(status: GameStatus): boolean {
 const MAX_SAVE_ATTEMPTS = 3;
 
 /**
+ * Timeout for the play-history POST request. Prevents the fetch from hanging
+ * indefinitely on a stalled connection — the resulting AbortError falls into
+ * the catch block and is treated as a network error (no retry, to avoid
+ * duplicate records).
+ */
+const SAVE_TIMEOUT_MS = 10_000;
+
+/**
+ * Base delay (ms) for the exponential backoff between 5xx retries. Each
+ * retry doubles the delay, capped at {@link RETRY_BACKOFF_MAX_MS}, so a
+ * struggling server gets breathing room instead of being hammered on every
+ * render tick.
+ */
+const RETRY_BACKOFF_BASE_MS = 200;
+const RETRY_BACKOFF_MAX_MS = 2_000;
+
+/**
  * Auto-saves a play-history record when an AI game ends. Single source of
  * truth for all four game variants. Save guards: enabled (AI game in
  * progress), authenticated-or-DEV, game over, not already saved.
@@ -62,6 +79,10 @@ export function usePlayHistory({
 	// auto-save effect re-runs (its deps include `retryTrigger`). Bounded by
 	// MAX_SAVE_ATTEMPTS to prevent infinite retry loops.
 	const [retryTrigger, setRetryTrigger] = useState(0);
+	// Pending retry timer — cleared on unmount or when deps change so a
+	// stale backoff from a previous render doesn't fire after the hook has
+	// moved on (e.g. new game started, or component unmounted).
+	const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// Bump the retry trigger so the auto-save effect re-runs, up to the
 	// bounded retry count. Stable identity so it doesn't force
@@ -102,6 +123,7 @@ export function usePlayHistory({
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				credentials: 'include',
+				signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
 				body: JSON.stringify({
 					chessId: gameVariant,
 					status: result,
@@ -134,15 +156,28 @@ export function usePlayHistory({
 							`Play-history save failed after ${MAX_SAVE_ATTEMPTS} attempts (last status: ${response.status} ${response.statusText})`
 						);
 					}
-					bumpRetry();
+					// Schedule the retry after an exponential backoff so a
+					// struggling server gets breathing room. Clear any
+					// pending timer first to avoid stacking retries from
+					// rapid re-fires.
+					if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+					const backoff = Math.min(
+						RETRY_BACKOFF_BASE_MS * 2 ** (attemptsRef.current - 1),
+						RETRY_BACKOFF_MAX_MS
+					);
+					retryTimerRef.current = setTimeout(() => {
+						retryTimerRef.current = null;
+						bumpRetry();
+					}, backoff);
 				}
 			}
 		} catch (error) {
-			// Network error: the request may or may not have reached the
-			// server. If it did, the play-history row and rating update were
-			// already committed (the API has no idempotency key). Retrying
-			// would insert a duplicate row and apply a second rating change.
-			// Keep savedRef=true so we don't retry, and log the failure.
+			// Network error (or AbortSignal.timeout): the request may or may
+			// not have reached the server. If it did, the play-history row and
+			// rating update were already committed (the API has no idempotency
+			// key). Retrying would insert a duplicate row and apply a second
+			// rating change. Keep savedRef=true so we don't retry, and log
+			// the failure.
 			if (import.meta.env.DEV) {
 				// eslint-disable-next-line no-console
 				console.warn('Error saving play history:', error);
@@ -163,7 +198,7 @@ export function usePlayHistory({
 		getWinnerColor,
 		debugVariantKey,
 		bumpRetry,
-	]);
+	]); // retryTimerRef is a ref (stable identity), not listed
 
 	useEffect(() => {
 		// `retryTrigger` is included in the dep array so a failed save
@@ -179,10 +214,27 @@ export function usePlayHistory({
 		}
 	}, [enabled, gameStatus, savePlayHistory, retryTrigger]);
 
+	// Clear any pending retry timer when the component unmounts so a
+	// stale backoff doesn't fire after the hook is gone.
+	useEffect(() => {
+		return () => {
+			if (retryTimerRef.current) {
+				clearTimeout(retryTimerRef.current);
+				retryTimerRef.current = null;
+			}
+		};
+	}, []);
+
 	useEffect(() => {
 		if (gameStatus === 'playing' && moveCount === 0) {
 			savedRef.current = false;
 			attemptsRef.current = 0;
+			// Clear any pending retry timer from the previous game so it
+			// doesn't fire and bump the trigger for the new game.
+			if (retryTimerRef.current) {
+				clearTimeout(retryTimerRef.current);
+				retryTimerRef.current = null;
+			}
 			// Reset the retry trigger when a new game starts so a fresh
 			// game gets a full retry budget.
 			setRetryTrigger(0);

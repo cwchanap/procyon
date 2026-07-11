@@ -272,7 +272,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 											aria-label='AI Provider'
 											value={currentProvider}
 											disabled={isProviderSwitching}
-											onChange={e => {
+											onChange={async e => {
 												const newProvider = e.target.value;
 												// onProviderChange (setProvider) commits the provider + model
 												// pair atomically via a single setConfig call after fetching
@@ -286,9 +286,17 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 												// user could pick a model that the pending setConfig
 												// would silently overwrite.
 												setIsProviderSwitching(true);
-												void Promise.resolve(
-													onProviderChange(newProvider)
-												).finally(() => setIsProviderSwitching(false));
+												try {
+													await onProviderChange(newProvider);
+												} catch {
+													// setProvider catches all errors internally and
+													// returns error strings, so this should not reject
+													// in practice — but guard against contract changes
+													// so a rejection doesn't surface as an unhandled
+													// promise rejection on the event handler.
+												} finally {
+													setIsProviderSwitching(false);
+												}
 											}}
 											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass disabled:cursor-not-allowed disabled:opacity-50'
 										>

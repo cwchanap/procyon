@@ -11,6 +11,50 @@ import {
 import { defaultAIConfig } from './storage';
 import { AI_PROVIDERS } from './types';
 
+/**
+ * Shared test scaffolding for describe blocks that need a browser-like
+ * environment (window + localStorage) and a clean store. Sets up
+ * localStorage mocks, captures/restores window and fetch, and resets the
+ * store in beforeEach. Returns the localStorage map in case a test needs
+ * to seed or inspect it.
+ */
+function setupAIConfigStoreFetchMocks() {
+	const localStorageStore: Record<string, string> = {};
+	const ls = {
+		getItem: (k: string) => localStorageStore[k] ?? null,
+		setItem: (k: string, v: string) => {
+			localStorageStore[k] = v;
+		},
+		removeItem: (k: string) => {
+			delete localStorageStore[k];
+		},
+	};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalWindow: any;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalFetch: any;
+
+	beforeEach(() => {
+		resetAIConfigStore();
+		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
+		originalWindow = globalThis.window;
+		originalFetch = globalThis.fetch;
+		// @ts-expect-error -- test-only override: simulate browser window in Node
+		globalThis.window = { localStorage: ls };
+		// @ts-expect-error -- test-only override: expose localStorage as a global
+		globalThis.localStorage = ls;
+	});
+
+	afterEach(() => {
+		globalThis.window = originalWindow;
+		globalThis.fetch = originalFetch;
+		// @ts-expect-error -- test-only restore: drop test-only localStorage global
+		delete globalThis.localStorage;
+	});
+
+	return { localStorageStore, ls };
+}
+
 describe('ai-config-store', () => {
 	beforeEach(() => {
 		resetAIConfigStore();
@@ -67,30 +111,9 @@ describe('ai-config-store', () => {
 // provider's first model while the AI service receives the old model.
 // ---------------------------------------------------------------------------
 describe('ai-config-store setProvider model fallback', () => {
-	const localStorageStore: Record<string, string> = {};
-	const ls = {
-		getItem: (k: string) => localStorageStore[k] ?? null,
-		setItem: (k: string, v: string) => {
-			localStorageStore[k] = v;
-		},
-		removeItem: (k: string) => {
-			delete localStorageStore[k];
-		},
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalWindow: any;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalFetch: any;
+	setupAIConfigStoreFetchMocks();
 
 	beforeEach(() => {
-		resetAIConfigStore();
-		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
-		originalWindow = globalThis.window;
-		originalFetch = globalThis.fetch;
-		// @ts-expect-error -- test-only override: simulate browser window in Node
-		globalThis.window = { localStorage: ls };
-		// @ts-expect-error -- test-only override: expose localStorage as a global
-		globalThis.localStorage = ls;
 		// Seed the store with a prior provider's model so the fallback path is
 		// distinguishable from the new provider's default.
 		setConfig({
@@ -100,13 +123,6 @@ describe('ai-config-store setProvider model fallback', () => {
 			enabled: false,
 			gameVariant: 'chess',
 		});
-	});
-
-	afterEach(() => {
-		globalThis.window = originalWindow;
-		globalThis.fetch = originalFetch;
-		// @ts-expect-error -- test-only restore: drop test-only localStorage global
-		delete globalThis.localStorage;
 	});
 
 	test('falls back to the new provider default when full.model is empty', async () => {
@@ -192,38 +208,7 @@ describe('ai-config-store setProvider model fallback', () => {
 // stale error so Start is re-enabled.
 // ---------------------------------------------------------------------------
 describe('ai-config-store setProvider clears hydrateError', () => {
-	const localStorageStore: Record<string, string> = {};
-	const ls = {
-		getItem: (k: string) => localStorageStore[k] ?? null,
-		setItem: (k: string, v: string) => {
-			localStorageStore[k] = v;
-		},
-		removeItem: (k: string) => {
-			delete localStorageStore[k];
-		},
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalWindow: any;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalFetch: any;
-
-	beforeEach(() => {
-		resetAIConfigStore();
-		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
-		originalWindow = globalThis.window;
-		originalFetch = globalThis.fetch;
-		// @ts-expect-error -- test-only override: simulate browser window in Node
-		globalThis.window = { localStorage: ls };
-		// @ts-expect-error -- test-only override: expose localStorage as a global
-		globalThis.localStorage = ls;
-	});
-
-	afterEach(() => {
-		globalThis.window = originalWindow;
-		globalThis.fetch = originalFetch;
-		// @ts-expect-error -- test-only restore: drop test-only localStorage global
-		delete globalThis.localStorage;
-	});
+	setupAIConfigStoreFetchMocks();
 
 	test('clears hydrateError after a successful provider switch', async () => {
 		// Simulate a failed hydrate by setting hydrateError directly via the
@@ -286,38 +271,7 @@ describe('ai-config-store setProvider clears hydrateError', () => {
 // interleave two setProvider calls and verify the older one is dropped.
 // ---------------------------------------------------------------------------
 describe('ai-config-store setProvider stale-write race', () => {
-	const localStorageStore: Record<string, string> = {};
-	const ls = {
-		getItem: (k: string) => localStorageStore[k] ?? null,
-		setItem: (k: string, v: string) => {
-			localStorageStore[k] = v;
-		},
-		removeItem: (k: string) => {
-			delete localStorageStore[k];
-		},
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalWindow: any;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalFetch: any;
-
-	beforeEach(() => {
-		resetAIConfigStore();
-		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
-		originalWindow = globalThis.window;
-		originalFetch = globalThis.fetch;
-		// @ts-expect-error -- test-only override: simulate browser window in Node
-		globalThis.window = { localStorage: ls };
-		// @ts-expect-error -- test-only override: expose localStorage as a global
-		globalThis.localStorage = ls;
-	});
-
-	afterEach(() => {
-		globalThis.window = originalWindow;
-		globalThis.fetch = originalFetch;
-		// @ts-expect-error -- test-only restore: drop test-only localStorage global
-		delete globalThis.localStorage;
-	});
+	setupAIConfigStoreFetchMocks();
 
 	test('older setProvider does not clobber store when newer one resolves first', async () => {
 		// Controllable resolvers for the first setProvider's fetches.
@@ -429,38 +383,7 @@ describe('ai-config-store setProvider stale-write race', () => {
 // display a stale failure or clear the newer switch's error.
 // ---------------------------------------------------------------------------
 describe('ai-config-store setProvider stale catch paths', () => {
-	const localStorageStore: Record<string, string> = {};
-	const ls = {
-		getItem: (k: string) => localStorageStore[k] ?? null,
-		setItem: (k: string, v: string) => {
-			localStorageStore[k] = v;
-		},
-		removeItem: (k: string) => {
-			delete localStorageStore[k];
-		},
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalWindow: any;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalFetch: any;
-
-	beforeEach(() => {
-		resetAIConfigStore();
-		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
-		originalWindow = globalThis.window;
-		originalFetch = globalThis.fetch;
-		// @ts-expect-error -- test-only override: simulate browser window in Node
-		globalThis.window = { localStorage: ls };
-		// @ts-expect-error -- test-only override: expose localStorage as a global
-		globalThis.localStorage = ls;
-	});
-
-	afterEach(() => {
-		globalThis.window = originalWindow;
-		globalThis.fetch = originalFetch;
-		// @ts-expect-error -- test-only restore: drop test-only localStorage global
-		delete globalThis.localStorage;
-	});
+	setupAIConfigStoreFetchMocks();
 
 	test('stale list-fetch failure returns null, not an error string', async () => {
 		// Controllable resolver for the first (stale) setProvider's list fetch.
@@ -603,40 +526,7 @@ describe('ai-config-store setProvider stale catch paths', () => {
 // the provider list and distinguishes a failed hydrate from an empty one.
 // ---------------------------------------------------------------------------
 describe('ai-config-store hydration (mocked fetch)', () => {
-	const localStorageStore: Record<string, string> = {};
-	const ls = {
-		getItem: (k: string) => localStorageStore[k] ?? null,
-		setItem: (k: string, v: string) => {
-			localStorageStore[k] = v;
-		},
-		removeItem: (k: string) => {
-			delete localStorageStore[k];
-		},
-	};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalWindow: any;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let originalFetch: any;
-
-	beforeEach(() => {
-		resetAIConfigStore();
-		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
-		originalWindow = globalThis.window;
-		originalFetch = globalThis.fetch;
-		// storage.ts references bare `localStorage` (globalThis.localStorage)
-		// and `window`, so set both — mirroring storage.test.ts's setupBrowserMocks.
-		// @ts-expect-error -- test-only override: simulate browser window in Node
-		globalThis.window = { localStorage: ls };
-		// @ts-expect-error -- test-only override: expose localStorage as a global
-		globalThis.localStorage = ls;
-	});
-
-	afterEach(() => {
-		globalThis.window = originalWindow;
-		globalThis.fetch = originalFetch;
-		// @ts-expect-error -- test-only restore: drop test-only localStorage global
-		delete globalThis.localStorage;
-	});
+	setupAIConfigStoreFetchMocks();
 
 	test('hydrate populates availableProviders and clears hydrateError on success', async () => {
 		// @ts-expect-error -- test-only: replace global fetch with list mock
@@ -689,6 +579,83 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.hydrated).toBe(true);
 		expect(snap.hydrateError).toBe(false);
 		expect(snap.availableProviders).toEqual([]);
+	});
+
+	test('hydrate does not clobber store after setProvider completes', async () => {
+		// Hold the first /ai-config call (hydrate's list fetch) pending so
+		// we can interleave a setProvider while runHydrate is in flight.
+		let resolveHydrateList: (v: unknown) => void = () => {};
+		const hydrateListPending = new Promise(r => {
+			resolveHydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// First call — hydrate's list fetch, held pending.
+					return hydrateListPending;
+				}
+				// Second call — setProvider's list fetch, resolves immediately.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			// /ai-config/:id/full — setProvider's full fetch for cfg-o.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start hydrate but don't await — its list fetch is pending.
+		const hydratePromise = hydrate();
+
+		// While hydrate is in flight, the user switches to openai.
+		// setProvider bumps setProviderGeneration and writes openai to the store.
+		const providerErr = await setProvider('openai');
+		expect(providerErr).toBeNull();
+		expect(getConfigSlice().config.provider).toBe('openai');
+		expect(getConfigSlice().config.apiKey).toBe('sk-test');
+
+		// Now release hydrate's stale list fetch. It returns a list with
+		// only gemini (no active config), so loadAIConfigWithProviders
+		// would fall through to defaultAIConfig (provider: 'gemini').
+		// Without the setProviderGeneration guard, runHydrate would
+		// overwrite the store with 'gemini', clobbering the user's
+		// 'openai' selection.
+		resolveHydrateList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{ id: 'cfg-g', provider: 'gemini', hasApiKey: true, isActive: false },
+				],
+			}),
+		});
+		await hydratePromise;
+
+		// The store must still reflect the user's openai selection.
+		const snap = getConfigSlice();
+		expect(snap.config.provider).toBe('openai');
+		expect(snap.config.apiKey).toBe('sk-test');
+		expect(snap.config.model).toBe('gpt-4o');
 	});
 
 	test('resetAIConfigStore ignores a stale in-flight hydrate', async () => {
