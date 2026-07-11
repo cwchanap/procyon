@@ -56,6 +56,14 @@ export function usePlayHistory({
 	// MAX_SAVE_ATTEMPTS to prevent infinite retry loops.
 	const [retryTrigger, setRetryTrigger] = useState(0);
 
+	// Bump the retry trigger so the auto-save effect re-runs, up to the
+	// bounded retry count. Stable identity so it doesn't force
+	// savePlayHistory to rebuild on every render.
+	const bumpRetry = useCallback(
+		() => setRetryTrigger(c => (c < MAX_SAVE_ATTEMPTS ? c + 1 : c)),
+		[]
+	);
+
 	const savePlayHistory = useCallback(async () => {
 		if (!enabled || savedRef.current) return;
 		if (!(isAuthenticated || import.meta.env.DEV)) return;
@@ -77,11 +85,6 @@ export function usePlayHistory({
 			const key = `__PROCYON_DEBUG_${debugVariantKey}_SAVE_COUNT__`;
 			w[key] = (w[key] ?? 0) + 1;
 		}
-
-		// Bump the retry trigger so the auto-save effect re-runs,
-		// up to the bounded retry count.
-		const bumpRetry = () =>
-			setRetryTrigger(c => (c < MAX_SAVE_ATTEMPTS ? c + 1 : c));
 
 		try {
 			const opponentLlmId = resolveOpponentLlmId(
@@ -118,8 +121,17 @@ export function usePlayHistory({
 			}
 		} catch (error) {
 			savedRef.current = false;
-			// eslint-disable-next-line no-console
-			console.error('Error saving play history:', error);
+			attemptsRef.current += 1;
+			if (import.meta.env.DEV) {
+				// eslint-disable-next-line no-console
+				console.warn('Error saving play history:', error);
+			}
+			if (attemptsRef.current >= MAX_SAVE_ATTEMPTS) {
+				// eslint-disable-next-line no-console
+				console.error(
+					`Play-history save failed after ${MAX_SAVE_ATTEMPTS} attempts (network error)`
+				);
+			}
 			bumpRetry();
 		}
 	}, [
@@ -132,6 +144,7 @@ export function usePlayHistory({
 		gameVariant,
 		getWinnerColor,
 		debugVariantKey,
+		bumpRetry,
 	]);
 
 	useEffect(() => {
