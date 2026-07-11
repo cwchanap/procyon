@@ -6,7 +6,7 @@ interface AISettingsDialogProps {
 	onAIPlayerChange: (player: string) => void;
 	provider: string;
 	model: string;
-	onProviderChange: (provider: string) => void;
+	onProviderChange: (provider: string) => Promise<void> | void;
 	onModelChange: (model: string) => void;
 	aiPlayerOptions: Array<{ value: string; label: string }>;
 	isActive?: boolean;
@@ -67,6 +67,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 }) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+	const [isProviderSwitching, setIsProviderSwitching] = useState(false);
 	const dialogRef = useRef<HTMLDivElement>(null);
 
 	// Fetch available providers (those with API keys configured)
@@ -270,6 +271,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 										<select
 											aria-label='AI Provider'
 											value={currentProvider}
+											disabled={isProviderSwitching}
 											onChange={e => {
 												const newProvider = e.target.value;
 												// onProviderChange (setProvider) commits the provider + model
@@ -278,9 +280,17 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 												// with that async update and could leave the store with the
 												// old provider + the new provider's model, or let an older
 												// response overwrite the latest selection.
-												onProviderChange(newProvider);
+												//
+												// Track the pending state so the model select can be
+												// disabled until the switch completes — otherwise the
+												// user could pick a model that the pending setConfig
+												// would silently overwrite.
+												setIsProviderSwitching(true);
+												void Promise.resolve(
+													onProviderChange(newProvider)
+												).finally(() => setIsProviderSwitching(false));
 											}}
-											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
+											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass disabled:cursor-not-allowed disabled:opacity-50'
 										>
 											{PROVIDER_OPTIONS.map(option => (
 												<option key={option.value} value={option.value}>
@@ -297,8 +307,9 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 										<select
 											aria-label='AI Model'
 											value={currentModel}
+											disabled={isProviderSwitching}
 											onChange={e => onModelChange(e.target.value)}
-											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
+											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass disabled:cursor-not-allowed disabled:opacity-50'
 										>
 											{availableModels.map(option => (
 												<option key={option.value} value={option.value}>

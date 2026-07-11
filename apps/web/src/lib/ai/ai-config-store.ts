@@ -143,6 +143,11 @@ export async function setProvider(
 	try {
 		configurations = await fetchAIConfigList();
 	} catch {
+		// A newer setProvider call started while we were awaiting the list
+		// fetch — suppress this error so a stale failure doesn't clobber
+		// the newer switch's success or display a misleading alert after
+		// the user has already moved on.
+		if (gen !== setProviderGeneration) return null;
 		return "We couldn't load your saved AI settings. Please try again from AI Settings.";
 	}
 	// A newer setProvider call started while we were awaiting the list
@@ -180,6 +185,8 @@ export async function setProvider(
 		});
 		return null;
 	} catch {
+		// Same stale guard as the list-fetch catch above.
+		if (gen !== setProviderGeneration) return null;
 		return "We couldn't load your saved API key details. Please try again.";
 	}
 }
