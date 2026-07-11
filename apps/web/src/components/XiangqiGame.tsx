@@ -52,7 +52,7 @@ const XiangqiGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<'red' | 'black'>('black');
-	const { config: aiConfig } = useAIConfig();
+	const { config: aiConfig, hydrated: aiConfigHydrated } = useAIConfig();
 	const [aiService] = useState(() => createXiangqiAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
@@ -456,8 +456,16 @@ const XiangqiGame: React.FC = () => {
 	// Calculate hasGameStarted before using it in callbacks
 	const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
 
+	// In AI mode, authenticated users must wait for the AI config store to
+	// hydrate before starting — otherwise aiConfig still holds defaults (no
+	// apiKey, enabled=false) and the first AI move would fail. Anonymous
+	// visitors never hydrate (the call is gated in AppShell), so they fall
+	// through to the human-vs-human fallback and are not blocked here.
+	const aiStarting = gameMode === 'ai' && isAuthenticated && !aiConfigHydrated;
+
 	const handleStartOrReset = useCallback(() => {
 		if (!hasGameStarted) {
+			if (aiStarting) return; // config still loading; Start is disabled
 			// Starting the game - ensure game state is properly initialized
 			setGameState(resetGame());
 			setGameStarted(true);
@@ -465,7 +473,7 @@ const XiangqiGame: React.FC = () => {
 			// Resetting the game
 			handleResetGame();
 		}
-	}, [hasGameStarted, handleResetGame]);
+	}, [hasGameStarted, handleResetGame, aiStarting]);
 
 	const toggleToMode = useCallback(
 		(newMode: XiangqiGameMode) => {
@@ -720,6 +728,7 @@ const XiangqiGame: React.FC = () => {
 							hasGameStarted={hasGameStarted}
 							isGameOver={isGameOver}
 							aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+							startDisabled={aiStarting}
 							isDebugMode={isDebugMode}
 							canExport={false}
 							onStartOrReset={handleStartOrReset}

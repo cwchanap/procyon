@@ -30,6 +30,7 @@ import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
 import AISettingsDialog from './ai/AISettingsDialog';
 import { type AIMove } from './ai/AIDebugDialog';
+import { useAuth } from '../lib/auth';
 
 interface JungleDemo {
 	id: string;
@@ -51,15 +52,15 @@ const JungleGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<JunglePieceColor>('blue');
-	const { config: aiConfig } = useAIConfig();
+	const { config: aiConfig, hydrated: aiConfigHydrated } = useAIConfig();
 	const [aiService] = useState(() => createJungleAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
-	const [_aiRejectionCount, setAiRejectionCount] = useState(0);
 	const [_isAiPaused, setIsAiPaused] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
+	const { isAuthenticated } = useAuth();
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
@@ -91,6 +92,31 @@ const JungleGame: React.FC = () => {
 		debugVariantKey: 'JUNGLE',
 	});
 
+	// Helper function to convert move history to debug format
+	const _createAIMove = useCallback(
+		(
+			move: string,
+			isAI: boolean,
+			thinking?: string,
+			error?: string
+		): AIMove => {
+			const moveNumber = Math.floor(gameState.moveHistory.length / 2) + 1;
+			const player =
+				gameState.currentPlayer === 'red' ? 'Red (红方)' : 'Blue (蓝方)';
+
+			return {
+				moveNumber,
+				player: `${isAI ? '🤖 AI ' : '👤 '}${player}`,
+				move,
+				timestamp: Date.now(),
+				isAI,
+				thinking,
+				error,
+			};
+		},
+		[gameState.moveHistory.length, gameState.currentPlayer]
+	);
+
 	// AI setup and debug callback
 	useEffect(() => {
 		aiService.updateConfig({ ...aiConfig, debug: isDebugMode });
@@ -112,7 +138,7 @@ const JungleGame: React.FC = () => {
 				]);
 			});
 		}
-	}, [aiService, aiConfig, isDebugMode]);
+	}, [aiService, aiConfig, isDebugMode, _createAIMove]);
 
 	// AI move handling
 	useEffect(() => {
@@ -154,31 +180,6 @@ const JungleGame: React.FC = () => {
 			return () => clearTimeout(timer);
 		}
 	}, [gameState, gameMode, gameStarted, aiPlayer, aiService, isAIThinking]);
-
-	// Helper function to convert move history to debug format
-	const _createAIMove = useCallback(
-		(
-			move: string,
-			isAI: boolean,
-			thinking?: string,
-			error?: string
-		): AIMove => {
-			const moveNumber = Math.floor(gameState.moveHistory.length / 2) + 1;
-			const player =
-				gameState.currentPlayer === 'red' ? 'Red (红方)' : 'Blue (蓝方)';
-
-			return {
-				moveNumber,
-				player: `${isAI ? '🤖 AI ' : '👤 '}${player}`,
-				move,
-				timestamp: Date.now(),
-				isAI,
-				thinking,
-				error,
-			};
-		},
-		[gameState.moveHistory.length, gameState.currentPlayer]
-	);
 
 	const createCustomJungleBoard = useCallback(
 		(setup: string): (JunglePiece | null)[][] => {
@@ -317,7 +318,6 @@ const JungleGame: React.FC = () => {
 	const handleResetGame = useCallback(() => {
 		setGameState(resetGame());
 		setGameStarted(false);
-		setAiRejectionCount(0);
 		setIsAiPaused(false);
 		setAIDebugMoves([]);
 	}, []);
@@ -361,8 +361,16 @@ const JungleGame: React.FC = () => {
 		};
 	}, [triggerDebugWin]);
 
+	// In AI mode, authenticated users must wait for the AI config store to
+	// hydrate before starting — otherwise aiConfig still holds defaults (no
+	// apiKey, enabled=false) and the first AI move would fail. Anonymous
+	// visitors never hydrate (the call is gated in AppShell), so they fall
+	// through to the human-vs-human fallback and are not blocked here.
+	const aiStarting = gameMode === 'ai' && isAuthenticated && !aiConfigHydrated;
+
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {
+			if (aiStarting) return; // config still loading; Start is disabled
 			// Starting game - ensure game state is properly initialized
 			setGameState(createInitialGameState());
 			setGameStarted(true);
@@ -370,7 +378,7 @@ const JungleGame: React.FC = () => {
 			// Resetting the game
 			handleResetGame();
 		}
-	}, [gameStarted, handleResetGame]);
+	}, [gameStarted, handleResetGame, aiStarting]);
 
 	const handleDemoChange = useCallback(
 		(demoId: string) => {
@@ -392,7 +400,6 @@ const JungleGame: React.FC = () => {
 		(newMode: JungleGameMode) => {
 			setGameMode(newMode);
 			setGameStarted(false);
-			setAiRejectionCount(0);
 			setIsAiPaused(false);
 			setAIDebugMoves([]);
 
@@ -493,6 +500,7 @@ const JungleGame: React.FC = () => {
 						{ value: 'red', label: 'AI plays Red (红方)' },
 					]}
 					isActive={gameMode === 'ai'}
+					onActivate={() => toggleToMode('ai')}
 				/>
 			}
 		>
@@ -596,6 +604,7 @@ const JungleGame: React.FC = () => {
 							hasGameStarted={gameStarted}
 							isGameOver={isGameOver}
 							aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+							startDisabled={aiStarting}
 							isDebugMode={isDebugMode}
 							canExport={false}
 							onStartOrReset={handleStartOrReset}
