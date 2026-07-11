@@ -48,6 +48,9 @@ export function usePlayHistory({
 }: UsePlayHistoryOptions): void {
 	const { isAuthenticated } = useAuth();
 	const savedRef = useRef(false);
+	// Tracks the number of save attempts for the current game so we can
+	// log a prod-visible error when retries are exhausted.
+	const attemptsRef = useRef(0);
 	// State-based retry trigger: incremented when a save attempt fails so the
 	// auto-save effect re-runs (its deps include `retryTrigger`). Bounded by
 	// MAX_SAVE_ATTEMPTS to prevent infinite retry loops.
@@ -104,6 +107,13 @@ export function usePlayHistory({
 					);
 				}
 				savedRef.current = false;
+				attemptsRef.current += 1;
+				if (attemptsRef.current >= MAX_SAVE_ATTEMPTS) {
+					// eslint-disable-next-line no-console
+					console.error(
+						`Play-history save failed after ${MAX_SAVE_ATTEMPTS} attempts (last status: ${response.status} ${response.statusText})`
+					);
+				}
 				bumpRetry();
 			}
 		} catch (error) {
@@ -141,6 +151,7 @@ export function usePlayHistory({
 	useEffect(() => {
 		if (gameStatus === 'playing' && moveCount === 0) {
 			savedRef.current = false;
+			attemptsRef.current = 0;
 			// Reset the retry trigger when a new game starts so a fresh
 			// game gets a full retry budget.
 			setRetryTrigger(0);

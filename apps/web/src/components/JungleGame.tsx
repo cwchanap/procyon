@@ -93,7 +93,7 @@ const JungleGame: React.FC = () => {
 	});
 
 	// Helper function to convert move history to debug format
-	const _createAIMove = useCallback(
+	const createAIMove = useCallback(
 		(
 			move: string,
 			isAI: boolean,
@@ -129,7 +129,7 @@ const JungleGame: React.FC = () => {
 
 				setAIDebugMoves(prev => [
 					...prev,
-					_createAIMove(
+					createAIMove(
 						type === 'ai-move' ? message : `Debug: ${message}`,
 						true,
 						thinking,
@@ -138,7 +138,7 @@ const JungleGame: React.FC = () => {
 				]);
 			});
 		}
-	}, [aiService, aiConfig, isDebugMode, _createAIMove]);
+	}, [aiService, aiConfig, isDebugMode, createAIMove]);
 
 	// AI move handling
 	useEffect(() => {
