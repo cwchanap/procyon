@@ -177,12 +177,20 @@ export async function setProvider(
 		// `models[0]`/`defaultModel` for every provider.
 		const providerInfo = AI_PROVIDERS[provider];
 		const fallbackModel = providerInfo.models[0] || providerInfo.defaultModel;
-		setConfig({
+		// Clear hydrateError on success: a failed hydrate leaves this flag set,
+		// which blocks Start in all game components. If the user recovers by
+		// switching to a provider with a valid API key, the error is stale —
+		// we now have working credentials, so clear it. setConfig alone would
+		// preserve hydrateError via its `...configSlice` spread.
+		const merged = {
+			...configSlice.config,
 			provider,
 			model: full.model || fallbackModel,
 			apiKey: full.apiKey || '',
 			enabled: true,
-		});
+		};
+		setConfigSlice({ ...configSlice, config: merged, hydrateError: false });
+		saveAIConfig(merged);
 		return null;
 	} catch {
 		// Same stale guard as the list-fetch catch above.
