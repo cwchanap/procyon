@@ -60,7 +60,7 @@ const JungleGame: React.FC = () => {
 	const [_isAiPaused, setIsAiPaused] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
-	const { isAuthenticated } = useAuth();
+	const { isAuthenticated, loading: authLoading } = useAuth();
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
@@ -366,7 +366,12 @@ const JungleGame: React.FC = () => {
 	// apiKey, enabled=false) and the first AI move would fail. Anonymous
 	// visitors never hydrate (the call is gated in AppShell), so they fall
 	// through to the human-vs-human fallback and are not blocked here.
-	const aiStarting = gameMode === 'ai' && isAuthenticated && !aiConfigHydrated;
+	// While auth is still loading, isAuthenticated is false, so we also
+	// block Start to prevent a fast click starting with the default no-key
+	// config before authentication and hydration finish.
+	const aiStarting =
+		gameMode === 'ai' &&
+		(authLoading || (isAuthenticated && !aiConfigHydrated));
 
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {

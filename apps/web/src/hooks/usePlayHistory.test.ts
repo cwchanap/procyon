@@ -446,11 +446,15 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	let originalFetch: typeof globalThis.fetch;
 	let fetchCallCount: number;
 	let fetchShouldSucceed: boolean;
+	// When set, overrides the default 500 status for failed responses so
+	// tests can exercise 4xx no-retry behavior.
+	let fetchFailStatus: number;
 
 	beforeEach(() => {
 		originalFetch = globalThis.fetch;
 		fetchCallCount = 0;
 		fetchShouldSucceed = true;
+		fetchFailStatus = 500;
 
 		(
 			window as unknown as Record<string, unknown>
@@ -462,8 +466,8 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			}
 			return Promise.resolve({
 				ok: fetchShouldSucceed,
-				status: fetchShouldSucceed ? 200 : 500,
-				statusText: fetchShouldSucceed ? 'OK' : 'Internal Server Error',
+				status: fetchShouldSucceed ? 200 : fetchFailStatus,
+				statusText: fetchShouldSucceed ? 'OK' : 'Error',
 				json: () => Promise.resolve({}),
 			}) as unknown as Response;
 		}) as unknown as typeof fetch;
@@ -610,5 +614,26 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			await new Promise(r => setTimeout(r, 0));
 		});
 		expect(fetchCallCount).toBe(0);
+	});
+
+	test('4xx response does not retry — only one fetch call', async () => {
+		fetchShouldSucceed = false;
+		fetchFailStatus = 401;
+
+		renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
+		});
+
+		// Wait for the initial save attempt to fire.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// Wait longer to ensure no retries fire.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+		expect(fetchCallCount).toBe(1);
 	});
 });

@@ -109,15 +109,26 @@ export function usePlayHistory({
 						`Play-history save failed: ${response.status} ${response.statusText}`
 					);
 				}
-				savedRef.current = false;
-				attemptsRef.current += 1;
-				if (attemptsRef.current >= MAX_SAVE_ATTEMPTS) {
+				// 4xx errors (auth expiry, bad request, etc.) are non-transient —
+				// retrying sends the same rejected request again. Only retry on
+				// 5xx (transient server errors). On 4xx keep savedRef=true (the
+				// optimistic set above) so the effect doesn't re-trigger.
+				if (response.status >= 400 && response.status < 500) {
 					// eslint-disable-next-line no-console
 					console.error(
-						`Play-history save failed after ${MAX_SAVE_ATTEMPTS} attempts (last status: ${response.status} ${response.statusText})`
+						`Play-history save rejected (${response.status} ${response.statusText}); not retrying`
 					);
+				} else {
+					savedRef.current = false;
+					attemptsRef.current += 1;
+					if (attemptsRef.current >= MAX_SAVE_ATTEMPTS) {
+						// eslint-disable-next-line no-console
+						console.error(
+							`Play-history save failed after ${MAX_SAVE_ATTEMPTS} attempts (last status: ${response.status} ${response.statusText})`
+						);
+					}
+					bumpRetry();
 				}
-				bumpRetry();
 			}
 		} catch (error) {
 			// Network error: the request may or may not have reached the

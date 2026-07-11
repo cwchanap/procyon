@@ -186,6 +186,149 @@ describe('ai-config-store setProvider model fallback', () => {
 });
 
 // ---------------------------------------------------------------------------
+// setProvider stale-write race. When a user switches providers twice before
+// the first request finishes, the older in-flight call must not clobber the
+// newer provider/model in the store. Uses controllable pending fetches to
+// interleave two setProvider calls and verify the older one is dropped.
+// ---------------------------------------------------------------------------
+describe('ai-config-store setProvider stale-write race', () => {
+	const localStorageStore: Record<string, string> = {};
+	const ls = {
+		getItem: (k: string) => localStorageStore[k] ?? null,
+		setItem: (k: string, v: string) => {
+			localStorageStore[k] = v;
+		},
+		removeItem: (k: string) => {
+			delete localStorageStore[k];
+		},
+	};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalWindow: any;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalFetch: any;
+
+	beforeEach(() => {
+		resetAIConfigStore();
+		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
+		originalWindow = globalThis.window;
+		originalFetch = globalThis.fetch;
+		// @ts-expect-error -- test-only override: simulate browser window in Node
+		globalThis.window = { localStorage: ls };
+		// @ts-expect-error -- test-only override: expose localStorage as a global
+		globalThis.localStorage = ls;
+	});
+
+	afterEach(() => {
+		globalThis.window = originalWindow;
+		globalThis.fetch = originalFetch;
+		// @ts-expect-error -- test-only restore: drop test-only localStorage global
+		delete globalThis.localStorage;
+	});
+
+	test('older setProvider does not clobber store when newer one resolves first', async () => {
+		// Controllable resolvers for the first setProvider's fetches.
+		// The second setProvider's fetches resolve immediately.
+		let resolveFirstList: (v: unknown) => void = () => {};
+		let resolveOpenaiFull: (v: unknown) => void = () => {};
+		const firstListPending = new Promise(r => {
+			resolveFirstList = r;
+		});
+		const openaiFullPending = new Promise(r => {
+			resolveOpenaiFull = r;
+		});
+
+		// Call counter for the list fetch: 1st call (first setProvider)
+		// holds pending; 2nd call (second setProvider) resolves immediately.
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					return firstListPending;
+				}
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			// /ai-config/:id/full — route by the config ID in the URL.
+			// The first setProvider requests cfg-o (openai) → held pending.
+			// The second setProvider requests cfg-g (gemini) → immediate.
+			const id = url.split('/').pop();
+			if (id === 'cfg-o') {
+				return openaiFullPending;
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gem-key',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start the first setProvider (openai) — its list fetch is pending.
+		const firstPromise = setProvider('openai');
+
+		// Start the second setProvider (gemini) — its list fetch resolves
+		// immediately (listCallCount=2), then its full fetch for cfg-g
+		// also resolves immediately.
+		const secondPromise = setProvider('gemini');
+		await secondPromise;
+
+		// The store should now reflect gemini (the newer call).
+		expect(getConfigSlice().config.provider).toBe('gemini');
+		expect(getConfigSlice().config.apiKey).toBe('gem-key');
+
+		// Now release the first (stale) setProvider's list fetch. It will
+		// proceed to fetch cfg-o/full, which is also held pending.
+		resolveFirstList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{ id: 'cfg-o', provider: 'openai', hasApiKey: true, isActive: false },
+				],
+			}),
+		});
+		// Release the stale openai full fetch.
+		resolveOpenaiFull({
+			ok: true,
+			json: async () => ({
+				provider: 'openai',
+				apiKey: 'oai-key',
+				modelName: 'gpt-4o',
+				gameVariant: 'chess',
+			}),
+		});
+		await firstPromise;
+
+		// The stale openai response must NOT have clobbered the store.
+		expect(getConfigSlice().config.provider).toBe('gemini');
+		expect(getConfigSlice().config.apiKey).toBe('gem-key');
+		expect(getConfigSlice().config.model).toBe('gemini-2.5-flash');
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Hydration fields (availableProviders / hydrated / hydrateError) driven by
 // the /ai-config fetch. These require a browser-like environment (window +
 // localStorage) because loadAIConfigWithProviders short-circuits to defaults
