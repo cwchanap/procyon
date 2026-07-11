@@ -393,22 +393,9 @@ describe('GameVariant values used in usePlayHistory', () => {
 // ─── React integration tests (renderHook) ────────────────────────────────────
 // Exercises the real hook with @testing-library/react's renderHook to verify
 // the auto-save useEffect, savedRef dedup/reset, and bounded retry behavior.
-// Auth state is driven through window.__PROCYON_INITIAL_AUTH_USER__ (same
-// strategy as ChessGame.test.tsx) to avoid mock.module's process-global leak.
-
-interface TestAuthUser {
-	id: string;
-	email: string;
-	username: string;
-	name: string;
-}
-
-const testAuthUser: TestAuthUser = {
-	id: 'u1',
-	email: 'test@example.com',
-	username: 'testuser',
-	name: 'Test User',
-};
+// Auth state is passed directly via the `isAuthenticated` prop (the hook no
+// longer calls useAuth() internally, so no window.__PROCYON_INITIAL_AUTH_USER__
+// setup is needed).
 
 const testAIConfig: AIConfig = {
 	provider: 'gemini',
@@ -427,6 +414,7 @@ interface HookProps {
 	moveCount: number;
 	getWinnerColor: () => string;
 	enabled: boolean;
+	isAuthenticated: boolean;
 }
 
 function makeProps(overrides: Partial<HookProps> = {}): HookProps {
@@ -438,6 +426,7 @@ function makeProps(overrides: Partial<HookProps> = {}): HookProps {
 		moveCount: 0,
 		getWinnerColor: stableGetWinnerColor,
 		enabled: true,
+		isAuthenticated: true,
 		...overrides,
 	};
 }
@@ -456,10 +445,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		fetchShouldSucceed = true;
 		fetchFailStatus = 500;
 
-		(
-			window as unknown as Record<string, unknown>
-		).__PROCYON_INITIAL_AUTH_USER__ = testAuthUser;
-
 		globalThis.fetch = mock((url: string) => {
 			if (url.includes('/play-history')) {
 				fetchCallCount++;
@@ -475,8 +460,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 
 	afterEach(() => {
 		globalThis.fetch = originalFetch;
-		delete (window as unknown as Record<string, unknown>)
-			.__PROCYON_INITIAL_AUTH_USER__;
 	});
 
 	test('auto-save fires when game ends', async () => {
@@ -609,6 +592,22 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		});
 
 		rerender(makeProps({ gameStatus: 'checkmate', aiPlayer: null }));
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(0);
+	});
+
+	test('does not save when isAuthenticated is false', async () => {
+		const { rerender } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'playing',
+				isAuthenticated: false,
+			}),
+		});
+
+		rerender(makeProps({ gameStatus: 'checkmate', isAuthenticated: false }));
 
 		await act(async () => {
 			await new Promise(r => setTimeout(r, 0));

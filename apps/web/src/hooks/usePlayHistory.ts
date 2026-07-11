@@ -1,5 +1,4 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { useAuth } from '../lib/auth';
 import { env } from '../lib/env';
 import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
 import type { AIConfig } from '../lib/ai/types';
@@ -14,6 +13,14 @@ export interface UsePlayHistoryOptions {
 	getWinnerColor: () => string;
 	/** True only while an AI game is in progress (gameMode === 'ai' && gameStarted). */
 	enabled: boolean;
+	/**
+	 * Authenticated state from the caller's `useAuth()` snapshot. Passed from
+	 * the game component so the hook shares the same auth state that allowed
+	 * the game to start, rather than making an independent `useAuth()` call
+	 * whose `fetchSession()` can transiently fail and permanently suppress
+	 * the terminal save.
+	 */
+	isAuthenticated: boolean;
 	/** When set, bumps window.__PROCYON_DEBUG_<KEY>_SAVE_COUNT__ before the fetch. */
 	debugVariantKey?: string;
 }
@@ -44,9 +51,9 @@ export function usePlayHistory({
 	moveCount,
 	getWinnerColor,
 	enabled,
+	isAuthenticated,
 	debugVariantKey,
 }: UsePlayHistoryOptions): void {
-	const { isAuthenticated } = useAuth();
 	const savedRef = useRef(false);
 	// Tracks the number of save attempts for the current game so we can
 	// log a prod-visible error when retries are exhausted.
