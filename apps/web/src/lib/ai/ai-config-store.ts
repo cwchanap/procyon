@@ -73,6 +73,16 @@ let inFlight: Promise<void> | null = null;
  */
 let hydrateGeneration = 0;
 
+/**
+ * Monotonic generation token for `setProvider`. Incremented at the start of
+ * each `setProvider` call (and by `resetAIConfigStore`) so that if a user
+ * switches providers twice before the first request finishes, the older
+ * in-flight call can detect it is stale and skip its `setConfig` write —
+ * otherwise the older response would resolve last and clobber the newer
+ * provider/model in the shared store.
+ */
+let setProviderGeneration = 0;
+
 export async function hydrate(): Promise<void> {
 	if (hydrated) return;
 	if (inFlight) return inFlight;
@@ -128,12 +138,17 @@ async function runHydrate(): Promise<void> {
 export async function setProvider(
 	provider: AIProvider
 ): Promise<string | null> {
+	const gen = ++setProviderGeneration;
 	let configurations;
 	try {
 		configurations = await fetchAIConfigList();
 	} catch {
 		return "We couldn't load your saved AI settings. Please try again from AI Settings.";
 	}
+	// A newer setProvider call started while we were awaiting the list
+	// fetch — drop this result so the older provider doesn't clobber the
+	// newer one in the store.
+	if (gen !== setProviderGeneration) return null;
 	const providerConfig = configurations.find(
 		c => c.provider === provider && c.hasApiKey
 	);
@@ -142,6 +157,9 @@ export async function setProvider(
 	}
 	try {
 		const full = await fetchFullAIConfig(providerConfig.id);
+		// A newer setProvider call started while we were awaiting the full
+		// config fetch — drop this result for the same reason as above.
+		if (gen !== setProviderGeneration) return null;
 		// Derive a provider-specific default model rather than reusing the
 		// prior provider's model. If `full.model` is empty (e.g. a legacy
 		// backend row with no model) the previous fallback
@@ -180,9 +198,11 @@ export function useAIConfig(): AIConfigSlice {
  * registry is shared across files (e.g. under coverage).
  */
 export function resetAIConfigStore(): void {
-	// Bump the generation first so any runHydrate() still in flight from the
-	// previous session sees a stale `gen` and skips its setConfigSlice call.
+	// Bump the generation tokens first so any runHydrate() or setProvider()
+	// still in flight from the previous session sees a stale `gen` and skips
+	// its setConfigSlice/setConfig call.
 	hydrateGeneration++;
+	setProviderGeneration++;
 	hydrated = false;
 	inFlight = null;
 	setConfigSlice({ ...initialConfigSlice });

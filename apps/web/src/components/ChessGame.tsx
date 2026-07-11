@@ -48,7 +48,7 @@ const ChessGame: React.FC = () => {
 	const { config: aiConfig, hydrated: aiConfigHydrated } = useAIConfig();
 	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
 	const [gameActive, setGameActive] = useState(false);
-	const { isAuthenticated } = useAuth();
+	const { isAuthenticated, loading: authLoading } = useAuth();
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
 	const [isAiPaused, setIsAiPaused] = useState(false);
@@ -608,7 +608,12 @@ const ChessGame: React.FC = () => {
 	// apiKey, enabled=false) and the first AI move would fail. Anonymous
 	// visitors never hydrate (the call is gated in AppShell), so they fall
 	// through to the human-vs-human fallback and are not blocked here.
-	const aiStarting = gameMode === 'ai' && isAuthenticated && !aiConfigHydrated;
+	// While auth is still loading, isAuthenticated is false, so we also
+	// block Start to prevent a fast click starting with the default no-key
+	// config before authentication and hydration finish.
+	const aiStarting =
+		gameMode === 'ai' &&
+		(authLoading || (isAuthenticated && !aiConfigHydrated));
 
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {
