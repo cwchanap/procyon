@@ -120,19 +120,19 @@ export function usePlayHistory({
 				bumpRetry();
 			}
 		} catch (error) {
-			savedRef.current = false;
-			attemptsRef.current += 1;
+			// Network error: the request may or may not have reached the
+			// server. If it did, the play-history row and rating update were
+			// already committed (the API has no idempotency key). Retrying
+			// would insert a duplicate row and apply a second rating change.
+			// Keep savedRef=true so we don't retry, and log the failure.
 			if (import.meta.env.DEV) {
 				// eslint-disable-next-line no-console
 				console.warn('Error saving play history:', error);
 			}
-			if (attemptsRef.current >= MAX_SAVE_ATTEMPTS) {
-				// eslint-disable-next-line no-console
-				console.error(
-					`Play-history save failed after ${MAX_SAVE_ATTEMPTS} attempts (network error)`
-				);
-			}
-			bumpRetry();
+			// eslint-disable-next-line no-console
+			console.error(
+				'Play-history save failed (network error); not retrying to avoid duplicate records'
+			);
 		}
 	}, [
 		enabled,
