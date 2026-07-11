@@ -110,6 +110,12 @@ export async function rehydrate(): Promise<void> {
 
 async function runHydrate(): Promise<void> {
 	const gen = hydrateGeneration;
+	// Capture the provider generation at the start so we can detect a
+	// setProvider call that began while the hydrate fetch was in flight.
+	// Without this, a hydrate resolving after a provider switch would
+	// overwrite the newer provider/model/api-key with the stale config
+	// fetched before the switch.
+	const providerGen = setProviderGeneration;
 	hydrated = true;
 	try {
 		const { config, availableProviders, fromFallback } =
@@ -118,6 +124,11 @@ async function runHydrate(): Promise<void> {
 		// the fetch was in flight — drop this result so a stale session's
 		// config (incl. API key) can't clobber the freshly-cleared store.
 		if (gen !== hydrateGeneration) return;
+		// A setProvider started (or completed) while the fetch was in
+		// flight — the user's newer provider choice is already in the
+		// store (or being written); don't clobber it with the stale
+		// pre-switch config.
+		if (providerGen !== setProviderGeneration) return;
 		setConfigSlice({
 			...configSlice,
 			config,
@@ -131,6 +142,7 @@ async function runHydrate(): Promise<void> {
 		// something beyond the network layer throws (e.g. a corrupted
 		// localStorage cache parse) — treat it the same as a failed hydrate.
 		if (gen !== hydrateGeneration) return;
+		if (providerGen !== setProviderGeneration) return;
 		setConfigSlice({ ...configSlice, hydrated: true, hydrateError: true });
 	}
 }
