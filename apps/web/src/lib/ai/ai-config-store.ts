@@ -194,6 +194,17 @@ export async function setProvider(
 		// switching to a provider with a valid API key, the error is stale —
 		// we now have working credentials, so clear it. setConfig alone would
 		// preserve hydrateError via its `...configSlice` spread.
+		//
+		// Also set hydrated=true: if setProvider wins the race against an
+		// in-flight runHydrate (the user switched providers while the initial
+		// hydrate fetch was pending), runHydrate's generation guard discards
+		// its result without writing hydrated=true to the config slice. The
+		// module-level `hydrated` flag is already true (set at the start of
+		// runHydrate), so later hydrate() calls short-circuit — but
+		// configSlice.hydrated stays false, disabling every game's Start
+		// control with no retry UI (hydrateError is false, so no retry button).
+		// Setting hydrated=true here completes the hydration state that the
+		// stale runHydrate would have written.
 		const merged = {
 			...configSlice.config,
 			provider,
@@ -201,7 +212,12 @@ export async function setProvider(
 			apiKey: full.apiKey || '',
 			enabled: true,
 		};
-		setConfigSlice({ ...configSlice, config: merged, hydrateError: false });
+		setConfigSlice({
+			...configSlice,
+			config: merged,
+			hydrated: true,
+			hydrateError: false,
+		});
 		saveAIConfig(merged);
 		return null;
 	} catch {

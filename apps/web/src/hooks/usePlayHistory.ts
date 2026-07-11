@@ -75,6 +75,13 @@ export function usePlayHistory({
 	// Tracks the number of save attempts for the current game so we can
 	// log a prod-visible error when retries are exhausted.
 	const attemptsRef = useRef(0);
+	// Monotonic generation token for the current game instance. Incremented
+	// when a new game starts (reset effect) so that a 5xx response from a
+	// prior game's in-flight fetch can detect it is stale and skip its
+	// retry logic — otherwise it would clobber the new game's savedRef
+	// (set back to false), consume the new game's retry budget, and
+	// schedule a retry that submits an overlapping duplicate record.
+	const gameGenerationRef = useRef(0);
 	// State-based retry trigger: incremented when a save attempt fails so the
 	// auto-save effect re-runs (its deps include `retryTrigger`). Bounded by
 	// MAX_SAVE_ATTEMPTS to prevent infinite retry loops.
@@ -97,6 +104,12 @@ export function usePlayHistory({
 		if (!(isAuthenticated || import.meta.env.DEV)) return;
 		if (!aiPlayer) return;
 		if (!isGameOverStatus(gameStatus)) return;
+
+		// Capture the current game generation so that if a reset (new game)
+		// happens while the fetch below is in flight, the 5xx retry path can
+		// detect it is stale and bail out without clobbering the new game's
+		// savedRef / attemptsRef / retry timer.
+		const gen = gameGenerationRef.current;
 
 		let result: 'win' | 'loss' | 'draw';
 		if (gameStatus === 'draw' || gameStatus === 'stalemate') {
@@ -148,6 +161,14 @@ export function usePlayHistory({
 						`Play-history save rejected (${response.status} ${response.statusText}); not retrying`
 					);
 				} else {
+					// If a new game started while this fetch was in flight (reset
+					// bumped gameGenerationRef), bail out without touching
+					// savedRef/attemptsRef - those now belong to the new game.
+					// Without this guard, the stale 5xx would set savedRef=false
+					// (clobbering the new game optimistic set), increment the
+					// new game attemptsRef, and schedule a retry that submits
+					// an overlapping duplicate history/rating record.
+					if (gen !== gameGenerationRef.current) return;
 					savedRef.current = false;
 					attemptsRef.current += 1;
 					if (attemptsRef.current >= MAX_SAVE_ATTEMPTS) {
@@ -229,6 +250,10 @@ export function usePlayHistory({
 		if (gameStatus === 'playing' && moveCount === 0) {
 			savedRef.current = false;
 			attemptsRef.current = 0;
+			// Bump the game generation so any in-flight savePlayHistory from
+			// the previous game detects it is stale (gen mismatch) and skips
+			// its 5xx retry path — otherwise it would clobber this reset.
+			gameGenerationRef.current += 1;
 			// Clear any pending retry timer from the previous game so it
 			// doesn't fire and bump the trigger for the new game.
 			if (retryTimerRef.current) {

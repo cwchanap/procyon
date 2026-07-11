@@ -672,4 +672,79 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		});
 		expect(fetchCallCount).toBe(1);
 	});
+
+	test('stale 5xx from prior game does not clobber new game save', async () => {
+		// Scenario: Game A's save gets a 5xx (held pending), then the user
+		// resets and finishes Game B (which saves successfully). When Game
+		// A's stale 5xx resolves, it must NOT set savedRef=false (clobbering
+		// Game B's save), increment attemptsRef, or schedule a retry —
+		// otherwise the retry submits an overlapping duplicate record.
+		let resolveGameAFetch: (v: unknown) => void = () => {};
+		const gameAFetchPending = new Promise(r => {
+			resolveGameAFetch = r;
+		});
+
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				// First call (Game A): hold pending with a 5xx response.
+				// Second call (Game B): resolve immediately with 200.
+				if (fetchCallCount === 1) {
+					return gameAFetchPending.then(() => ({
+						ok: false,
+						status: 500,
+						statusText: 'Internal Server Error',
+						json: () => Promise.resolve({}),
+					})) as unknown as Promise<Response>;
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				}) as unknown as Promise<Response>;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Promise<Response>;
+		}) as unknown as typeof fetch;
+
+		const { rerender } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
+		});
+
+		// Game A's save fires (fetchCallCount=1), held pending.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// Reset: new game starts. This bumps gameGenerationRef and clears
+		// savedRef/attemptsRef.
+		rerender(makeProps({ gameStatus: 'playing', moveCount: 0 }));
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		// Game B ends — save fires (fetchCallCount=2), succeeds immediately.
+		rerender(makeProps({ gameStatus: 'checkmate', moveCount: 10 }));
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(2);
+
+		// Now release Game A's stale 5xx response.
+		resolveGameAFetch(undefined);
+		// Wait for the stale 5xx to resolve and any potential side effects.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+
+		// The stale 5xx must NOT have triggered a retry for Game B.
+		// fetchCallCount should still be 2 (Game A + Game B), not 3+.
+		expect(fetchCallCount).toBe(2);
+	});
 });
