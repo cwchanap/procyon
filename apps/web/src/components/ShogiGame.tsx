@@ -23,6 +23,7 @@ import GameScaffold from './game/GameScaffold';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
 import AISettingsDialog from './ai/AISettingsDialog';
+import { useAuth } from '../lib/auth';
 
 interface ShogiDemo {
 	id: string;
@@ -44,13 +45,14 @@ const ShogiGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<'sente' | 'gote'>('gote');
-	const { config: aiConfig } = useAIConfig();
+	const { config: aiConfig, hydrated: aiConfigHydrated } = useAIConfig();
 	const [aiService] = useState(() => createShogiAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
+	const { isAuthenticated } = useAuth();
 
 	// Refs for promotion modal focus management
 	const modalRef = useRef<HTMLDivElement>(null);
@@ -640,8 +642,16 @@ const ShogiGame: React.FC = () => {
 		gameState.pendingPromotion,
 	]);
 
+	// In AI mode, authenticated users must wait for the AI config store to
+	// hydrate before starting — otherwise aiConfig still holds defaults (no
+	// apiKey, enabled=false) and the first AI move would fail. Anonymous
+	// visitors never hydrate (the call is gated in AppShell), so they fall
+	// through to the human-vs-human fallback and are not blocked here.
+	const aiStarting = gameMode === 'ai' && isAuthenticated && !aiConfigHydrated;
+
 	const handleStartOrReset = useCallback(() => {
 		if (!hasGameStarted) {
+			if (aiStarting) return; // config still loading; Start is disabled
 			// Starting the game - ensure game state is properly initialized
 			setGameState(createInitialGameState());
 			setGameStarted(true);
@@ -649,7 +659,7 @@ const ShogiGame: React.FC = () => {
 			// Resetting the game
 			resetGame();
 		}
-	}, [hasGameStarted, resetGame]);
+	}, [hasGameStarted, resetGame, aiStarting]);
 
 	const toggleToMode = useCallback(
 		(newMode: ShogiGameMode) => {
@@ -1014,9 +1024,14 @@ const ShogiGame: React.FC = () => {
 						<div className='flex gap-4 justify-center'>
 							<button
 								onClick={handleStartOrReset}
-								className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150'
+								disabled={aiStarting}
+								className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
 							>
-								{hasGameStarted ? '🆕 New Game' : '▶️ Start'}
+								{aiStarting
+									? '⏳ Loading AI config…'
+									: hasGameStarted
+										? '🆕 New Game'
+										: '▶️ Start'}
 							</button>
 
 							{aiConfig.enabled && aiConfig.apiKey && (

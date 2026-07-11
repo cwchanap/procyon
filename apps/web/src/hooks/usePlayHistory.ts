@@ -129,13 +129,14 @@ export function usePlayHistory({
 		// (which increments it) re-triggers this effect. The retryTrigger <
 		// MAX_SAVE_ATTEMPTS guard stops retries once the bound is reached.
 		if (
+			enabled &&
 			isGameOverStatus(gameStatus) &&
 			!savedRef.current &&
 			retryTrigger < MAX_SAVE_ATTEMPTS
 		) {
 			void savePlayHistory();
 		}
-	}, [gameStatus, savePlayHistory, retryTrigger]);
+	}, [enabled, gameStatus, savePlayHistory, retryTrigger]);
 
 	useEffect(() => {
 		if (gameStatus === 'playing' && moveCount === 0) {
