@@ -186,6 +186,100 @@ describe('ai-config-store setProvider model fallback', () => {
 });
 
 // ---------------------------------------------------------------------------
+// setProvider clears hydrateError. A failed hydrate sets hydrateError=true,
+// which blocks Start in all game components. If the user recovers by
+// switching to a provider with a valid API key, setProvider must clear the
+// stale error so Start is re-enabled.
+// ---------------------------------------------------------------------------
+describe('ai-config-store setProvider clears hydrateError', () => {
+	const localStorageStore: Record<string, string> = {};
+	const ls = {
+		getItem: (k: string) => localStorageStore[k] ?? null,
+		setItem: (k: string, v: string) => {
+			localStorageStore[k] = v;
+		},
+		removeItem: (k: string) => {
+			delete localStorageStore[k];
+		},
+	};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalWindow: any;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalFetch: any;
+
+	beforeEach(() => {
+		resetAIConfigStore();
+		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
+		originalWindow = globalThis.window;
+		originalFetch = globalThis.fetch;
+		// @ts-expect-error -- test-only override: simulate browser window in Node
+		globalThis.window = { localStorage: ls };
+		// @ts-expect-error -- test-only override: expose localStorage as a global
+		globalThis.localStorage = ls;
+	});
+
+	afterEach(() => {
+		globalThis.window = originalWindow;
+		globalThis.fetch = originalFetch;
+		// @ts-expect-error -- test-only restore: drop test-only localStorage global
+		delete globalThis.localStorage;
+	});
+
+	test('clears hydrateError after a successful provider switch', async () => {
+		// Simulate a failed hydrate by setting hydrateError directly via the
+		// store's internal state — hydrate() would require a failing fetch,
+		// but we only need the flag to be set before setProvider runs.
+		// Use setConfig to seed defaults, then manually trigger a hydrate
+		// failure by mocking fetch to throw during hydrate.
+		// @ts-expect-error -- test-only: replace global fetch with failing mock
+		globalThis.fetch = mock(async () => {
+			throw new Error('Network error');
+		});
+		await hydrate();
+		expect(getConfigSlice().hydrateError).toBe(true);
+
+		// Now mock fetch to succeed for setProvider's list + full fetches.
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		const err = await setProvider('openai');
+
+		expect(err).toBeNull();
+		const snap = getConfigSlice();
+		expect(snap.config.provider).toBe('openai');
+		expect(snap.config.apiKey).toBe('sk-test');
+		// The key assertion: hydrateError must be cleared so Start is
+		// re-enabled in the game components.
+		expect(snap.hydrateError).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // setProvider stale-write race. When a user switches providers twice before
 // the first request finishes, the older in-flight call must not clobber the
 // newer provider/model in the store. Uses controllable pending fetches to
