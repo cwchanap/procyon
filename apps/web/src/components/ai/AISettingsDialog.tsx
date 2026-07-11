@@ -272,12 +272,13 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 											value={currentProvider}
 											onChange={e => {
 												const newProvider = e.target.value;
+												// onProviderChange (setProvider) commits the provider + model
+												// pair atomically via a single setConfig call after fetching
+												// the saved config. Calling onModelChange here would race
+												// with that async update and could leave the store with the
+												// old provider + the new provider's model, or let an older
+												// response overwrite the latest selection.
 												onProviderChange(newProvider);
-												// Auto-select first model for new provider
-												const models = MODEL_OPTIONS[newProvider];
-												if (models && models.length > 0) {
-													onModelChange(models[0].value);
-												}
 											}}
 											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass'
 										>
