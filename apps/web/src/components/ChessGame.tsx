@@ -45,7 +45,11 @@ const ChessGame: React.FC = () => {
 		createInitialGameState()
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
-	const { config: aiConfig, hydrated: aiConfigHydrated } = useAIConfig();
+	const {
+		config: aiConfig,
+		hydrated: aiConfigHydrated,
+		hydrateError,
+	} = useAIConfig();
 	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
 	const [gameActive, setGameActive] = useState(false);
 	const { isAuthenticated, loading: authLoading } = useAuth();
@@ -610,10 +614,12 @@ const ChessGame: React.FC = () => {
 	// through to the human-vs-human fallback and are not blocked here.
 	// While auth is still loading, isAuthenticated is false, so we also
 	// block Start to prevent a fast click starting with the default no-key
-	// config before authentication and hydration finish.
+	// config before authentication and hydration finish. A failed hydrate
+	// (hydrateError) also blocks Start — the default config has no API key,
+	// so the AI turn would stall.
 	const aiStarting =
 		gameMode === 'ai' &&
-		(authLoading || (isAuthenticated && !aiConfigHydrated));
+		(authLoading || (isAuthenticated && (!aiConfigHydrated || hydrateError)));
 
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {

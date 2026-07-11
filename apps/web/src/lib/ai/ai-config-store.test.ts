@@ -329,6 +329,179 @@ describe('ai-config-store setProvider stale-write race', () => {
 });
 
 // ---------------------------------------------------------------------------
+// setProvider stale catch paths. When a newer setProvider supersedes an
+// older one, the older call's catch blocks must return null (not an error
+// string) so the game handler's unconditional setErrorMsg(err) doesn't
+// display a stale failure or clear the newer switch's error.
+// ---------------------------------------------------------------------------
+describe('ai-config-store setProvider stale catch paths', () => {
+	const localStorageStore: Record<string, string> = {};
+	const ls = {
+		getItem: (k: string) => localStorageStore[k] ?? null,
+		setItem: (k: string, v: string) => {
+			localStorageStore[k] = v;
+		},
+		removeItem: (k: string) => {
+			delete localStorageStore[k];
+		},
+	};
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalWindow: any;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let originalFetch: any;
+
+	beforeEach(() => {
+		resetAIConfigStore();
+		for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
+		originalWindow = globalThis.window;
+		originalFetch = globalThis.fetch;
+		// @ts-expect-error -- test-only override: simulate browser window in Node
+		globalThis.window = { localStorage: ls };
+		// @ts-expect-error -- test-only override: expose localStorage as a global
+		globalThis.localStorage = ls;
+	});
+
+	afterEach(() => {
+		globalThis.window = originalWindow;
+		globalThis.fetch = originalFetch;
+		// @ts-expect-error -- test-only restore: drop test-only localStorage global
+		delete globalThis.localStorage;
+	});
+
+	test('stale list-fetch failure returns null, not an error string', async () => {
+		// Controllable resolver for the first (stale) setProvider's list fetch.
+		// We resolve (not reject) with a failing HTTP response to avoid
+		// unhandled-rejection warnings — fetchAIConfigList throws on !res.ok,
+		// which exercises the same catch path in setProvider.
+		let resolveFirstList: (v: unknown) => void = () => {};
+		const firstListPending = new Promise(r => {
+			resolveFirstList = r;
+		});
+
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// First call (stale) — held pending, will resolve with a
+					// failing response after the newer switch completes.
+					return firstListPending;
+				}
+				// Second call (newer) — succeeds immediately.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gem-key',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start the first setProvider (openai) — its list fetch is pending.
+		const firstPromise = setProvider('openai');
+
+		// Start the second setProvider (gemini) — supersedes the first.
+		const secondPromise = setProvider('gemini');
+		const secondErr = await secondPromise;
+		expect(secondErr).toBeNull();
+
+		// Now resolve the stale first list fetch with a failing response.
+		resolveFirstList({ ok: false, status: 500 });
+		const firstErr = await firstPromise;
+
+		// The stale failure must return null, not an error string —
+		// otherwise the game handler would display it after the user
+		// already switched to gemini.
+		expect(firstErr).toBeNull();
+	});
+
+	test('stale full-fetch failure returns null, not an error string', async () => {
+		// Controllable resolver for the first (stale) setProvider's full fetch.
+		// Resolves (not rejects) with a failing HTTP response to avoid
+		// unhandled-rejection warnings — fetchFullAIConfig throws on !res.ok,
+		// which exercises the same catch path in setProvider.
+		let resolveOpenaiFull: (v: unknown) => void = () => {};
+		const openaiFullPending = new Promise(r => {
+			resolveOpenaiFull = r;
+		});
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			const id = url.split('/').pop();
+			if (id === 'cfg-o') {
+				// Stale openai full fetch — held pending, will resolve with a
+				// failing response after the newer switch completes.
+				return openaiFullPending;
+			}
+			// Newer gemini full fetch — succeeds immediately.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gem-key',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start the first setProvider (openai) — its full fetch is pending.
+		const firstPromise = setProvider('openai');
+
+		// Start the second setProvider (gemini) — supersedes the first.
+		const secondPromise = setProvider('gemini');
+		const secondErr = await secondPromise;
+		expect(secondErr).toBeNull();
+
+		// Now resolve the stale openai full fetch with a failing response.
+		resolveOpenaiFull({ ok: false, status: 500 });
+		const firstErr = await firstPromise;
+
+		// The stale failure must return null, not an error string.
+		expect(firstErr).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Hydration fields (availableProviders / hydrated / hydrateError) driven by
 // the /ai-config fetch. These require a browser-like environment (window +
 // localStorage) because loadAIConfigWithProviders short-circuits to defaults

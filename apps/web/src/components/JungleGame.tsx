@@ -17,6 +17,7 @@ import {
 	useAIConfig,
 	setProvider as setAIProvider,
 	setModel as setAIModel,
+	rehydrate as rehydrateAIConfig,
 } from '../lib/ai/ai-config-store';
 import { usePlayHistory } from '../hooks/usePlayHistory';
 import type { AIProvider } from '../lib/ai/types';
@@ -52,7 +53,11 @@ const JungleGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<JunglePieceColor>('blue');
-	const { config: aiConfig, hydrated: aiConfigHydrated } = useAIConfig();
+	const {
+		config: aiConfig,
+		hydrated: aiConfigHydrated,
+		hydrateError,
+	} = useAIConfig();
 	const [aiService] = useState(() => createJungleAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
@@ -368,10 +373,12 @@ const JungleGame: React.FC = () => {
 	// through to the human-vs-human fallback and are not blocked here.
 	// While auth is still loading, isAuthenticated is false, so we also
 	// block Start to prevent a fast click starting with the default no-key
-	// config before authentication and hydration finish.
+	// config before authentication and hydration finish. A failed hydrate
+	// (hydrateError) also blocks Start — the default config has no API key,
+	// so the AI turn would stall.
 	const aiStarting =
 		gameMode === 'ai' &&
-		(authLoading || (isAuthenticated && !aiConfigHydrated));
+		(authLoading || (isAuthenticated && (!aiConfigHydrated || hydrateError)));
 
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {
@@ -522,6 +529,27 @@ const JungleGame: React.FC = () => {
 							onClick={() => setErrorMsg(null)}
 						>
 							Dismiss
+						</button>
+					</div>
+				</div>
+			)}
+
+			{gameMode === 'ai' && hydrateError && (
+				<div className='w-full max-w-4xl mx-auto mb-6'>
+					<div
+						className='flex items-center justify-between gap-4 rounded-lg border border-jungle/40 bg-jungle/10 px-4 py-3 text-ivory'
+						role='alert'
+					>
+						<p className='text-sm'>
+							We couldn&rsquo;t load your AI settings. Check your connection and
+							try again.
+						</p>
+						<button
+							type='button'
+							className='text-xs font-semibold uppercase tracking-wide text-brass hover:underline'
+							onClick={() => void rehydrateAIConfig()}
+						>
+							Retry
 						</button>
 					</div>
 				</div>
