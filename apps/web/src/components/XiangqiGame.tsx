@@ -104,6 +104,7 @@ const XiangqiGame: React.FC = () => {
 		moveCount: gameState.moveHistory.length,
 		getWinnerColor,
 		enabled: gameMode === 'ai' && gameStarted,
+		isAuthenticated,
 		debugVariantKey: 'XIANGQI',
 	});
 
