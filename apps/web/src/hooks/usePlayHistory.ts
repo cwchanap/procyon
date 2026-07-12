@@ -125,6 +125,11 @@ export function usePlayHistory({
 		// was captured on the first attempt). Otherwise compute and
 		// snapshot it so that subsequent retries use the frozen values
 		// even if aiPlayer/provider/model changed after game-over.
+		// Capture whether this is the first attempt before the snapshot
+		// block sets saveSnapshotRef.current — used below to bump the
+		// debug save counter only once per terminal game, even when 5xx
+		// retries or 401 auth-recovery re-enter this function.
+		const isFirstAttempt = saveSnapshotRef.current === null;
 		let result: 'win' | 'loss' | 'draw';
 		let opponentLlmId: string;
 		let snapshotGameVariant: GameVariant;
@@ -146,7 +151,7 @@ export function usePlayHistory({
 
 		savedRef.current = true;
 
-		if (debugVariantKey && typeof window !== 'undefined') {
+		if (isFirstAttempt && debugVariantKey && typeof window !== 'undefined') {
 			const w = window as unknown as Record<string, number | undefined>;
 			const key = `__PROCYON_DEBUG_${debugVariantKey}_SAVE_COUNT__`;
 			w[key] = (w[key] ?? 0) + 1;
