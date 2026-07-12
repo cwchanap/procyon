@@ -889,4 +889,90 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		// Total fetch calls must not exceed MAX_SAVE_ATTEMPTS (3).
 		expect(fetchCallCount).toBeLessThanOrEqual(3);
 	});
+
+	// [P2] When the play-history POST returns 401 (e.g. session cookie
+	// expired as the game ended), savedRef must be cleared so that if the
+	// user reauthenticates while the terminal game is still mounted, the
+	// auth change reruns the effect and the save fires again. Without the
+	// fix, savedRef stays true and the guard suppresses the retry, so no
+	// history or rating row is recorded.
+	test('401 clears savedRef so save retries after auth recovery', async () => {
+		// First fetch returns 401 (auth expired), second returns 200.
+		let fetchCallIdx = 0;
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				fetchCallIdx++;
+				if (fetchCallIdx === 1) {
+					return Promise.resolve({
+						ok: false,
+						status: 401,
+						statusText: 'Unauthorized',
+						json: () => Promise.resolve({}),
+					}) as unknown as Response;
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		const { rerender } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+			}),
+		});
+
+		// First save attempt fires — gets 401.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// Wait to ensure no backoff retry fires (401 doesn't use the timer).
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 100));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// User reauthenticates — isAuthenticated goes false then true.
+		// The false→true transition gives savePlayHistory a new identity,
+		// rerunning the effect. With savedRef cleared, the guard passes
+		// and the save fires again.
+		rerender(
+			makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: false,
+			})
+		);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		rerender(
+			makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+			})
+		);
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		// Second save attempt fires after auth recovery — gets 200.
+		expect(fetchCallCount).toBe(2);
+	});
 });

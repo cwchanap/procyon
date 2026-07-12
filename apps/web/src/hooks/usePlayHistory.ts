@@ -172,11 +172,25 @@ export function usePlayHistory({
 						`Play-history save failed: ${response.status} ${response.statusText}`
 					);
 				}
-				// 4xx errors (auth expiry, bad request, etc.) are non-transient —
+				// 4xx errors (bad request, forbidden, etc.) are non-transient —
 				// retrying sends the same rejected request again. Only retry on
 				// 5xx (transient server errors). On 4xx keep savedRef=true (the
 				// optimistic set above) so the effect doesn't re-trigger.
+				// Exception: 401 (auth expiry). If the session cookie expired as
+				// the game ended, the user may reauthenticate while the terminal
+				// game is still mounted. When isAuthenticated changes, the effect
+				// reruns — but if savedRef is still true, the guard suppresses
+				// the retry and no history/rating row is recorded. Clear savedRef
+				// for 401 so the save fires again after auth recovery. Don't
+				// bump retryTrigger or increment attemptsRef — the retry should
+				// only happen on auth dep change, not via the backoff timer.
 				if (response.status >= 400 && response.status < 500) {
+					if (response.status === 401) {
+						// If a new game started while this fetch was in flight,
+						// don't touch savedRef — it now belongs to the new game.
+						if (gen !== gameGenerationRef.current) return;
+						savedRef.current = false;
+					}
 					// eslint-disable-next-line no-console
 					console.error(
 						`Play-history save rejected (${response.status} ${response.statusText}); not retrying`
