@@ -686,16 +686,15 @@ const ShogiGame: React.FC = () => {
 	// In AI mode, authenticated users must wait for the AI config store to
 	// hydrate before starting — otherwise aiConfig still holds defaults (no
 	// apiKey, enabled=false) and the first AI move would fail. Anonymous
-	// visitors never hydrate (the call is gated in AppShell), so they fall
-	// through to the human-vs-human fallback and are not blocked here.
-	// While auth is still loading, isAuthenticated is false, so we also
-	// block Start to prevent a fast click starting with the default no-key
-	// config before authentication and hydration finish. A failed hydrate
-	// (hydrateError) also blocks Start — the default config has no API key,
-	// so the AI turn would stall.
+	// visitors never hydrate (the call is gated in AppShell) and are not
+	// blocked here. We deliberately do NOT gate on authLoading: the AI
+	// move only fires after the human's first move, by which time auth
+	// resolves and hydration completes, and blocking on authLoading would
+	// stall anonymous startup if /auth/session is slow or unavailable. A
+	// failed hydrate (hydrateError) still blocks Start for authenticated
+	// users — the default config has no API key, so the AI turn would stall.
 	const aiStarting =
-		gameMode === 'ai' &&
-		(authLoading || (isAuthenticated && (!aiConfigHydrated || hydrateError)));
+		gameMode === 'ai' && isAuthenticated && (!aiConfigHydrated || hydrateError);
 
 	const handleStartOrReset = useCallback(() => {
 		if (!hasGameStarted) {
