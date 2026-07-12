@@ -989,11 +989,12 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		const hydratePromise = hydrate();
 
 		// setProvider succeeds — writes openai config + hydrated=true,
-		// but availableProviders stays [] (initial).
+		// and adds 'openai' to availableProviders so the sidebar doesn't
+		// show an empty-state message if the concurrent hydrate fails.
 		await setProvider('openai');
 		expect(getConfigSlice().config.provider).toBe('openai');
 		expect(getConfigSlice().hydrated).toBe(true);
-		expect(getConfigSlice().availableProviders).toEqual([]);
+		expect(getConfigSlice().availableProviders).toEqual(['openai']);
 
 		// Release hydrate's list fetch — it returns both gemini and openai.
 		// Without the fix, the providerGen guard would discard this and
@@ -1016,5 +1017,163 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.config.provider).toBe('openai');
 		expect(snap.config.apiKey).toBe('sk-test');
 		expect(snap.hydrateError).toBe(false);
+	});
+
+	// [P2] When setProvider succeeds and the concurrent hydrate's fetch
+	// throws (catch path), the catch path doesn't populate
+	// availableProviders. Without setProvider adding the selected
+	// provider to the list, availableProviders would stay [] permanently
+	// and the sidebar would show "No AI providers configured" despite
+	// the user having a valid key for the selected provider.
+	test('setProvider preserves availableProviders when concurrent hydrate fails', async () => {
+		let resolveHydrateList: (v: unknown) => void = () => {};
+		const hydrateListPending = new Promise(r => {
+			resolveHydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// Hydrate's list fetch — held pending.
+					return hydrateListPending;
+				}
+				// setProvider's list fetch — resolves immediately.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			// setProvider's full fetch for cfg-o.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start hydrate but don't await — its list fetch is pending.
+		const hydratePromise = hydrate();
+
+		// setProvider succeeds — writes openai config + adds 'openai'
+		// to availableProviders.
+		await setProvider('openai');
+		expect(getConfigSlice().availableProviders).toEqual(['openai']);
+
+		// Release hydrate's list fetch with a failing response — the
+		// hydrate itself fails. The catch path's providerGen guard runs
+		// but doesn't populate availableProviders.
+		resolveHydrateList({ ok: false, status: 500 });
+		await hydratePromise;
+
+		// availableProviders must still contain 'openai' (from
+		// setProvider's success path), not be empty.
+		const snap = getConfigSlice();
+		expect(snap.availableProviders).toEqual(['openai']);
+		expect(snap.config.provider).toBe('openai');
+		expect(snap.hydrated).toBe(true);
+		expect(snap.hydrateError).toBe(false);
+	});
+
+	// [P2] When setProvider fails during hydration (unconfigured provider
+	// or fetch error), it bumps setProviderGeneration without writing to
+	// the slice. runHydrate's providerGen guard then runs, but must apply
+	// the hydrate's config — not preserve configSlice.config (which is
+	// still defaultAIConfig). Without this, the store ends up with default
+	// credentials, hydrated=true, and no error, leaving AI gameplay
+	// unusable.
+	test('runHydrate applies hydrate config when setProvider failed during race', async () => {
+		let resolveHydrateList: (v: unknown) => void = () => {};
+		const hydrateListPending = new Promise(r => {
+			resolveHydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// Hydrate's list fetch — held pending.
+					return hydrateListPending;
+				}
+				// setProvider's list fetch — returns a list without the
+				// requested provider (chutes has no keyed config), so
+				// setProvider fails without writing to the slice.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: true,
+							},
+						],
+					}),
+				};
+			}
+			// Hydrate's full fetch for the active gemini config.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gemini-key-123',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start hydrate but don't await — its list fetch is pending.
+		const hydratePromise = hydrate();
+
+		// setProvider fails — chutes has no keyed config in the mock list.
+		const providerErr = await setProvider('chutes');
+		expect(typeof providerErr).toBe('string');
+		expect(getConfigSlice().hydrated).toBe(false);
+
+		// Release hydrate's list fetch — it returns gemini as active with
+		// a valid API key. The hydrate's full fetch also succeeds.
+		resolveHydrateList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-g',
+						provider: 'gemini',
+						hasApiKey: true,
+						isActive: true,
+					},
+				],
+			}),
+		});
+		await hydratePromise;
+
+		// The store must apply the hydrate's config (gemini with key),
+		// not preserve the default config from the failed setProvider.
+		const snap = getConfigSlice();
+		expect(snap.hydrated).toBe(true);
+		expect(snap.config.provider).toBe('gemini');
+		expect(snap.config.apiKey).toBe('gemini-key-123');
+		expect(snap.config.model).toBe('gemini-2.5-flash');
+		expect(snap.hydrateError).toBe(false);
+		expect(snap.availableProviders).toEqual(['gemini']);
 	});
 });

@@ -66,7 +66,7 @@ const XiangqiGame: React.FC = () => {
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const { isAuthenticated, loading: authLoading } = useAuth();
-	useAIConfigHydration();
+	useAIConfigHydration({ isAuthenticated, loading: authLoading });
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(

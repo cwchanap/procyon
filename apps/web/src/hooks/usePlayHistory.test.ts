@@ -836,4 +836,57 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			expect(body.opponentLlmId).toBe('gemini-2.5-flash');
 		}
 	});
+
+	// [P2] After a 5xx, attemptsRef increments immediately but retryTrigger
+	// only bumps when the backoff timer fires. If a dependency (provider,
+	// model, AI side) changes between the 5xx and the timer, the effect
+	// reruns with retryTrigger still below the limit. Without gating on
+	// attemptsRef, repeated dependency changes could start more requests
+	// than MAX_SAVE_ATTEMPTS.
+	test('retry cap enforced across dependency changes before backoff fires', async () => {
+		fetchShouldSucceed = false; // all /play-history responses are 5xx
+
+		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				aiConfig: { ...testAIConfig, provider: 'gemini' },
+			}),
+		});
+		unmountHook = unmount;
+
+		// Wait for the first save attempt (5xx) to fire.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// Rapidly change the provider multiple times before the backoff
+		// timer fires. Each change rebuilds savePlayHistory (new identity)
+		// and reruns the effect. Without the attemptsRef guard, each
+		// rerun would start a new request, exceeding MAX_SAVE_ATTEMPTS.
+		for (let i = 0; i < 5; i++) {
+			rerender(
+				makeProps({
+					gameStatus: 'checkmate',
+					moveCount: 10,
+					aiConfig: {
+						...testAIConfig,
+						provider: i % 2 === 0 ? 'openai' : 'gemini',
+					},
+				})
+			);
+			await act(async () => {
+				await new Promise(r => setTimeout(r, 0));
+			});
+		}
+
+		// Wait beyond all backoff timers to let any pending retries fire.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 300));
+		});
+
+		// Total fetch calls must not exceed MAX_SAVE_ATTEMPTS (3).
+		expect(fetchCallCount).toBeLessThanOrEqual(3);
+	});
 });

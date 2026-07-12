@@ -140,15 +140,32 @@ async function runHydrate(): Promise<void> {
 		// the sidebar with an empty provider list).
 		if (providerGen !== setProviderGeneration) {
 			if (gen !== hydrateGeneration) return;
+			// setProvider succeeded if it wrote hydrated=true to the slice.
+			// On failure (unconfigured provider or fetch error) it bumps
+			// setProviderGeneration without writing, so configSlice.hydrated
+			// is still false. If it failed, apply the hydrate's config so
+			// the user's saved backend configuration isn't lost — without
+			// this, the store ends up with default credentials and no
+			// error, leaving AI gameplay unusable. If it succeeded,
+			// preserve configSlice.config (the user's newer choice).
+			const providerSucceeded = configSlice.hydrated;
 			setConfigSlice({
 				...configSlice,
-				availableProviders,
+				config: providerSucceeded ? configSlice.config : config,
+				// If the hydrate fell back (availableProviders empty from
+				// the fallback return), preserve whatever setProvider
+				// already populated so the sidebar doesn't lose the
+				// selected provider. If hydrate got a real list, use it.
+				availableProviders:
+					availableProviders.length > 0
+						? availableProviders
+						: configSlice.availableProviders,
 				hydrated: true,
 				// If setProvider succeeded, preserve its hydrateError
 				// (false). If setProvider failed, surface the hydrate's
 				// fallback state so the user gets a Retry button when the
 				// hydrate itself also fell back.
-				hydrateError: configSlice.hydrated
+				hydrateError: providerSucceeded
 					? configSlice.hydrateError
 					: fromFallback,
 			});
@@ -248,6 +265,13 @@ export async function setProvider(
 		setConfigSlice({
 			...configSlice,
 			config: merged,
+			// Ensure the selected provider is in availableProviders so the
+			// sidebar doesn't show an empty-state message if the concurrent
+			// hydrate fails (its catch path doesn't populate the list).
+			// If hydrate later succeeds, it overwrites with the full list.
+			availableProviders: configSlice.availableProviders.includes(provider)
+				? configSlice.availableProviders
+				: [...configSlice.availableProviders, provider],
 			hydrated: true,
 			hydrateError: false,
 		});

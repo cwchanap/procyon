@@ -54,7 +54,7 @@ const ChessGame: React.FC = () => {
 	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
 	const [gameActive, setGameActive] = useState(false);
 	const { isAuthenticated, loading: authLoading } = useAuth();
-	useAIConfigHydration();
+	useAIConfigHydration({ isAuthenticated, loading: authLoading });
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
 	const [isAiPaused, setIsAiPaused] = useState(false);
