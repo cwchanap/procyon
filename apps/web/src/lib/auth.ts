@@ -131,13 +131,29 @@ export function useAuth(options?: UseAuthOptions) {
 
 	useEffect(() => {
 		let mounted = true;
+		// Tracks whether an AUTH_CHANGE_EVENT from a sibling island arrived
+		// before this island's own fetchSession() resolved. If so, the event
+		// already set the user, and a late-arriving fetch result (e.g. null
+		// from a transient network failure) must not clobber it.
+		let eventReceived = false;
 
 		const shouldFetchSession = !initialAuthState.user;
 
 		if (shouldFetchSession) {
 			fetchSession()
 				.then(u => {
-					if (mounted) setUser(u);
+					if (mounted && !eventReceived) {
+						setUser(u);
+						// Broadcast to sibling islands so an island whose own
+						// fetchSession() transiently failed can still learn the
+						// user is authenticated. Without this, a transient
+						// fetch failure in one island permanently suppresses
+						// features (like play-history save) that depend on
+						// isAuthenticated. Only dispatch for non-null users —
+						// dispatching null could clobber a sibling's
+						// authenticated state if event ordering is unlucky.
+						if (u) dispatchAuthChange(u);
+					}
 				})
 				.finally(() => {
 					if (mounted) setLoading(false);
@@ -148,6 +164,7 @@ export function useAuth(options?: UseAuthOptions) {
 
 		const handleAuthChange = (e: Event) => {
 			if (!mounted) return;
+			eventReceived = true;
 			const { user: newUser } = (e as CustomEvent<AuthChangeDetail>).detail;
 			setUser(newUser);
 			setLoading(false);
