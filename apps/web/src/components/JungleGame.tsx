@@ -355,6 +355,10 @@ const JungleGame: React.FC = () => {
 			handleResetGame();
 			setAIPlayer('blue');
 			aiMoveGenRef.current++;
+			// The in-flight makeAIMove callback early-returns on the gen
+			// mismatch above, skipping its finally-block setIsAIThinking(false).
+			// Clear it here so a post-relogin game can schedule AI moves.
+			setIsAIThinking(false);
 		}
 		prevAuthenticatedRef.current = isAuthenticated;
 	}, [isAuthenticated, handleResetGame]);
