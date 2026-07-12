@@ -17,6 +17,7 @@ import {
 	rehydrate as rehydrateAIConfig,
 } from '../lib/ai/ai-config-store';
 import { usePlayHistory } from '../hooks/usePlayHistory';
+import { useAIConfigHydration } from '../hooks/useAIConfigHydration';
 import type { AIProvider } from '../lib/ai/types';
 import ShogiBoard from './ShogiBoard';
 import ShogiHand from './ShogiHand';
@@ -58,6 +59,7 @@ const ShogiGame: React.FC = () => {
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const { isAuthenticated, loading: authLoading } = useAuth();
+	useAIConfigHydration();
 
 	// Refs for promotion modal focus management
 	const modalRef = useRef<HTMLDivElement>(null);

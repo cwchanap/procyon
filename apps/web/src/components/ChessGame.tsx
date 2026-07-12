@@ -23,6 +23,7 @@ import { createChessAI } from '../lib/ai';
 import { defaultAIConfig } from '../lib/ai/storage';
 import { useAIConfig } from '../lib/ai/ai-config-store';
 import { usePlayHistory } from '../hooks/usePlayHistory';
+import { useAIConfigHydration } from '../hooks/useAIConfigHydration';
 import { useAuth } from '../lib/auth';
 import { GameExporter } from '../lib/ai/game-export';
 
@@ -53,6 +54,7 @@ const ChessGame: React.FC = () => {
 	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
 	const [gameActive, setGameActive] = useState(false);
 	const { isAuthenticated, loading: authLoading } = useAuth();
+	useAIConfigHydration();
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
 	const [isAiPaused, setIsAiPaused] = useState(false);

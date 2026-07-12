@@ -747,4 +747,93 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		// fetchCallCount should still be 2 (Game A + Game B), not 3+.
 		expect(fetchCallCount).toBe(2);
 	});
+
+	// [P2] When a terminal save gets a 5xx and the player changes the AI
+	// side, provider, or model before the backoff fires, the retry must
+	// use the snapshotted result/opponentLlmId from game-over — not the
+	// new settings. Otherwise the same completed game can be recorded
+	// with the opposite win/loss or a different opponentLlmId.
+	test('retry uses snapshotted result/opponentLlmId across provider change', async () => {
+		// Capture the request bodies so we can verify the snapshot.
+		const capturedBodies: Array<{
+			chessId: string;
+			status: string;
+			opponentLlmId: string;
+		}> = [];
+
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = typeof input === 'string' ? input : input.toString();
+				if (url.includes('/play-history') && init?.body) {
+					capturedBodies.push(JSON.parse(init.body as string));
+				}
+				if (url.includes('/play-history')) {
+					fetchCallCount++;
+					return Promise.resolve({
+						ok: false,
+						status: 500,
+						statusText: 'Internal Server Error',
+						json: () => Promise.resolve({}),
+					}) as unknown as Response;
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+		) as unknown as typeof fetch;
+
+		// Start with gemini provider, AI plays black, white wins → player wins.
+		const { rerender } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				aiPlayer: 'black',
+				aiConfig: {
+					...testAIConfig,
+					provider: 'gemini',
+					model: 'gemini-2.5-flash',
+				},
+				getWinnerColor: () => 'white',
+			}),
+		});
+
+		// Wait for the first save attempt (5xx).
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+		expect(capturedBodies).toHaveLength(1);
+		expect(capturedBodies[0]!.status).toBe('win');
+		expect(capturedBodies[0]!.opponentLlmId).toBe('gemini-2.5-flash');
+
+		// Now change the provider and AI side before the backoff fires.
+		// If the retry used the new settings, the result would flip to
+		// 'loss' (aiPlayer='white', winnerColor='white' → AI wins) and
+		// opponentLlmId would become 'gpt-4o'.
+		rerender(
+			makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				aiPlayer: 'white',
+				aiConfig: { ...testAIConfig, provider: 'openai', model: 'gpt-4o' },
+				getWinnerColor: () => 'white',
+			})
+		);
+
+		// Wait for the retry to fire (deps change triggers immediate re-run).
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+
+		// The retry must use the snapshotted values: status='win',
+		// opponentLlmId='gemini-2.5-flash' — NOT 'loss'/'gpt-4o'.
+		expect(capturedBodies.length).toBeGreaterThan(1);
+		for (const body of capturedBodies) {
+			expect(body.status).toBe('win');
+			expect(body.opponentLlmId).toBe('gemini-2.5-flash');
+		}
+	});
 });

@@ -20,6 +20,7 @@ import {
 	rehydrate as rehydrateAIConfig,
 } from '../lib/ai/ai-config-store';
 import { usePlayHistory } from '../hooks/usePlayHistory';
+import { useAIConfigHydration } from '../hooks/useAIConfigHydration';
 import type { AIProvider } from '../lib/ai/types';
 import XiangqiBoard from './XiangqiBoard';
 import GameScaffold from './game/GameScaffold';
@@ -65,6 +66,7 @@ const XiangqiGame: React.FC = () => {
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const { isAuthenticated, loading: authLoading } = useAuth();
+	useAIConfigHydration();
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
