@@ -1091,6 +1091,89 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.hydrateError).toBe(false);
 	});
 
+	// [P2] setProvider fetches the complete /ai-config list, so it should
+	// derive availableProviders from that list — not just store the single
+	// selected provider. When the concurrent hydrate's fetch fails (catch
+	// path doesn't populate availableProviders), the sidebar would otherwise
+	// hide the user's other configured providers until a later successful
+	// hydrate.
+	test('setProvider preserves all configured providers when concurrent hydrate fails', async () => {
+		let resolveHydrateList: (v: unknown) => void = () => {};
+		const hydrateListPending = new Promise(r => {
+			resolveHydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// Hydrate's list fetch — held pending.
+					return hydrateListPending;
+				}
+				// setProvider's list fetch — returns multiple keyed providers.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: false,
+							},
+							// no-key entry should be filtered out
+							{
+								id: 'cfg-or',
+								provider: 'openrouter',
+								hasApiKey: false,
+							},
+						],
+					}),
+				};
+			}
+			// setProvider's full fetch for cfg-o (openai).
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start hydrate but don't await — its list fetch is pending.
+		const hydratePromise = hydrate();
+
+		// setProvider succeeds — switches to openai. The fetched list has
+		// both openai and gemini keyed, so availableProviders must contain
+		// both (openrouter is excluded — no key).
+		await setProvider('openai');
+		expect(getConfigSlice().availableProviders).toEqual(['openai', 'gemini']);
+
+		// Release hydrate's list fetch with a failing response — the
+		// hydrate itself fails. The catch path doesn't populate
+		// availableProviders, so the list from setProvider must survive.
+		resolveHydrateList({ ok: false, status: 500 });
+		await hydratePromise;
+
+		// Both keyed providers must still be present — not just 'openai'.
+		const snap = getConfigSlice();
+		expect(snap.availableProviders).toEqual(['openai', 'gemini']);
+		expect(snap.config.provider).toBe('openai');
+		expect(snap.hydrated).toBe(true);
+		expect(snap.hydrateError).toBe(false);
+	});
+
 	// [P2] When setProvider fails during hydration (unconfigured provider
 	// or fetch error), it bumps setProviderGeneration without writing to
 	// the slice. runHydrate's providerGen guard then runs, but must apply

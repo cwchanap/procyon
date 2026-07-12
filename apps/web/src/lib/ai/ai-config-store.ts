@@ -280,16 +280,24 @@ export async function setProvider(
 			apiKey: full.apiKey || '',
 			enabled: true,
 		};
+		// Derive availableProviders from the fetched configurations list
+		// (the same data loadAIConfigWithProviders uses) so the sidebar
+		// shows every configured provider — not just the selected one. If
+		// the concurrent hydrate's list fetch fails (its catch path doesn't
+		// populate availableProviders), the sidebar would otherwise hide
+		// the user's other keyed providers until a later successful hydrate.
+		// If hydrate later succeeds, it overwrites with its own list.
+		const configuredProviders = [
+			...new Set(
+				configurations
+					.filter(c => c.hasApiKey && c.provider)
+					.map(c => c.provider as AIProvider)
+			),
+		];
 		setConfigSlice({
 			...configSlice,
 			config: merged,
-			// Ensure the selected provider is in availableProviders so the
-			// sidebar doesn't show an empty-state message if the concurrent
-			// hydrate fails (its catch path doesn't populate the list).
-			// If hydrate later succeeds, it overwrites with the full list.
-			availableProviders: configSlice.availableProviders.includes(provider)
-				? configSlice.availableProviders
-				: [...configSlice.availableProviders, provider],
+			availableProviders: configuredProviders,
 			hydrated: true,
 			hydrateError: false,
 		});
