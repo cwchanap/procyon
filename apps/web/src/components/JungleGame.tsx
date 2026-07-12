@@ -67,7 +67,7 @@ const JungleGame: React.FC = () => {
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const { isAuthenticated, loading: authLoading } = useAuth();
-	useAIConfigHydration();
+	useAIConfigHydration({ isAuthenticated, loading: authLoading });
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {

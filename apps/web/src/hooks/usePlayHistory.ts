@@ -246,11 +246,18 @@ export function usePlayHistory({
 		// `retryTrigger` is included in the dep array so a failed save
 		// (which increments it) re-triggers this effect. The retryTrigger <
 		// MAX_SAVE_ATTEMPTS guard stops retries once the bound is reached.
+		// `attemptsRef` is also checked because a 5xx increments it
+		// immediately, but `retryTrigger` only bumps when the backoff timer
+		// fires. If a dependency (provider, model, AI side) changes between
+		// the 5xx and the timer, the effect reruns with `retryTrigger` still
+		// below the limit — without the `attemptsRef` guard, repeated
+		// dependency changes could start more requests than MAX_SAVE_ATTEMPTS.
 		if (
 			enabled &&
 			isGameOverStatus(gameStatus) &&
 			!savedRef.current &&
-			retryTrigger < MAX_SAVE_ATTEMPTS
+			retryTrigger < MAX_SAVE_ATTEMPTS &&
+			attemptsRef.current < MAX_SAVE_ATTEMPTS
 		) {
 			void savePlayHistory();
 		}

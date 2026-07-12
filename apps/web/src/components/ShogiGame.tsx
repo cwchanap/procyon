@@ -59,7 +59,7 @@ const ShogiGame: React.FC = () => {
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const { isAuthenticated, loading: authLoading } = useAuth();
-	useAIConfigHydration();
+	useAIConfigHydration({ isAuthenticated, loading: authLoading });
 
 	// Refs for promotion modal focus management
 	const modalRef = useRef<HTMLDivElement>(null);
