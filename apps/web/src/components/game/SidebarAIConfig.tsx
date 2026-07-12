@@ -68,6 +68,13 @@ const SidebarAIConfig: React.FC = () => {
 	const { config, availableProviders, hydrated, hydrateError } = useAIConfig();
 	const { isAuthenticated, loading } = useAuth();
 	const [error, setError] = useState<string | null>(null);
+	// Tracks an in-flight provider switch so the model select can be
+	// disabled until setProvider finishes — otherwise a model pick made
+	// before setProvider's setConfigSlice resolves is silently overwritten
+	// by the saved provider's model (setProvider writes `full.model ||
+	// fallbackModel` into the store). Mirrors AISettingsDialog's
+	// isProviderSwitching guard.
+	const [isProviderSwitching, setIsProviderSwitching] = useState(false);
 
 	// `availableProviders` is populated once by the store's hydrate() (called
 	// from AppShell on mount), which fetches /ai-config. Reading it from the
@@ -85,8 +92,13 @@ const SidebarAIConfig: React.FC = () => {
 			setError('Please sign in to manage your AI settings.');
 			return;
 		}
-		const err = await setProvider(provider);
-		if (err) setError(err);
+		setIsProviderSwitching(true);
+		try {
+			const err = await setProvider(provider);
+			if (err) setError(err);
+		} finally {
+			setIsProviderSwitching(false);
+		}
 	};
 
 	return (
@@ -144,7 +156,8 @@ const SidebarAIConfig: React.FC = () => {
 							aria-label='AI Provider'
 							value={config.provider}
 							onChange={e => onProviderChange(e.target.value as AIProvider)}
-							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass'
+							disabled={isProviderSwitching || !hydrated}
+							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
 						>
 							{providerOptions.map(o => (
 								<option key={o.value} value={o.value}>
@@ -161,7 +174,7 @@ const SidebarAIConfig: React.FC = () => {
 						<select
 							aria-label='AI Model'
 							value={currentModel}
-							disabled={!hydrated}
+							disabled={isProviderSwitching || !hydrated}
 							onChange={e => setModel(e.target.value)}
 							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
 						>
