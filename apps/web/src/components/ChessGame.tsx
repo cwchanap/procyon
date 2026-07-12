@@ -60,6 +60,13 @@ const ChessGame: React.FC = () => {
 	const [isAiPaused, setIsAiPaused] = useState(false);
 	const [aiError, setAiError] = useState<string | null>(null);
 	const gameExporterRef = useRef<GameExporter | null>(null);
+	// Monotonic generation token for in-flight AI moves. Incremented on
+	// logout so a makeAIMoveAsync callback still awaiting an AI response
+	// can detect it is stale and skip its setGameState/setAiError calls —
+	// otherwise the resolved promise would resurrect the pre-logout board
+	// position or set a stale error after the auth-loss reset has
+	// already cleared it.
+	const aiMoveGenRef = useRef(0);
 	const [hasGameEnded, setHasGameEnded] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 
@@ -308,12 +315,14 @@ const ChessGame: React.FC = () => {
 		if (!isAITurn(gameState) || gameState.isAiThinking) {
 			return;
 		}
+		const gen = aiMoveGenRef.current;
 
 		setGameState(prev => setAIThinking(prev, true));
 		setAiError(null); // Clear previous errors
 
 		try {
 			const aiResponse = await aiService.makeMove(gameState);
+			if (gen !== aiMoveGenRef.current) return;
 
 			if (aiResponse && aiResponse.move) {
 				if (isDebugMode) {
@@ -382,6 +391,7 @@ const ChessGame: React.FC = () => {
 				setIsAiPaused(true);
 			}
 		} catch (error) {
+			if (gen !== aiMoveGenRef.current) return;
 			// eslint-disable-next-line no-console
 			console.error('AI move failed:', error);
 			const errorMessage =
@@ -396,7 +406,9 @@ const ChessGame: React.FC = () => {
 				]);
 			}
 		} finally {
-			setGameState(prev => setAIThinking(prev, false));
+			if (gen === aiMoveGenRef.current) {
+				setGameState(prev => setAIThinking(prev, false));
+			}
 		}
 	}, [gameState, aiService, isDebugMode, createAIMove]);
 
@@ -575,11 +587,15 @@ const ChessGame: React.FC = () => {
 	// the active game continues against the store's freshly reset default
 	// (no-key) config until a manual game reset. Track the previous auth
 	// value so we only fire on the true→false transition, not on mount.
+	// Also bump aiMoveGenRef so any in-flight makeAIMoveAsync callback
+	// skips its setGameState/setAiError calls instead of resurrecting the
+	// pre-logout position after the reset.
 	const prevAuthenticatedRef = useRef(isAuthenticated);
 	useEffect(() => {
 		if (prevAuthenticatedRef.current && !isAuthenticated) {
 			resetGame();
 			setAIPlayer('black');
+			aiMoveGenRef.current++;
 		}
 		prevAuthenticatedRef.current = isAuthenticated;
 	}, [isAuthenticated, resetGame]);

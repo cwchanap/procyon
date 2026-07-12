@@ -61,6 +61,13 @@ const ShogiGame: React.FC = () => {
 	const { isAuthenticated, loading: authLoading } = useAuth();
 	useAIConfigHydration({ isAuthenticated, loading: authLoading });
 
+	// Monotonic generation token for in-flight AI moves. Incremented on
+	// logout so a makeAIMove async callback still awaiting an AI response
+	// can detect it is stale and skip its setGameState call — otherwise
+	// the resolved promise would resurrect the pre-logout board position
+	// after the auth-loss reset has already cleared it.
+	const aiMoveGenRef = useRef(0);
+
 	// Refs for promotion modal focus management
 	const modalRef = useRef<HTMLDivElement>(null);
 	const previousActiveElementRef = useRef<HTMLElement | null>(null);
@@ -295,9 +302,11 @@ const ShogiGame: React.FC = () => {
 			!gameState.pendingPromotion
 		) {
 			const makeAIMove = async () => {
+				const gen = aiMoveGenRef.current;
 				setIsAIThinking(true);
 				try {
 					const aiResponse = await aiService.makeMove(gameState);
+					if (gen !== aiMoveGenRef.current) return;
 					if (aiResponse) {
 						// Parse AI move from algebraic notation
 						if (aiResponse.move.from === '*') {
@@ -407,7 +416,9 @@ const ShogiGame: React.FC = () => {
 				} catch (_error) {
 					// console.error('AI move failed:', error);
 				} finally {
-					setIsAIThinking(false);
+					if (gen === aiMoveGenRef.current) {
+						setIsAIThinking(false);
+					}
 				}
 			};
 
@@ -562,6 +573,24 @@ const ShogiGame: React.FC = () => {
 		setGameState(createInitialGameState());
 		setGameStarted(false);
 	}, []);
+
+	// Reset local game state when authentication is lost (logout). The auth
+	// context wipes the AI config store on logout, but `gameStarted` and
+	// board state live here in local state — without this reset the
+	// mounted page keeps the AI service disabled (no API key) and the AI
+	// turn stalls indefinitely. Also bump aiMoveGenRef so any in-flight
+	// makeAIMove callback skips its setGameState call instead of
+	// resurrecting the pre-logout position. Track the previous auth value
+	// so we only fire on the true→false transition, not on mount.
+	const prevAuthenticatedRef = useRef(isAuthenticated);
+	useEffect(() => {
+		if (prevAuthenticatedRef.current && !isAuthenticated) {
+			resetGame();
+			setAIPlayer('gote');
+			aiMoveGenRef.current++;
+		}
+		prevAuthenticatedRef.current = isAuthenticated;
+	}, [isAuthenticated, resetGame]);
 
 	const triggerDebugWin = useCallback(() => {
 		setGameState(prev => ({

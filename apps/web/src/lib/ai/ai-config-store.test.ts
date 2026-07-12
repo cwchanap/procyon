@@ -1261,6 +1261,114 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.availableProviders).toEqual(['gemini']);
 	});
 
+	// [P2] When a setProvider succeeds during hydration and a *later*
+	// setProvider fails, the hydrate must still preserve the successful
+	// provider choice. The failed switch bumps setProviderGeneration without
+	// recording setProviderSucceededGen, so checking
+	// setProviderSucceededGen === setProviderGeneration would evaluate false
+	// and the hydrate would overwrite the successful provider with stale
+	// data. The fix compares setProviderSucceededGen > providerGen instead,
+	// which detects the earlier success regardless of the later failure.
+	test('runHydrate preserves successful provider switch when a later switch fails during race', async () => {
+		let resolveHydrateList: (v: unknown) => void = () => {};
+		const hydrateListPending = new Promise(r => {
+			resolveHydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// Hydrate's list fetch — held pending.
+					return hydrateListPending;
+				}
+				if (listCallCount === 2) {
+					// First setProvider's list fetch — openai is keyed.
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [
+								{
+									id: 'cfg-o',
+									provider: 'openai',
+									hasApiKey: true,
+									isActive: false,
+								},
+							],
+						}),
+					};
+				}
+				// Second setProvider's list fetch — chutes has no keyed
+				// config, so this switch will fail.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			// setProvider's full fetch for cfg-o (openai).
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start hydrate but don't await — its list fetch is pending.
+		const hydratePromise = hydrate();
+
+		// First setProvider succeeds — switches to openai.
+		await setProvider('openai');
+		expect(getConfigSlice().config.provider).toBe('openai');
+		expect(getConfigSlice().config.apiKey).toBe('sk-test');
+
+		// Second setProvider fails — chutes has no keyed config.
+		const providerErr = await setProvider('chutes');
+		expect(typeof providerErr).toBe('string');
+
+		// The successful openai config must still be in the store.
+		expect(getConfigSlice().config.provider).toBe('openai');
+
+		// Release hydrate's list fetch — it returns gemini as the active
+		// config (stale, from before any provider switch).
+		resolveHydrateList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-g',
+						provider: 'gemini',
+						hasApiKey: true,
+						isActive: true,
+					},
+				],
+			}),
+		});
+		await hydratePromise;
+
+		// The store must preserve the successful openai switch, not overwrite
+		// it with the hydrate's stale gemini config.
+		const snap = getConfigSlice();
+		expect(snap.hydrated).toBe(true);
+		expect(snap.config.provider).toBe('openai');
+		expect(snap.config.apiKey).toBe('sk-test');
+		expect(snap.hydrateError).toBe(false);
+	});
+
 	// [P2] After a successful first hydrate, configSlice.hydrated is true.
 	// If rehydrate() is then called (e.g. the user clicks Retry after a
 	// transient error), and a concurrent setProvider fails during the
