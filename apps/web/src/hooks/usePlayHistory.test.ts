@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterEach, mock } from 'bun:test';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import type { GameVariant } from '../lib/ai/game-variant-types';
 import type { AIConfig } from '../lib/ai/types';
 import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
@@ -191,103 +191,28 @@ describe('save deduplication guard', () => {
 		expect(saveCount).toBe(1); // still 1, no new save
 	});
 
-	test('resets savedRef to false on fetch failure to allow retry', () => {
+	test('keeps savedRef true on 5xx failure to prevent duplicate retries', () => {
 		let savedRef = false;
 
-		const trySave = (ok: boolean) => {
+		const trySave = (status: number) => {
 			if (savedRef) return;
 			savedRef = true; // optimistic set before fetch
-			if (!ok) {
-				savedRef = false; // reset on failure so retry is possible
+			// 5xx: keep savedRef=true — the transaction may have committed,
+			// retrying would insert a duplicate. Only 401 clears savedRef.
+			if (status === 401) {
+				savedRef = false;
 			}
 		};
 
-		trySave(false);
-		expect(savedRef).toBe(false); // retry allowed after failure
+		trySave(500);
+		expect(savedRef).toBe(true); // no retry on 5xx
 
-		trySave(true);
+		savedRef = false;
+		trySave(401);
+		expect(savedRef).toBe(false); // 401 allows auth-recovery retry
+
+		trySave(200);
 		expect(savedRef).toBe(true); // stays set after success
-	});
-});
-
-// ─── Retry trigger bound ──────────────────────────────────────────────────────
-// Mirrors the retryTrigger state + MAX_SAVE_ATTEMPTS guard in usePlayHistory:
-// a failed save increments the trigger up to the bound, then retries stop.
-
-const MAX_SAVE_ATTEMPTS = 3;
-
-describe('retry trigger bound', () => {
-	test('increments retry trigger on each failure up to MAX_SAVE_ATTEMPTS', () => {
-		let retryTrigger = 0;
-		const onFailure = () => {
-			retryTrigger =
-				retryTrigger < MAX_SAVE_ATTEMPTS ? retryTrigger + 1 : retryTrigger;
-		};
-
-		onFailure();
-		expect(retryTrigger).toBe(1);
-		onFailure();
-		expect(retryTrigger).toBe(2);
-		onFailure();
-		expect(retryTrigger).toBe(3);
-		// Bound reached — further failures do not increment.
-		onFailure();
-		expect(retryTrigger).toBe(3);
-	});
-
-	test('effect re-runs only while retryTrigger is below the bound', () => {
-		let retryTrigger = 0;
-		let saveCalls = 0;
-		const isGameOver = true;
-		const savedRef = () => false; // never saved (always failing)
-
-		const runEffect = () => {
-			if (isGameOver && !savedRef() && retryTrigger < MAX_SAVE_ATTEMPTS) {
-				saveCalls++;
-			}
-		};
-		const onFailure = () => {
-			retryTrigger =
-				retryTrigger < MAX_SAVE_ATTEMPTS ? retryTrigger + 1 : retryTrigger;
-		};
-
-		// Initial attempt at retryTrigger=0, plus retries at 1 and 2 = 3
-		// total save attempts; at retryTrigger=3 the guard blocks further runs.
-		runEffect(); // attempt 1 (retryTrigger=0)
-		onFailure(); // retryTrigger=1
-		runEffect(); // attempt 2 (retryTrigger=1)
-		onFailure(); // retryTrigger=2
-		runEffect(); // attempt 3 (retryTrigger=2)
-		onFailure(); // retryTrigger=3
-		runEffect(); // guard blocks (3 not < 3)
-		runEffect();
-
-		expect(saveCalls).toBe(3);
-		expect(retryTrigger).toBe(3);
-	});
-
-	test('resets retry trigger to 0 when a new game starts', () => {
-		let retryTrigger = 2;
-		const resetOnNewGame = (gameStatus: GameStatus, moveCount: number) => {
-			if (gameStatus === 'playing' && moveCount === 0) {
-				retryTrigger = 0;
-			}
-		};
-
-		resetOnNewGame('playing', 0);
-		expect(retryTrigger).toBe(0);
-	});
-
-	test('does not reset retry trigger mid-game', () => {
-		let retryTrigger = 2;
-		const resetOnNewGame = (gameStatus: GameStatus, moveCount: number) => {
-			if (gameStatus === 'playing' && moveCount === 0) {
-				retryTrigger = 0;
-			}
-		};
-
-		resetOnNewGame('playing', 5);
-		expect(retryTrigger).toBe(2);
 	});
 });
 
@@ -525,60 +450,61 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		expect(fetchCallCount).toBe(2);
 	});
 
-	test('retry re-fires on fetch failure up to MAX_SAVE_ATTEMPTS', async () => {
-		fetchShouldSucceed = false;
+	test('5xx response does not retry — only one fetch call', async () => {
+		fetchShouldSucceed = false; // all /play-history responses are 500
 
 		const { unmount } = renderHook(props => usePlayHistory(props), {
 			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
 		});
 		unmountHook = unmount;
 
-		await waitFor(() => {
-			expect(fetchCallCount).toBe(3);
-		});
-	});
-
-	test('retry stops at MAX_SAVE_ATTEMPTS and does not exceed it', async () => {
-		fetchShouldSucceed = false;
-
-		const { unmount } = renderHook(props => usePlayHistory(props), {
-			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
-		});
-		unmountHook = unmount;
-
-		await waitFor(() => {
-			expect(fetchCallCount).toBe(3);
-		});
-
-		// Wait a bit more to ensure no further retries fire
+		// Initial save attempt fires and gets 5xx.
 		await act(async () => {
-			await new Promise(r => setTimeout(r, 50));
+			await new Promise(r => setTimeout(r, 0));
 		});
-		expect(fetchCallCount).toBe(3);
+		expect(fetchCallCount).toBe(1);
+
+		// Wait beyond any potential retry window — 5xx must not retry
+		// because the POST is non-idempotent (the transaction may have
+		// committed before the 5xx was returned).
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 300));
+		});
+		expect(fetchCallCount).toBe(1);
 	});
 
-	test('retry trigger resets when a new game starts', async () => {
-		fetchShouldSucceed = false;
+	test('new game gets exactly one save attempt after prior game 5xx', async () => {
+		fetchShouldSucceed = false; // all /play-history responses are 500
 
 		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
 			initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
 		});
 		unmountHook = unmount;
 
-		await waitFor(() => {
-			expect(fetchCallCount).toBe(3);
+		// Game A: one save attempt (5xx, no retry).
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
 		});
+		expect(fetchCallCount).toBe(1);
 
+		// New game starts — savedRef resets.
 		rerender(makeProps({ gameStatus: 'playing', moveCount: 0 }));
 		await act(async () => {
 			await new Promise(r => setTimeout(r, 0));
 		});
 
+		// Game B ends — one save attempt (5xx, no retry).
 		rerender(makeProps({ gameStatus: 'checkmate', moveCount: 10 }));
-
-		await waitFor(() => {
-			expect(fetchCallCount).toBe(6);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
 		});
+		expect(fetchCallCount).toBe(2);
+
+		// Wait to ensure no further retries fire for either game.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 300));
+		});
+		expect(fetchCallCount).toBe(2);
 	});
 
 	test('does not save when enabled is false', async () => {
@@ -677,8 +603,8 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		// Scenario: Game A's save gets a 5xx (held pending), then the user
 		// resets and finishes Game B (which saves successfully). When Game
 		// A's stale 5xx resolves, it must NOT set savedRef=false (clobbering
-		// Game B's save), increment attemptsRef, or schedule a retry —
-		// otherwise the retry submits an overlapping duplicate record.
+		// Game B's save) — the 5xx path keeps savedRef=true and does not
+		// retry, so the stale resolution is a no-op.
 		let resolveGameAFetch: (v: unknown) => void = () => {};
 		const gameAFetchPending = new Promise(r => {
 			resolveGameAFetch = r;
@@ -723,7 +649,7 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		expect(fetchCallCount).toBe(1);
 
 		// Reset: new game starts. This bumps gameGenerationRef and clears
-		// savedRef/attemptsRef.
+		// savedRef.
 		rerender(makeProps({ gameStatus: 'playing', moveCount: 0 }));
 		await act(async () => {
 			await new Promise(r => setTimeout(r, 0));
@@ -749,11 +675,11 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	});
 
 	// [P2] When a terminal save gets a 5xx and the player changes the AI
-	// side, provider, or model before the backoff fires, the retry must
-	// use the snapshotted result/opponentLlmId from game-over — not the
-	// new settings. Otherwise the same completed game can be recorded
-	// with the opposite win/loss or a different opponentLlmId.
-	test('retry uses snapshotted result/opponentLlmId across provider change', async () => {
+	// side, provider, or model, the single save attempt must use the
+	// snapshotted result/opponentLlmId from game-over. Since 5xx no longer
+	// retries, this verifies the first (and only) attempt captures the
+	// correct values and dep changes don't trigger a second fetch.
+	test('5xx save uses snapshotted result; dep changes do not re-fire', async () => {
 		// Capture the request bodies so we can verify the snapshot.
 		const capturedBodies: Array<{
 			chessId: string;
@@ -800,7 +726,7 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			}),
 		});
 
-		// Wait for the first save attempt (5xx).
+		// Wait for the first (and only) save attempt (5xx).
 		await act(async () => {
 			await new Promise(r => setTimeout(r, 0));
 		});
@@ -809,10 +735,9 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		expect(capturedBodies[0]!.status).toBe('win');
 		expect(capturedBodies[0]!.opponentLlmId).toBe('gemini-2.5-flash');
 
-		// Now change the provider and AI side before the backoff fires.
-		// If the retry used the new settings, the result would flip to
-		// 'loss' (aiPlayer='white', winnerColor='white' → AI wins) and
-		// opponentLlmId would become 'gpt-4o'.
+		// Now change the provider and AI side. savedRef is true (set
+		// optimistically before the fetch), so the effect guard blocks
+		// re-fires — no second fetch should occur.
 		rerender(
 			makeProps({
 				gameStatus: 'checkmate',
@@ -823,27 +748,20 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			})
 		);
 
-		// Wait for the retry to fire (deps change triggers immediate re-run).
 		await act(async () => {
 			await new Promise(r => setTimeout(r, 50));
 		});
 
-		// The retry must use the snapshotted values: status='win',
-		// opponentLlmId='gemini-2.5-flash' — NOT 'loss'/'gpt-4o'.
-		expect(capturedBodies.length).toBeGreaterThan(1);
-		for (const body of capturedBodies) {
-			expect(body.status).toBe('win');
-			expect(body.opponentLlmId).toBe('gemini-2.5-flash');
-		}
+		// Only one fetch — the 5xx did not retry and dep changes did not
+		// re-fire (savedRef=true blocks the effect guard).
+		expect(fetchCallCount).toBe(1);
+		expect(capturedBodies).toHaveLength(1);
 	});
 
-	// [P2] After a 5xx, attemptsRef increments immediately but retryTrigger
-	// only bumps when the backoff timer fires. If a dependency (provider,
-	// model, AI side) changes between the 5xx and the timer, the effect
-	// reruns with retryTrigger still below the limit. Without gating on
-	// attemptsRef, repeated dependency changes could start more requests
-	// than MAX_SAVE_ATTEMPTS.
-	test('retry cap enforced across dependency changes before backoff fires', async () => {
+	// [P2] After a 5xx, savedRef stays true, so rapid dependency changes
+	// (provider, model, AI side) must not trigger additional fetches.
+	// The effect guard checks !savedRef.current, which blocks all re-runs.
+	test('5xx failure blocks re-fires from rapid dependency changes', async () => {
 		fetchShouldSucceed = false; // all /play-history responses are 5xx
 
 		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
@@ -861,10 +779,9 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		});
 		expect(fetchCallCount).toBe(1);
 
-		// Rapidly change the provider multiple times before the backoff
-		// timer fires. Each change rebuilds savePlayHistory (new identity)
-		// and reruns the effect. Without the attemptsRef guard, each
-		// rerun would start a new request, exceeding MAX_SAVE_ATTEMPTS.
+		// Rapidly change the provider multiple times. Each change rebuilds
+		// savePlayHistory (new identity) and reruns the effect, but
+		// savedRef=true blocks the guard — no new fetches should fire.
 		for (let i = 0; i < 5; i++) {
 			rerender(
 				makeProps({
@@ -881,13 +798,13 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			});
 		}
 
-		// Wait beyond all backoff timers to let any pending retries fire.
+		// Wait beyond any potential retry window.
 		await act(async () => {
 			await new Promise(r => setTimeout(r, 300));
 		});
 
-		// Total fetch calls must not exceed MAX_SAVE_ATTEMPTS (3).
-		expect(fetchCallCount).toBeLessThanOrEqual(3);
+		// Only the initial attempt — no retries, no dep-change re-fires.
+		expect(fetchCallCount).toBe(1);
 	});
 
 	// [P2] When the play-history POST returns 401 (e.g. session cookie

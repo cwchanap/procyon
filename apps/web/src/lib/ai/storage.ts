@@ -3,6 +3,16 @@ import { env } from '../env';
 
 const AI_CONFIG_KEY = 'procyon_ai_config';
 
+/**
+ * Timeout for AI config fetches (/ai-config list and /ai-config/:id/full).
+ * Prevents `setProvider` and `hydrate` from hanging indefinitely on a stalled
+ * connection — without this, a hung fetch leaves `isProviderSwitching` stuck
+ * true in AISettingsDialog (both selects permanently disabled) because the
+ * `await onProviderChange(...)` never resolves and the `finally` never runs.
+ * The resulting AbortError throws and is caught by the callers' catch blocks.
+ */
+const AI_CONFIG_FETCH_TIMEOUT_MS = 10_000;
+
 export const defaultAIConfig: AIConfig = {
 	provider: 'gemini',
 	apiKey: '',
@@ -100,6 +110,7 @@ export async function fetchAIConfigList(): Promise<AIConfigListItem[]> {
 	const res = await fetch(`${env.PUBLIC_API_URL}/ai-config`, {
 		headers: { 'Content-Type': 'application/json' },
 		credentials: 'include',
+		signal: AbortSignal.timeout(AI_CONFIG_FETCH_TIMEOUT_MS),
 	});
 	if (!res.ok) {
 		throw new Error(`/ai-config returned ${res.status}`);
@@ -116,6 +127,7 @@ export async function fetchFullAIConfig(id: string): Promise<FullAIConfig> {
 	const res = await fetch(`${env.PUBLIC_API_URL}/ai-config/${id}/full`, {
 		headers: { 'Content-Type': 'application/json' },
 		credentials: 'include',
+		signal: AbortSignal.timeout(AI_CONFIG_FETCH_TIMEOUT_MS),
 	});
 	if (!res.ok) {
 		throw new Error(`/ai-config/${id}/full returned ${res.status}`);
