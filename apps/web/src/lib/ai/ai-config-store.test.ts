@@ -1369,6 +1369,96 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.hydrateError).toBe(false);
 	});
 
+	// [P2] If setProvider succeeds BEFORE the first hydrate() has started,
+	// it writes configSlice.hydrated=true but the module-level `hydrated`
+	// guard stays false. A later hydrate() then proceeds, captures
+	// providerGen === setProviderGeneration (no new setProvider during the
+	// fetch), so the providerGen race guard doesn't fire, and the hydrate
+	// overwrites the user's newly selected provider/model/key with the
+	// stale active backend config. setProvider must also set the
+	// module-level `hydrated` flag so the later hydrate() short-circuits.
+	test('setProvider before hydrate prevents later hydrate from clobbering store', async () => {
+		// setProvider's fetches resolve immediately.
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				// setProvider's list fetch — openai is keyed.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			// setProvider's full fetch for cfg-o.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// setProvider succeeds BEFORE hydrate() is ever called.
+		const providerErr = await setProvider('openai');
+		expect(providerErr).toBeNull();
+		expect(getConfigSlice().config.provider).toBe('openai');
+		expect(getConfigSlice().config.apiKey).toBe('sk-test');
+		expect(getConfigSlice().hydrated).toBe(true);
+
+		// Now swap the fetch mock so a subsequent hydrate() would return
+		// gemini as the active config — the stale backend state from before
+		// the user switched to openai.
+		// @ts-expect-error -- test-only: replace global fetch with stale mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: true,
+							},
+						],
+					}),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gemini-key-stale',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// A later hydrate() must short-circuit (module-level hydrated=true
+		// from setProvider) and NOT overwrite the user's openai selection.
+		await hydrate();
+
+		const snap = getConfigSlice();
+		expect(snap.config.provider).toBe('openai');
+		expect(snap.config.apiKey).toBe('sk-test');
+		expect(snap.config.model).toBe('gpt-4o');
+		expect(snap.hydrated).toBe(true);
+		expect(snap.hydrateError).toBe(false);
+	});
+
 	// [P2] After a successful first hydrate, configSlice.hydrated is true.
 	// If rehydrate() is then called (e.g. the user clicks Retry after a
 	// transient error), and a concurrent setProvider fails during the

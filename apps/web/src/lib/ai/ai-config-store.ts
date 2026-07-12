@@ -312,6 +312,14 @@ export async function setProvider(
 			hydrated: true,
 			hydrateError: false,
 		});
+		// Also set the module-level `hydrated` guard. Without this, if
+		// setProvider succeeds before the first hydrate() has started, the
+		// module-level flag stays false and a later hydrate() proceeds.
+		// runHydrate then captures providerGen === setProviderGeneration
+		// (no new setProvider during the fetch), so the providerGen race
+		// guard doesn't fire, and the hydrate overwrites the user's newly
+		// selected provider/model/key with the stale active backend config.
+		hydrated = true;
 		// Record the generation so a concurrent runHydrate can detect that
 		// this setProvider succeeded (not just that the slice was already
 		// hydrated from a prior hydrate/rehydrate).
