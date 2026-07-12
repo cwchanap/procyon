@@ -137,6 +137,42 @@ describe('SidebarAIConfig', () => {
 		expect(queryByLabelText(/AI Model/i)).toBeNull();
 	});
 
+	test('model select is disabled until hydration completes', () => {
+		// Before hydrate() resolves, the model dropdown shows the DEFAULT
+		// provider's models (gemini from defaultAIConfig), not the user's
+		// saved provider. Allowing a model pick during this window would
+		// be silently reverted when runHydrate replaces the entire config
+		// with the fetched snapshot (setModel doesn't bump
+		// setProviderGeneration, so the race guard at runHydrate doesn't
+		// fire). The control must be disabled until hydrated=true.
+		const { getByLabelText } = render(<SidebarAIConfig />);
+		const modelSelect = getByLabelText(/AI Model/i) as HTMLSelectElement;
+		expect(modelSelect.disabled).toBe(true);
+	});
+
+	test('model select is enabled after hydration completes', async () => {
+		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
+			Promise.resolve({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						configurations: [
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: true,
+							},
+						],
+					}),
+			})) as unknown as typeof fetch;
+
+		await hydrate();
+		const { getByLabelText } = render(<SidebarAIConfig />);
+		const modelSelect = getByLabelText(/AI Model/i) as HTMLSelectElement;
+		expect(modelSelect.disabled).toBe(false);
+	});
+
 	test('shows error message when setProvider fails to load config list', async () => {
 		// Render first (un-hydrated → ALL_PROVIDER_OPTIONS visible), then make
 		// fetch throw so setProvider's fetchAIConfigList rejects.

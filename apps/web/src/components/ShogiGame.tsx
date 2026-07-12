@@ -821,6 +821,7 @@ const ShogiGame: React.FC = () => {
 						setErrorMsg(err);
 					}}
 					onModelChange={model => setAIModel(model)}
+					hydrated={aiConfigHydrated}
 					aiPlayerOptions={[
 						{ value: 'gote', label: 'AI plays Gote (後手)' },
 						{ value: 'sente', label: 'AI plays Sente (先手)' },

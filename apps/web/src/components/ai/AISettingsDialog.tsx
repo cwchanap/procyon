@@ -11,6 +11,17 @@ interface AISettingsDialogProps {
 	aiPlayerOptions: Array<{ value: string; label: string }>;
 	isActive?: boolean;
 	onActivate?: () => void;
+	/**
+	 * Whether the AI config store has finished hydrating. Until hydration
+	 * completes, the model dropdown shows the DEFAULT provider's models
+	 * (gemini from defaultAIConfig), not the user's saved provider — so a
+	 * model pick during this window would be silently reverted when
+	 * runHydrate replaces the entire config with the fetched snapshot.
+	 * setModel doesn't bump setProviderGeneration, so the race guard in
+	 * runHydrate doesn't fire. Defaults to true so callers that don't
+	 * track hydration (e.g. tests) aren't blocked.
+	 */
+	hydrated?: boolean;
 }
 
 // All available provider options
@@ -64,6 +75,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 	aiPlayerOptions,
 	isActive = false,
 	onActivate,
+	hydrated = true,
 }) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const [availableProviders, setAvailableProviders] = useState<string[]>([]);
@@ -271,7 +283,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 										<select
 											aria-label='AI Provider'
 											value={currentProvider}
-											disabled={isProviderSwitching}
+											disabled={isProviderSwitching || !hydrated}
 											onChange={async e => {
 												const newProvider = e.target.value;
 												// onProviderChange (setProvider) commits the provider + model
@@ -315,7 +327,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 										<select
 											aria-label='AI Model'
 											value={currentModel}
-											disabled={isProviderSwitching}
+											disabled={isProviderSwitching || !hydrated}
 											onChange={e => onModelChange(e.target.value)}
 											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass disabled:cursor-not-allowed disabled:opacity-50'
 										>

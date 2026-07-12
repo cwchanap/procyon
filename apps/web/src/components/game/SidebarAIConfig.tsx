@@ -161,8 +161,9 @@ const SidebarAIConfig: React.FC = () => {
 						<select
 							aria-label='AI Model'
 							value={currentModel}
+							disabled={!hydrated}
 							onChange={e => setModel(e.target.value)}
-							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass'
+							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
 						>
 							{models.map(o => (
 								<option key={o.value} value={o.value}>
