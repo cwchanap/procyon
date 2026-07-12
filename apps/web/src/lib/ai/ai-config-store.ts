@@ -83,6 +83,16 @@ let hydrateGeneration = 0;
  */
 let setProviderGeneration = 0;
 
+/**
+ * Generation token recorded when `setProvider` successfully writes to the
+ * store. `runHydrate` compares this against `setProviderGeneration` to
+ * determine whether the setProvider that raced with the hydrate actually
+ * succeeded — checking `configSlice.hydrated` is unreliable because a prior
+ * hydrate (or rehydrate) may have already set it to `true`, causing a failed
+ * setProvider to be mistaken for a successful one.
+ */
+let setProviderSucceededGen = 0;
+
 export async function hydrate(): Promise<void> {
 	if (hydrated) return;
 	if (inFlight) return inFlight;
@@ -140,15 +150,20 @@ async function runHydrate(): Promise<void> {
 		// the sidebar with an empty provider list).
 		if (providerGen !== setProviderGeneration) {
 			if (gen !== hydrateGeneration) return;
-			// setProvider succeeded if it wrote hydrated=true to the slice.
-			// On failure (unconfigured provider or fetch error) it bumps
-			// setProviderGeneration without writing, so configSlice.hydrated
-			// is still false. If it failed, apply the hydrate's config so
-			// the user's saved backend configuration isn't lost — without
-			// this, the store ends up with default credentials and no
-			// error, leaving AI gameplay unusable. If it succeeded,
-			// preserve configSlice.config (the user's newer choice).
-			const providerSucceeded = configSlice.hydrated;
+			// setProvider succeeded if it recorded its generation in
+			// setProviderSucceededGen. On failure (unconfigured provider or
+			// fetch error) it bumps setProviderGeneration without recording,
+			// so setProviderSucceededGen !== setProviderGeneration. If it
+			// failed, apply the hydrate's config so the user's saved backend
+			// configuration isn't lost — without this, the store ends up
+			// with default credentials and no error, leaving AI gameplay
+			// unusable. If it succeeded, preserve configSlice.config (the
+			// user's newer choice). We can't use configSlice.hydrated as the
+			// success signal because a prior hydrate/rehydrate may have
+			// already set it to true, causing a failed setProvider to be
+			// mistaken for a successful one.
+			const providerSucceeded =
+				setProviderSucceededGen === setProviderGeneration;
 			setConfigSlice({
 				...configSlice,
 				config: providerSucceeded ? configSlice.config : config,
@@ -192,7 +207,10 @@ async function runHydrate(): Promise<void> {
 			setConfigSlice({
 				...configSlice,
 				hydrated: true,
-				hydrateError: configSlice.hydrated ? configSlice.hydrateError : true,
+				hydrateError:
+					setProviderSucceededGen === setProviderGeneration
+						? configSlice.hydrateError
+						: true,
 			});
 			return;
 		}
@@ -275,6 +293,10 @@ export async function setProvider(
 			hydrated: true,
 			hydrateError: false,
 		});
+		// Record the generation so a concurrent runHydrate can detect that
+		// this setProvider succeeded (not just that the slice was already
+		// hydrated from a prior hydrate/rehydrate).
+		setProviderSucceededGen = gen;
 		saveAIConfig(merged);
 		return null;
 	} catch {
@@ -303,6 +325,7 @@ export function resetAIConfigStore(): void {
 	// its setConfigSlice/setConfig call.
 	hydrateGeneration++;
 	setProviderGeneration++;
+	setProviderSucceededGen = 0;
 	hydrated = false;
 	inFlight = null;
 	setConfigSlice({ ...initialConfigSlice });

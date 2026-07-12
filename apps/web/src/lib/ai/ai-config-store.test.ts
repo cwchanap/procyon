@@ -6,6 +6,7 @@ import {
 	setModel,
 	setProvider,
 	hydrate,
+	rehydrate,
 	resetAIConfigStore,
 } from './ai-config-store';
 import { defaultAIConfig } from './storage';
@@ -1172,6 +1173,141 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.hydrated).toBe(true);
 		expect(snap.config.provider).toBe('gemini');
 		expect(snap.config.apiKey).toBe('gemini-key-123');
+		expect(snap.config.model).toBe('gemini-2.5-flash');
+		expect(snap.hydrateError).toBe(false);
+		expect(snap.availableProviders).toEqual(['gemini']);
+	});
+
+	// [P2] After a successful first hydrate, configSlice.hydrated is true.
+	// If rehydrate() is then called (e.g. the user clicks Retry after a
+	// transient error), and a concurrent setProvider fails during the
+	// rehydrate's in-flight fetch, runHydrate's providerGen guard must NOT
+	// use configSlice.hydrated as the success signal — it's still true from
+	// the first hydrate, so the failed setProvider would be mistaken for a
+	// successful one, preserving the old config and hydrateError instead of
+	// applying the rehydrate's fresh config.
+	test('rehydrate + concurrent failed setProvider applies hydrate config, not stale hydrated flag', async () => {
+		// Step 1: Successful initial hydrate — sets configSlice.hydrated=true
+		// with gemini as the active provider.
+		// @ts-expect-error -- test-only: replace global fetch with list mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: true,
+							},
+						],
+					}),
+				};
+			}
+			// Hydrate's full fetch for the active gemini config.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gemini-key-initial',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		await hydrate();
+		expect(getConfigSlice().hydrated).toBe(true);
+		expect(getConfigSlice().config.apiKey).toBe('gemini-key-initial');
+
+		// Step 2: Start a rehydrate (e.g. user clicked Retry). Hold its
+		// list fetch pending so we can interleave a setProvider.
+		let resolveRehydrateList: (v: unknown) => void = () => {};
+		const rehydrateListPending = new Promise(r => {
+			resolveRehydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// rehydrate's list fetch — held pending.
+					return rehydrateListPending;
+				}
+				// setProvider's list fetch — returns a list without the
+				// requested provider (chutes has no keyed config), so
+				// setProvider fails without writing to the slice.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: true,
+							},
+						],
+					}),
+				};
+			}
+			// rehydrate's full fetch for the active gemini config.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gemini-key-fresh',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start rehydrate — its list fetch is pending.
+		const rehydratePromise = rehydrate();
+
+		// While rehydrate is in flight, the user tries to switch to chutes
+		// (which has no keyed config). setProvider bumps
+		// setProviderGeneration and returns an error string without
+		// writing to the slice.
+		const providerErr = await setProvider('chutes');
+		expect(typeof providerErr).toBe('string');
+
+		// configSlice.hydrated is still true from the first hydrate —
+		// this is the stale flag that the old code used as the success
+		// signal.
+		expect(getConfigSlice().hydrated).toBe(true);
+
+		// Release rehydrate's list fetch — it returns gemini as active
+		// with a fresh API key. Without the fix, runHydrate would see
+		// configSlice.hydrated=true and treat the failed setProvider as
+		// successful, preserving the old config (gemini-key-initial)
+		// instead of applying the fresh one (gemini-key-fresh).
+		resolveRehydrateList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-g',
+						provider: 'gemini',
+						hasApiKey: true,
+						isActive: true,
+					},
+				],
+			}),
+		});
+		await rehydratePromise;
+
+		// The store must apply the rehydrate's fresh config, not preserve
+		// the stale config from the first hydrate.
+		const snap = getConfigSlice();
+		expect(snap.hydrated).toBe(true);
+		expect(snap.config.provider).toBe('gemini');
+		expect(snap.config.apiKey).toBe('gemini-key-fresh');
 		expect(snap.config.model).toBe('gemini-2.5-flash');
 		expect(snap.hydrateError).toBe(false);
 		expect(snap.availableProviders).toEqual(['gemini']);
