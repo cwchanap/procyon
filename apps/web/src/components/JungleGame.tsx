@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type {
 	JungleGameState,
 	JunglePosition,
@@ -68,6 +68,13 @@ const JungleGame: React.FC = () => {
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const { isAuthenticated, loading: authLoading } = useAuth();
 	useAIConfigHydration({ isAuthenticated, loading: authLoading });
+
+	// Monotonic generation token for in-flight AI moves. Incremented on
+	// logout so a makeAIMove async callback still awaiting an AI response
+	// can detect it is stale and skip its setGameState call — otherwise
+	// the resolved promise would resurrect the pre-logout board position
+	// after the auth-loss reset has already cleared it.
+	const aiMoveGenRef = useRef(0);
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {
@@ -158,9 +165,11 @@ const JungleGame: React.FC = () => {
 			!isAIThinking
 		) {
 			const makeAIMove = async () => {
+				const gen = aiMoveGenRef.current;
 				setIsAIThinking(true);
 				try {
 					const aiResponse = await aiService.makeMove(gameState);
+					if (gen !== aiMoveGenRef.current) return;
 					if (aiResponse) {
 						// Parse AI move from algebraic notation
 						const fromPos = aiService.adapter.algebraicToPosition(
@@ -180,7 +189,9 @@ const JungleGame: React.FC = () => {
 				} catch (_error) {
 					// console.error('AI move failed:', error);
 				} finally {
-					setIsAIThinking(false);
+					if (gen === aiMoveGenRef.current) {
+						setIsAIThinking(false);
+					}
 				}
 			};
 
@@ -329,6 +340,24 @@ const JungleGame: React.FC = () => {
 		setIsAiPaused(false);
 		setAIDebugMoves([]);
 	}, []);
+
+	// Reset local game state when authentication is lost (logout). The auth
+	// context wipes the AI config store on logout, but `gameStarted` and
+	// board state live here in local state — without this reset the
+	// mounted page keeps the AI service disabled (no API key) and the AI
+	// turn stalls indefinitely. Also bump aiMoveGenRef so any in-flight
+	// makeAIMove callback skips its setGameState call instead of
+	// resurrecting the pre-logout position. Track the previous auth value
+	// so we only fire on the true→false transition, not on mount.
+	const prevAuthenticatedRef = useRef(isAuthenticated);
+	useEffect(() => {
+		if (prevAuthenticatedRef.current && !isAuthenticated) {
+			handleResetGame();
+			setAIPlayer('blue');
+			aiMoveGenRef.current++;
+		}
+		prevAuthenticatedRef.current = isAuthenticated;
+	}, [isAuthenticated, handleResetGame]);
 
 	const triggerDebugWin = useCallback(() => {
 		setGameState(prev => ({

@@ -85,11 +85,16 @@ let setProviderGeneration = 0;
 
 /**
  * Generation token recorded when `setProvider` successfully writes to the
- * store. `runHydrate` compares this against `setProviderGeneration` to
- * determine whether the setProvider that raced with the hydrate actually
+ * store. `runHydrate` compares this against the `providerGen` it captured
+ * at the start of the fetch (not against the current `setProviderGeneration`)
+ * to determine whether any setProvider that raced with the hydrate actually
  * succeeded — checking `configSlice.hydrated` is unreliable because a prior
  * hydrate (or rehydrate) may have already set it to `true`, causing a failed
- * setProvider to be mistaken for a successful one.
+ * setProvider to be mistaken for a successful one. Comparing against
+ * `providerGen` instead of `setProviderGeneration` also handles the case
+ * where a successful switch is followed by a failed one: the failed switch
+ * bumps `setProviderGeneration` without recording here, so an equality
+ * check against the latest generation would miss the earlier success.
  */
 let setProviderSucceededGen = 0;
 
@@ -153,17 +158,23 @@ async function runHydrate(): Promise<void> {
 			// setProvider succeeded if it recorded its generation in
 			// setProviderSucceededGen. On failure (unconfigured provider or
 			// fetch error) it bumps setProviderGeneration without recording,
-			// so setProviderSucceededGen !== setProviderGeneration. If it
-			// failed, apply the hydrate's config so the user's saved backend
-			// configuration isn't lost — without this, the store ends up
-			// with default credentials and no error, leaving AI gameplay
-			// unusable. If it succeeded, preserve configSlice.config (the
-			// user's newer choice). We can't use configSlice.hydrated as the
-			// success signal because a prior hydrate/rehydrate may have
-			// already set it to true, causing a failed setProvider to be
-			// mistaken for a successful one.
-			const providerSucceeded =
-				setProviderSucceededGen === setProviderGeneration;
+			// so setProviderSucceededGen stays at the last successful gen.
+			// Check whether any setProvider succeeded *after* the hydrate
+			// captured providerGen — using === setProviderGeneration would
+			// miss the case where a successful switch (gen N) was followed
+			// by a failed switch (gen N+1): setProviderSucceededGen would
+			// be N while setProviderGeneration is N+1, so the equality
+			// would fail and the hydrate would clobber the successful
+			// provider choice with stale data. If it failed, apply the
+			// hydrate's config so the user's saved backend configuration
+			// isn't lost — without this, the store ends up with default
+			// credentials and no error, leaving AI gameplay unusable. If
+			// it succeeded, preserve configSlice.config (the user's newer
+			// choice). We can't use configSlice.hydrated as the success
+			// signal because a prior hydrate/rehydrate may have already
+			// set it to true, causing a failed setProvider to be mistaken
+			// for a successful one.
+			const providerSucceeded = setProviderSucceededGen > providerGen;
 			setConfigSlice({
 				...configSlice,
 				config: providerSucceeded ? configSlice.config : config,
@@ -208,7 +219,7 @@ async function runHydrate(): Promise<void> {
 				...configSlice,
 				hydrated: true,
 				hydrateError:
-					setProviderSucceededGen === setProviderGeneration
+					setProviderSucceededGen > providerGen
 						? configSlice.hydrateError
 						: true,
 			});
