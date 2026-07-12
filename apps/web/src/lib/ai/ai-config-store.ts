@@ -127,8 +127,33 @@ async function runHydrate(): Promise<void> {
 		// A setProvider started (or completed) while the fetch was in
 		// flight — the user's newer provider choice is already in the
 		// store (or being written); don't clobber it with the stale
-		// pre-switch config.
-		if (providerGen !== setProviderGeneration) return;
+		// pre-switch config. But still populate availableProviders and
+		// mark the slice hydrated: if setProvider failed (unconfigured
+		// provider or fetch error), it bumped setProviderGeneration
+		// without writing hydrated=true, and the module-level `hydrated`
+		// flag is already true so later hydrate() calls short-circuit —
+		// without this write the config slice stays un-hydrated forever
+		// with no retry path (hydrateError is false). If setProvider
+		// succeeded, it already wrote hydrated=true; this write is a
+		// no-op on that field but still supplies availableProviders
+		// (which setProvider's success path doesn't populate, leaving
+		// the sidebar with an empty provider list).
+		if (providerGen !== setProviderGeneration) {
+			if (gen !== hydrateGeneration) return;
+			setConfigSlice({
+				...configSlice,
+				availableProviders,
+				hydrated: true,
+				// If setProvider succeeded, preserve its hydrateError
+				// (false). If setProvider failed, surface the hydrate's
+				// fallback state so the user gets a Retry button when the
+				// hydrate itself also fell back.
+				hydrateError: configSlice.hydrated
+					? configSlice.hydrateError
+					: fromFallback,
+			});
+			return;
+		}
 		setConfigSlice({
 			...configSlice,
 			config,
@@ -142,7 +167,18 @@ async function runHydrate(): Promise<void> {
 		// something beyond the network layer throws (e.g. a corrupted
 		// localStorage cache parse) — treat it the same as a failed hydrate.
 		if (gen !== hydrateGeneration) return;
-		if (providerGen !== setProviderGeneration) return;
+		if (providerGen !== setProviderGeneration) {
+			// Same rationale as the success-path guard above: mark
+			// hydrated so the UI isn't stuck. We don't have
+			// availableProviders (the fetch threw), so just mark
+			// hydrated and set the error if setProvider didn't succeed.
+			setConfigSlice({
+				...configSlice,
+				hydrated: true,
+				hydrateError: configSlice.hydrated ? configSlice.hydrateError : true,
+			});
+			return;
+		}
 		setConfigSlice({ ...configSlice, hydrated: true, hydrateError: true });
 	}
 }
@@ -197,14 +233,11 @@ export async function setProvider(
 		//
 		// Also set hydrated=true: if setProvider wins the race against an
 		// in-flight runHydrate (the user switched providers while the initial
-		// hydrate fetch was pending), runHydrate's generation guard discards
-		// its result without writing hydrated=true to the config slice. The
-		// module-level `hydrated` flag is already true (set at the start of
-		// runHydrate), so later hydrate() calls short-circuit — but
-		// configSlice.hydrated stays false, disabling every game's Start
-		// control with no retry UI (hydrateError is false, so no retry button).
-		// Setting hydrated=true here completes the hydration state that the
-		// stale runHydrate would have written.
+		// hydrate fetch was pending), the user needs hydrated=true immediately
+		// — can't wait for runHydrate to resolve. runHydrate's generation guard
+		// now also writes hydrated=true (and availableProviders) when it
+		// detects the race, but setProvider's own write ensures the slice is
+		// marked without depending on the stale hydrate's resolution timing.
 		const merged = {
 			...configSlice.config,
 			provider,

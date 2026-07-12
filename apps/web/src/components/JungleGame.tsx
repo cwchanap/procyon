@@ -20,6 +20,7 @@ import {
 	rehydrate as rehydrateAIConfig,
 } from '../lib/ai/ai-config-store';
 import { usePlayHistory } from '../hooks/usePlayHistory';
+import { useAIConfigHydration } from '../hooks/useAIConfigHydration';
 import type { AIProvider } from '../lib/ai/types';
 import JungleBoard from './JungleBoard';
 import GameScaffold from './game/GameScaffold';
@@ -66,6 +67,7 @@ const JungleGame: React.FC = () => {
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const { isAuthenticated, loading: authLoading } = useAuth();
+	useAIConfigHydration();
 
 	// Trigger debug button with Shift+D (development only)
 	useEffect(() => {

@@ -82,6 +82,16 @@ export function usePlayHistory({
 	// (set back to false), consume the new game's retry budget, and
 	// schedule a retry that submits an overlapping duplicate record.
 	const gameGenerationRef = useRef(0);
+	// Snapshot of the terminal save data, captured on the first save
+	// attempt and reused across retries so that changes to aiPlayer,
+	// provider, or model after game-over don't corrupt the record (e.g.
+	// recording the opposite win/loss or a different opponentLlmId).
+	// Cleared in the reset effect when a new game starts.
+	const saveSnapshotRef = useRef<{
+		result: 'win' | 'loss' | 'draw';
+		opponentLlmId: string;
+		gameVariant: GameVariant;
+	} | null>(null);
 	// State-based retry trigger: incremented when a save attempt fails so the
 	// auto-save effect re-runs (its deps include `retryTrigger`). Bounded by
 	// MAX_SAVE_ATTEMPTS to prevent infinite retry loops.
@@ -111,12 +121,27 @@ export function usePlayHistory({
 		// savedRef / attemptsRef / retry timer.
 		const gen = gameGenerationRef.current;
 
+		// Use the snapshotted save data if this is a retry (the snapshot
+		// was captured on the first attempt). Otherwise compute and
+		// snapshot it so that subsequent retries use the frozen values
+		// even if aiPlayer/provider/model changed after game-over.
 		let result: 'win' | 'loss' | 'draw';
-		if (gameStatus === 'draw' || gameStatus === 'stalemate') {
-			result = 'draw';
+		let opponentLlmId: string;
+		let snapshotGameVariant: GameVariant;
+		if (saveSnapshotRef.current) {
+			result = saveSnapshotRef.current.result;
+			opponentLlmId = saveSnapshotRef.current.opponentLlmId;
+			snapshotGameVariant = saveSnapshotRef.current.gameVariant;
 		} else {
-			const winnerColor = getWinnerColor();
-			result = winnerColor === aiPlayer ? 'loss' : 'win';
+			if (gameStatus === 'draw' || gameStatus === 'stalemate') {
+				result = 'draw';
+			} else {
+				const winnerColor = getWinnerColor();
+				result = winnerColor === aiPlayer ? 'loss' : 'win';
+			}
+			opponentLlmId = resolveOpponentLlmId(aiConfig.provider, aiConfig.model);
+			snapshotGameVariant = gameVariant;
+			saveSnapshotRef.current = { result, opponentLlmId, gameVariant };
 		}
 
 		savedRef.current = true;
@@ -128,17 +153,13 @@ export function usePlayHistory({
 		}
 
 		try {
-			const opponentLlmId = resolveOpponentLlmId(
-				aiConfig.provider,
-				aiConfig.model
-			);
 			const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				credentials: 'include',
 				signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
 				body: JSON.stringify({
-					chessId: gameVariant,
+					chessId: snapshotGameVariant,
 					status: result,
 					date: new Date().toISOString(),
 					opponentLlmId,
@@ -250,6 +271,7 @@ export function usePlayHistory({
 		if (gameStatus === 'playing' && moveCount === 0) {
 			savedRef.current = false;
 			attemptsRef.current = 0;
+			saveSnapshotRef.current = null;
 			// Bump the game generation so any in-flight savePlayHistory from
 			// the previous game detects it is stale (gen mismatch) and skips
 			// its 5xx retry path — otherwise it would clobber this reset.
