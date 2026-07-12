@@ -643,6 +643,7 @@ const XiangqiGame: React.FC = () => {
 						setErrorMsg(err);
 					}}
 					onModelChange={model => setAIModel(model)}
+					hydrated={aiConfigHydrated}
 					aiPlayerOptions={[
 						{ value: 'black', label: 'AI plays Black (黑方)' },
 						{ value: 'red', label: 'AI plays Red (红方)' },
