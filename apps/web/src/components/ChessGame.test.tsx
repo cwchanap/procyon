@@ -3,6 +3,8 @@ import { render, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../test/reactSetup';
 import ChessGame from './ChessGame';
+import { AUTH_CHANGE_EVENT } from '../lib/auth';
+import { resetAIConfigStore } from '../lib/ai/ai-config-store';
 
 setupReactDom();
 
@@ -32,11 +34,15 @@ describe('ChessGame — inline "AI plays" select', () => {
 		// the Start button is enabled (letting tests drive gameActive).
 		delete (window as unknown as Record<string, unknown>)
 			.__PROCYON_INITIAL_AUTH_USER__;
+		// Reset the AI config store so each test starts from a clean slate
+		// (prior tests may have hydrated or set a config).
+		resetAIConfigStore();
 	});
 
 	afterEach(() => {
 		delete (window as unknown as Record<string, unknown>)
 			.__PROCYON_INITIAL_AUTH_USER__;
+		resetAIConfigStore();
 	});
 
 	test('renders the AI-plays select with Black and White options, defaulting to Black', async () => {
@@ -109,5 +115,80 @@ describe('ChessGame — inline "AI plays" select', () => {
 		)) as HTMLSelectElement;
 
 		expect(select.disabled).toBe(false);
+	});
+
+	test('select is re-enabled when auth is lost mid-game (logout resets local game state)', async () => {
+		// Start authenticated so the game can begin, then simulate logout by
+		// dispatching the real AUTH_CHANGE_EVENT with user: null. The local
+		// gameActive/aiPlayer state must reset so the AI-plays select is
+		// re-enabled and the game doesn't continue against the reset default
+		// (no-key) AI config.
+		(
+			window as unknown as Record<string, InitialAuthUser>
+		).__PROCYON_INITIAL_AUTH_USER__ = { username: 'tester' };
+
+		// Hydrate makes a fetch to /ai-config; mock it to return an empty
+		// list so hydrate succeeds (hydrated=true, hydrateError=false) and
+		// aiStarting clears, enabling the Start button. Also point
+		// globalThis.localStorage at window.localStorage so
+		// readLocalConfig/saveAIConfig don't throw (reactSetup only
+		// exposes window.localStorage, not the global slot).
+		const originalFetch = globalThis.fetch;
+		const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
+			globalThis,
+			'localStorage'
+		);
+		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
+			Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ configurations: [] }),
+			})) as unknown as typeof fetch;
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			value: window.localStorage,
+		});
+
+		try {
+			const { getByLabelText, getByRole } = render(<ChessGame />);
+			const select = (await waitFor(() =>
+				getByLabelText(/AI plays/i)
+			)) as HTMLSelectElement;
+
+			// Wait for hydration to finish: aiStarting clears and Start
+			// becomes enabled.
+			const startButton = await waitFor(() =>
+				getByRole('button', { name: /start/i })
+			);
+			fireEvent.click(startButton);
+
+			// After starting: select is locked (gameActive true).
+			await waitFor(() => {
+				expect(select.disabled).toBe(true);
+			});
+
+			// Simulate logout: dispatch the real auth-change event with
+			// null user. The ChessGame effect should reset local game
+			// state (gameActive=false), re-enabling the select.
+			globalThis.dispatchEvent(
+				new CustomEvent(AUTH_CHANGE_EVENT, {
+					detail: { user: null },
+				})
+			);
+
+			await waitFor(() => {
+				expect(select.disabled).toBe(false);
+			});
+		} finally {
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			if (originalLocalStorageDesc) {
+				Object.defineProperty(
+					globalThis,
+					'localStorage',
+					originalLocalStorageDesc
+				);
+			} else {
+				delete (globalThis as Record<string, unknown>).localStorage;
+			}
+		}
 	});
 });

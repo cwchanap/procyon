@@ -568,6 +568,22 @@ const ChessGame: React.FC = () => {
 		setGameActive(false);
 	}, [gameMode, aiPlayer]);
 
+	// Reset local game state when authentication is lost (logout). The auth
+	// context wipes the AI config store on logout, but `gameActive` and
+	// `aiPlayer` live here in local state — without this reset the mounted
+	// page keeps the AI-side selector disabled (gameActive stays true) and
+	// the active game continues against the store's freshly reset default
+	// (no-key) config until a manual game reset. Track the previous auth
+	// value so we only fire on the true→false transition, not on mount.
+	const prevAuthenticatedRef = useRef(isAuthenticated);
+	useEffect(() => {
+		if (prevAuthenticatedRef.current && !isAuthenticated) {
+			resetGame();
+			setAIPlayer('black');
+		}
+		prevAuthenticatedRef.current = isAuthenticated;
+	}, [isAuthenticated, resetGame]);
+
 	const triggerDebugWin = useCallback(() => {
 		setGameState(prev => ({
 			...prev,
