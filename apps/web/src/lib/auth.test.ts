@@ -530,4 +530,116 @@ describe('useAuth', () => {
 		expect(result.current.loading).toBe(false);
 		expect(result.current.user).toEqual(mockUser);
 	});
+
+	test('fetchSession success dispatches AUTH_CHANGE_EVENT for sibling islands', async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(jsonResponse({ user: mockUser }))
+		) as any;
+
+		const captured: Array<{ user: AuthUser | null }> = [];
+		const handler = (e: Event) => {
+			captured.push((e as CustomEvent).detail);
+		};
+		globalThis.addEventListener(AUTH_CHANGE_EVENT, handler);
+
+		renderHook(() => useAuth());
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		// fetchSession succeeded with a non-null user, so an event should
+		// have been dispatched so sibling islands can sync.
+		expect(captured.length).toBeGreaterThanOrEqual(1);
+		expect(captured[captured.length - 1]!.user).toEqual(mockUser);
+
+		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
+	});
+
+	test('fetchSession null (not authenticated) does not dispatch event', async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(jsonResponse({}, 401))
+		) as any;
+
+		const captured: Array<{ user: AuthUser | null }> = [];
+		const handler = (e: Event) => {
+			captured.push((e as CustomEvent).detail);
+		};
+		globalThis.addEventListener(AUTH_CHANGE_EVENT, handler);
+
+		renderHook(() => useAuth());
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(captured).toHaveLength(0);
+
+		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
+	});
+
+	test('sibling island with failed fetchSession syncs from AUTH_CHANGE_EVENT', async () => {
+		let fetchCallCount = 0;
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			// First call (island A) succeeds, second (island B) fails.
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			return Promise.reject(new Error('Network error'));
+		}) as any;
+
+		// Island A: fetch succeeds → dispatches event
+		const { result: resultA } = renderHook(() => useAuth());
+		// Island B: fetch fails → would stay null without the event
+		const { result: resultB } = renderHook(() => useAuth());
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(resultA.current.user).toEqual(mockUser);
+		expect(resultA.current.isAuthenticated).toBe(true);
+
+		// Island B received the event from island A and synced.
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.isAuthenticated).toBe(true);
+	});
+
+	test('late-arriving fetchSession null does not clobber user from sibling event', async () => {
+		let resolveFetch: () => void = () => {};
+		const fetchPending = new Promise<void>(r => {
+			resolveFetch = r;
+		});
+
+		globalThis.fetch = mock(() =>
+			fetchPending.then(() => Promise.resolve(jsonResponse({}, 401)))
+		) as any;
+
+		const { result } = renderHook(() => useAuth());
+
+		// While fetch is pending, a sibling island dispatches an auth event.
+		await act(async () => {
+			globalThis.dispatchEvent(
+				new CustomEvent(AUTH_CHANGE_EVENT, {
+					detail: { user: mockUser },
+				})
+			);
+		});
+
+		expect(result.current.user).toEqual(mockUser);
+
+		// Now the fetch resolves with null (not authenticated).
+		await act(async () => {
+			resolveFetch();
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		// The late-arriving null must NOT clobber the user from the event.
+		expect(result.current.user).toEqual(mockUser);
+		expect(result.current.isAuthenticated).toBe(true);
+	});
 });

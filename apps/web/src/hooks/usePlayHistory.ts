@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { env } from '../lib/env';
 import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
 import type { AIConfig } from '../lib/ai/types';
@@ -36,6 +36,18 @@ function isGameOverStatus(status: GameStatus): boolean {
  * duplicate records).
  */
 const SAVE_TIMEOUT_MS = 10_000;
+
+/**
+ * Maximum number of delayed retries after a 401 response. A 401 means the
+ * session cookie expired while the game was in progress. The client's
+ * `isAuthenticated` may still be true (it doesn't periodically re-verify
+ * the session), so clearing `savedRef` alone doesn't trigger a re-render
+ * or effect re-run. We schedule a bounded number of delayed retries to
+ * give the user time to reauthenticate; if the session is still invalid
+ * after all retries, the save is abandoned.
+ */
+const MAX_401_RETRIES = 3;
+const RETRY_401_DELAY_MS = 5_000;
 
 /**
  * Auto-saves a play-history record when an AI game ends. Single source of
@@ -87,6 +99,14 @@ export function usePlayHistory({
 		opponentLlmId: string;
 		gameVariant: GameVariant;
 	} | null>(null);
+
+	// State-based retry trigger for 401 auth-expiry recovery. Incrementing
+	// this causes a re-render and effect re-run, which retries the save.
+	// Without this, clearing savedRef on 401 is a no-op when
+	// isAuthenticated stays true (no dep change → no effect re-run).
+	const [retryTrigger, setRetryTrigger] = useState(0);
+	const retry401CountRef = useRef(0);
+	const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const savePlayHistory = useCallback(async () => {
 		if (!enabled || savedRef.current) return;
@@ -174,6 +194,21 @@ export function usePlayHistory({
 					// don't touch savedRef — it now belongs to the new game.
 					if (gen !== gameGenerationRef.current) return;
 					savedRef.current = false;
+					// Schedule a delayed retry. Clearing savedRef alone
+					// doesn't cause a re-render or effect re-run when
+					// isAuthenticated stays true (the client doesn't know
+					// the cookie expired). The state bump forces a re-render,
+					// and retryTrigger in the effect deps re-fires the save.
+					// Bounded by MAX_401_RETRIES to avoid hammering the
+					// server if the session is truly expired.
+					if (retry401CountRef.current < MAX_401_RETRIES) {
+						retry401CountRef.current++;
+						retryTimerRef.current = setTimeout(() => {
+							if (gen === gameGenerationRef.current) {
+								setRetryTrigger(c => c + 1);
+							}
+						}, RETRY_401_DELAY_MS);
+					}
 				}
 				// 5xx (transient server errors): the transaction may have
 				// been committed before the error was returned (the API has
@@ -218,16 +253,28 @@ export function usePlayHistory({
 		if (enabled && isGameOverStatus(gameStatus) && !savedRef.current) {
 			void savePlayHistory();
 		}
-	}, [enabled, gameStatus, savePlayHistory]);
+	}, [enabled, gameStatus, savePlayHistory, retryTrigger]);
 
 	useEffect(() => {
 		if (gameStatus === 'playing' && moveCount === 0) {
 			savedRef.current = false;
 			saveSnapshotRef.current = null;
+			retry401CountRef.current = 0;
 			// Bump the game generation so any in-flight savePlayHistory from
 			// the previous game detects it is stale (gen mismatch) and skips
 			// its 401 retry path — otherwise it would clobber this reset.
 			gameGenerationRef.current += 1;
 		}
 	}, [gameStatus, moveCount]);
+
+	// Clear any pending 401 retry timer on unmount to prevent a setState
+	// call after the component is gone.
+	useEffect(() => {
+		return () => {
+			if (retryTimerRef.current) {
+				clearTimeout(retryTimerRef.current);
+				retryTimerRef.current = null;
+			}
+		};
+	}, []);
 }

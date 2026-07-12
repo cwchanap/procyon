@@ -843,13 +843,14 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			}) as unknown as Response;
 		}) as unknown as typeof fetch;
 
-		const { rerender } = renderHook(props => usePlayHistory(props), {
+		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
 			initialProps: makeProps({
 				gameStatus: 'checkmate',
 				moveCount: 10,
 				isAuthenticated: true,
 			}),
 		});
+		unmountHook = unmount;
 
 		// First save attempt fires — gets 401.
 		await act(async () => {
@@ -857,7 +858,8 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		});
 		expect(fetchCallCount).toBe(1);
 
-		// Wait to ensure no backoff retry fires (401 doesn't use the timer).
+		// Wait to ensure no delayed retry fires within this window
+		// (RETRY_401_DELAY_MS is 5s, well beyond 100ms).
 		await act(async () => {
 			await new Promise(r => setTimeout(r, 100));
 		});
@@ -891,5 +893,211 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 
 		// Second save attempt fires after auth recovery — gets 200.
 		expect(fetchCallCount).toBe(2);
+	});
+
+	// [P2] When a 401 response occurs and isAuthenticated stays true (the
+	// client doesn't know the cookie expired), clearing savedRef alone
+	// doesn't trigger a re-render or effect re-run. The hook must schedule
+	// a state-based retry that forces the effect to re-fire.
+	test('401 schedules delayed retry that fires even when isAuthenticated stays true', async () => {
+		let fetchCallIdx = 0;
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				fetchCallIdx++;
+				if (fetchCallIdx === 1) {
+					return Promise.resolve({
+						ok: false,
+						status: 401,
+						statusText: 'Unauthorized',
+						json: () => Promise.resolve({}),
+					}) as unknown as Response;
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		// Capture long-delay setTimeout callbacks (the 401 retry) so we
+		// can fire them without waiting 5 seconds.
+		const originalSetTimeout = globalThis.setTimeout;
+		let retryCallback: (() => void) | null = null;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				retryCallback = fn;
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+
+		const { unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+			}),
+		});
+		unmountHook = unmount;
+
+		// First save attempt fires — gets 401.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// The 401 should have scheduled a delayed retry.
+		expect(retryCallback).not.toBeNull();
+
+		// Fire the retry callback to simulate the delay elapsing.
+		// isAuthenticated is still true (no auth state change), but the
+		// retryTrigger state bump forces a re-render and effect re-run.
+		await act(async () => {
+			retryCallback!();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(2);
+
+		globalThis.setTimeout = originalSetTimeout;
+	});
+
+	// [P2] The 401 retry count is bounded by MAX_401_RETRIES to avoid
+	// hammering the server when the session is truly expired.
+	test('401 retry count is bounded — stops after MAX_401_RETRIES attempts', async () => {
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				return Promise.resolve({
+					ok: false,
+					status: 401,
+					statusText: 'Unauthorized',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		// Fire long-delay timers immediately to simulate all retries.
+		const originalSetTimeout = globalThis.setTimeout;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				fn();
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+
+		const { unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+			}),
+		});
+		unmountHook = unmount;
+
+		// Wait for all retries to fire (initial + MAX_401_RETRIES).
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+
+		// 1 initial attempt + 3 retries = 4 total fetch calls.
+		expect(fetchCallCount).toBe(4);
+
+		// Wait more to ensure no further retries fire.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+		expect(fetchCallCount).toBe(4);
+
+		globalThis.setTimeout = originalSetTimeout;
+	});
+
+	// [P2] The 401 retry count resets when a new game starts, so a
+	// subsequent game gets a full retry budget.
+	test('401 retry count resets when a new game starts', async () => {
+		let fetchCallIdx = 0;
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				fetchCallIdx++;
+				// Game A: all 401. Game B: first attempt 200.
+				if (fetchCallIdx <= 4) {
+					return Promise.resolve({
+						ok: false,
+						status: 401,
+						statusText: 'Unauthorized',
+						json: () => Promise.resolve({}),
+					}) as unknown as Response;
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		const originalSetTimeout = globalThis.setTimeout;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				fn();
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+
+		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+			}),
+		});
+		unmountHook = unmount;
+
+		// Game A: 1 initial + 3 retries = 4 fetch calls (all 401).
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+		expect(fetchCallCount).toBe(4);
+
+		// New game starts — retry count resets.
+		rerender(makeProps({ gameStatus: 'playing', moveCount: 0 }));
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		// Game B ends — save fires (200 this time).
+		rerender(makeProps({ gameStatus: 'checkmate', moveCount: 10 }));
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+
+		// 4 from Game A + 1 from Game B = 5 total.
+		expect(fetchCallCount).toBe(5);
+
+		globalThis.setTimeout = originalSetTimeout;
 	});
 });
