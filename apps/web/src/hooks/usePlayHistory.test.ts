@@ -1100,4 +1100,179 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 
 		globalThis.setTimeout = originalSetTimeout;
 	});
+
+	// [P2] After the 401 retry budget is exhausted, a provider/model dep
+	// change must NOT bypass the retry bound. Previously the budget was
+	// checked only when scheduling the retry timer, so changing the AI
+	// config (which recreates savePlayHistory and reruns the effect) would
+	// fire an unbounded stream of POSTs — one per dep change — even though
+	// no more timers were scheduled.
+	test('provider/model change after 401 budget exhaustion does not bypass retry bound', async () => {
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				return Promise.resolve({
+					ok: false,
+					status: 401,
+					statusText: 'Unauthorized',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		// Fire long-delay timers immediately to exhaust the budget.
+		const originalSetTimeout = globalThis.setTimeout;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				fn();
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+
+		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+			}),
+		});
+		unmountHook = unmount;
+
+		// 1 initial + 3 retries = 4 fetch calls (all 401, budget exhausted).
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+		expect(fetchCallCount).toBe(4);
+
+		// Change provider — recreates savePlayHistory, reruns the effect.
+		// The save-entry guard must block this since the budget is exhausted.
+		rerender(
+			makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+				aiConfig: { ...testAIConfig, provider: 'openai', model: 'gpt-4o' },
+			})
+		);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+
+		// No additional fetch — the guard prevented the bypass.
+		expect(fetchCallCount).toBe(4);
+
+		// Change model too — same expectation.
+		rerender(
+			makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+				aiConfig: { ...testAIConfig, provider: 'openai', model: 'gpt-4o-mini' },
+			})
+		);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 50));
+		});
+		expect(fetchCallCount).toBe(4);
+
+		globalThis.setTimeout = originalSetTimeout;
+	});
+
+	// [P2] A provider/model dep change during the 401 retry window must
+	// not cause the total fetch count to exceed the retry budget. The
+	// pending retry timer is cancelled before scheduling a new one, and
+	// the save-entry guard caps the total at 1 + MAX_401_RETRIES.
+	test('provider/model change during 401 retry window stays within budget', async () => {
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				return Promise.resolve({
+					ok: false,
+					status: 401,
+					statusText: 'Unauthorized',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		// Capture retry callbacks so we can fire them in controlled order.
+		const originalSetTimeout = globalThis.setTimeout;
+		const retryCallbacks: Array<() => void> = [];
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				retryCallbacks.push(fn);
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+
+		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+			}),
+		});
+		unmountHook = unmount;
+
+		// Save 1 (initial) — gets 401, captures retry callback 0.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+		expect(retryCallbacks).toHaveLength(1);
+
+		// Change provider — dep change reruns effect, fires save 2.
+		// Save 2 gets 401, clears the old timer, captures callback 1.
+		await act(async () => {
+			rerender(
+				makeProps({
+					gameStatus: 'checkmate',
+					moveCount: 10,
+					isAuthenticated: true,
+					aiConfig: { ...testAIConfig, provider: 'openai', model: 'gpt-4o' },
+				})
+			);
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(2);
+		expect(retryCallbacks).toHaveLength(2);
+
+		// Fire callback 1 (from save 2) — save 3 gets 401, captures callback 2.
+		await act(async () => {
+			retryCallbacks[1]!();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(3);
+
+		// Fire callback 2 (from save 3) — save 4 gets 401, no more callbacks.
+		await act(async () => {
+			retryCallbacks[2]!();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(4);
+
+		// Fire the orphaned callback 0 (from save 1, should have been cleared).
+		// Even if it fires, the save-entry guard blocks since count > MAX.
+		await act(async () => {
+			retryCallbacks[0]!();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(4);
+
+		globalThis.setTimeout = originalSetTimeout;
+	});
 });

@@ -110,6 +110,12 @@ export function usePlayHistory({
 
 	const savePlayHistory = useCallback(async () => {
 		if (!enabled || savedRef.current) return;
+		// Enforce the 401 retry budget at save entry, not just at timer
+		// scheduling. Without this, a provider/model dep change after the
+		// budget is exhausted (savedRef is false, no timer scheduled) would
+		// rerun the effect and fire an unbounded stream of POSTs — one per
+		// dep change — bypassing MAX_401_RETRIES entirely.
+		if (retry401CountRef.current > MAX_401_RETRIES) return;
 		if (!(isAuthenticated || import.meta.env.DEV)) return;
 		if (!aiPlayer) return;
 		if (!isGameOverStatus(gameStatus)) return;
@@ -194,6 +200,13 @@ export function usePlayHistory({
 					// don't touch savedRef — it now belongs to the new game.
 					if (gen !== gameGenerationRef.current) return;
 					savedRef.current = false;
+					// Count this 401 response toward the retry budget. The
+					// budget is enforced at save entry (above) so that dep
+					// changes (provider/model) after exhaustion can't bypass
+					// it. Increment here — after the response, before the
+					// scheduling decision — so the guard at entry sees the
+					// total 401s received, not just timers scheduled.
+					retry401CountRef.current++;
 					// Schedule a delayed retry. Clearing savedRef alone
 					// doesn't cause a re-render or effect re-run when
 					// isAuthenticated stays true (the client doesn't know
@@ -201,8 +214,16 @@ export function usePlayHistory({
 					// and retryTrigger in the effect deps re-fires the save.
 					// Bounded by MAX_401_RETRIES to avoid hammering the
 					// server if the session is truly expired.
-					if (retry401CountRef.current < MAX_401_RETRIES) {
-						retry401CountRef.current++;
+					if (retry401CountRef.current <= MAX_401_RETRIES) {
+						// Cancel any pending retry timer before scheduling a
+						// new one. Without this, a dep-change-triggered save
+						// that also gets 401 would overwrite the timer handle,
+						// orphaning the previous timer — it would still fire
+						// and cause an extra retry beyond the budget.
+						if (retryTimerRef.current) {
+							clearTimeout(retryTimerRef.current);
+							retryTimerRef.current = null;
+						}
 						retryTimerRef.current = setTimeout(() => {
 							if (gen === gameGenerationRef.current) {
 								setRetryTrigger(c => c + 1);
