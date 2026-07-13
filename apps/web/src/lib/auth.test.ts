@@ -359,6 +359,28 @@ describe('useAuth', () => {
 		expect(result.current.loading).toBe(false);
 	});
 
+	test('sets user to null when session fetch returns ok but unparseable JSON', async () => {
+		// Response with ok=true but invalid JSON body — exercises the
+		// inner catch in fetchSession that returns { status: 'error' }.
+		globalThis.fetch = mock(() =>
+			Promise.resolve(
+				new Response('<<not-json>>', {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+			)
+		) as any;
+
+		const { result } = renderHook(() => useAuth());
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(result.current.user).toBeNull();
+		expect(result.current.loading).toBe(false);
+	});
+
 	test('does not fetch session when initialUser is provided', () => {
 		const fetchSpy = mock(() =>
 			Promise.resolve(jsonResponse({ user: mockUser }))

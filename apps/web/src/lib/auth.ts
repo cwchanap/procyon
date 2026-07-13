@@ -262,12 +262,29 @@ export function useAuth(options?: UseAuthOptions) {
 								// event ordering is unlucky, and a transient
 								// error must not be treated as sign-out.
 								dispatchAuthChange(result.user);
+							} else if (result.status === 'unauthenticated') {
+								// Confirmed 401 on the initial-load path (no
+								// prior user to preserve). Mirror logout()'s
+								// and the sharedUser branch's cleanup: clear
+								// the cached AI config and reset the in-memory
+								// store so a subsequent anonymous/shared-browser
+								// session can't reuse the previous user's raw
+								// API key. Do not broadcast null — there is no
+								// optimistic state to protect, and dispatching
+								// null could clobber a sibling's authenticated
+								// state if event ordering is unlucky.
+								setUser(null);
+								clearAIConfig();
+								resetAIConfigStore();
 							} else {
-								// No prior user to preserve (this is the
-								// initial-load path). Set null for both
-								// confirmed unauthenticated and transient
-								// errors — there is no optimistic state to
-								// protect here. Do not broadcast null.
+								// Transient error (non-401 non-2xx, network
+								// error, unparseable body) on the initial-load
+								// path. The session's true state is unknown —
+								// set null (there is no optimistic state to
+								// protect) but do NOT clear the AI config, since
+								// the user may still be authenticated and a
+								// transient /auth/session failure should not
+								// wipe their saved settings. Do not broadcast.
 								setUser(null);
 							}
 						}

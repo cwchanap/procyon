@@ -21,7 +21,6 @@ import AIGameInstructions from './game/AIGameInstructions';
 import type { AIMove } from './ai/AIDebugDialog';
 import { createChessAI } from '../lib/ai';
 import { defaultAIConfig } from '../lib/ai/storage';
-import { useAIConfig } from '../lib/ai/ai-config-store';
 import { usePlayHistory } from '../hooks/usePlayHistory';
 import { useAIConfigHydration } from '../hooks/useAIConfigHydration';
 import { useAuth } from '../lib/auth';
@@ -46,15 +45,18 @@ const ChessGame: React.FC = () => {
 		createInitialGameState()
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
-	const {
-		config: aiConfig,
-		hydrated: aiConfigHydrated,
-		hydrateError,
-	} = useAIConfig();
 	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
 	const [gameActive, setGameActive] = useState(false);
 	const { isAuthenticated, loading: authLoading } = useAuth();
-	useAIConfigHydration({ isAuthenticated, loading: authLoading });
+	const {
+		config: aiConfig,
+		configPending,
+		aiStarting,
+	} = useAIConfigHydration({
+		isAuthenticated,
+		loading: authLoading,
+		isAiMode: gameMode === 'ai',
+	});
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
 	const [isAiPaused, setIsAiPaused] = useState(false);
@@ -420,18 +422,6 @@ const ChessGame: React.FC = () => {
 	}, []);
 
 	// Effect to trigger AI moves
-	//
-	// configPending defers the first AI move until the config store is
-	// ready. When AI plays first (aiPlayer === 'white'), the effect would
-	// fire immediately on Start — before auth resolves and hydration
-	// completes if /auth/session is slow. That would call makeMove with
-	// the default empty config (no apiKey), pause on the null response,
-	// and no effect clears isAiPaused when hydration finishes. Gating
-	// here ensures the move only fires once configReady is true; when
-	// hydration completes, aiConfigHydrated flips and this effect
-	// re-runs (it's in the deps).
-	const configPending =
-		authLoading || (isAuthenticated && (!aiConfigHydrated || hydrateError));
 	useEffect(() => {
 		if (
 			gameMode === 'ai' &&
@@ -588,6 +578,9 @@ const ChessGame: React.FC = () => {
 	);
 
 	const resetGame = useCallback(() => {
+		// Invalidate any in-flight makeAIMoveAsync callback so it cannot
+		// apply stale setGameState/setAiError results after the reset.
+		aiMoveGenRef.current++;
 		if (gameMode === 'ai') {
 			setGameState(createInitialGameState('human-vs-ai', aiPlayer));
 		} else {
@@ -662,22 +655,6 @@ const ChessGame: React.FC = () => {
 			triggerDebugWin();
 		};
 	}, [triggerDebugWin]);
-
-	// In AI mode, authenticated users must wait for the AI config store to
-	// hydrate before starting — otherwise aiConfig still holds defaults (no
-	// apiKey, enabled=false) and the first AI move would fail. Anonymous
-	// visitors never hydrate (the call is gated in AppShell) and are not
-	// blocked here. We deliberately do NOT gate the Start button on
-	// authLoading: blocking on authLoading would stall anonymous startup
-	// if /auth/session is slow or unavailable. Instead, the AI move
-	// trigger effect itself defers via configPending (see above) so that
-	// even if a signed-in user starts during a slow /auth/session request
-	// with AI playing first, the AI move waits for hydration rather than
-	// firing with the empty default config. A failed hydrate (hydrateError)
-	// still blocks Start for authenticated users — the default config has
-	// no API key, so the AI turn would stall.
-	const aiStarting =
-		gameMode === 'ai' && isAuthenticated && (!aiConfigHydrated || hydrateError);
 
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {
