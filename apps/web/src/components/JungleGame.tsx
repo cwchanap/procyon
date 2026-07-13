@@ -156,10 +156,21 @@ const JungleGame: React.FC = () => {
 	}, [aiService, aiConfig, isDebugMode, createAIMove]);
 
 	// AI move handling
+	//
+	// configPending defers the first AI move until the config store is
+	// ready. When AI plays first, the effect would fire immediately on
+	// Start — before auth resolves and hydration completes if
+	// /auth/session is slow. That would call makeMove with the default
+	// empty config (no apiKey) and stall. Gating here ensures the move
+	// only fires once config is ready; when hydration completes,
+	// aiConfigHydrated flips and this effect re-runs (it's in the deps).
+	const configPending =
+		authLoading || (isAuthenticated && (!aiConfigHydrated || hydrateError));
 	useEffect(() => {
 		if (
 			gameMode === 'ai' &&
 			gameStarted &&
+			!configPending &&
 			gameState.currentPlayer === aiPlayer &&
 			(gameState.status === 'playing' || gameState.status === 'check') &&
 			!isAIThinking
@@ -198,7 +209,15 @@ const JungleGame: React.FC = () => {
 			const timer = setTimeout(makeAIMove, 1000);
 			return () => clearTimeout(timer);
 		}
-	}, [gameState, gameMode, gameStarted, aiPlayer, aiService, isAIThinking]);
+	}, [
+		gameState,
+		gameMode,
+		gameStarted,
+		configPending,
+		aiPlayer,
+		aiService,
+		isAIThinking,
+	]);
 
 	const createCustomJungleBoard = useCallback(
 		(setup: string): (JunglePiece | null)[][] => {
@@ -406,12 +425,15 @@ const JungleGame: React.FC = () => {
 	// hydrate before starting — otherwise aiConfig still holds defaults (no
 	// apiKey, enabled=false) and the first AI move would fail. Anonymous
 	// visitors never hydrate (the call is gated in AppShell) and are not
-	// blocked here. We deliberately do NOT gate on authLoading: the AI
-	// move only fires after the human's first move, by which time auth
-	// resolves and hydration completes, and blocking on authLoading would
-	// stall anonymous startup if /auth/session is slow or unavailable. A
-	// failed hydrate (hydrateError) still blocks Start for authenticated
-	// users — the default config has no API key, so the AI turn would stall.
+	// blocked here. We deliberately do NOT gate the Start button on
+	// authLoading: blocking on authLoading would stall anonymous startup
+	// if /auth/session is slow or unavailable. Instead, the AI move
+	// trigger effect itself defers via configPending (see above) so that
+	// even if a signed-in user starts during a slow /auth/session request
+	// with AI playing first, the AI move waits for hydration rather than
+	// firing with the empty default config. A failed hydrate (hydrateError)
+	// still blocks Start for authenticated users — the default config has
+	// no API key, so the AI turn would stall.
 	const aiStarting =
 		gameMode === 'ai' && isAuthenticated && (!aiConfigHydrated || hydrateError);
 
