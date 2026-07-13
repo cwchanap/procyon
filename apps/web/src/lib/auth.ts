@@ -73,16 +73,42 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
 	return {};
 }
 
-async function fetchSession(): Promise<AuthUser | null> {
+/**
+ * Outcome of a `/auth/session` revalidation request.
+ *
+ * - `ok` — the server confirmed an authenticated session and returned the
+ *   user.
+ * - `unauthenticated` — the server returned 401, confirming the session is
+ *   genuinely gone (expired/signed out). Callers may safely sign out local
+ *   state and broadcast to sibling islands.
+ * - `error` — a transient failure (non-401 non-2xx response, network error,
+ *   or unparseable body). The session's true state is unknown, so callers
+ *   that hold an optimistic user must preserve it rather than treat this as
+ *   a confirmed sign-out.
+ */
+type SessionResult =
+	| { status: 'ok'; user: AuthUser }
+	| { status: 'unauthenticated' }
+	| { status: 'error' };
+
+async function fetchSession(): Promise<SessionResult> {
 	try {
 		const res = await fetch(`${API_BASE_URL}/auth/session`, {
 			credentials: 'include',
 		});
-		if (!res.ok) return null;
-		const data = (await res.json()) as { user: AuthUser };
-		return data.user;
+		// 401 is the only status the endpoint uses to signal a confirmed
+		// missing/expired session. Any other non-2xx (e.g. 500) is a
+		// transient server error — must not be treated as sign-out.
+		if (res.status === 401) return { status: 'unauthenticated' };
+		if (!res.ok) return { status: 'error' };
+		try {
+			const data = (await res.json()) as { user: AuthUser };
+			return { status: 'ok', user: data.user };
+		} catch {
+			return { status: 'error' };
+		}
 	} catch {
-		return null;
+		return { status: 'error' };
 	}
 }
 
@@ -177,40 +203,73 @@ export function useAuth(options?: UseAuthOptions) {
 			// cross-tab sign-out or session expiry leaves it stale. Apply
 			// the snapshot optimistically to avoid a flash of
 			// unauthenticated UI, then revalidate via fetchSession() in
-			// the background. If revalidation returns null the session is
-			// gone — clear state and broadcast so sibling islands also
-			// learn. If a sibling AUTH_CHANGE_EVENT arrives during
+			// the background. If revalidation confirms the session is gone
+			// (401), clear state, wipe the cached AI config (so a later
+			// anonymous/shared-browser session can't reuse the previous
+			// user's raw API key), and broadcast so sibling islands also
+			// learn. If revalidation fails transiently (network error,
+			// 5xx, unparseable body), the session's true state is unknown
+			// — preserve the optimistic user and do NOT broadcast, so a
+			// temporary /auth/session failure doesn't log out every
+			// mounted island. If a sibling AUTH_CHANGE_EVENT arrives during
 			// revalidation, trust the event (it may be from a fresher
 			// login) and skip the revalidation result.
 			const sharedUser = getSharedAuthUser();
 			if (sharedUser) {
 				setUser(sharedUser);
 				setLoading(false);
-				fetchSession().then(u => {
+				fetchSession().then(result => {
 					if (!mounted) return;
 					if (eventReceived) return;
-					if (u) {
-						setUser(u);
-						dispatchAuthChange(u);
-					} else {
+					if (result.status === 'ok') {
+						setUser(result.user);
+						dispatchAuthChange(result.user);
+					} else if (result.status === 'unauthenticated') {
 						setUser(null);
 						dispatchAuthChange(null);
+						// Mirror logout()'s cleanup: a confirmed passive
+						// sign-out must also drop the cached AI config and
+						// reset the in-memory store (including the raw API
+						// key fetched by hydrate and the `hydrated` flag).
+						// Without this, an anonymous game or a subsequent
+						// login reuses the previous user's key because
+						// hydrate short-circuits on the stale `hydrated`
+						// flag.
+						clearAIConfig();
+						resetAIConfigStore();
 					}
+					// result.status === 'error': transient failure. The
+					// session's true state is unknown — preserve the
+					// optimistic sharedUser already in state and do not
+					// broadcast, so sibling islands aren't logged out by a
+					// temporary /auth/session failure.
 				});
 			} else {
 				fetchSession()
-					.then(u => {
+					.then(result => {
 						if (mounted && !eventReceived) {
-							setUser(u);
-							// Broadcast to sibling islands so an island whose own
-							// fetchSession() transiently failed can still learn the
-							// user is authenticated. Without this, a transient
-							// fetch failure in one island permanently suppresses
-							// features (like play-history save) that depend on
-							// isAuthenticated. Only dispatch for non-null users —
-							// dispatching null could clobber a sibling's
-							// authenticated state if event ordering is unlucky.
-							if (u) dispatchAuthChange(u);
+							if (result.status === 'ok') {
+								setUser(result.user);
+								// Broadcast to sibling islands so an island
+								// whose own fetchSession() transiently failed
+								// can still learn the user is authenticated.
+								// Without this, a transient fetch failure in
+								// one island permanently suppresses features
+								// (like play-history save) that depend on
+								// isAuthenticated. Only dispatch for a
+								// confirmed user — dispatching null could
+								// clobber a sibling's authenticated state if
+								// event ordering is unlucky, and a transient
+								// error must not be treated as sign-out.
+								dispatchAuthChange(result.user);
+							} else {
+								// No prior user to preserve (this is the
+								// initial-load path). Set null for both
+								// confirmed unauthenticated and transient
+								// errors — there is no optimistic state to
+								// protect here. Do not broadcast null.
+								setUser(null);
+							}
 						}
 					})
 					.finally(() => {

@@ -21,6 +21,11 @@ import {
 	useAuth,
 	__resetSharedAuthUserForTests,
 } from './auth';
+import {
+	setConfig as setAIConfig,
+	getConfigSlice as getAIConfigSlice,
+	resetAIConfigStore as resetAIConfigStoreForTests,
+} from './ai/ai-config-store';
 
 const mockUser: AuthUser = {
 	id: 'u1',
@@ -257,6 +262,7 @@ describe('useAuth', () => {
 		globalThis.fetch = originalFetch;
 		delete (happyWindow as any).__PROCYON_INITIAL_AUTH_USER__;
 		__resetSharedAuthUserForTests();
+		resetAIConfigStoreForTests();
 	});
 
 	test('starts with loading=false and user when given initialUser option', () => {
@@ -731,5 +737,225 @@ describe('useAuth', () => {
 		// The late-arriving null must NOT clobber the user from the event.
 		expect(result.current.user).toEqual(mockUser);
 		expect(result.current.isAuthenticated).toBe(true);
+	});
+
+	test('late-mounting island preserves optimistic user when revalidation returns 500 (transient)', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			// Island B revalidation — deferred, returns 500 (transient
+			// server error) when resolved.
+			return revalidationPending.then(() =>
+				Promise.resolve(jsonResponse({}, 500))
+			);
+		}) as any;
+
+		const captured: Array<{ user: AuthUser | null }> = [];
+		const handler = (e: Event) => {
+			captured.push((e as CustomEvent).detail);
+		};
+		globalThis.addEventListener(AUTH_CHANGE_EVENT, handler);
+
+		// Island A mounts and fetches successfully → sets snapshot.
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.user).toEqual(mockUser);
+
+		// Island B mounts after island A's event. It reads the stale
+		// snapshot optimistically, then revalidates via fetchSession().
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.isAuthenticated).toBe(true);
+
+		// Clear events captured so far (island A's login broadcast).
+		captured.length = 0;
+
+		// Resolve the revalidation with 500 (transient). Island B must
+		// preserve the optimistic user and NOT broadcast null.
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.isAuthenticated).toBe(true);
+		expect(captured).toHaveLength(0);
+
+		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
+	});
+
+	test('late-mounting island preserves optimistic user when revalidation throws (network error)', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			// Island B revalidation — deferred, rejects with a network
+			// error when resolved.
+			return revalidationPending.then(() =>
+				Promise.reject(new Error('Network error'))
+			);
+		}) as any;
+
+		const captured: Array<{ user: AuthUser | null }> = [];
+		const handler = (e: Event) => {
+			captured.push((e as CustomEvent).detail);
+		};
+		globalThis.addEventListener(AUTH_CHANGE_EVENT, handler);
+
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.user).toEqual(mockUser);
+
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+
+		captured.length = 0;
+
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.isAuthenticated).toBe(true);
+		expect(captured).toHaveLength(0);
+
+		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
+	});
+
+	test('confirmed 401 expiry on revalidation clears the AI config store', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			return revalidationPending.then(() =>
+				Promise.resolve(jsonResponse({}, 401))
+			);
+		}) as any;
+
+		// Put the AI config store into a non-initial state to verify
+		// the passive sign-out resets it. setAIConfig writes a
+		// non-default provider/model and persists the sanitized cache
+		// to localStorage.
+		setAIConfig({
+			provider: 'openai',
+			model: 'gpt-4o',
+			apiKey: 'sk-leaked-key',
+			enabled: true,
+		});
+		const beforeReset = getAIConfigSlice();
+		expect(beforeReset.config.provider).toBe('openai');
+		expect(beforeReset.config.apiKey).toBe('sk-leaked-key');
+
+		// Island A mounts and fetches successfully → sets snapshot.
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.user).toEqual(mockUser);
+
+		// Island B mounts after island A's event, reads the snapshot,
+		// then revalidates. The revalidation is deferred so we can
+		// assert the optimistic state first.
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+
+		// Resolve the revalidation with 401 (confirmed expiry). Island
+		// B must sign out AND reset the AI config store so the previous
+		// user's raw API key can't be reused by an anonymous session.
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toBeNull();
+		expect(resultB.current.isAuthenticated).toBe(false);
+
+		const afterReset = getAIConfigSlice();
+		expect(afterReset.hydrated).toBe(false);
+		expect(afterReset.config.provider).toBe('gemini');
+		expect(afterReset.config.apiKey).toBe('');
+		expect(afterReset.config.enabled).toBe(false);
+	});
+
+	test('confirmed 401 expiry on revalidation broadcasts sign-out to sibling islands', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			return revalidationPending.then(() =>
+				Promise.resolve(jsonResponse({}, 401))
+			);
+		}) as any;
+
+		const captured: Array<{ user: AuthUser | null }> = [];
+		const handler = (e: Event) => {
+			captured.push((e as CustomEvent).detail);
+		};
+		globalThis.addEventListener(AUTH_CHANGE_EVENT, handler);
+
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.user).toEqual(mockUser);
+
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+
+		// Clear island A's login broadcast.
+		captured.length = 0;
+
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toBeNull();
+
+		// Island B broadcast null so sibling islands (including A)
+		// also learn about the confirmed sign-out.
+		expect(captured.length).toBeGreaterThanOrEqual(1);
+		expect(captured[captured.length - 1]!.user).toBeNull();
+		expect(resultA.current.user).toBeNull();
+
+		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
 	});
 });
