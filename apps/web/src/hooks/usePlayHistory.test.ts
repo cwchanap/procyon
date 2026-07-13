@@ -340,6 +340,7 @@ interface HookProps {
 	getWinnerColor: () => string;
 	enabled: boolean;
 	isAuthenticated: boolean;
+	debugVariantKey?: string;
 }
 
 function makeProps(overrides: Partial<HookProps> = {}): HookProps {
