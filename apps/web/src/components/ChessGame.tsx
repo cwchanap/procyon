@@ -451,6 +451,10 @@ const ChessGame: React.FC = () => {
 	// Game mode handlers
 	const toggleToMode = useCallback(
 		(newMode: ChessGameMode) => {
+			// Invalidate any in-flight makeAIMoveAsync callback so a stale
+			// AI response from the previous mode cannot overwrite the newly
+			// selected game state. Mirrors Xiangqi/Shogi/Jungle toggles.
+			aiMoveGenRef.current++;
 			setGameMode(newMode);
 			setGameStarted(false);
 			setIsAiPaused(false);
