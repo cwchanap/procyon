@@ -618,7 +618,8 @@ describe('useAuth', () => {
 		let fetchCallCount = 0;
 		globalThis.fetch = mock(() => {
 			fetchCallCount++;
-			// First call (island A) succeeds; island B should never fetch.
+			// Island A fetch succeeds; island B revalidates the snapshot
+			// and also gets the same user.
 			return Promise.resolve(jsonResponse({ user: mockUser }));
 		}) as any;
 
@@ -633,8 +634,8 @@ describe('useAuth', () => {
 		expect(fetchCallCount).toBe(1);
 
 		// Island B mounts AFTER island A's event was dispatched. The DOM
-		// event is not replayable, so island B must read the shared
-		// snapshot instead of fetching.
+		// event is not replayable, so island B reads the shared snapshot
+		// for optimistic UI, then revalidates via fetchSession().
 		const { result: resultB } = renderHook(() => useAuth());
 		await act(async () => {
 			await new Promise(r => setTimeout(r, 0));
@@ -643,8 +644,59 @@ describe('useAuth', () => {
 		expect(resultB.current.user).toEqual(mockUser);
 		expect(resultB.current.isAuthenticated).toBe(true);
 		expect(resultB.current.loading).toBe(false);
-		// No additional fetch — the snapshot satisfied the auth state.
-		expect(fetchCallCount).toBe(1);
+		// Island B made one revalidation fetch (snapshot + fetchSession).
+		expect(fetchCallCount).toBe(2);
+	});
+
+	test('late-mounting island revalidates stale snapshot and clears signed-out state', async () => {
+		let fetchCallCount = 0;
+		// Island A's fetch resolves immediately; island B's revalidation
+		// is deferred so we can assert the optimistic snapshot state
+		// before revalidation completes.
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			// Island B revalidation — deferred, returns 401 when resolved.
+			return revalidationPending.then(() =>
+				Promise.resolve(jsonResponse({}, 401))
+			);
+		}) as any;
+
+		// Island A mounts and fetches successfully → sets snapshot.
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.user).toEqual(mockUser);
+
+		// Island B mounts after island A's event. It reads the stale
+		// snapshot optimistically, then revalidates via fetchSession().
+		const { result: resultB } = renderHook(() => useAuth());
+
+		// Before revalidation resolves, island B is optimistically
+		// authenticated from the snapshot.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.isAuthenticated).toBe(true);
+
+		// Now resolve the revalidation fetch with 401 (session expired /
+		// user signed out in another tab). Island B must correct to
+		// signed-out and broadcast so sibling islands also learn.
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toBeNull();
+		expect(resultB.current.isAuthenticated).toBe(false);
+		expect(fetchCallCount).toBe(2);
 	});
 
 	test('late-arriving fetchSession null does not clobber user from sibling event', async () => {

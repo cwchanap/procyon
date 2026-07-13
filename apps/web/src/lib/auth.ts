@@ -171,11 +171,32 @@ export function useAuth(options?: UseAuthOptions) {
 			// island whose own fetchSession() transiently fails would
 			// never learn the user is authenticated, permanently
 			// suppressing features like play-history save.
+			//
+			// The snapshot is an optimization, not a substitute for
+			// revalidation: sharedAuthUser is module-level (per-tab), so
+			// cross-tab sign-out or session expiry leaves it stale. Apply
+			// the snapshot optimistically to avoid a flash of
+			// unauthenticated UI, then revalidate via fetchSession() in
+			// the background. If revalidation returns null the session is
+			// gone — clear state and broadcast so sibling islands also
+			// learn. If a sibling AUTH_CHANGE_EVENT arrives during
+			// revalidation, trust the event (it may be from a fresher
+			// login) and skip the revalidation result.
 			const sharedUser = getSharedAuthUser();
 			if (sharedUser) {
-				eventReceived = true;
 				setUser(sharedUser);
 				setLoading(false);
+				fetchSession().then(u => {
+					if (!mounted) return;
+					if (eventReceived) return;
+					if (u) {
+						setUser(u);
+						dispatchAuthChange(u);
+					} else {
+						setUser(null);
+						dispatchAuthChange(null);
+					}
+				});
 			} else {
 				fetchSession()
 					.then(u => {
