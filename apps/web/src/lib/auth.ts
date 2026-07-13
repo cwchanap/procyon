@@ -29,7 +29,31 @@ interface AuthChangeDetail {
 	user: AuthUser | null;
 }
 
+/**
+ * Module-level snapshot of the latest auth user, updated on every
+ * {@link dispatchAuthChange}. Late-mounting React islands read this on
+ * mount via {@link getSharedAuthUser} to recover auth state from a
+ * sibling island whose AUTH_CHANGE_EVENT fired before this island
+ * registered its listener — DOM events are not replayable, so without
+ * this snapshot a late island whose own fetchSession() transiently
+ * fails would never learn the user is authenticated.
+ */
+let sharedAuthUser: AuthUser | null = null;
+
+export function getSharedAuthUser(): AuthUser | null {
+	return sharedAuthUser;
+}
+
+/**
+ * Resets the shared auth snapshot. Intended only for test isolation —
+ * the module-level variable persists across renderHook instances.
+ */
+export function __resetSharedAuthUserForTests(): void {
+	sharedAuthUser = null;
+}
+
 function dispatchAuthChange(user: AuthUser | null): void {
+	sharedAuthUser = user;
 	try {
 		globalThis.dispatchEvent(
 			new CustomEvent<AuthChangeDetail>(AUTH_CHANGE_EVENT, { detail: { user } })
@@ -140,24 +164,38 @@ export function useAuth(options?: UseAuthOptions) {
 		const shouldFetchSession = !initialAuthState.user;
 
 		if (shouldFetchSession) {
-			fetchSession()
-				.then(u => {
-					if (mounted && !eventReceived) {
-						setUser(u);
-						// Broadcast to sibling islands so an island whose own
-						// fetchSession() transiently failed can still learn the
-						// user is authenticated. Without this, a transient
-						// fetch failure in one island permanently suppresses
-						// features (like play-history save) that depend on
-						// isAuthenticated. Only dispatch for non-null users —
-						// dispatching null could clobber a sibling's
-						// authenticated state if event ordering is unlucky.
-						if (u) dispatchAuthChange(u);
-					}
-				})
-				.finally(() => {
-					if (mounted) setLoading(false);
-				});
+			// Check the shared auth snapshot before fetching. A sibling
+			// island may have dispatched AUTH_CHANGE_EVENT before this
+			// island mounted — the DOM event is not replayable, so read
+			// the module-level snapshot to recover. Without this, a late
+			// island whose own fetchSession() transiently fails would
+			// never learn the user is authenticated, permanently
+			// suppressing features like play-history save.
+			const sharedUser = getSharedAuthUser();
+			if (sharedUser) {
+				eventReceived = true;
+				setUser(sharedUser);
+				setLoading(false);
+			} else {
+				fetchSession()
+					.then(u => {
+						if (mounted && !eventReceived) {
+							setUser(u);
+							// Broadcast to sibling islands so an island whose own
+							// fetchSession() transiently failed can still learn the
+							// user is authenticated. Without this, a transient
+							// fetch failure in one island permanently suppresses
+							// features (like play-history save) that depend on
+							// isAuthenticated. Only dispatch for non-null users —
+							// dispatching null could clobber a sibling's
+							// authenticated state if event ordering is unlucky.
+							if (u) dispatchAuthChange(u);
+						}
+					})
+					.finally(() => {
+						if (mounted) setLoading(false);
+					});
+			}
 		} else {
 			setLoading(false);
 		}

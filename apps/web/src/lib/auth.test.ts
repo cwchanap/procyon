@@ -16,7 +16,11 @@ import {
 	type AuthUser,
 	type GoogleLoginResult,
 } from './auth-helpers';
-import { AUTH_CHANGE_EVENT, useAuth } from './auth';
+import {
+	AUTH_CHANGE_EVENT,
+	useAuth,
+	__resetSharedAuthUserForTests,
+} from './auth';
 
 const mockUser: AuthUser = {
 	id: 'u1',
@@ -252,6 +256,7 @@ describe('useAuth', () => {
 	afterEach(() => {
 		globalThis.fetch = originalFetch;
 		delete (happyWindow as any).__PROCYON_INITIAL_AUTH_USER__;
+		__resetSharedAuthUserForTests();
 	});
 
 	test('starts with loading=false and user when given initialUser option', () => {
@@ -607,6 +612,39 @@ describe('useAuth', () => {
 		// Island B received the event from island A and synced.
 		expect(resultB.current.user).toEqual(mockUser);
 		expect(resultB.current.isAuthenticated).toBe(true);
+	});
+
+	test('late-mounting island reads shared auth snapshot missed event', async () => {
+		let fetchCallCount = 0;
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			// First call (island A) succeeds; island B should never fetch.
+			return Promise.resolve(jsonResponse({ user: mockUser }));
+		}) as any;
+
+		// Island A mounts and fetches successfully → dispatches event,
+		// sets sharedAuthUser snapshot.
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(resultA.current.user).toEqual(mockUser);
+		expect(fetchCallCount).toBe(1);
+
+		// Island B mounts AFTER island A's event was dispatched. The DOM
+		// event is not replayable, so island B must read the shared
+		// snapshot instead of fetching.
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.isAuthenticated).toBe(true);
+		expect(resultB.current.loading).toBe(false);
+		// No additional fetch — the snapshot satisfied the auth state.
+		expect(fetchCallCount).toBe(1);
 	});
 
 	test('late-arriving fetchSession null does not clobber user from sibling event', async () => {
