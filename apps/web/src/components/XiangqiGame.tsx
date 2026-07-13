@@ -14,7 +14,6 @@ import { getPossibleMoves } from '../lib/xiangqi/moves';
 import { createInitialXiangqiBoard, getPieceAt } from '../lib/xiangqi/board';
 import { createXiangqiAI } from '../lib/ai';
 import {
-	useAIConfig,
 	setProvider as setAIProvider,
 	setModel as setAIModel,
 	rehydrate as rehydrateAIConfig,
@@ -54,19 +53,24 @@ const XiangqiGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<'red' | 'black'>('black');
+	const { isAuthenticated, loading: authLoading } = useAuth();
 	const {
 		config: aiConfig,
 		hydrated: aiConfigHydrated,
 		hydrateError,
-	} = useAIConfig();
+		configPending,
+		aiStarting,
+	} = useAIConfigHydration({
+		isAuthenticated,
+		loading: authLoading,
+		isAiMode: gameMode === 'ai',
+	});
 	const [aiService] = useState(() => createXiangqiAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
-	const { isAuthenticated, loading: authLoading } = useAuth();
-	useAIConfigHydration({ isAuthenticated, loading: authLoading });
 
 	// Monotonic generation token for in-flight AI moves. Incremented on
 	// logout so a makeAIMove async callback still awaiting an AI response
@@ -270,16 +274,6 @@ const XiangqiGame: React.FC = () => {
 	}, [aiService, aiConfig, createAIMove, isDebugMode]);
 
 	// AI move handling
-	//
-	// configPending defers the first AI move until the config store is
-	// ready. When AI plays first, the effect would fire immediately on
-	// Start — before auth resolves and hydration completes if
-	// /auth/session is slow. That would call makeMove with the default
-	// empty config (no apiKey) and stall. Gating here ensures the move
-	// only fires once config is ready; when hydration completes,
-	// aiConfigHydrated flips and this effect re-runs (it's in the deps).
-	const configPending =
-		authLoading || (isAuthenticated && (!aiConfigHydrated || hydrateError));
 	useEffect(() => {
 		if (
 			gameMode === 'ai' &&
@@ -336,7 +330,7 @@ const XiangqiGame: React.FC = () => {
 					if (gen !== aiMoveGenRef.current) return;
 					const message =
 						error instanceof Error
-							? `${error.message}${error.stack ? `\n${error.stack}` : ''}`
+							? error.message
 							: 'Unknown AI error occurred';
 					// eslint-disable-next-line no-console
 					console.error('AI move failed:', error);
@@ -421,6 +415,11 @@ const XiangqiGame: React.FC = () => {
 	);
 
 	const handleResetGame = useCallback(() => {
+		// Invalidate any in-flight makeAIMove callback so it cannot
+		// apply a stale setGameState after the reset. Clear isAIThinking
+		// because the callback's finally-block skips on gen mismatch.
+		aiMoveGenRef.current++;
+		setIsAIThinking(false);
 		setGameState(resetGame());
 		setGameStarted(false);
 	}, []);
@@ -429,20 +428,14 @@ const XiangqiGame: React.FC = () => {
 	// context wipes the AI config store on logout, but `gameStarted` and
 	// board state live here in local state — without this reset the
 	// mounted page keeps the AI service disabled (no API key) and the AI
-	// turn stalls indefinitely. Also bump aiMoveGenRef so any in-flight
-	// makeAIMove callback skips its setGameState call instead of
-	// resurrecting the pre-logout position. Track the previous auth value
-	// so we only fire on the true→false transition, not on mount.
+	// turn stalls indefinitely. handleResetGame handles gen invalidation
+	// and isAIThinking clearing. Track the previous auth value so we only
+	// fire on the true→false transition, not on mount.
 	const prevAuthenticatedRef = useRef(isAuthenticated);
 	useEffect(() => {
 		if (prevAuthenticatedRef.current && !isAuthenticated) {
 			handleResetGame();
 			setAIPlayer('black');
-			aiMoveGenRef.current++;
-			// The in-flight makeAIMove callback early-returns on the gen
-			// mismatch above, skipping its finally-block setIsAIThinking(false).
-			// Clear it here so a post-relogin game can schedule AI moves.
-			setIsAIThinking(false);
 		}
 		prevAuthenticatedRef.current = isAuthenticated;
 	}, [isAuthenticated, handleResetGame]);
@@ -517,22 +510,6 @@ const XiangqiGame: React.FC = () => {
 	// Calculate hasGameStarted before using it in callbacks
 	const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
 
-	// In AI mode, authenticated users must wait for the AI config store to
-	// hydrate before starting — otherwise aiConfig still holds defaults (no
-	// apiKey, enabled=false) and the first AI move would fail. Anonymous
-	// visitors never hydrate (the call is gated in AppShell) and are not
-	// blocked here. We deliberately do NOT gate the Start button on
-	// authLoading: blocking on authLoading would stall anonymous startup
-	// if /auth/session is slow or unavailable. Instead, the AI move
-	// trigger effect itself defers via configPending (see above) so that
-	// even if a signed-in user starts during a slow /auth/session request
-	// with AI playing first, the AI move waits for hydration rather than
-	// firing with the empty default config. A failed hydrate (hydrateError)
-	// still blocks Start for authenticated users — the default config has
-	// no API key, so the AI turn would stall.
-	const aiStarting =
-		gameMode === 'ai' && isAuthenticated && (!aiConfigHydrated || hydrateError);
-
 	const handleStartOrReset = useCallback(() => {
 		if (!hasGameStarted) {
 			if (aiStarting) return; // config still loading; Start is disabled
@@ -547,6 +524,7 @@ const XiangqiGame: React.FC = () => {
 
 	const toggleToMode = useCallback(
 		(newMode: XiangqiGameMode) => {
+			aiMoveGenRef.current++;
 			setGameMode(newMode);
 			setGameStarted(false);
 			setIsAIThinking(false);

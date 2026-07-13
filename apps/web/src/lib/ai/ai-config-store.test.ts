@@ -1593,4 +1593,152 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.hydrateError).toBe(false);
 		expect(snap.availableProviders).toEqual(['gemini']);
 	});
+
+	// [P2] runHydrate catch path with providerGen guard: when
+	// loadAIConfigWithProviders throws (not just returns fallback) while
+	// a setProvider has raced, the catch path must still mark hydrated
+	// and set hydrateError so the UI isn't stuck. loadAIConfigWithProviders
+	// normally swallows all errors, but if localStorage.getItem throws in
+	// its catch-path readLocalConfig call, the throw propagates to
+	// runHydrate's catch.
+	test('runHydrate catch marks hydrated+hydrateError when loadAIConfigWithProviders throws and setProvider raced', async () => {
+		// The describe block's setupAIConfigStoreFetchMocks() already
+		// sets up globalThis.localStorage. Access it to override getItem.
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const ls = globalThis.localStorage as any;
+
+		let resolveHydrateList: (v: unknown) => void = () => {};
+		const hydrateListPending = new Promise(r => {
+			resolveHydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// Hydrate's list fetch — held pending, will resolve with
+					// a failing response so fetchAIConfigList throws.
+					return hydrateListPending;
+				}
+				// setProvider's list fetch — throw immediately so setProvider
+				// fails but still bumps setProviderGeneration.
+				throw new Error('Network error');
+			}
+			return { ok: true, json: async () => ({}) };
+		});
+
+		// Make localStorage.getItem throw so readLocalConfig throws in
+		// loadAIConfigWithProviders' catch path, propagating to runHydrate.
+		const originalGetItem = ls.getItem;
+		ls.getItem = () => {
+			throw new Error('localStorage unavailable');
+		};
+
+		try {
+			// Start hydrate — its list fetch is pending.
+			const hydratePromise = hydrate();
+
+			// setProvider fails (list fetch throws) but bumps
+			// setProviderGeneration so the providerGen guard in runHydrate's
+			// catch path fires.
+			const providerErr = await setProvider('openai');
+			expect(typeof providerErr).toBe('string');
+
+			// Release hydrate's list fetch with a failing response.
+			// fetchAIConfigList throws → loadAIConfigWithProviders catches →
+			// readLocalConfig([]) calls localStorage.getItem which throws →
+			// throw propagates to runHydrate's catch.
+			resolveHydrateList({ ok: false, status: 500 });
+			await hydratePromise;
+
+			// The catch path's providerGen guard must have marked hydrated
+			// and set hydrateError (setProvider didn't succeed, so
+			// setProviderSucceededGen is 0, making hydrateError=true).
+			const snap = getConfigSlice();
+			expect(snap.hydrated).toBe(true);
+			expect(snap.hydrateError).toBe(true);
+		} finally {
+			ls.getItem = originalGetItem;
+		}
+	});
+
+	// [P2] runHydrate catch path without setProvider race: when
+	// loadAIConfigWithProviders throws and no setProvider raced, the
+	// catch path's non-guard branch must mark hydrated+hydrateError.
+	test('runHydrate catch marks hydrated+hydrateError when loadAIConfigWithProviders throws (no setProvider race)', async () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const ls = globalThis.localStorage as any;
+
+		// @ts-expect-error -- test-only: replace global fetch with failing mock
+		globalThis.fetch = mock(async () => {
+			throw new Error('Network error');
+		});
+
+		// Make localStorage.getItem throw so readLocalConfig throws in
+		// loadAIConfigWithProviders' catch path, propagating to runHydrate.
+		const originalGetItem = ls.getItem;
+		ls.getItem = () => {
+			throw new Error('localStorage unavailable');
+		};
+
+		try {
+			await hydrate();
+
+			// No setProvider raced, so the non-guard catch path runs:
+			// setConfigSlice({ ...configSlice, hydrated: true, hydrateError: true })
+			const snap = getConfigSlice();
+			expect(snap.hydrated).toBe(true);
+			expect(snap.hydrateError).toBe(true);
+		} finally {
+			ls.getItem = originalGetItem;
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// setProvider non-stale full-fetch failure. When the list fetch succeeds
+// but the full config fetch fails (and no newer setProvider has superseded),
+// setProvider must return an error string — not null (stale) — so the UI
+// can surface the failure.
+// ---------------------------------------------------------------------------
+describe('ai-config-store setProvider non-stale full-fetch failure', () => {
+	setupAIConfigStoreFetchMocks();
+
+	test('returns error string when full config fetch fails (non-stale)', async () => {
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				// List fetch succeeds — openai is keyed.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			// Full fetch for cfg-o — fails with 500.
+			return {
+				ok: false,
+				status: 500,
+				statusText: 'Internal Server Error',
+				json: async () => ({}),
+			};
+		});
+
+		const err = await setProvider('openai');
+
+		// Must return the full-fetch error string, not null.
+		expect(err).toBe(
+			"We couldn't load your saved API key details. Please try again."
+		);
+	});
 });

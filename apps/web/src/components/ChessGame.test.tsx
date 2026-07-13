@@ -1,10 +1,11 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../test/reactSetup';
 import ChessGame from './ChessGame';
 import { AUTH_CHANGE_EVENT } from '../lib/auth';
 import { resetAIConfigStore } from '../lib/ai/ai-config-store';
+import { defaultAIConfig } from '../lib/ai/storage';
 
 setupReactDom();
 
@@ -189,6 +190,82 @@ describe('ChessGame — inline "AI plays" select', () => {
 			} else {
 				delete (globalThis as Record<string, unknown>).localStorage;
 			}
+		}
+	});
+
+	// AI move gen stale checks: when AI plays white and the game starts,
+	// makeAIMoveAsync fires after the 1-second delay. With defaultAIConfig
+	// (enabled=false, apiKey=''), makeMove returns null — the try block's
+	// gen check (line 325) and finally block's gen check (lines 409-410)
+	// are covered. To cover the catch block's gen check (line 394), we
+	// mutate defaultAIConfig to enabled=true + apiKey='fake' and mock
+	// fetch to reject for LLM API calls, so makeMove throws.
+	test('AI move catch block handles error when LLM fetch fails', async () => {
+		// Mutate defaultAIConfig so the AI service's makeMove calls callLLM
+		// instead of short-circuiting to null. The service is created with
+		// useState(() => createChessAI(defaultAIConfig)), so mutating
+		// defaultAIConfig before render affects the service's config.
+		const originalEnabled = defaultAIConfig.enabled;
+		const originalApiKey = defaultAIConfig.apiKey;
+		defaultAIConfig.enabled = true;
+		defaultAIConfig.apiKey = 'fake-key';
+
+		const originalFetch = globalThis.fetch;
+
+		const originalError = console.error;
+		const errorCalls: string[] = [];
+
+		(globalThis as unknown as { fetch: unknown }).fetch = mock(
+			(url: string) => {
+				if (url.includes('/auth/session')) {
+					return Promise.resolve({
+						ok: false,
+						status: 401,
+						statusText: 'Unauthorized',
+						json: () => Promise.resolve({}),
+					});
+				}
+				// LLM API call — reject to trigger makeMove's catch,
+				// which re-throws to makeAIMoveAsync's catch (line 393).
+				return Promise.reject(new Error('Network error'));
+			}
+		) as unknown as typeof fetch;
+
+		// eslint-disable-next-line no-console
+		console.error = (...args: unknown[]) => {
+			errorCalls.push(args.join(' '));
+		};
+
+		try {
+			const { getByLabelText, getByRole } = render(<ChessGame />);
+
+			// Set AI to play white so the AI move effect fires immediately
+			// on Start (white moves first).
+			const select = (await waitFor(() =>
+				getByLabelText(/AI plays/i)
+			)) as HTMLSelectElement;
+			fireEvent.change(select, { target: { value: 'white' } });
+
+			// Start the game (unauthenticated => aiStarting is false).
+			const startButton = getByRole('button', { name: /start/i });
+			fireEvent.click(startButton);
+
+			// Wait for the AI move to fire (1-second setTimeout delay)
+			// and fail. The catch block calls console.error('AI move failed:').
+			await waitFor(
+				() => {
+					expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(
+						true
+					);
+				},
+				{ timeout: 3000 }
+			);
+		} finally {
+			defaultAIConfig.enabled = originalEnabled;
+			defaultAIConfig.apiKey = originalApiKey;
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			// eslint-disable-next-line no-console
+			console.error = originalError;
 		}
 	});
 });

@@ -366,6 +366,11 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	// Captured from renderHook so afterEach can unmount and
 	// clear any pending retry timers between tests.
 	let unmountHook: (() => void) | undefined;
+	// Captured in beforeEach so afterEach can restore setTimeout/clearTimeout
+	// unconditionally — even when a test's assertions fail before its inline
+	// restoration runs, leaving the mock in place for subsequent tests.
+	let originalSetTimeout: typeof globalThis.setTimeout;
+	let originalClearTimeout: typeof globalThis.clearTimeout;
 
 	beforeEach(() => {
 		originalFetch = globalThis.fetch;
@@ -373,6 +378,8 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		fetchShouldSucceed = true;
 		fetchFailStatus = 500;
 		unmountHook = undefined;
+		originalSetTimeout = globalThis.setTimeout;
+		originalClearTimeout = globalThis.clearTimeout;
 
 		globalThis.fetch = mock((url: string) => {
 			if (url.includes('/play-history')) {
@@ -390,6 +397,8 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	afterEach(() => {
 		unmountHook?.();
 		globalThis.fetch = originalFetch;
+		globalThis.setTimeout = originalSetTimeout;
+		globalThis.clearTimeout = originalClearTimeout;
 	});
 
 	test('auto-save fires when game ends', async () => {
@@ -930,7 +939,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 
 		// Capture long-delay setTimeout callbacks (the 401 retry) so we
 		// can fire them without waiting 5 seconds.
-		const originalSetTimeout = globalThis.setTimeout;
 		let retryCallback: (() => void) | null = null;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
 			if (delay && delay >= 1000) {
@@ -966,8 +974,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			await new Promise(r => setTimeout(r, 0));
 		});
 		expect(fetchCallCount).toBe(2);
-
-		globalThis.setTimeout = originalSetTimeout;
 	});
 
 	// [P2] The 401 retry count is bounded by MAX_401_RETRIES to avoid
@@ -992,7 +998,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		}) as unknown as typeof fetch;
 
 		// Fire long-delay timers immediately to simulate all retries.
-		const originalSetTimeout = globalThis.setTimeout;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
 			if (delay && delay >= 1000) {
 				fn();
@@ -1023,8 +1028,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			await new Promise(r => setTimeout(r, 50));
 		});
 		expect(fetchCallCount).toBe(4);
-
-		globalThis.setTimeout = originalSetTimeout;
 	});
 
 	// [P2] The 401 retry count resets when a new game starts, so a
@@ -1059,7 +1062,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			}) as unknown as Response;
 		}) as unknown as typeof fetch;
 
-		const originalSetTimeout = globalThis.setTimeout;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
 			if (delay && delay >= 1000) {
 				fn();
@@ -1097,8 +1099,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 
 		// 4 from Game A + 1 from Game B = 5 total.
 		expect(fetchCallCount).toBe(5);
-
-		globalThis.setTimeout = originalSetTimeout;
 	});
 
 	// [P2] After the 401 retry budget is exhausted, a provider/model dep
@@ -1127,7 +1127,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		}) as unknown as typeof fetch;
 
 		// Fire long-delay timers immediately to exhaust the budget.
-		const originalSetTimeout = globalThis.setTimeout;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
 			if (delay && delay >= 1000) {
 				fn();
@@ -1181,8 +1180,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			await new Promise(r => setTimeout(r, 50));
 		});
 		expect(fetchCallCount).toBe(4);
-
-		globalThis.setTimeout = originalSetTimeout;
 	});
 
 	// [P2] A provider/model dep change during the 401 retry window must
@@ -1209,7 +1206,6 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		}) as unknown as typeof fetch;
 
 		// Capture retry callbacks so we can fire them in controlled order.
-		const originalSetTimeout = globalThis.setTimeout;
 		const retryCallbacks: Array<() => void> = [];
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
 			if (delay && delay >= 1000) {
@@ -1272,7 +1268,231 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 			await new Promise(r => setTimeout(r, 0));
 		});
 		expect(fetchCallCount).toBe(4);
+	});
 
-		globalThis.setTimeout = originalSetTimeout;
+	// Draw/stalemate status: the hook's snapshot block must record 'draw'
+	// for both stalemate and draw statuses (not just checkmate). The
+	// existing tests only exercise 'checkmate'; this covers the
+	// gameStatus === 'draw' || gameStatus === 'stalemate' branch.
+	test('save uses status "draw" for draw game status', async () => {
+		const capturedBodies: Array<{ status: string }> = [];
+
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = typeof input === 'string' ? input : input.toString();
+				if (url.includes('/play-history') && init?.body) {
+					capturedBodies.push(JSON.parse(init.body as string));
+				}
+				if (url.includes('/play-history')) {
+					fetchCallCount++;
+					return Promise.resolve({
+						ok: true,
+						status: 200,
+						statusText: 'OK',
+						json: () => Promise.resolve({}),
+					}) as unknown as Response;
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+		) as unknown as typeof fetch;
+
+		renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'draw', moveCount: 10 }),
+		});
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(fetchCallCount).toBe(1);
+		expect(capturedBodies).toHaveLength(1);
+		expect(capturedBodies[0]!.status).toBe('draw');
+	});
+
+	test('save uses status "draw" for stalemate game status', async () => {
+		const capturedBodies: Array<{ status: string }> = [];
+
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = typeof input === 'string' ? input : input.toString();
+				if (url.includes('/play-history') && init?.body) {
+					capturedBodies.push(JSON.parse(init.body as string));
+				}
+				if (url.includes('/play-history')) {
+					fetchCallCount++;
+					return Promise.resolve({
+						ok: true,
+						status: 200,
+						statusText: 'OK',
+						json: () => Promise.resolve({}),
+					}) as unknown as Response;
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+		) as unknown as typeof fetch;
+
+		renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({ gameStatus: 'stalemate', moveCount: 10 }),
+		});
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(fetchCallCount).toBe(1);
+		expect(capturedBodies).toHaveLength(1);
+		expect(capturedBodies[0]!.status).toBe('draw');
+	});
+
+	// Debug counter: when debugVariantKey is set, the hook bumps
+	// window.__PROCYON_DEBUG_<KEY>_SAVE_COUNT__ before the fetch. This
+	// covers the isFirstAttempt + debugVariantKey block.
+	test('debugVariantKey bumps window debug save counter on first attempt', async () => {
+		const w = window as unknown as Record<string, number | undefined>;
+		const key = '__PROCYON_DEBUG_TESTVARIANT_SAVE_COUNT__';
+		delete w[key];
+
+		renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				debugVariantKey: 'TESTVARIANT',
+			}),
+		});
+
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(w[key]).toBe(1);
+		delete w[key];
+	});
+
+	// DEV-only console.warn: when import.meta.env.DEV is true and the
+	// save response is not ok, the hook logs a warning. This covers the
+	// DEV-gated console.warn block (lines 181-183).
+	test('DEV mode logs console.warn on non-ok save response', async () => {
+		fetchShouldSucceed = false;
+		fetchFailStatus = 500;
+
+		const originalDev = import.meta.env.DEV;
+		const originalWarn = console.warn;
+		const warnCalls: string[] = [];
+		import.meta.env.DEV = true;
+		console.warn = (...args: unknown[]) => {
+			warnCalls.push(args.join(' '));
+		};
+
+		try {
+			const { unmount } = renderHook(props => usePlayHistory(props), {
+				initialProps: makeProps({ gameStatus: 'checkmate', moveCount: 10 }),
+			});
+			unmountHook = unmount;
+
+			await act(async () => {
+				await new Promise(r => setTimeout(r, 0));
+			});
+
+			expect(fetchCallCount).toBe(1);
+			expect(
+				warnCalls.some(s => s.includes('Play-history save failed: 500'))
+			).toBe(true);
+		} finally {
+			import.meta.env.DEV = originalDev;
+			console.warn = originalWarn;
+		}
+	});
+
+	// 401 retry timer cancellation: when a 401 schedules a retry timer
+	// and a dep change triggers a second save that also gets 401, the
+	// pending timer must be cleared before scheduling a new one. The
+	// existing tests use setTimeout mocks that return 0 (falsy), so
+	// retryTimerRef.current is never truthy and the clearTimeout branch
+	// is skipped. This test returns a truthy timer ID to exercise the
+	// clearTimeout path.
+	test('401 retry clears pending timer before scheduling a new one', async () => {
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				return Promise.resolve({
+					ok: false,
+					status: 401,
+					statusText: 'Unauthorized',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		let timerIdCounter = 1;
+		const clearedTimerIds: number[] = [];
+		const retryCallbacks: Array<() => void> = [];
+
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				retryCallbacks.push(fn);
+				return timerIdCounter++ as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+
+		globalThis.clearTimeout = mock((id: ReturnType<typeof setTimeout>) => {
+			const num = id as unknown as number;
+			if (typeof num === 'number') {
+				clearedTimerIds.push(num);
+			}
+			return originalClearTimeout(id);
+		}) as unknown as typeof globalThis.clearTimeout;
+
+		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+			}),
+		});
+		unmountHook = unmount;
+
+		// First save gets 401, schedules retry timer with ID 1.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+		expect(retryCallbacks).toHaveLength(1);
+
+		// Dep change (provider) triggers second save, also gets 401.
+		// The pending timer (ID 1) must be cleared before scheduling
+		// the new timer (ID 2).
+		await act(async () => {
+			rerender(
+				makeProps({
+					gameStatus: 'checkmate',
+					moveCount: 10,
+					isAuthenticated: true,
+					aiConfig: { ...testAIConfig, provider: 'openai', model: 'gpt-4o' },
+				})
+			);
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(2);
+		expect(retryCallbacks).toHaveLength(2);
+
+		// The first timer (ID 1) must have been cleared.
+		expect(clearedTimerIds).toContain(1);
 	});
 });
