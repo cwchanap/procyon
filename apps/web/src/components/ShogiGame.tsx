@@ -46,7 +46,12 @@ const ShogiGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<'sente' | 'gote'>('gote');
-	const { isAuthenticated, loading: authLoading, revalidated } = useAuth();
+	const {
+		user,
+		isAuthenticated,
+		loading: authLoading,
+		revalidated,
+	} = useAuth();
 	const {
 		config: aiConfig,
 		hydrated: aiConfigHydrated,
@@ -117,6 +122,7 @@ const ShogiGame: React.FC = () => {
 		getWinnerColor,
 		enabled: gameMode === 'ai' && gameStarted,
 		isAuthenticated,
+		userId: user?.id,
 		debugVariantKey: 'SHOGI',
 	});
 

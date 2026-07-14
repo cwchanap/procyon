@@ -340,6 +340,7 @@ interface HookProps {
 	getWinnerColor: () => string;
 	enabled: boolean;
 	isAuthenticated: boolean;
+	userId: string | null | undefined;
 	debugVariantKey?: string;
 }
 
@@ -353,6 +354,7 @@ function makeProps(overrides: Partial<HookProps> = {}): HookProps {
 		getWinnerColor: stableGetWinnerColor,
 		enabled: true,
 		isAuthenticated: true,
+		userId: 'user-a',
 		...overrides,
 	};
 }
@@ -1495,5 +1497,168 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 
 		// The first timer (ID 1) must have been cleared.
 		expect(clearedTimerIds).toContain(1);
+	});
+
+	// [P2] When a terminal save gets a 401 (account A's cookie expired) and
+	// the user switches to account B before the retry timer fires, the retry
+	// must NOT send A's frozen result with B's cookie — that would record
+	// A's game under B's history and rating. The hook captures the
+	// authenticated user id in the save snapshot and abandons the retry
+	// (sets savedRef=true) when the user id has changed.
+	test('401 retry abandons save when user switches accounts before timer fires', async () => {
+		// First fetch returns 401 (A's cookie expired). Any subsequent fetch
+		// would return 200 — but the guard must prevent it from firing at
+		// all once the user id changes.
+		let fetchCallIdx = 0;
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				fetchCallIdx++;
+				if (fetchCallIdx === 1) {
+					return Promise.resolve({
+						ok: false,
+						status: 401,
+						statusText: 'Unauthorized',
+						json: () => Promise.resolve({}),
+					}) as unknown as Response;
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		// Capture the 401 retry timer callback so we can fire it after the
+		// account switch (simulating the 5s delay elapsing).
+		let retryCallback: (() => void) | null = null;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				retryCallback = fn;
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+
+		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+				userId: 'user-a',
+			}),
+		});
+		unmountHook = unmount;
+
+		// First save attempt fires under account A — gets 401.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+		expect(retryCallback).not.toBeNull();
+
+		// User switches to account B before the retry timer fires.
+		// isAuthenticated stays true (B is authenticated), but the user id
+		// changes. The userId dep change reruns the effect immediately.
+		rerender(
+			makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+				userId: 'user-b',
+			})
+		);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		// The guard must have blocked the save — no fetch for B.
+		expect(fetchCallCount).toBe(1);
+
+		// Fire the original 401 retry timer (simulating the 5s delay
+		// elapsing after the account switch). The gen still matches (no new
+		// game started), so the timer calls setRetryTrigger. But savedRef is
+		// now true (set by the guard), so the effect guard blocks the retry.
+		await act(async () => {
+			retryCallback!();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+	});
+
+	// [P2] Complement to the account-switch abandonment test: when the user
+	// id has NOT changed (same user reauthenticates after 401), the retry
+	// must still fire and record the game. This verifies the guard only
+	// blocks on an actual user id mismatch, not on any 401 retry.
+	test('401 retry still fires when user id is unchanged across reauth', async () => {
+		let fetchCallIdx = 0;
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				fetchCallIdx++;
+				if (fetchCallIdx === 1) {
+					return Promise.resolve({
+						ok: false,
+						status: 401,
+						statusText: 'Unauthorized',
+						json: () => Promise.resolve({}),
+					}) as unknown as Response;
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		let retryCallback: (() => void) | null = null;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				retryCallback = fn;
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+
+		const { unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+				userId: 'user-a',
+			}),
+		});
+		unmountHook = unmount;
+
+		// First save attempt fires — gets 401.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+		expect(retryCallback).not.toBeNull();
+
+		// Fire the retry timer — same user id, so the guard passes and the
+		// save fires again (gets 200).
+		await act(async () => {
+			retryCallback!();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(2);
 	});
 });
