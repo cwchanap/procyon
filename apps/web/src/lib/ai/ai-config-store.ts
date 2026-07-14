@@ -178,14 +178,20 @@ async function runHydrate(): Promise<void> {
 			setConfigSlice({
 				...configSlice,
 				config: providerSucceeded ? configSlice.config : config,
-				// If the hydrate fell back (availableProviders empty from
-				// the fallback return), preserve whatever setProvider
-				// already populated so the sidebar doesn't lose the
-				// selected provider. If hydrate got a real list, use it.
+				// Only preserve setProvider's list when the hydrate itself
+				// fell back (fromFallback=true) AND returned no providers —
+				// the fallback couldn't reach the backend, so setProvider's
+				// fresher list is the best we have. If the hydrate succeeded
+				// (fromFallback=false) it reflects the current backend state:
+				// use its list even when empty, otherwise the sidebar keeps
+				// offering providers whose keys no longer exist. If hydrate
+				// got a non-empty list (even on a partial fallback where the
+				// list fetch succeeded but the active full load failed), use
+				// it — those providers are real.
 				availableProviders:
-					availableProviders.length > 0
-						? availableProviders
-						: configSlice.availableProviders,
+					fromFallback && availableProviders.length === 0
+						? configSlice.availableProviders
+						: availableProviders,
 				hydrated: true,
 				// If setProvider succeeded, preserve its hydrateError
 				// (false). If setProvider failed, surface the hydrate's
