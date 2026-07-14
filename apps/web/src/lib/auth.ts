@@ -178,6 +178,20 @@ export function useAuth(options?: UseAuthOptions) {
 		if (initialAuthState.user) return false;
 		return true;
 	});
+	// Whether the current `user` (or its confirmed absence) has been
+	// validated by a server-side check — SSR snapshot, a successful
+	// `fetchSession()`, a login, or a sibling AUTH_CHANGE_EVENT — rather
+	// than merely adopted from the module-level `sharedAuthUser` snapshot.
+	// The shared snapshot is per-tab and goes stale on cross-tab sign-out
+	// or passive cookie expiry; adopting it sets `user`/`loading=false`
+	// immediately, which previously let `useAIConfigHydration` reuse an
+	// already-hydrated AI config store and send the previous user's raw
+	// API key to an AI provider before the background `fetchSession()`
+	// returned 401 and reset the store. AI hydration/start must gate on
+	// this flag so a stale snapshot cannot authorize key use.
+	const [revalidated, setRevalidated] = useState(
+		() => initialAuthState.hasServerSnapshot
+	);
 
 	useEffect(() => {
 		let mounted = true;
@@ -218,14 +232,27 @@ export function useAuth(options?: UseAuthOptions) {
 			if (sharedUser) {
 				setUser(sharedUser);
 				setLoading(false);
+				// The shared snapshot is unconfirmed — it is per-tab and
+				// goes stale on cross-tab sign-out or passive cookie expiry.
+				// Mark `revalidated=false` even if an SSR snapshot had set
+				// it true (SSR may have confirmed *absence* while the
+				// snapshot still holds a prior user), so AI hydration/start
+				// stay gated until `fetchSession()` confirms the session.
+				setRevalidated(false);
 				fetchSession().then(result => {
 					if (!mounted) return;
 					if (eventReceived) return;
 					if (result.status === 'ok') {
 						setUser(result.user);
+						setRevalidated(true);
 						dispatchAuthChange(result.user);
 					} else if (result.status === 'unauthenticated') {
 						setUser(null);
+						// The session's absence is now confirmed by the
+						// server, so mark revalidated — `user` is null and
+						// isAuthenticated is false, so this only matters
+						// for consistency.
+						setRevalidated(true);
 						dispatchAuthChange(null);
 						// Mirror logout()'s cleanup: a confirmed passive
 						// sign-out must also drop the cached AI config and
@@ -242,7 +269,11 @@ export function useAuth(options?: UseAuthOptions) {
 					// session's true state is unknown — preserve the
 					// optimistic sharedUser already in state and do not
 					// broadcast, so sibling islands aren't logged out by a
-					// temporary /auth/session failure.
+					// temporary /auth/session failure. Leave
+					// `revalidated=false` so AI key use stays blocked
+					// until a successful revalidation confirms the
+					// session: a transient failure must not authorize
+					// reusing a potentially stale snapshot's key.
 				});
 			} else {
 				fetchSession()
@@ -250,6 +281,7 @@ export function useAuth(options?: UseAuthOptions) {
 						if (mounted && !eventReceived) {
 							if (result.status === 'ok') {
 								setUser(result.user);
+								setRevalidated(true);
 								// Broadcast to sibling islands so an island
 								// whose own fetchSession() transiently failed
 								// can still learn the user is authenticated.
@@ -274,6 +306,7 @@ export function useAuth(options?: UseAuthOptions) {
 								// null could clobber a sibling's authenticated
 								// state if event ordering is unlucky.
 								setUser(null);
+								setRevalidated(true);
 								clearAIConfig();
 								resetAIConfigStore();
 							} else {
@@ -285,6 +318,9 @@ export function useAuth(options?: UseAuthOptions) {
 								// the user may still be authenticated and a
 								// transient /auth/session failure should not
 								// wipe their saved settings. Do not broadcast.
+								// Leave `revalidated` as-is (false without an
+								// SSR snapshot): user is null so AI gating is
+								// unaffected, and we cannot confirm either way.
 								setUser(null);
 							}
 						}
@@ -302,6 +338,11 @@ export function useAuth(options?: UseAuthOptions) {
 			eventReceived = true;
 			const { user: newUser } = (e as CustomEvent<AuthChangeDetail>).detail;
 			setUser(newUser);
+			// A sibling AUTH_CHANGE_EVENT only fires after that sibling's
+			// own `fetchSession()` confirmed a session (ok dispatches the
+			// user; 401 dispatches null) or after a login/logout. Either
+			// way the state is server-confirmed, so mark revalidated.
+			setRevalidated(true);
 			setLoading(false);
 		};
 
@@ -318,6 +359,7 @@ export function useAuth(options?: UseAuthOptions) {
 			const result = await postGoogleLogin(idToken);
 			if (result.success) {
 				setUser(result.user);
+				setRevalidated(true);
 				dispatchAuthChange(result.user);
 			}
 			return result;
@@ -329,6 +371,7 @@ export function useAuth(options?: UseAuthOptions) {
 		const success = await postLogout();
 		if (success) {
 			setUser(null);
+			setRevalidated(false);
 			dispatchAuthChange(null);
 			// Wipe any cached AI config so a subsequent anonymous/shared-browser
 			// session can't reuse the previous user's provider preferences or
@@ -346,6 +389,7 @@ export function useAuth(options?: UseAuthOptions) {
 	return {
 		user,
 		loading,
+		revalidated,
 		signInWithGoogle,
 		logout,
 		isAuthenticated: !!user,

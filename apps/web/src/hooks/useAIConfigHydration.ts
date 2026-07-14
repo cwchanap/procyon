@@ -16,6 +16,19 @@ export interface UseAIConfigHydrationOptions {
 	isAuthenticated: boolean;
 	/** Loading state from the caller's `useAuth()` snapshot. */
 	loading: boolean;
+	/**
+	 * Whether the caller's `useAuth()` snapshot has been confirmed by a
+	 * server-side check (SSR snapshot, successful `fetchSession()`, login,
+	 * or sibling AUTH_CHANGE_EVENT) rather than merely adopted from the
+	 * per-tab `sharedAuthUser` snapshot. The snapshot goes stale on
+	 * cross-tab sign-out or passive cookie expiry; without this gate the
+	 * hook would reuse an already-hydrated AI config store and let the
+	 * game send the previous user's raw API key to an AI provider before
+	 * the background `fetchSession()` returns 401 and resets the store.
+	 * Hydration and the Start/AI-move gates stay blocked until
+	 * revalidation confirms the session.
+	 */
+	revalidated: boolean;
 	/** Whether the game is in AI mode (gates `aiStarting`). */
 	isAiMode: boolean;
 }
@@ -76,18 +89,32 @@ export interface UseAIConfigHydrationResult {
 export function useAIConfigHydration({
 	isAuthenticated,
 	loading,
+	revalidated,
 	isAiMode,
 }: UseAIConfigHydrationOptions): UseAIConfigHydrationResult {
 	const { config, hydrated, hydrateError, isRehydrating } = useAIConfig();
 
+	// Gate hydration on `revalidated` as well as `isAuthenticated`: a
+	// stale `sharedAuthUser` snapshot can mark the hook authenticated with
+	// loading=false before the background `fetchSession()` confirms the
+	// session. Without this gate, `hydrate()` would short-circuit on an
+	// already-hydrated store (from the prior session in this tab) and
+	// leave the previous user's raw API key in place for the game to send
+	// to an AI provider before the 401 lands and resets the store.
 	useEffect(() => {
-		if (loading || !isAuthenticated) return;
+		if (loading || !isAuthenticated || !revalidated) return;
 		void hydrateAIConfig();
-	}, [loading, isAuthenticated]);
+	}, [loading, isAuthenticated, revalidated]);
 
+	// `configPending`/`aiStarting` also require `revalidated`: even when
+	// the store is already hydrated, a stale snapshot must not authorize
+	// AI key use. This blocks the AI move trigger effect (which gates on
+	// `!configPending`) and disables Start (`aiStarting`) until
+	// revalidation confirms the session.
 	const configPending =
-		loading || (isAuthenticated && (!hydrated || hydrateError));
-	const aiStarting = isAiMode && isAuthenticated && (!hydrated || hydrateError);
+		loading || (isAuthenticated && (!revalidated || !hydrated || hydrateError));
+	const aiStarting =
+		isAiMode && isAuthenticated && (!revalidated || !hydrated || hydrateError);
 
 	return {
 		config,
