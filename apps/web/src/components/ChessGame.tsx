@@ -605,25 +605,39 @@ const ChessGame: React.FC = () => {
 		setGameActive(false);
 	}, [gameMode, aiPlayer]);
 
-	// Reset local game state when authentication is lost (logout). The auth
-	// context wipes the AI config store on logout, but `gameActive` and
-	// `aiPlayer` live here in local state — without this reset the mounted
-	// page keeps the AI-side selector disabled (gameActive stays true) and
-	// the active game continues against the store's freshly reset default
-	// (no-key) config until a manual game reset. Track the previous auth
-	// value so we only fire on the true→false transition, not on mount.
+	// Reset local game state when authentication is lost (logout) OR when
+	// the authenticated user identity changes (account switch in another
+	// tab). The auth context wipes the AI config store on logout, but
+	// `gameActive` and `aiPlayer` live here in local state — without this
+	// reset the mounted page keeps the AI-side selector disabled
+	// (gameActive stays true) and the active game continues against the
+	// store's freshly reset default (no-key) config until a manual game
+	// reset. On an identity change (A→B), isAuthenticated stays true so
+	// the true→false-only check would leave the old board alive — on game
+	// over, usePlayHistory would then record A's result under B's id and
+	// rating. Track the previous auth value and user id so we fire on
+	// logout (true→false) and on identity change (id change while
+	// authenticated), not on mount or initial login from anonymous.
 	// Also bump aiMoveGenRef so any in-flight makeAIMoveAsync callback
 	// skips its setGameState/setAiError calls instead of resurrecting the
-	// pre-logout position after the reset.
+	// pre-reset position after the reset.
 	const prevAuthenticatedRef = useRef(isAuthenticated);
+	const prevUserIdRef = useRef<string | null | undefined>(user?.id);
 	useEffect(() => {
-		if (prevAuthenticatedRef.current && !isAuthenticated) {
+		const currentUserId = user?.id;
+		const authLost = prevAuthenticatedRef.current && !isAuthenticated;
+		const identityChanged =
+			isAuthenticated &&
+			prevUserIdRef.current != null &&
+			prevUserIdRef.current !== currentUserId;
+		if (authLost || identityChanged) {
 			resetGame();
 			setAIPlayer('black');
 			aiMoveGenRef.current++;
 		}
 		prevAuthenticatedRef.current = isAuthenticated;
-	}, [isAuthenticated, resetGame]);
+		prevUserIdRef.current = currentUserId;
+	}, [isAuthenticated, user?.id, resetGame]);
 
 	const triggerDebugWin = useCallback(() => {
 		setGameState(prev => ({
