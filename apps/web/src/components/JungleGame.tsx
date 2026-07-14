@@ -53,7 +53,7 @@ const JungleGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<JunglePieceColor>('blue');
-	const { isAuthenticated, loading: authLoading } = useAuth();
+	const { isAuthenticated, loading: authLoading, revalidated } = useAuth();
 	const {
 		config: aiConfig,
 		hydrated: aiConfigHydrated,
@@ -64,6 +64,7 @@ const JungleGame: React.FC = () => {
 	} = useAIConfigHydration({
 		isAuthenticated,
 		loading: authLoading,
+		revalidated,
 		isAiMode: gameMode === 'ai',
 	});
 	const [aiService] = useState(() => createJungleAI(aiConfig));

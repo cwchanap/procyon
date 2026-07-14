@@ -44,7 +44,7 @@ function useIsDesktop(): boolean {
 }
 
 export function AppShell() {
-	const { user, logout, isAuthenticated, loading } = useAuth();
+	const { user, logout, isAuthenticated, loading, revalidated } = useAuth();
 	const [path, setPath] = useState('/');
 	const [mobileAIOpen, setMobileAIOpen] = useState(false);
 	const isDesktop = useIsDesktop();
@@ -72,12 +72,18 @@ export function AppShell() {
 	// avoid calling it on non-game pages (puzzles, profile, history) where
 	// no consumer needs it. Gate on auth: /ai-config is protected, so
 	// hydrating for anonymous visitors guarantees a 401 and a console error
-	// with no consumer.
+	// with no consumer. Also gate on `revalidated`: a stale `sharedAuthUser`
+	// snapshot can mark the hook authenticated with loading=false before
+	// the background `fetchSession()` confirms the session, and hydrating
+	// on that unconfirmed state fetches/refreshes the raw key against a
+	// possibly expired cookie. Waiting for revalidation avoids an
+	// unnecessary 401 and keeps raw-key fetches tied to a confirmed
+	// session.
 	useEffect(() => {
-		if (loading || !isAuthenticated) return;
+		if (loading || !isAuthenticated || !revalidated) return;
 		if (!isGamePage(window.location.pathname)) return;
 		void hydrateAIConfig();
-	}, [loading, isAuthenticated]);
+	}, [loading, isAuthenticated, revalidated]);
 
 	useEffect(() => {
 		if (loading) return;

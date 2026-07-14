@@ -981,3 +981,207 @@ describe('useAuth', () => {
 		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
 	});
 });
+
+describe('useAuth revalidated flag', () => {
+	let originalFetch: typeof globalThis.fetch;
+
+	beforeEach(() => {
+		originalFetch = globalThis.fetch;
+	});
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		delete (happyWindow as any).__PROCYON_INITIAL_AUTH_USER__;
+		__resetSharedAuthUserForTests();
+		resetAIConfigStoreForTests();
+	});
+
+	test('SSR initialUser marks revalidated=true immediately', () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(jsonResponse({ user: mockUser }))
+		) as any;
+
+		const { result } = renderHook(() => useAuth({ initialUser: mockUser }));
+
+		expect(result.current.revalidated).toBe(true);
+		expect(result.current.isAuthenticated).toBe(true);
+	});
+
+	test('fetchSession ok on initial path sets revalidated=true', async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(jsonResponse({ user: mockUser }))
+		) as any;
+
+		const { result } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		expect(result.current.user).toEqual(mockUser);
+		expect(result.current.revalidated).toBe(true);
+	});
+
+	test('optimistic sharedUser snapshot leaves revalidated=false until revalidation confirms', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			// Island B revalidation — deferred so we can assert the
+			// optimistic state before it resolves.
+			return revalidationPending.then(() =>
+				Promise.resolve(jsonResponse({ user: mockUser }))
+			);
+		}) as any;
+
+		// Island A mounts and fetches successfully → sets the shared
+		// snapshot.
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.revalidated).toBe(true);
+
+		// Island B mounts after island A's event, reads the shared
+		// snapshot optimistically. revalidated must be false until the
+		// background fetchSession() confirms the session — otherwise a
+		// stale snapshot could authorize AI key use.
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.isAuthenticated).toBe(true);
+		expect(resultB.current.loading).toBe(false);
+		expect(resultB.current.revalidated).toBe(false);
+
+		// Resolve the revalidation with a confirmed session. Now
+		// revalidated flips true and AI hydration/start may proceed.
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.revalidated).toBe(true);
+		expect(resultB.current.user).toEqual(mockUser);
+	});
+
+	test('confirmed 401 on optimistic snapshot sets revalidated=true and clears user', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			return revalidationPending.then(() =>
+				Promise.resolve(jsonResponse({}, 401))
+			);
+		}) as any;
+
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.revalidated).toBe(true);
+
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.revalidated).toBe(false);
+		expect(resultB.current.isAuthenticated).toBe(true);
+
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		// Absence is confirmed by the 401 → revalidated=true, user gone.
+		expect(resultB.current.revalidated).toBe(true);
+		expect(resultB.current.user).toBeNull();
+		expect(resultB.current.isAuthenticated).toBe(false);
+	});
+
+	test('transient revalidation error preserves optimistic user but keeps revalidated=false (AI blocked)', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			return revalidationPending.then(() =>
+				Promise.resolve(jsonResponse({}, 500))
+			);
+		}) as any;
+
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.revalidated).toBe(true);
+
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.isAuthenticated).toBe(true);
+		expect(resultB.current.revalidated).toBe(false);
+
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		// Optimistic user preserved for UI, but revalidated stays false
+		// so AI hydration/start remain gated — a transient failure must
+		// not authorize reusing a potentially stale snapshot's key.
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.isAuthenticated).toBe(true);
+		expect(resultB.current.revalidated).toBe(false);
+	});
+
+	test('sibling AUTH_CHANGE_EVENT sets revalidated=true', async () => {
+		let resolveFetch: () => void = () => {};
+		const fetchPending = new Promise<void>(r => {
+			resolveFetch = r;
+		});
+
+		globalThis.fetch = mock(() =>
+			fetchPending.then(() => Promise.resolve(jsonResponse({}, 401)))
+		) as any;
+
+		const { result } = renderHook(() => useAuth());
+
+		// While fetch is pending, a sibling island dispatches a confirmed
+		// auth event.
+		await act(async () => {
+			globalThis.dispatchEvent(
+				new CustomEvent(AUTH_CHANGE_EVENT, {
+					detail: { user: mockUser },
+				})
+			);
+		});
+
+		expect(result.current.user).toEqual(mockUser);
+		expect(result.current.revalidated).toBe(true);
+
+		// The late-arriving fetch result must not clobber the event.
+		await act(async () => {
+			resolveFetch();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(result.current.user).toEqual(mockUser);
+		expect(result.current.revalidated).toBe(true);
+	});
+});
