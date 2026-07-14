@@ -133,7 +133,16 @@ export async function hydrate(): Promise<void> {
  * with stale state.
  */
 export async function rehydrate(): Promise<void> {
+	// Capture the generation before the await so we can detect a
+	// reset/logout that bumped hydrateGeneration while we were waiting
+	// for the older in-flight request. Without this, the continuation
+	// resumes after resetAIConfigStore() cleared the store and
+	// unconditionally starts another runHydrate() — the post-logout
+	// runHydrate sets the module-level `hydrated = true`, causing the
+	// next login's automatic hydrate() to short-circuit on stale state.
+	const genBeforeAwait = hydrateGeneration;
 	if (inFlight) await inFlight;
+	if (genBeforeAwait !== hydrateGeneration) return;
 	hydrated = false;
 	// Mark the slice as rehydrating so consumers can disable edits while
 	// the fetch is in flight. configSlice.hydrated stays true from the
@@ -202,7 +211,22 @@ async function runHydrate(): Promise<void> {
 		// no-op on that field but still supplies availableProviders
 		// (which setProvider's success path doesn't populate, leaving
 		// the sidebar with an empty provider list).
-		if (providerGen !== setProviderGeneration) {
+		//
+		// The first disjunct (providerGen !== setProviderGeneration)
+		// catches a setProvider that started DURING the fetch (bumped
+		// the generation after runHydrate captured providerGen). The
+		// second disjunct catches a setProvider that predates this
+		// hydrate — setProvider incremented setProviderGeneration BEFORE
+		// runHydrate captured providerGen (same value), then succeeded
+		// during the fetch, recording setProviderSucceededGen ===
+		// providerGen. Without this second disjunct, providerGen ===
+		// setProviderGeneration skips the race branch and the normal
+		// success path below overwrites the user's just-selected
+		// provider/key with the stale pre-switch backend config.
+		const providerRaced =
+			providerGen !== setProviderGeneration ||
+			(setProviderSucceededGen > 0 && setProviderSucceededGen >= providerGen);
+		if (providerRaced) {
 			if (gen !== hydrateGeneration) return;
 			// setProvider succeeded if it recorded its generation in
 			// setProviderSucceededGen. On failure (unconfigured provider or
@@ -279,7 +303,16 @@ async function runHydrate(): Promise<void> {
 		// something beyond the network layer throws (e.g. a corrupted
 		// localStorage cache parse) — treat it the same as a failed hydrate.
 		if (gen !== hydrateGeneration) return;
-		if (providerGen !== setProviderGeneration) {
+		// Same second-disjunct rationale as the success-path guard above:
+		// a setProvider that predates this hydrate (same generation) may
+		// have succeeded during the fetch, recording setProviderSucceededGen
+		// === providerGen. Without the disjunct, the catch path's normal
+		// branch sets hydrateError=true even though setProvider gave the
+		// user working credentials.
+		const providerRaced =
+			providerGen !== setProviderGeneration ||
+			(setProviderSucceededGen > 0 && setProviderSucceededGen >= providerGen);
+		if (providerRaced) {
 			// Same rationale as the success-path guard above: mark
 			// hydrated so the UI isn't stuck. We don't have
 			// availableProviders (the fetch threw), so just mark

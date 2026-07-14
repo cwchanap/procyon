@@ -2092,6 +2092,232 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.hydrated).toBe(true);
 		expect(snap.config.apiKey).toBe('gemini-key-fresh');
 	});
+
+	// [P1] When two rehydrate callers overlap and logout/reset happens while
+	// the second call is waiting at `if (inFlight) await inFlight`, that
+	// continuation resumes after resetAIConfigStore() cleared the store and
+	// then unconditionally starts another runHydrate(). The post-logout
+	// runHydrate sets the module-level `hydrated = true`, causing the next
+	// login's automatic hydrate() to short-circuit. The fix captures the
+	// generation before the await and returns when it changes.
+	test('rehydrate aborts after reset while awaiting an older in-flight request', async () => {
+		// Controllable resolvers for each potential /ai-config list fetch.
+		// rehydrate1 uses call #1; with the fix, rehydrate2 never starts a
+		// fetch. Without the fix, rehydrate2 starts call #2.
+		let resolveList1: (v: unknown) => void = () => {};
+		let resolveList2: (v: unknown) => void = () => {};
+		const list1Pending = new Promise(r => {
+			resolveList1 = r;
+		});
+		const list2Pending = new Promise(r => {
+			resolveList2 = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) return list1Pending;
+				return list2Pending;
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gemini-key-stale',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start rehydrate1 — its list fetch is pending (call #1).
+		const rehydrate1Promise = rehydrate();
+		expect(getConfigSlice().isRehydrating).toBe(true);
+
+		// Start rehydrate2 — it awaits rehydrate1's inFlight at
+		// `if (inFlight) await inFlight`.
+		const rehydrate2Promise = rehydrate();
+
+		// Logout/reset — bumps hydrateGeneration, clears inFlight, resets
+		// the slice to initialConfigSlice.
+		resetAIConfigStore();
+		expect(getConfigSlice().isRehydrating).toBe(false);
+		expect(getConfigSlice().hydrated).toBe(false);
+
+		// Release rehydrate1's list fetch. runHydrate1 sees gen mismatch
+		// and returns early. Its finally also sees gen mismatch and returns
+		// without touching inFlight or isRehydrating.
+		resolveList1({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-stale',
+						provider: 'gemini',
+						hasApiKey: true,
+						isActive: true,
+					},
+				],
+			}),
+		});
+		await rehydrate1Promise;
+
+		// rehydrate2's `await inFlight` has now resolved. With the fix,
+		// it detects the generation change and returns WITHOUT starting a
+		// new runHydrate. Without the fix, it starts a fresh runHydrate
+		// (call #2) that sets hydrated=true post-logout.
+		expect(listCallCount).toBe(1);
+		expect(getConfigSlice().hydrated).toBe(false);
+		expect(getConfigSlice().isRehydrating).toBe(false);
+
+		// rehydrate2 should already have resolved (with the fix, it
+		// returned immediately after the await).
+		let rehydrate2Resolved = false;
+		rehydrate2Promise.then(() => {
+			rehydrate2Resolved = true;
+		});
+		await Promise.resolve();
+		expect(rehydrate2Resolved).toBe(true);
+
+		// Cleanup: without the fix, rehydrate2 started a fetch (call #2)
+		// that's still pending. Resolve it so no unhandled promise remains.
+		resolveList2({
+			ok: true,
+			json: async () => ({ configurations: [] }),
+		});
+	});
+
+	// [P2] When setProvider has incremented setProviderGeneration but is
+	// still awaiting its provider fetch, and a Retry click starts
+	// rehydrate(), runHydrate captures the same generation. If the provider
+	// switch succeeds before the rehydrate's fetch resolves,
+	// providerGen === setProviderGeneration skips the race branch, so the
+	// normal success path applies stale backend config and overwrites the
+	// user's selected provider and key. The fix tracks the in-flight
+	// switch via setProviderSucceededGen even when the generation is equal.
+	test('rehydrate preserves provider switch that predates it when setProvider succeeds during fetch', async () => {
+		let resolveSetProviderList: (v: unknown) => void = () => {};
+		let resolveSetProviderFull: (v: unknown) => void = () => {};
+		let resolveRehydrateList: (v: unknown) => void = () => {};
+		const setProviderListPending = new Promise(r => {
+			resolveSetProviderList = r;
+		});
+		const setProviderFullPending = new Promise(r => {
+			resolveSetProviderFull = r;
+		});
+		const rehydrateListPending = new Promise(r => {
+			resolveRehydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// setProvider's list fetch — held pending.
+					return setProviderListPending;
+				}
+				// rehydrate's list fetch — held pending.
+				return rehydrateListPending;
+			}
+			// /ai-config/:id/full — route by the config ID segment.
+			// url.split('/').pop() returns 'full', so match on the
+			// /<id>/full suffix instead.
+			if (url.includes('/cfg-o/full')) {
+				// setProvider's full fetch for cfg-o (openai) — held pending.
+				return setProviderFullPending;
+			}
+			// rehydrate's full fetch for cfg-g (gemini, the stale active
+			// config from before the user switched) — resolves immediately.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gemini-key-stale',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start setProvider('openai') — increments setProviderGeneration
+		// to 1, then awaits its list fetch (pending).
+		const setProviderPromise = setProvider('openai');
+
+		// Start rehydrate — inFlight is null (setProvider doesn't set it),
+		// so rehydrate doesn't await. runHydrate captures
+		// providerGen = setProviderGeneration = 1, then awaits its own
+		// list fetch (rehydrateListPending).
+		const rehydratePromise = rehydrate();
+
+		// setProvider's list fetch resolves — openai is keyed.
+		resolveSetProviderList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-o',
+						provider: 'openai',
+						hasApiKey: true,
+						isActive: false,
+					},
+				],
+			}),
+		});
+
+		// setProvider's full fetch resolves — openai with sk-test.
+		resolveSetProviderFull({
+			ok: true,
+			json: async () => ({
+				provider: 'openai',
+				apiKey: 'sk-test',
+				modelName: 'gpt-4o',
+				gameVariant: 'chess',
+			}),
+		});
+		await setProviderPromise;
+
+		// setProvider succeeded — store has openai config.
+		expect(getConfigSlice().config.provider).toBe('openai');
+		expect(getConfigSlice().config.apiKey).toBe('sk-test');
+		expect(getConfigSlice().hydrated).toBe(true);
+		// setProviderGeneration is still 1 (no newer setProvider).
+		// setProviderSucceededGen is 1.
+
+		// Release rehydrate's list fetch — returns gemini as active
+		// (stale pre-switch backend state). loadAIConfigWithProviders
+		// then fetches cfg-g/full (immediate) → gemini-key-stale.
+		resolveRehydrateList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-g',
+						provider: 'gemini',
+						hasApiKey: true,
+						isActive: true,
+					},
+				],
+			}),
+		});
+		await rehydratePromise;
+
+		// The store must preserve the user's openai selection, not
+		// overwrite it with the rehydrate's stale gemini backend snapshot.
+		// Without the fix, providerGen === setProviderGeneration (1 === 1)
+		// skips the race branch and the normal success path applies gemini.
+		const snap = getConfigSlice();
+		expect(snap.hydrated).toBe(true);
+		expect(snap.config.provider).toBe('openai');
+		expect(snap.config.apiKey).toBe('sk-test');
+		expect(snap.config.model).toBe('gpt-4o');
+		expect(snap.hydrateError).toBe(false);
+		// availableProviders should come from the rehydrate's list (gemini).
+		expect(snap.availableProviders).toEqual(['gemini']);
+	});
 });
 
 // ---------------------------------------------------------------------------
