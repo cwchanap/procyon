@@ -1661,4 +1661,99 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		});
 		expect(fetchCallCount).toBe(2);
 	});
+
+	// [P2] When the auth identity changes (A→B) while a terminal game is
+	// mounted but before the first save has fired, the save effect runs
+	// before the game component's identity-reset effect (usePlayHistory is
+	// declared earlier). Without the prevUserIdRef guard, the save would
+	// submit A's terminal result under B's authenticated session. The guard
+	// detects the userId change and abandons the save (sets savedRef=true).
+	test('first save abandons when identity changes before save fires', async () => {
+		globalThis.fetch = mock((url: string) => {
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		// Mount with game already terminal under user A.
+		const { rerender, unmount } = renderHook(props => usePlayHistory(props), {
+			initialProps: makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 10,
+				isAuthenticated: true,
+				userId: 'user-a',
+			}),
+		});
+		unmountHook = unmount;
+
+		// Let the first save fire under A.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// Simulate a new game starting (reset) under A, then it becomes
+		// terminal again.
+		rerender(
+			makeProps({
+				gameStatus: 'playing',
+				moveCount: 0,
+				isAuthenticated: true,
+				userId: 'user-a',
+			})
+		);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		rerender(
+			makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 8,
+				isAuthenticated: true,
+				userId: 'user-a',
+			})
+		);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(fetchCallCount).toBe(2);
+
+		// Now simulate another new game under A, becomes terminal, but
+		// BEFORE the save effect fires, the identity changes A→B in the
+		// same render batch.
+		rerender(
+			makeProps({
+				gameStatus: 'playing',
+				moveCount: 0,
+				isAuthenticated: true,
+				userId: 'user-a',
+			})
+		);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		// Game becomes terminal AND identity changes to B simultaneously.
+		rerender(
+			makeProps({
+				gameStatus: 'checkmate',
+				moveCount: 6,
+				isAuthenticated: true,
+				userId: 'user-b',
+			})
+		);
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		// The guard must have blocked the save — no fetch for B.
+		expect(fetchCallCount).toBe(2);
+	});
 });
