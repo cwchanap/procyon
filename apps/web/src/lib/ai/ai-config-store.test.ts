@@ -1991,6 +1991,107 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 			ls.getItem = originalGetItem;
 		}
 	});
+
+	// [P2] When a rehydrate is in flight and resetAIConfigStore() runs
+	// (logout), a later login can start another rehydrate(). The old
+	// promise's finally must NOT clear the module-level inFlight or the
+	// isRehydrating flag, which now belong to the newer request. Without
+	// tying cleanup to the request that created it, the old finally
+	// re-enables provider/model controls while the newer fetch is still
+	// pending, and a subsequent setModel() can be overwritten when the
+	// newer runHydrate resolves.
+	test('rehydrate finally does not clear newer rehydrate inFlight or isRehydrating after reset', async () => {
+		// Step 1: Start rehydrate1 with a held-pending list fetch.
+		let resolveList1: (v: unknown) => void = () => {};
+		const list1Pending = new Promise(r => {
+			resolveList1 = r;
+		});
+		let resolveList2: (v: unknown) => void = () => {};
+		const list2Pending = new Promise(r => {
+			resolveList2 = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) return list1Pending;
+				if (listCallCount === 2) return list2Pending;
+				return {
+					ok: true,
+					json: async () => ({ configurations: [] }),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gemini-key-fresh',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start rehydrate1 — its list fetch is pending.
+		const rehydrate1Promise = rehydrate();
+		expect(getConfigSlice().isRehydrating).toBe(true);
+
+		// Step 2: Reset (logout) — clears inFlight, isRehydrating, bumps
+		// hydrateGeneration.
+		resetAIConfigStore();
+		expect(getConfigSlice().isRehydrating).toBe(false);
+
+		// Step 3: Start rehydrate2 (new login). reset cleared inFlight so
+		// rehydrate2 doesn't await rehydrate1. Sets isRehydrating=true.
+		const rehydrate2Promise = rehydrate();
+		expect(getConfigSlice().isRehydrating).toBe(true);
+
+		// Step 4: Release rehydrate1's list fetch. runHydrate1 sees
+		// gen !== hydrateGeneration (reset bumped it) and returns early.
+		// Its finally must NOT clear inFlight or isRehydrating, which
+		// now belong to rehydrate2.
+		resolveList1({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-stale',
+						provider: 'gemini',
+						hasApiKey: true,
+						isActive: true,
+					},
+				],
+			}),
+		});
+		await rehydrate1Promise;
+
+		// isRehydrating must still be true — rehydrate2 is still in flight.
+		expect(getConfigSlice().isRehydrating).toBe(true);
+
+		// Step 5: Release rehydrate2's list fetch. It resolves and clears
+		// isRehydrating.
+		resolveList2({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-g',
+						provider: 'gemini',
+						hasApiKey: true,
+						isActive: true,
+					},
+				],
+			}),
+		});
+		await rehydrate2Promise;
+
+		const snap = getConfigSlice();
+		expect(snap.isRehydrating).toBe(false);
+		expect(snap.hydrated).toBe(true);
+		expect(snap.config.apiKey).toBe('gemini-key-fresh');
+	});
 });
 
 // ---------------------------------------------------------------------------

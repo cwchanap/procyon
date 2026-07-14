@@ -113,8 +113,14 @@ let setProviderSucceededGen = 0;
 export async function hydrate(): Promise<void> {
 	if (hydrated) return;
 	if (inFlight) return inFlight;
+	// Capture the generation so this request's finally only clears
+	// inFlight if no reset/logout (which bumps hydrateGeneration) has
+	// occurred since. Without this, a reset that clears inFlight
+	// followed by a new hydrate()/rehydrate() leaves the old promise's
+	// finally clearing the newer request's inFlight reference.
+	const gen = hydrateGeneration;
 	inFlight = runHydrate().finally(() => {
-		inFlight = null;
+		if (gen === hydrateGeneration) inFlight = null;
 	});
 	return inFlight;
 }
@@ -137,7 +143,21 @@ export async function rehydrate(): Promise<void> {
 	// be silently overwritten when runHydrate resolves and applies the
 	// backend snapshot.
 	setConfigSlice({ ...configSlice, isRehydrating: true });
+	// Capture the generation so this request's finally cleanup only
+	// runs if no reset/logout (which bumps hydrateGeneration) has
+	// occurred since. Without this, a reset followed by a new
+	// rehydrate() leaves the old promise's finally clearing the new
+	// request's inFlight and isRehydrating — re-enabling provider/model
+	// controls while the newer fetch is still pending, so a subsequent
+	// setModel() (which doesn't bump setProviderGeneration) can be
+	// overwritten when the newer runHydrate resolves.
+	const gen = hydrateGeneration;
 	inFlight = runHydrate().finally(() => {
+		// A reset/logout bumped the generation while this fetch was
+		// in flight — don't touch inFlight or isRehydrating, which
+		// now belong to a newer request (or were already cleared by
+		// resetAIConfigStore).
+		if (gen !== hydrateGeneration) return;
 		inFlight = null;
 		// Clear isRehydrating after runHydrate settles. runHydrate's own
 		// setConfigSlice calls spread ...configSlice (which has
