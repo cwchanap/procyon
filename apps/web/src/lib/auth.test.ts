@@ -34,6 +34,13 @@ const mockUser: AuthUser = {
 	name: 'Test User',
 };
 
+const mockUserB: AuthUser = {
+	id: 'u2',
+	email: 'b@example.com',
+	username: 'userb',
+	name: 'User B',
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -979,6 +986,127 @@ describe('useAuth', () => {
 		expect(resultA.current.user).toBeNull();
 
 		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
+	});
+
+	test('revalidation returning a different user resets the AI config store', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				// Island A fetches user A → sets the shared snapshot to A.
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			// Island B revalidates the A snapshot but the session now
+			// belongs to a different user B (account switch in another
+			// tab, or A's session expired and B signed in on a shared
+			// browser). Deferred so we can assert optimistic state first.
+			return revalidationPending.then(() =>
+				Promise.resolve(jsonResponse({ user: mockUserB }))
+			);
+		}) as any;
+
+		// Put the AI config store into a non-initial state modeling A's
+		// hydrated config — including a raw API key that must not leak to B.
+		setAIConfig({
+			provider: 'openai',
+			model: 'gpt-4o',
+			apiKey: 'sk-leaked-key',
+			enabled: true,
+		});
+		expect(getAIConfigSlice().config.apiKey).toBe('sk-leaked-key');
+
+		// Island A mounts and fetches successfully → sets snapshot to A.
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.user).toEqual(mockUser);
+
+		// Island B mounts after A's event, reads the A snapshot
+		// optimistically, then revalidates.
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.revalidated).toBe(false);
+
+		// Resolve the revalidation with user B (different id). Island B
+		// must adopt B AND reset the AI config store so hydrate() actually
+		// re-fetches for B instead of short-circuiting on A's hydrated
+		// state and handing B A's raw API key.
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUserB);
+		expect(resultB.current.isAuthenticated).toBe(true);
+		expect(resultB.current.revalidated).toBe(true);
+
+		const afterReset = getAIConfigSlice();
+		expect(afterReset.hydrated).toBe(false);
+		expect(afterReset.config.provider).toBe('gemini');
+		expect(afterReset.config.apiKey).toBe('');
+		expect(afterReset.config.enabled).toBe(false);
+	});
+
+	test('revalidation returning the same user does not reset the AI config store', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			// Island B revalidates and the session is still the same user.
+			return revalidationPending.then(() =>
+				Promise.resolve(jsonResponse({ user: mockUser }))
+			);
+		}) as any;
+
+		// Model an already-hydrated config for the user. A same-user
+		// revalidation must NOT wipe this — the existing config is valid
+		// for the same identity, and resetting would force an unnecessary
+		// re-fetch and briefly block AI start.
+		setAIConfig({
+			provider: 'openai',
+			model: 'gpt-4o',
+			apiKey: 'sk-user-key',
+			enabled: true,
+		});
+		expect(getAIConfigSlice().config.apiKey).toBe('sk-user-key');
+
+		const { result: resultA } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultA.current.user).toEqual(mockUser);
+
+		const { result: resultB } = renderHook(() => useAuth());
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.revalidated).toBe(false);
+
+		await act(async () => {
+			resolveRevalidation();
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(resultB.current.user).toEqual(mockUser);
+		expect(resultB.current.revalidated).toBe(true);
+
+		// Same identity → store preserved, no reset.
+		const after = getAIConfigSlice();
+		expect(after.config.provider).toBe('openai');
+		expect(after.config.apiKey).toBe('sk-user-key');
+		expect(after.config.enabled).toBe(true);
 	});
 });
 

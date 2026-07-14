@@ -243,6 +243,25 @@ export function useAuth(options?: UseAuthOptions) {
 					if (!mounted) return;
 					if (eventReceived) return;
 					if (result.status === 'ok') {
+						// If the confirmed session belongs to a different
+						// user than the optimistic sharedUser snapshot
+						// (account switch in another tab, or A's session
+						// expired and B signed in on a shared browser),
+						// reset the AI config store before adopting the new
+						// identity. Without this, hydrate() short-circuits
+						// on its module-level `hydrated` flag and leaves the
+						// previous user's raw API key in the store — the new
+						// user's game would then send that key to an AI
+						// provider. The store is module-level (shared across
+						// all islands in this tab), so resetting it here
+						// also covers sibling islands that learn about B via
+						// the dispatchAuthChange below. A same-user
+						// revalidation skips the reset so the existing valid
+						// config isn't wiped unnecessarily.
+						if (result.user.id !== sharedUser.id) {
+							clearAIConfig();
+							resetAIConfigStore();
+						}
 						setUser(result.user);
 						setRevalidated(true);
 						dispatchAuthChange(result.user);
