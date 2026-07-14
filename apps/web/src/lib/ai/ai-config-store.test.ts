@@ -1020,6 +1020,85 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.hydrateError).toBe(false);
 	});
 
+	// [P2] When setProvider succeeds (populating availableProviders with
+	// the providers that had keys at switch time) and a concurrent hydrate
+	// then resolves successfully (fromFallback=false) with an empty
+	// provider list — e.g. the user revoked/deleted all API keys between
+	// the two list fetches — the hydrate must NOT preserve setProvider's
+	// stale list. A successful hydrate reflects the current backend state;
+	// preserving the old list would leave the sidebar offering providers
+	// whose keys no longer exist. Only fallback responses (which couldn't
+	// reach the backend) should preserve the existing list.
+	test('runHydrate does not preserve stale providers for a successful empty hydrate', async () => {
+		let resolveHydrateList: (v: unknown) => void = () => {};
+		const hydrateListPending = new Promise(r => {
+			resolveHydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// Hydrate's list fetch — held pending.
+					return hydrateListPending;
+				}
+				// setProvider's list fetch — openai has a key at switch time.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			// setProvider's full fetch for cfg-o.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start hydrate but don't await — its list fetch is pending.
+		const hydratePromise = hydrate();
+
+		// setProvider succeeds — writes openai config + availableProviders.
+		await setProvider('openai');
+		expect(getConfigSlice().availableProviders).toEqual(['openai']);
+
+		// Release hydrate's list fetch — it succeeds (fromFallback=false)
+		// but returns no keyed providers (keys were revoked since setProvider
+		// fetched its list). No active config either, so loadAIConfigWithProviders
+		// returns defaults with fromFallback=false and availableProviders=[].
+		resolveHydrateList({
+			ok: true,
+			json: async () => ({ configurations: [] }),
+		});
+		await hydratePromise;
+
+		// availableProviders must be empty — the successful hydrate reflects
+		// the current backend state. Preserving setProvider's ['openai'] would
+		// offer a provider whose key no longer exists.
+		const snap = getConfigSlice();
+		expect(snap.availableProviders).toEqual([]);
+		// setProvider succeeded, so the user's openai selection is preserved.
+		expect(snap.config.provider).toBe('openai');
+		expect(snap.hydrated).toBe(true);
+		expect(snap.hydrateError).toBe(false);
+	});
+
 	// [P2] When setProvider succeeds and the concurrent hydrate's fetch
 	// throws (catch path), the catch path doesn't populate
 	// availableProviders. Without setProvider adding the selected
