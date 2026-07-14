@@ -11,6 +11,18 @@ import { resetAIConfigStore } from './ai/ai-config-store';
 
 const API_BASE_URL = resolveApiBaseUrl(env.PUBLIC_API_URL);
 
+/**
+ * Maximum number of delayed retries after a transient `/auth/session`
+ * revalidation failure (5xx, network error, unparseable body) on the
+ * optimistic sharedUser path. A transient failure leaves `revalidated`
+ * false, which blocks AI config hydration and Start — without a retry,
+ * the user would need a full page reload or auth cycle to recover. The
+ * retry is bounded to avoid hammering the server if the failure is
+ * persistent.
+ */
+const REVALIDATE_MAX_RETRIES = 3;
+const REVALIDATE_RETRY_DELAY_MS = 5_000;
+
 declare global {
 	interface Window {
 		__PROCYON_INITIAL_AUTH_USER__?: AuthUser | null;
@@ -200,6 +212,10 @@ export function useAuth(options?: UseAuthOptions) {
 		// already set the user, and a late-arriving fetch result (e.g. null
 		// from a transient network failure) must not clobber it.
 		let eventReceived = false;
+		// Timer handle for the sharedUser revalidation retry. Cleared on
+		// cleanup and when a sibling AUTH_CHANGE_EVENT supersedes the
+		// revalidation.
+		let revalidateTimer: ReturnType<typeof setTimeout> | null = null;
 
 		const shouldFetchSession = !initialAuthState.user;
 
@@ -239,61 +255,77 @@ export function useAuth(options?: UseAuthOptions) {
 				// snapshot still holds a prior user), so AI hydration/start
 				// stay gated until `fetchSession()` confirms the session.
 				setRevalidated(false);
-				fetchSession().then(result => {
-					if (!mounted) return;
-					if (eventReceived) return;
-					if (result.status === 'ok') {
-						// If the confirmed session belongs to a different
-						// user than the optimistic sharedUser snapshot
-						// (account switch in another tab, or A's session
-						// expired and B signed in on a shared browser),
-						// reset the AI config store before adopting the new
-						// identity. Without this, hydrate() short-circuits
-						// on its module-level `hydrated` flag and leaves the
-						// previous user's raw API key in the store — the new
-						// user's game would then send that key to an AI
-						// provider. The store is module-level (shared across
-						// all islands in this tab), so resetting it here
-						// also covers sibling islands that learn about B via
-						// the dispatchAuthChange below. A same-user
-						// revalidation skips the reset so the existing valid
-						// config isn't wiped unnecessarily.
-						if (result.user.id !== sharedUser.id) {
+				let revalidateAttempt = 0;
+				const runRevalidation = () => {
+					fetchSession().then(result => {
+						if (!mounted) return;
+						if (eventReceived) return;
+						if (result.status === 'ok') {
+							// If the confirmed session belongs to a different
+							// user than the optimistic sharedUser snapshot
+							// (account switch in another tab, or A's session
+							// expired and B signed in on a shared browser),
+							// reset the AI config store before adopting the new
+							// identity. Without this, hydrate() short-circuits
+							// on its module-level `hydrated` flag and leaves the
+							// previous user's raw API key in the store — the new
+							// user's game would then send that key to an AI
+							// provider. The store is module-level (shared across
+							// all islands in this tab), so resetting it here
+							// also covers sibling islands that learn about B via
+							// the dispatchAuthChange below. A same-user
+							// revalidation skips the reset so the existing valid
+							// config isn't wiped unnecessarily.
+							if (result.user.id !== sharedUser.id) {
+								clearAIConfig();
+								resetAIConfigStore();
+							}
+							setUser(result.user);
+							setRevalidated(true);
+							dispatchAuthChange(result.user);
+						} else if (result.status === 'unauthenticated') {
+							setUser(null);
+							// The session's absence is now confirmed by the
+							// server, so mark revalidated — `user` is null and
+							// isAuthenticated is false, so this only matters
+							// for consistency.
+							setRevalidated(true);
+							dispatchAuthChange(null);
+							// Mirror logout()'s cleanup: a confirmed passive
+							// sign-out must also drop the cached AI config and
+							// reset the in-memory store (including the raw API
+							// key fetched by hydrate and the `hydrated` flag).
+							// Without this, an anonymous game or a subsequent
+							// login reuses the previous user's key because
+							// hydrate short-circuits on the stale `hydrated`
+							// flag.
 							clearAIConfig();
 							resetAIConfigStore();
+						} else {
+							// result.status === 'error': transient failure. The
+							// session's true state is unknown — preserve the
+							// optimistic sharedUser already in state and do not
+							// broadcast, so sibling islands aren't logged out by a
+							// temporary /auth/session failure. Leave
+							// `revalidated=false` so AI key use stays blocked
+							// until a successful revalidation confirms the
+							// session: a transient failure must not authorize
+							// reusing a potentially stale snapshot's key.
+							// Schedule a bounded delayed retry so a transient
+							// 5xx or network error doesn't permanently block AI
+							// start (which gates on `revalidated`) until a full
+							// page reload.
+							if (revalidateAttempt < REVALIDATE_MAX_RETRIES) {
+								revalidateAttempt++;
+								revalidateTimer = setTimeout(
+									runRevalidation,
+									REVALIDATE_RETRY_DELAY_MS
+								);
+							}
 						}
-						setUser(result.user);
-						setRevalidated(true);
-						dispatchAuthChange(result.user);
-					} else if (result.status === 'unauthenticated') {
-						setUser(null);
-						// The session's absence is now confirmed by the
-						// server, so mark revalidated — `user` is null and
-						// isAuthenticated is false, so this only matters
-						// for consistency.
-						setRevalidated(true);
-						dispatchAuthChange(null);
-						// Mirror logout()'s cleanup: a confirmed passive
-						// sign-out must also drop the cached AI config and
-						// reset the in-memory store (including the raw API
-						// key fetched by hydrate and the `hydrated` flag).
-						// Without this, an anonymous game or a subsequent
-						// login reuses the previous user's key because
-						// hydrate short-circuits on the stale `hydrated`
-						// flag.
-						clearAIConfig();
-						resetAIConfigStore();
-					}
-					// result.status === 'error': transient failure. The
-					// session's true state is unknown — preserve the
-					// optimistic sharedUser already in state and do not
-					// broadcast, so sibling islands aren't logged out by a
-					// temporary /auth/session failure. Leave
-					// `revalidated=false` so AI key use stays blocked
-					// until a successful revalidation confirms the
-					// session: a transient failure must not authorize
-					// reusing a potentially stale snapshot's key.
-				});
+					});
+				};
+				runRevalidation();
 			} else {
 				fetchSession()
 					.then(result => {
@@ -355,6 +387,14 @@ export function useAuth(options?: UseAuthOptions) {
 		const handleAuthChange = (e: Event) => {
 			if (!mounted) return;
 			eventReceived = true;
+			// Cancel any pending revalidation retry — the sibling event
+			// supersedes the optimistic revalidation, and a late retry
+			// fetch would be a wasted request (its result is ignored via
+			// the eventReceived guard).
+			if (revalidateTimer) {
+				clearTimeout(revalidateTimer);
+				revalidateTimer = null;
+			}
 			const { user: newUser } = (e as CustomEvent<AuthChangeDetail>).detail;
 			setUser(newUser);
 			// A sibling AUTH_CHANGE_EVENT only fires after that sibling's
@@ -369,6 +409,10 @@ export function useAuth(options?: UseAuthOptions) {
 
 		return () => {
 			mounted = false;
+			if (revalidateTimer) {
+				clearTimeout(revalidateTimer);
+				revalidateTimer = null;
+			}
 			globalThis.removeEventListener(AUTH_CHANGE_EVENT, handleAuthChange);
 		};
 	}, []);

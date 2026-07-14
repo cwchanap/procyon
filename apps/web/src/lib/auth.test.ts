@@ -873,6 +873,152 @@ describe('useAuth', () => {
 		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
 	});
 
+	test('transient revalidation failure schedules a bounded retry that recovers on success', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				// Island A fetch succeeds → sets shared snapshot.
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			if (fetchCallCount === 2) {
+				// Island B revalidation — deferred, returns 500 (transient).
+				return revalidationPending.then(() =>
+					Promise.resolve(jsonResponse({}, 500))
+				);
+			}
+			// Retry (fetchCallCount >= 3) succeeds with the same user.
+			return Promise.resolve(jsonResponse({ user: mockUser }));
+		}) as any;
+
+		// Capture long-delay setTimeout callbacks (the retry timer) so we
+		// can fire them without waiting.
+		const originalSetTimeout = globalThis.setTimeout;
+		const originalClearTimeout = globalThis.clearTimeout;
+		let retryCallback: (() => void) | null = null;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				retryCallback = fn;
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+		globalThis.clearTimeout = mock(
+			() => {}
+		) as unknown as typeof globalThis.clearTimeout;
+
+		try {
+			const { result: resultA } = renderHook(() => useAuth());
+			await act(async () => {
+				await new Promise(r => setTimeout(r, 0));
+			});
+			expect(resultA.current.user).toEqual(mockUser);
+
+			// Island B mounts after A's event, reads the snapshot
+			// optimistically, then revalidates.
+			const { result: resultB } = renderHook(() => useAuth());
+			await act(async () => {
+				await new Promise(r => setTimeout(r, 0));
+			});
+			expect(resultB.current.user).toEqual(mockUser);
+			expect(resultB.current.revalidated).toBe(false);
+
+			// Resolve the revalidation with 500 (transient). Island B
+			// must preserve the optimistic user, leave revalidated=false,
+			// and schedule a retry.
+			await act(async () => {
+				resolveRevalidation();
+				await new Promise(r => setTimeout(r, 0));
+			});
+			expect(resultB.current.user).toEqual(mockUser);
+			expect(resultB.current.revalidated).toBe(false);
+			expect(retryCallback).not.toBeNull();
+			expect(fetchCallCount).toBe(2);
+
+			// Fire the retry callback to simulate the delay elapsing.
+			// The retry fetch succeeds → revalidated becomes true.
+			await act(async () => {
+				retryCallback!();
+				await new Promise(r => setTimeout(r, 0));
+			});
+			expect(fetchCallCount).toBe(3);
+			expect(resultB.current.revalidated).toBe(true);
+			expect(resultB.current.user).toEqual(mockUser);
+		} finally {
+			globalThis.setTimeout = originalSetTimeout;
+			globalThis.clearTimeout = originalClearTimeout;
+		}
+	});
+
+	test('transient revalidation retry is bounded — stops after max retries', async () => {
+		let fetchCallCount = 0;
+		let resolveRevalidation: () => void = () => {};
+		const revalidationPending = new Promise<void>(r => {
+			resolveRevalidation = r;
+		});
+		globalThis.fetch = mock(() => {
+			fetchCallCount++;
+			if (fetchCallCount === 1) {
+				return Promise.resolve(jsonResponse({ user: mockUser }));
+			}
+			if (fetchCallCount === 2) {
+				return revalidationPending.then(() =>
+					Promise.resolve(jsonResponse({}, 500))
+				);
+			}
+			// All retries return 500 (transient).
+			return Promise.resolve(jsonResponse({}, 500));
+		}) as any;
+
+		// Fire long-delay timers immediately to simulate all retries
+		// elapsing without waiting.
+		const originalSetTimeout = globalThis.setTimeout;
+		const originalClearTimeout = globalThis.clearTimeout;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				fn();
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+		globalThis.clearTimeout = mock(
+			() => {}
+		) as unknown as typeof globalThis.clearTimeout;
+
+		try {
+			renderHook(() => useAuth());
+			await act(async () => {
+				await new Promise(r => setTimeout(r, 0));
+			});
+
+			const { result: resultB } = renderHook(() => useAuth());
+			await act(async () => {
+				await new Promise(r => setTimeout(r, 0));
+			});
+
+			// Resolve the initial revalidation with 500.
+			await act(async () => {
+				resolveRevalidation();
+				await new Promise(r => setTimeout(r, 50));
+			});
+
+			// 1 initial (island A) + 1 revalidation (island B) + 3 retries = 5.
+			// The retry stops after the bounded max.
+			expect(fetchCallCount).toBe(5);
+			// revalidated stays false — all retries failed.
+			expect(resultB.current.revalidated).toBe(false);
+			// Optimistic user is preserved.
+			expect(resultB.current.user).toEqual(mockUser);
+		} finally {
+			globalThis.setTimeout = originalSetTimeout;
+			globalThis.clearTimeout = originalClearTimeout;
+		}
+	});
+
 	test('confirmed 401 expiry on revalidation clears the AI config store', async () => {
 		let fetchCallCount = 0;
 		let resolveRevalidation: () => void = () => {};

@@ -193,6 +193,88 @@ describe('ChessGame — inline "AI plays" select', () => {
 		}
 	});
 
+	test('select is re-enabled when the authenticated user identity changes mid-game (account switch resets local game state)', async () => {
+		// Start authenticated as user A so the game can begin, then
+		// simulate an account switch by dispatching AUTH_CHANGE_EVENT
+		// with a different authenticated user B. isAuthenticated stays
+		// true throughout, so the true→false-only logout guard does not
+		// fire — the identity-change check must reset the game so the old
+		// board is discarded and usePlayHistory cannot record A's result
+		// under B's id.
+		(
+			window as unknown as Record<string, unknown>
+		).__PROCYON_INITIAL_AUTH_USER__ = {
+			id: 'user-a',
+			email: 'a@test.com',
+			username: 'userA',
+		};
+
+		const originalFetch = globalThis.fetch;
+		const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
+			globalThis,
+			'localStorage'
+		);
+		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
+			Promise.resolve({
+				ok: true,
+				json: () => Promise.resolve({ configurations: [] }),
+			})) as unknown as typeof fetch;
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			value: window.localStorage,
+		});
+
+		try {
+			const { getByLabelText, getByRole } = render(<ChessGame />);
+			const select = (await waitFor(() =>
+				getByLabelText(/AI plays/i)
+			)) as HTMLSelectElement;
+
+			// Wait for hydration to finish: aiStarting clears and Start
+			// becomes enabled.
+			const startButton = await waitFor(() =>
+				getByRole('button', { name: /start/i })
+			);
+			fireEvent.click(startButton);
+
+			// After starting: select is locked (gameActive true).
+			await waitFor(() => {
+				expect(select.disabled).toBe(true);
+			});
+
+			// Simulate account switch: dispatch the real auth-change event
+			// with a different authenticated user. The ChessGame effect
+			// should detect the identity change and reset local game
+			// state (gameActive=false), re-enabling the select.
+			globalThis.dispatchEvent(
+				new CustomEvent(AUTH_CHANGE_EVENT, {
+					detail: {
+						user: {
+							id: 'user-b',
+							email: 'b@test.com',
+							username: 'userB',
+						},
+					},
+				})
+			);
+
+			await waitFor(() => {
+				expect(select.disabled).toBe(false);
+			});
+		} finally {
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			if (originalLocalStorageDesc) {
+				Object.defineProperty(
+					globalThis,
+					'localStorage',
+					originalLocalStorageDesc
+				);
+			} else {
+				delete (globalThis as Record<string, unknown>).localStorage;
+			}
+		}
+	});
+
 	// AI move gen stale checks: when AI plays white and the game starts,
 	// makeAIMoveAsync fires after the 1-second delay. With defaultAIConfig
 	// (enabled=false, apiKey=''), makeMove returns null — the try block's

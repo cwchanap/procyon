@@ -432,21 +432,35 @@ const XiangqiGame: React.FC = () => {
 		setGameStarted(false);
 	}, []);
 
-	// Reset local game state when authentication is lost (logout). The auth
-	// context wipes the AI config store on logout, but `gameStarted` and
-	// board state live here in local state — without this reset the
-	// mounted page keeps the AI service disabled (no API key) and the AI
-	// turn stalls indefinitely. handleResetGame handles gen invalidation
-	// and isAIThinking clearing. Track the previous auth value so we only
-	// fire on the true→false transition, not on mount.
+	// Reset local game state when authentication is lost (logout) OR when
+	// the authenticated user identity changes (account switch in another
+	// tab). The auth context wipes the AI config store on logout, but
+	// `gameStarted` and board state live here in local state — without
+	// this reset the mounted page keeps the AI service disabled (no API
+	// key) and the AI turn stalls indefinitely. On an identity change
+	// (A→B), isAuthenticated stays true so the true→false-only check
+	// would leave the old board alive — on game over, usePlayHistory
+	// would then record A's result under B's id and rating.
+	// handleResetGame handles gen invalidation and isAIThinking clearing.
+	// Track the previous auth value and user id so we fire on logout
+	// (true→false) and on identity change (id change while authenticated),
+	// not on mount or initial login from anonymous.
 	const prevAuthenticatedRef = useRef(isAuthenticated);
+	const prevUserIdRef = useRef<string | null | undefined>(user?.id);
 	useEffect(() => {
-		if (prevAuthenticatedRef.current && !isAuthenticated) {
+		const currentUserId = user?.id;
+		const authLost = prevAuthenticatedRef.current && !isAuthenticated;
+		const identityChanged =
+			isAuthenticated &&
+			prevUserIdRef.current != null &&
+			prevUserIdRef.current !== currentUserId;
+		if (authLost || identityChanged) {
 			handleResetGame();
 			setAIPlayer('black');
 		}
 		prevAuthenticatedRef.current = isAuthenticated;
-	}, [isAuthenticated, handleResetGame]);
+		prevUserIdRef.current = currentUserId;
+	}, [isAuthenticated, user?.id, handleResetGame]);
 
 	const triggerDebugWin = useCallback(() => {
 		setGameState(prev => ({
