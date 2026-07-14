@@ -27,6 +27,8 @@ export interface UseAIConfigHydrationResult {
 	hydrated: boolean;
 	/** Whether the last hydration attempt failed. */
 	hydrateError: boolean;
+	/** True while a `rehydrate()` fetch is in flight (Retry button). */
+	isRehydrating: boolean;
 	/**
 	 * True when the AI move trigger effect should defer — auth is still
 	 * loading, or the user is authenticated but the config store hasn't
@@ -76,7 +78,7 @@ export function useAIConfigHydration({
 	loading,
 	isAiMode,
 }: UseAIConfigHydrationOptions): UseAIConfigHydrationResult {
-	const { config, hydrated, hydrateError } = useAIConfig();
+	const { config, hydrated, hydrateError, isRehydrating } = useAIConfig();
 
 	useEffect(() => {
 		if (loading || !isAuthenticated) return;
@@ -87,5 +89,12 @@ export function useAIConfigHydration({
 		loading || (isAuthenticated && (!hydrated || hydrateError));
 	const aiStarting = isAiMode && isAuthenticated && (!hydrated || hydrateError);
 
-	return { config, hydrated, hydrateError, configPending, aiStarting };
+	return {
+		config,
+		hydrated,
+		hydrateError,
+		isRehydrating,
+		configPending,
+		aiStarting,
+	};
 }

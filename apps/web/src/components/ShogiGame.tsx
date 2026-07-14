@@ -51,6 +51,7 @@ const ShogiGame: React.FC = () => {
 		config: aiConfig,
 		hydrated: aiConfigHydrated,
 		hydrateError,
+		isRehydrating: aiConfigRehydrating,
 		configPending,
 		aiStarting,
 	} = useAIConfigHydration({
@@ -814,6 +815,7 @@ const ShogiGame: React.FC = () => {
 					}}
 					onModelChange={model => setAIModel(model)}
 					hydrated={aiConfigHydrated}
+					isRehydrating={aiConfigRehydrating}
 					aiPlayerOptions={[
 						{ value: 'gote', label: 'AI plays Gote (後手)' },
 						{ value: 'sente', label: 'AI plays Sente (先手)' },

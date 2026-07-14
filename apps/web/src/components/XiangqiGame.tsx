@@ -58,6 +58,7 @@ const XiangqiGame: React.FC = () => {
 		config: aiConfig,
 		hydrated: aiConfigHydrated,
 		hydrateError,
+		isRehydrating: aiConfigRehydrating,
 		configPending,
 		aiStarting,
 	} = useAIConfigHydration({
@@ -644,6 +645,7 @@ const XiangqiGame: React.FC = () => {
 					}}
 					onModelChange={model => setAIModel(model)}
 					hydrated={aiConfigHydrated}
+					isRehydrating={aiConfigRehydrating}
 					aiPlayerOptions={[
 						{ value: 'black', label: 'AI plays Black (黑方)' },
 						{ value: 'red', label: 'AI plays Red (红方)' },

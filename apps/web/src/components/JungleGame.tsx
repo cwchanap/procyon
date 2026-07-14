@@ -58,6 +58,7 @@ const JungleGame: React.FC = () => {
 		config: aiConfig,
 		hydrated: aiConfigHydrated,
 		hydrateError,
+		isRehydrating: aiConfigRehydrating,
 		configPending,
 		aiStarting,
 	} = useAIConfigHydration({
@@ -544,6 +545,7 @@ const JungleGame: React.FC = () => {
 					}}
 					onModelChange={model => setAIModel(model)}
 					hydrated={aiConfigHydrated}
+					isRehydrating={aiConfigRehydrating}
 					aiPlayerOptions={[
 						{ value: 'blue', label: 'AI plays Blue (蓝方)' },
 						{ value: 'red', label: 'AI plays Red (红方)' },
