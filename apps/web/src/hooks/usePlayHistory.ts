@@ -113,6 +113,17 @@ export function usePlayHistory({
 		gameVariant: GameVariant;
 		userId: string | null | undefined;
 	} | null>(null);
+	// The userId from the previous effect run. Used by the save effect to
+	// detect an auth identity change (A→B) that happened between when the
+	// game became terminal and when the save first fires (or between a 401
+	// retry and the next re-fire). The save effect runs before the game
+	// component's identity-reset effect (usePlayHistory is declared earlier
+	// in the component), so without this guard the save would submit A's
+	// terminal result under B's authenticated session before resetGame()
+	// runs, recording A's game under B's history and rating. Updated at the
+	// end of every save effect run so it always reflects the userId from
+	// the previous render.
+	const prevUserIdRef = useRef<string | null | undefined>(userId);
 
 	// State-based retry trigger for 401 auth-expiry recovery. Incrementing
 	// this causes a re-render and effect re-run, which retries the save.
@@ -306,9 +317,25 @@ export function usePlayHistory({
 
 	useEffect(() => {
 		if (enabled && isGameOverStatus(gameStatus) && !savedRef.current) {
+			// Identity-change guard: if the auth identity changed since the
+			// previous effect run (A→B account switch in another tab, or A's
+			// session expired and B signed in on a shared browser), abandon
+			// the save. The save effect runs before the game component's
+			// identity-reset effect (usePlayHistory is declared earlier in
+			// the component), so without this guard the save would submit
+			// A's terminal result under B's authenticated session before
+			// resetGame() runs, recording A's game under B's history and
+			// rating. Set savedRef=true so the effect doesn't keep
+			// re-firing on subsequent dep changes while the user remains B.
+			if (prevUserIdRef.current !== userId) {
+				savedRef.current = true;
+				prevUserIdRef.current = userId;
+				return;
+			}
 			void savePlayHistory();
 		}
-	}, [enabled, gameStatus, savePlayHistory, retryTrigger]);
+		prevUserIdRef.current = userId;
+	}, [enabled, gameStatus, savePlayHistory, retryTrigger, userId]);
 
 	useEffect(() => {
 		if (gameStatus === 'playing' && moveCount === 0) {
