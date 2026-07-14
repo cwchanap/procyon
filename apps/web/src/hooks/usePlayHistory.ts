@@ -21,6 +21,18 @@ export interface UsePlayHistoryOptions {
 	 * the terminal save.
 	 */
 	isAuthenticated: boolean;
+	/**
+	 * The authenticated user's id from the caller's `useAuth()` snapshot
+	 * (`user?.id`). Captured into the save snapshot on the first attempt so
+	 * that a 401-retry can detect an account switch: if the user id changed
+	 * between the original save and the retry (e.g. account A's cookie
+	 * expired, user logged in as B before the retry timer fired), the retry
+	 * is abandoned — sending A's frozen result with B's cookie would record
+	 * A's game under B's history and rating. `null`/`undefined` covers the
+	 * DEV-mode unauthenticated case (the snapshot stores `null` and a
+	 * subsequent login to a real user id abandons the DEV save).
+	 */
+	userId: string | null | undefined;
 	/** When set, bumps window.__PROCYON_DEBUG_<KEY>_SAVE_COUNT__ before the fetch. */
 	debugVariantKey?: string;
 }
@@ -79,6 +91,7 @@ export function usePlayHistory({
 	getWinnerColor,
 	enabled,
 	isAuthenticated,
+	userId,
 	debugVariantKey,
 }: UsePlayHistoryOptions): void {
 	const savedRef = useRef(false);
@@ -98,6 +111,7 @@ export function usePlayHistory({
 		result: 'win' | 'loss' | 'draw';
 		opponentLlmId: string;
 		gameVariant: GameVariant;
+		userId: string | null | undefined;
 	} | null>(null);
 
 	// State-based retry trigger for 401 auth-expiry recovery. Incrementing
@@ -135,6 +149,20 @@ export function usePlayHistory({
 		// debug save counter only once per terminal game, even when 401
 		// auth-recovery re-enters this function.
 		const isFirstAttempt = saveSnapshotRef.current === null;
+		// Account-switch guard: if this is a 401 auth-recovery retry and the
+		// authenticated user id has changed since the snapshot was captured
+		// (account A's cookie expired, user logged in as B before the retry
+		// timer fired), abandon the save. Sending A's frozen result with B's
+		// cookie would record A's game under B's history and rating. Set
+		// savedRef=true so the effect doesn't keep re-firing on subsequent
+		// dep changes while the user remains B — consistent with the 5xx /
+		// network-error philosophy of keeping savedRef=true for non-retryable
+		// conditions. A's game is lost in this edge case, but A's session was
+		// already expired and the user explicitly switched accounts.
+		if (saveSnapshotRef.current && saveSnapshotRef.current.userId !== userId) {
+			savedRef.current = true;
+			return;
+		}
 		let result: 'win' | 'loss' | 'draw';
 		let opponentLlmId: string;
 		let snapshotGameVariant: GameVariant;
@@ -151,7 +179,12 @@ export function usePlayHistory({
 			}
 			opponentLlmId = resolveOpponentLlmId(aiConfig.provider, aiConfig.model);
 			snapshotGameVariant = gameVariant;
-			saveSnapshotRef.current = { result, opponentLlmId, gameVariant };
+			saveSnapshotRef.current = {
+				result,
+				opponentLlmId,
+				gameVariant,
+				userId,
+			};
 		}
 
 		savedRef.current = true;
@@ -261,6 +294,7 @@ export function usePlayHistory({
 	}, [
 		enabled,
 		isAuthenticated,
+		userId,
 		aiPlayer,
 		gameStatus,
 		aiConfig.provider,

@@ -47,7 +47,12 @@ const ChessGame: React.FC = () => {
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
 	const [gameActive, setGameActive] = useState(false);
-	const { isAuthenticated, loading: authLoading, revalidated } = useAuth();
+	const {
+		user,
+		isAuthenticated,
+		loading: authLoading,
+		revalidated,
+	} = useAuth();
 	const {
 		config: aiConfig,
 		configPending,
@@ -112,6 +117,7 @@ const ChessGame: React.FC = () => {
 		getWinnerColor,
 		enabled: gameMode === 'ai' && gameStarted,
 		isAuthenticated,
+		userId: user?.id,
 		debugVariantKey: 'CHESS',
 	});
 

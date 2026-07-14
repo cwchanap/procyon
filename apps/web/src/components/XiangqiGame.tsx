@@ -53,7 +53,12 @@ const XiangqiGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<'red' | 'black'>('black');
-	const { isAuthenticated, loading: authLoading, revalidated } = useAuth();
+	const {
+		user,
+		isAuthenticated,
+		loading: authLoading,
+		revalidated,
+	} = useAuth();
 	const {
 		config: aiConfig,
 		hydrated: aiConfigHydrated,
@@ -120,6 +125,7 @@ const XiangqiGame: React.FC = () => {
 		getWinnerColor,
 		enabled: gameMode === 'ai' && gameStarted,
 		isAuthenticated,
+		userId: user?.id,
 		debugVariantKey: 'XIANGQI',
 	});
 

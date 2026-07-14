@@ -53,7 +53,12 @@ const JungleGame: React.FC = () => {
 	);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<JunglePieceColor>('blue');
-	const { isAuthenticated, loading: authLoading, revalidated } = useAuth();
+	const {
+		user,
+		isAuthenticated,
+		loading: authLoading,
+		revalidated,
+	} = useAuth();
 	const {
 		config: aiConfig,
 		hydrated: aiConfigHydrated,
@@ -110,6 +115,7 @@ const JungleGame: React.FC = () => {
 		getWinnerColor,
 		enabled: gameMode === 'ai' && gameStarted,
 		isAuthenticated,
+		userId: user?.id,
 		debugVariantKey: 'JUNGLE',
 	});
 
