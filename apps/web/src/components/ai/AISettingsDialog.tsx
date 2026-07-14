@@ -22,6 +22,15 @@ interface AISettingsDialogProps {
 	 * track hydration (e.g. tests) aren't blocked.
 	 */
 	hydrated?: boolean;
+	/**
+	 * True while a `rehydrate()` fetch is in flight (Retry button).
+	 * `hydrated` stays true from the prior hydrate during a rehydrate, so
+	 * without this flag the model select stays enabled and a `setModel()`
+	 * call would be silently overwritten when the rehydrate resolves with
+	 * the backend snapshot. Defaults to false so callers that don't track
+	 * rehydration (e.g. tests) aren't blocked.
+	 */
+	isRehydrating?: boolean;
 }
 
 // All available provider options
@@ -76,6 +85,7 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 	isActive = false,
 	onActivate,
 	hydrated = true,
+	isRehydrating = false,
 }) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const [availableProviders, setAvailableProviders] = useState<string[]>([]);
@@ -283,7 +293,9 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 										<select
 											aria-label='AI Provider'
 											value={currentProvider}
-											disabled={isProviderSwitching || !hydrated}
+											disabled={
+												isProviderSwitching || !hydrated || isRehydrating
+											}
 											onChange={async e => {
 												const newProvider = e.target.value;
 												// onProviderChange (setProvider) commits the provider + model
@@ -327,7 +339,9 @@ const AISettingsDialog: React.FC<AISettingsDialogProps> = ({
 										<select
 											aria-label='AI Model'
 											value={currentModel}
-											disabled={isProviderSwitching || !hydrated}
+											disabled={
+												isProviderSwitching || !hydrated || isRehydrating
+											}
 											onChange={e => onModelChange(e.target.value)}
 											className='w-full px-4 py-2 rounded-lg bg-ink-800 text-ivory border border-line focus:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:border-line-brass disabled:cursor-not-allowed disabled:opacity-50'
 										>

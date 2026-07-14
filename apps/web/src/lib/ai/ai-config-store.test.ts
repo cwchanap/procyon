@@ -1673,6 +1673,223 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 		expect(snap.availableProviders).toEqual(['gemini']);
 	});
 
+	// [P2] If a setProvider succeeds at gen N BEFORE a rehydrate starts,
+	// the rehydrate captures providerGen=N. If a later setProvider fails
+	// at gen N+1 during the rehydrate's fetch, setProviderSucceededGen
+	// stays N (the failure doesn't record). The old guard
+	// `setProviderSucceededGen > providerGen` (N > N) reports false, so
+	// the rehydrate applies its stale backend snapshot — clobbering the
+	// successful gen N switch even though the gen N+1 failure wrote
+	// nothing. The fix uses `>= ` (with a `> 0` guard to distinguish
+	// "no setProvider ever succeeded" from "succeeded at gen N") so the
+	// prior success is preserved.
+	test('rehydrate preserves prior successful setProvider when a later setProvider fails during the fetch', async () => {
+		// Step 1: setProvider succeeds — switches to openai.
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+						],
+					}),
+				};
+			}
+			// setProvider's full fetch for cfg-o.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-test',
+					modelName: 'gpt-4o',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		const providerErr = await setProvider('openai');
+		expect(providerErr).toBeNull();
+		expect(getConfigSlice().config.provider).toBe('openai');
+		expect(getConfigSlice().config.apiKey).toBe('sk-test');
+
+		// Step 2: Start a rehydrate. Hold its list fetch pending so we
+		// can interleave a failing setProvider.
+		let resolveRehydrateList: (v: unknown) => void = () => {};
+		const rehydrateListPending = new Promise(r => {
+			resolveRehydrateList = r;
+		});
+		let listCallCount = 0;
+
+		// @ts-expect-error -- test-only: replace global fetch with routing mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				listCallCount++;
+				if (listCallCount === 1) {
+					// rehydrate's list fetch — held pending.
+					return rehydrateListPending;
+				}
+				// setProvider's list fetch — returns a list without the
+				// requested provider (chutes has no keyed config), so
+				// setProvider fails without writing to the slice.
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: true,
+							},
+						],
+					}),
+				};
+			}
+			// rehydrate's full fetch for the active openai config.
+			// Returns a DIFFERENT API key than what setProvider wrote,
+			// so we can detect if the rehydrate clobbered the switch.
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'openai',
+					apiKey: 'sk-stale-backend',
+					modelName: 'gpt-4o-mini',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		// Start rehydrate — its list fetch is pending.
+		const rehydratePromise = rehydrate();
+
+		// While rehydrate is in flight, the user tries to switch to
+		// chutes (which has no keyed config). setProvider bumps
+		// setProviderGeneration to N+1 and returns an error string
+		// without writing to the slice or recording setProviderSucceededGen.
+		const failErr = await setProvider('chutes');
+		expect(typeof failErr).toBe('string');
+
+		// Release rehydrate's list fetch.
+		resolveRehydrateList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-o',
+						provider: 'openai',
+						hasApiKey: true,
+						isActive: true,
+					},
+				],
+			}),
+		});
+		await rehydratePromise;
+
+		// The store must preserve the successful openai switch (sk-test),
+		// NOT overwrite it with the rehydrate's stale backend snapshot
+		// (sk-stale-backend).
+		const snap = getConfigSlice();
+		expect(snap.hydrated).toBe(true);
+		expect(snap.config.provider).toBe('openai');
+		expect(snap.config.apiKey).toBe('sk-test');
+		expect(snap.config.model).toBe('gpt-4o');
+		expect(snap.hydrateError).toBe(false);
+	});
+
+	// [P2] isRehydrating flag: rehydrate() must set isRehydrating=true on
+	// the config slice so consumers can disable model/provider edits while
+	// the fetch is in flight. configSlice.hydrated stays true from the
+	// prior hydrate, so without isRehydrating the selects stay enabled and
+	// a setModel() call (which doesn't bump setProviderGeneration) would
+	// be silently overwritten when runHydrate resolves.
+	test('rehydrate sets isRehydrating during fetch and clears it after', async () => {
+		// Step 1: Successful initial hydrate so configSlice.hydrated=true.
+		// @ts-expect-error -- test-only: replace global fetch with list mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: true,
+							},
+						],
+					}),
+				};
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gemini-key',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		await hydrate();
+		expect(getConfigSlice().isRehydrating).toBe(false);
+
+		// Step 2: Start a rehydrate with a held-pending list fetch so we
+		// can inspect the slice mid-flight.
+		let resolveRehydrateList: (v: unknown) => void = () => {};
+		const rehydrateListPending = new Promise(r => {
+			resolveRehydrateList = r;
+		});
+
+		// @ts-expect-error -- test-only: replace global fetch with held mock
+		globalThis.fetch = mock(async (url: string) => {
+			if (url.endsWith('/ai-config')) {
+				return rehydrateListPending;
+			}
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gemini-key-fresh',
+					modelName: 'gemini-2.5-flash',
+					gameVariant: 'chess',
+				}),
+			};
+		});
+
+		const rehydratePromise = rehydrate();
+
+		// While the fetch is in flight, isRehydrating must be true.
+		expect(getConfigSlice().isRehydrating).toBe(true);
+
+		// Release the fetch — rehydrate resolves and clears isRehydrating.
+		resolveRehydrateList({
+			ok: true,
+			json: async () => ({
+				configurations: [
+					{
+						id: 'cfg-g',
+						provider: 'gemini',
+						hasApiKey: true,
+						isActive: true,
+					},
+				],
+			}),
+		});
+		await rehydratePromise;
+
+		expect(getConfigSlice().isRehydrating).toBe(false);
+		expect(getConfigSlice().hydrated).toBe(true);
+	});
+
 	// [P2] runHydrate catch path with providerGen guard: when
 	// loadAIConfigWithProviders throws (not just returns fallback) while
 	// a setProvider has raced, the catch path must still mark hydrated

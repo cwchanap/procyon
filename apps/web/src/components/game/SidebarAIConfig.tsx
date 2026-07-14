@@ -65,7 +65,8 @@ function resolveProviderOptions(
 }
 
 const SidebarAIConfig: React.FC = () => {
-	const { config, availableProviders, hydrated, hydrateError } = useAIConfig();
+	const { config, availableProviders, hydrated, hydrateError, isRehydrating } =
+		useAIConfig();
 	const { isAuthenticated, loading } = useAuth();
 	const [error, setError] = useState<string | null>(null);
 	// Tracks an in-flight provider switch so the model select can be
@@ -156,7 +157,7 @@ const SidebarAIConfig: React.FC = () => {
 							aria-label='AI Provider'
 							value={config.provider}
 							onChange={e => onProviderChange(e.target.value as AIProvider)}
-							disabled={isProviderSwitching || !hydrated}
+							disabled={isProviderSwitching || !hydrated || isRehydrating}
 							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
 						>
 							{providerOptions.map(o => (
@@ -174,7 +175,7 @@ const SidebarAIConfig: React.FC = () => {
 						<select
 							aria-label='AI Model'
 							value={currentModel}
-							disabled={isProviderSwitching || !hydrated}
+							disabled={isProviderSwitching || !hydrated || isRehydrating}
 							onChange={e => setModel(e.target.value)}
 							className='w-full rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
 						>
