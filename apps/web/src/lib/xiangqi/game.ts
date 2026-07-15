@@ -193,8 +193,7 @@ function playerHasValidMoves(
 export function undoMove(gameState: XiangqiGameState): XiangqiGameState {
 	if (gameState.moveHistory.length === 0) return gameState;
 
-	const lastMove = gameState.moveHistory[gameState.moveHistory.length - 1];
-	if (!lastMove) return gameState;
+	const lastMove = gameState.moveHistory[gameState.moveHistory.length - 1]!;
 	const newBoard = copyBoard(gameState.board);
 
 	// Restore the piece to its original position
