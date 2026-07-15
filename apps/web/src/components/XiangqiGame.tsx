@@ -693,8 +693,7 @@ const XiangqiGame: React.FC = () => {
 						import.meta.env.DEV &&
 						showDebugWinButton &&
 						hasGameStarted &&
-						!isGameOver &&
-						isAuthenticated ? (
+						!isGameOver ? (
 							<DebugOutcomeButtons
 								onWin={triggerDebugWin}
 								onLoss={triggerDebugLoss}

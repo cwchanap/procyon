@@ -1,4 +1,4 @@
-import { test, expect, describe, mock, beforeEach } from 'bun:test';
+import { test, expect, describe, mock, beforeEach, afterEach } from 'bun:test';
 import { renderHook, act } from '@testing-library/react';
 import { setupReactDom } from '../test/reactSetup';
 import { useGameDebugOutcomes } from './useGameDebugOutcomes';
@@ -11,6 +11,8 @@ function chessHumanPlayer(ai: ChessColor): ChessColor {
 	return ai === 'black' ? 'white' : 'black';
 }
 
+const originalDev = (import.meta.env as { DEV: boolean }).DEV;
+
 describe('useGameDebugOutcomes', () => {
 	const winStatus = 'checkmate';
 	const drawStatus = 'stalemate';
@@ -18,6 +20,10 @@ describe('useGameDebugOutcomes', () => {
 	beforeEach(() => {
 		// Ensure DEV so global trigger + Shift+D effects register
 		(import.meta.env as { DEV: boolean }).DEV = true;
+	});
+
+	afterEach(() => {
+		(import.meta.env as { DEV: boolean }).DEV = originalDev;
 	});
 
 	test('triggerDebugWin calls setOutcome with winStatus and aiPlayer', () => {

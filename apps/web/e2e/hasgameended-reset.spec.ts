@@ -71,8 +71,7 @@ test.describe('hasGameEnded reset flow', () => {
 		await expect(tutorialModeButton).toBeVisible();
 		await tutorialModeButton.click();
 
-		// Switch back to AI mode via the board-side panel toggle (the chess
-		// redesign moved mode switching out of the AI Settings dialog)
+		// Switch back to AI mode via the board-side panel toggle
 		const playVsAiButton = page.getByRole('button', {
 			name: /Play vs AI/i,
 		});
