@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type {
 	JungleGameState,
 	JunglePosition,
@@ -14,23 +14,24 @@ import { createInitialTerrain } from '../lib/jungle/types';
 import { createInitialBoard } from '../lib/jungle/board';
 import { createJungleAI } from '../lib/ai';
 import {
-	setProvider as setAIProvider,
-	setModel as setAIModel,
-	rehydrate as rehydrateAIConfig,
-} from '../lib/ai/ai-config-store';
-import { usePlayHistory } from '../hooks/usePlayHistory';
-import { useAIConfigHydration } from '../hooks/useAIConfigHydration';
-import type { AIProvider } from '../lib/ai/types';
+	usePlayHistory,
+	useAIConfigHydration,
+	useAiMoveGenerationToken,
+	useGameIdentityReset,
+	useGameDebugOutcomes,
+} from '../hooks';
+import type { AIMove } from './ai/AIDebugDialog';
 import JungleBoard from './JungleBoard';
-import GameScaffold from './game/GameScaffold';
+import BoardSidePanel, { type Mode } from './game/BoardSidePanel';
+import BoardColumn from './game/BoardColumn';
+import GamePlayLayout from './game/GamePlayLayout';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIStatusPanel from './game/AIStatusPanel';
 import GameControls from './game/GameControls';
 import DemoSelector from './game/DemoSelector';
 import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
-import AISettingsDialog from './ai/AISettingsDialog';
-import { type AIMove } from './ai/AIDebugDialog';
+import { rehydrate as rehydrateAIConfig } from '../lib/ai/ai-config-store';
 import { useAuth } from '../lib/auth';
 
 interface JungleDemo {
@@ -43,7 +44,7 @@ interface JungleDemo {
 	explanation: string;
 }
 
-type JungleGameMode = 'tutorial' | 'ai';
+type JungleGameMode = Mode;
 
 const JungleGame: React.FC = () => {
 	const [gameMode, setGameMode] = useState<JungleGameMode>('ai');
@@ -61,7 +62,6 @@ const JungleGame: React.FC = () => {
 	} = useAuth();
 	const {
 		config: aiConfig,
-		hydrated: aiConfigHydrated,
 		hydrateError,
 		isRehydrating: aiConfigRehydrating,
 		configPending,
@@ -76,48 +76,14 @@ const JungleGame: React.FC = () => {
 	const [isAIThinking, setIsAIThinking] = useState(false);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
-	const [_isAiPaused, setIsAiPaused] = useState(false);
-	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-	// Monotonic generation token for in-flight AI moves. Incremented on
-	// logout so a makeAIMove async callback still awaiting an AI response
-	// can detect it is stale and skip its setGameState call — otherwise
-	// the resolved promise would resurrect the pre-logout board position
-	// after the auth-loss reset has already cleared it.
-	const aiMoveGenRef = useRef(0);
-
-	// Trigger debug button with Shift+D (development only)
-	useEffect(() => {
-		if (!import.meta.env.DEV || typeof window === 'undefined') {
-			return;
-		}
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.shiftKey && e.key.toLowerCase() === 'd') {
-				setShowDebugWinButton(prev => !prev);
-			}
-		};
-		window.addEventListener('keydown', handleKeyDown);
-		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, []);
-
-	const getWinnerColor = useCallback(
-		() => (gameState.currentPlayer === 'red' ? 'blue' : 'red'),
-		[gameState.currentPlayer]
-	);
-
-	usePlayHistory({
-		gameVariant: 'jungle',
-		gameStatus: gameState.status,
-		aiPlayer,
-		aiConfig,
-		moveCount: gameState.moveHistory.length,
-		getWinnerColor,
-		enabled: gameMode === 'ai' && gameStarted,
-		isAuthenticated,
-		userId: user?.id,
-		debugVariantKey: 'JUNGLE',
-	});
+	// Monotonic generation token for in-flight AI moves. Invalidated on
+	// logout / identity change / mode switch / reset so a makeAIMove
+	// callback still awaiting an AI response can detect it is stale and
+	// skip its setGameState call — otherwise the resolved promise would
+	// resurrect the pre-reset board position.
+	const { genRef, invalidate, isStale } = useAiMoveGenerationToken();
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -144,92 +110,23 @@ const JungleGame: React.FC = () => {
 		[gameState.moveHistory.length, gameState.currentPlayer]
 	);
 
-	// AI setup and debug callback
-	useEffect(() => {
-		aiService.updateConfig({ ...aiConfig, debug: isDebugMode });
+	const getWinnerColor = useCallback(
+		() => (gameState.currentPlayer === 'red' ? 'blue' : 'red'),
+		[gameState.currentPlayer]
+	);
 
-		// Set up debug callback
-		if (isDebugMode) {
-			aiService.setDebugCallback((type, message, data) => {
-				// Skip if a reset/account-switch invalidated the in-flight
-				// request that triggered this callback. Each makeMove call
-				// stamps its gen into data.requestId, so a late callback
-				// from a superseded request sees a stale requestId and
-				// bails instead of appending to the new game's history.
-				if (
-					data?.requestId !== undefined &&
-					data.requestId !== aiMoveGenRef.current
-				)
-					return;
-				const thinking = type === 'ai-thinking' ? message : undefined;
-				const error = type === 'ai-error' ? message : undefined;
-
-				setAIDebugMoves(prev => [
-					...prev,
-					createAIMove(
-						type === 'ai-move' ? message : `Debug: ${message}`,
-						true,
-						thinking,
-						error
-					),
-				]);
-			});
-		}
-	}, [aiService, aiConfig, isDebugMode, createAIMove]);
-
-	// AI move handling
-	useEffect(() => {
-		if (
-			gameMode === 'ai' &&
-			gameStarted &&
-			!configPending &&
-			gameState.currentPlayer === aiPlayer &&
-			(gameState.status === 'playing' || gameState.status === 'check') &&
-			!isAIThinking
-		) {
-			const makeAIMove = async () => {
-				const gen = aiMoveGenRef.current;
-				setIsAIThinking(true);
-				try {
-					const aiResponse = await aiService.makeMove(gameState, gen);
-					if (gen !== aiMoveGenRef.current) return;
-					if (aiResponse) {
-						// Parse AI move from algebraic notation
-						const fromPos = aiService.adapter.algebraicToPosition(
-							aiResponse.move.from
-						);
-						const toPos = aiService.adapter.algebraicToPosition(
-							aiResponse.move.to
-						);
-
-						// Apply the move using jungle game logic
-						const moveResult = selectSquare(gameState, fromPos);
-						if (moveResult.selectedSquare) {
-							const finalResult = selectSquare(moveResult, toPos);
-							setGameState(finalResult);
-						}
-					}
-				} catch (_error) {
-					// console.error('AI move failed:', error);
-				} finally {
-					if (gen === aiMoveGenRef.current) {
-						setIsAIThinking(false);
-					}
-				}
-			};
-
-			const timer = setTimeout(makeAIMove, 1000);
-			return () => clearTimeout(timer);
-		}
-	}, [
-		gameState,
-		gameMode,
-		gameStarted,
-		configPending,
+	usePlayHistory({
+		gameVariant: 'jungle',
+		gameStatus: gameState.status,
 		aiPlayer,
-		aiService,
-		isAIThinking,
-	]);
+		aiConfig,
+		moveCount: gameState.moveHistory.length,
+		getWinnerColor,
+		enabled: gameMode === 'ai' && gameStarted,
+		isAuthenticated,
+		userId: user?.id,
+		debugVariantKey: 'JUNGLE',
+	});
 
 	const createCustomJungleBoard = useCallback(
 		(setup: string): (JunglePiece | null)[][] => {
@@ -346,6 +243,90 @@ const JungleGame: React.FC = () => {
 		return (demo || jungleDemos[0]) as JungleDemo;
 	}, [currentDemo, jungleDemos]);
 
+	// AI setup and debug callback
+	useEffect(() => {
+		aiService.updateConfig({ ...aiConfig, debug: isDebugMode });
+
+		// Set up debug callback
+		if (isDebugMode) {
+			aiService.setDebugCallback((type, message, data) => {
+				// Skip if a reset/account-switch invalidated the in-flight
+				// request that triggered this callback. Each makeMove call
+				// stamps its gen into data.requestId, so a late callback
+				// from a superseded request sees a stale requestId and
+				// bails instead of appending to the new game's history.
+				if (isStale(data?.requestId as number | undefined)) return;
+				const thinking = type === 'ai-thinking' ? message : undefined;
+				const error = type === 'ai-error' ? message : undefined;
+
+				setAIDebugMoves(prev => [
+					...prev,
+					createAIMove(
+						type === 'ai-move' ? message : `Debug: ${message}`,
+						true,
+						thinking,
+						error
+					),
+				]);
+			});
+		}
+	}, [aiService, aiConfig, isDebugMode, createAIMove, isStale]);
+
+	// AI move handling
+	useEffect(() => {
+		if (
+			gameMode === 'ai' &&
+			gameStarted &&
+			!configPending &&
+			gameState.currentPlayer === aiPlayer &&
+			(gameState.status === 'playing' || gameState.status === 'check') &&
+			!isAIThinking
+		) {
+			const makeAIMove = async () => {
+				const gen = genRef.current;
+				setIsAIThinking(true);
+				try {
+					const aiResponse = await aiService.makeMove(gameState, gen);
+					if (gen !== genRef.current) return;
+					if (aiResponse) {
+						// Parse AI move from algebraic notation
+						const fromPos = aiService.adapter.algebraicToPosition(
+							aiResponse.move.from
+						);
+						const toPos = aiService.adapter.algebraicToPosition(
+							aiResponse.move.to
+						);
+
+						// Apply the move using jungle game logic
+						const moveResult = selectSquare(gameState, fromPos);
+						if (moveResult.selectedSquare) {
+							const finalResult = selectSquare(moveResult, toPos);
+							setGameState(finalResult);
+						}
+					}
+				} catch (_error) {
+					// console.error('AI move failed:', error);
+				} finally {
+					if (gen === genRef.current) {
+						setIsAIThinking(false);
+					}
+				}
+			};
+
+			const timer = setTimeout(makeAIMove, 1000);
+			return () => clearTimeout(timer);
+		}
+	}, [
+		gameState,
+		gameMode,
+		gameStarted,
+		configPending,
+		aiPlayer,
+		aiService,
+		isAIThinking,
+		genRef,
+	]);
+
 	const handleSquareClick = useCallback(
 		(position: JunglePosition) => {
 			if (gameMode === 'tutorial') {
@@ -369,85 +350,69 @@ const JungleGame: React.FC = () => {
 		// Invalidate any in-flight makeAIMove callback so it cannot
 		// apply a stale setGameState after the reset. Clear isAIThinking
 		// because the callback's finally-block skips on gen mismatch.
-		aiMoveGenRef.current++;
+		invalidate();
 		setIsAIThinking(false);
 		setGameState(resetGame());
 		setGameStarted(false);
-		setIsAiPaused(false);
+		// Clear AI UI state so a logout or cross-account identity change
+		// (handled by useGameIdentityReset) does not leave the previous
+		// session's error message or debug move history visible.
+		setErrorMsg(null);
 		setAIDebugMoves([]);
-	}, []);
+	}, [invalidate]);
 
 	// Reset local game state when authentication is lost (logout) OR when
 	// the authenticated user identity changes (account switch in another
-	// tab). The auth context wipes the AI config store on logout, but
-	// `gameStarted` and board state live here in local state — without
-	// this reset the mounted page keeps the AI service disabled (no API
-	// key) and the AI turn stalls indefinitely. On an identity change
-	// (A→B), isAuthenticated stays true so the true→false-only check
-	// would leave the old board alive — on game over, usePlayHistory
-	// would then record A's result under B's id and rating.
-	// handleResetGame handles gen invalidation and isAIThinking clearing.
-	// Track the previous auth value and user id so we fire on logout
-	// (true→false) and on identity change (id change while authenticated),
-	// not on mount or initial login from anonymous.
-	const prevAuthenticatedRef = useRef(isAuthenticated);
-	const prevUserIdRef = useRef<string | null | undefined>(user?.id);
-	useEffect(() => {
-		const currentUserId = user?.id;
-		const authLost = prevAuthenticatedRef.current && !isAuthenticated;
-		const identityChanged =
-			isAuthenticated &&
-			prevUserIdRef.current != null &&
-			prevUserIdRef.current !== currentUserId;
-		if (authLost || identityChanged) {
+	// tab). The hook invalidates the AI move generation token so any
+	// in-flight makeAIMove callback skips its setGameState calls.
+	useGameIdentityReset({
+		isAuthenticated,
+		userId: user?.id,
+		invalidate,
+		onReset: () => {
 			handleResetGame();
 			setAIPlayer('blue');
-		}
-		prevAuthenticatedRef.current = isAuthenticated;
-		prevUserIdRef.current = currentUserId;
-	}, [isAuthenticated, user?.id, handleResetGame]);
+		},
+	});
 
-	const triggerDebugWin = useCallback(() => {
-		setGameState(prev => ({
-			...prev,
-			status: 'checkmate',
-			currentPlayer: aiPlayer,
-		}));
-	}, [aiPlayer]);
-
-	const triggerDebugLoss = useCallback(() => {
-		const humanPlayer = aiPlayer === 'red' ? 'blue' : 'red';
-		setGameState(prev => ({
-			...prev,
-			status: 'checkmate',
-			currentPlayer: humanPlayer,
-		}));
-	}, [aiPlayer]);
-
-	const triggerDebugDraw = useCallback(() => {
-		setGameState(prev => ({
-			...prev,
-			status: 'stalemate',
-		}));
-	}, []);
-
-	useEffect(() => {
-		if (!import.meta.env.DEV || typeof window === 'undefined') {
-			return;
-		}
-		const global = window as unknown as {
-			__PROCYON_DEBUG_JUNGLE_TRIGGER_WIN__?: () => void;
-		};
-		// Helper for tests and manual debugging to force a human win
-		global.__PROCYON_DEBUG_JUNGLE_TRIGGER_WIN__ = () => {
+	const {
+		triggerDebugWin,
+		triggerDebugLoss,
+		triggerDebugDraw,
+		showDebugWinButton,
+	} = useGameDebugOutcomes<JunglePieceColor>({
+		aiPlayer,
+		getHumanPlayer: ai => (ai === 'red' ? 'blue' : 'red'),
+		setOutcome: patch =>
+			setGameState(prev => ({
+				...prev,
+				status: patch.status as JungleGameState['status'],
+				...(patch.currentPlayer !== undefined
+					? { currentPlayer: patch.currentPlayer }
+					: {}),
+			})),
+		debugVariantKey: 'JUNGLE',
+		winStatus: 'checkmate',
+		drawStatus: 'stalemate',
+		onPrepareTriggerWin: () => {
+			setGameMode('ai');
 			setGameStarted(true);
-			setShowDebugWinButton(true);
-			triggerDebugWin();
-		};
-	}, [triggerDebugWin]);
+		},
+	});
+
+	// Calculate hasGameStarted before using it in callbacks
+	const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
+
+	const isGameOver =
+		gameState.status === 'checkmate' ||
+		gameState.status === 'stalemate' ||
+		gameState.status === 'draw';
+
+	// Lock AI-side select while a game is in progress (started and not over).
+	const gameActive = hasGameStarted && !isGameOver;
 
 	const handleStartOrReset = useCallback(() => {
-		if (!gameStarted) {
+		if (!hasGameStarted) {
 			if (aiStarting) return; // config still loading; Start is disabled
 			// Starting game - ensure game state is properly initialized
 			setGameState(createInitialGameState());
@@ -456,7 +421,7 @@ const JungleGame: React.FC = () => {
 			// Resetting the game
 			handleResetGame();
 		}
-	}, [gameStarted, handleResetGame, aiStarting]);
+	}, [hasGameStarted, handleResetGame, aiStarting]);
 
 	const handleDemoChange = useCallback(
 		(demoId: string) => {
@@ -476,12 +441,15 @@ const JungleGame: React.FC = () => {
 
 	const toggleToMode = useCallback(
 		(newMode: JungleGameMode) => {
-			aiMoveGenRef.current++;
+			// Invalidate any in-flight makeAIMove callback so a stale
+			// AI response from the previous mode cannot overwrite the newly
+			// selected game state.
+			invalidate();
 			setIsAIThinking(false);
 			setGameMode(newMode);
 			setGameStarted(false);
-			setIsAiPaused(false);
 			setAIDebugMoves([]);
+			setErrorMsg(null);
 
 			if (newMode === 'tutorial') {
 				const demo = getCurrentDemo();
@@ -498,7 +466,7 @@ const JungleGame: React.FC = () => {
 				setGameState(createInitialGameState());
 			}
 		},
-		[getCurrentDemo]
+		[getCurrentDemo, invalidate]
 	);
 
 	const getStatusMessage = (): string => {
@@ -532,11 +500,6 @@ const JungleGame: React.FC = () => {
 		}
 	};
 
-	const isGameOver =
-		gameState.status === 'checkmate' ||
-		gameState.status === 'stalemate' ||
-		gameState.status === 'draw';
-
 	const currentBoard =
 		gameMode === 'tutorial' ? getCurrentDemo().board : gameState.board;
 	const currentHighlightSquares =
@@ -549,45 +512,14 @@ const JungleGame: React.FC = () => {
 	const subtitle =
 		gameMode === 'tutorial'
 			? getCurrentDemo().description
-			: gameStarted
+			: hasGameStarted
 				? getStatusMessage()
 				: '';
-	const showModeToggle = gameMode === 'tutorial' || !gameStarted;
 
-	return (
-		<GameScaffold
-			title={title}
-			subtitle={subtitle}
-			titleClassName='text-ivory'
-			subtitleClassName='text-ivory-dim'
-			currentMode={gameMode}
-			onModeChange={toggleToMode}
-			showModeToggle={showModeToggle}
-			inactiveModeClassName='text-ivory-dim hover:bg-ink-600'
-			aiSettingsButton={
-				<AISettingsDialog
-					aiPlayer={aiPlayer}
-					onAIPlayerChange={player => setAIPlayer(player as JunglePieceColor)}
-					provider={aiConfig.provider}
-					model={aiConfig.model}
-					onProviderChange={async provider => {
-						const err = await setAIProvider(provider as AIProvider);
-						setErrorMsg(err);
-					}}
-					onModelChange={model => setAIModel(model)}
-					hydrated={aiConfigHydrated}
-					isRehydrating={aiConfigRehydrating}
-					aiPlayerOptions={[
-						{ value: 'blue', label: 'AI plays Blue (蓝方)' },
-						{ value: 'red', label: 'AI plays Red (红方)' },
-					]}
-					isActive={gameMode === 'ai'}
-					onActivate={() => toggleToMode('ai')}
-				/>
-			}
-		>
-			{errorMsg && (
-				<div className='w-full max-w-4xl mx-auto mb-6'>
+	const errorBanner =
+		errorMsg || (gameMode === 'ai' && hydrateError) ? (
+			<div className='w-full max-w-4xl mx-auto mb-6 space-y-3'>
+				{errorMsg && (
 					<div
 						className='flex items-start justify-between gap-4 rounded-lg border border-jungle/40 bg-jungle/10 px-4 py-3 text-ivory'
 						role='alert'
@@ -601,11 +533,8 @@ const JungleGame: React.FC = () => {
 							Dismiss
 						</button>
 					</div>
-				</div>
-			)}
-
-			{gameMode === 'ai' && hydrateError && (
-				<div className='w-full max-w-4xl mx-auto mb-6'>
+				)}
+				{gameMode === 'ai' && hydrateError && (
 					<div
 						className='flex items-center justify-between gap-4 rounded-lg border border-jungle/40 bg-jungle/10 px-4 py-3 text-ivory'
 						role='alert'
@@ -618,139 +547,171 @@ const JungleGame: React.FC = () => {
 							type='button'
 							className='text-xs font-semibold uppercase tracking-wide text-brass hover:underline'
 							onClick={() => void rehydrateAIConfig()}
+							disabled={aiConfigRehydrating}
 						>
-							Retry
+							{aiConfigRehydrating ? 'Retrying…' : 'Retry'}
 						</button>
 					</div>
-				</div>
-			)}
-
-			{gameMode === 'ai' && (
-				<AIStatusPanel
-					aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-					hasGameStarted={gameStarted}
-					isAIThinking={isAIThinking}
-					isAIPaused={_isAiPaused}
-					aiError={null}
-					aiDebugMoves={aiDebugMoves}
-					isDebugMode={isDebugMode}
-					onRetry={() => {}}
-				/>
-			)}
-
-			{gameMode === 'tutorial' && (
-				<DemoSelector
-					demos={jungleDemos}
-					currentDemo={currentDemo}
-					onDemoChange={handleDemoChange}
-				/>
-			)}
-
-			<div className='w-full max-w-4xl mx-auto space-y-6'>
-				{gameMode === 'ai' ? (
-					<AIGameInstructions
-						variant='jungle'
-						providerName={aiConfig.provider}
-						modelName={aiConfig.model}
-						aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-					>
-						<div className='text-xs space-y-1 pt-2'>
-							<p>
-								<strong>Pieces:</strong> 象=Elephant (8), 獅=Lion (7), 虎=Tiger
-								(6)
-							</p>
-							<p>
-								豹=Leopard (5), 狗=Dog (4), 狼=Wolf (3), 貓=Cat (2), 鼠=Rat (1)
-							</p>
-							<p>
-								<strong>Special Rules:</strong> Rat can defeat Elephant,
-								Lions/Tigers can jump rivers
-							</p>
-							<p>
-								<strong>Goal:</strong> Enter opponent's den (◆) to win
-							</p>
-						</div>
-					</AIGameInstructions>
-				) : (
-					<TutorialInstructions
-						title={getCurrentDemo().title}
-						explanation={getCurrentDemo().explanation}
-						tips={[
-							'"Protect your high-ranking pieces but use rats strategically against elephants."',
-							'"Control the center of the board - it provides more movement options."',
-							'"Use river jumps to quickly advance pieces across the board."',
-							'"Pieces in enemy traps become vulnerable - use this to your advantage."',
-							'"Lions and tigers are powerful - use them for both offense and defense."',
-						]}
-						tipsTitle='Jungle Chess Wisdom'
-					/>
 				)}
 			</div>
+		) : undefined;
 
-			<div className='flex justify-center'>
-				<GameStartOverlay active={!gameStarted && gameMode !== 'tutorial'}>
-					<JungleBoard
-						board={currentBoard}
-						terrain={gameState.terrain}
-						selectedSquare={gameState.selectedSquare}
-						possibleMoves={gameState.possibleMoves}
-						onSquareClick={handleSquareClick}
-						highlightSquares={currentHighlightSquares}
-						disabled={!gameStarted && gameMode !== 'tutorial'}
-					/>
-				</GameStartOverlay>
-			</div>
-
-			<div className='w-full max-w-4xl mx-auto space-y-6'>
-				{gameMode === 'ai' && (
-					<>
-						<GameControls
-							hasGameStarted={gameStarted}
-							isGameOver={isGameOver}
-							aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
-							startDisabled={aiStarting}
-							isDebugMode={isDebugMode}
-							canExport={false}
-							onStartOrReset={handleStartOrReset}
-							onReset={handleResetGame}
-							onToggleDebug={() => setIsDebugMode(!isDebugMode)}
-							onExport={() => {}}
-						/>
-						{import.meta.env.DEV &&
-							showDebugWinButton &&
-							gameStarted &&
-							!isGameOver && (
-								<div className='flex gap-2 justify-center text-xs'>
-									<button
-										onClick={triggerDebugWin}
-										className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
-										title='Debug: Win'
-									>
-										🏆 Win
-									</button>
-									<button
-										onClick={triggerDebugLoss}
-										className='px-3 py-1 bg-destructive hover:opacity-90 text-ivory rounded'
-										title='Debug: Loss'
-									>
-										💀 Loss
-									</button>
-									<button
-										onClick={triggerDebugDraw}
-										className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
-										title='Debug: Draw'
-									>
-										🤝 Draw
-									</button>
-									<span className='text-ivory-dim self-center'>
-										(Shift+D to toggle)
-									</span>
+	return (
+		<GamePlayLayout
+			title={title}
+			subtitle={subtitle}
+			banner={errorBanner}
+			boardColumn={
+				<BoardColumn
+					board={
+						<GameStartOverlay
+							active={!hasGameStarted && gameMode !== 'tutorial'}
+						>
+							<JungleBoard
+								board={currentBoard}
+								terrain={gameState.terrain}
+								selectedSquare={gameState.selectedSquare}
+								possibleMoves={gameState.possibleMoves}
+								onSquareClick={handleSquareClick}
+								highlightSquares={currentHighlightSquares}
+								disabled={!hasGameStarted && gameMode !== 'tutorial'}
+							/>
+						</GameStartOverlay>
+					}
+					controls={
+						gameMode === 'ai' ? (
+							<GameControls
+								hasGameStarted={hasGameStarted}
+								isGameOver={isGameOver}
+								aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+								startDisabled={aiStarting}
+								isDebugMode={isDebugMode}
+								canExport={false}
+								onStartOrReset={handleStartOrReset}
+								onReset={handleResetGame}
+								onToggleDebug={() => setIsDebugMode(!isDebugMode)}
+								onExport={() => {}}
+							/>
+						) : undefined
+					}
+					debugTools={
+						import.meta.env.DEV &&
+						showDebugWinButton &&
+						hasGameStarted &&
+						!isGameOver ? (
+							<div className='flex gap-2 justify-center text-xs'>
+								<button
+									onClick={triggerDebugWin}
+									className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
+									title='Debug: Win'
+								>
+									🏆 Win
+								</button>
+								<button
+									onClick={triggerDebugLoss}
+									className='px-3 py-1 bg-destructive hover:opacity-90 text-ivory rounded'
+									title='Debug: Loss'
+								>
+									💀 Loss
+								</button>
+								<button
+									onClick={triggerDebugDraw}
+									className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
+									title='Debug: Draw'
+								>
+									🤝 Draw
+								</button>
+								<span className='text-ivory-dim self-center'>
+									(Shift+D to toggle)
+								</span>
+							</div>
+						) : undefined
+					}
+				/>
+			}
+			sidePanel={
+				<BoardSidePanel gameMode={gameMode} onModeChange={toggleToMode}>
+					{gameMode === 'ai' ? (
+						<>
+							<div className='flex items-center justify-between gap-3'>
+								<label
+									htmlFor='jungle-ai-side'
+									className='text-sm font-medium text-ivory-dim'
+								>
+									AI plays
+								</label>
+								<select
+									id='jungle-ai-side'
+									value={aiPlayer}
+									onChange={e =>
+										setAIPlayer(e.target.value as JunglePieceColor)
+									}
+									disabled={gameActive}
+									className='rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
+								>
+									<option value='blue'>AI plays Blue (蓝方)</option>
+									<option value='red'>AI plays Red (红方)</option>
+								</select>
+							</div>
+							<AIStatusPanel
+								aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+								hasGameStarted={hasGameStarted}
+								isAIThinking={isAIThinking}
+								isAIPaused={false}
+								aiError={null}
+								aiDebugMoves={aiDebugMoves}
+								isDebugMode={isDebugMode}
+								onRetry={() => {}}
+							/>
+							<AIGameInstructions
+								variant='jungle'
+								providerName={aiConfig.provider}
+								modelName={aiConfig.model}
+								aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+							>
+								<div className='text-xs space-y-1 pt-2'>
+									<p>
+										<strong>Pieces:</strong> 象=Elephant (8), 獅=Lion (7),
+										虎=Tiger (6)
+									</p>
+									<p>
+										豹=Leopard (5), 狗=Dog (4), 狼=Wolf (3), 貓=Cat (2), 鼠=Rat
+										(1)
+									</p>
+									<p>
+										<strong>Special Rules:</strong> Rat can defeat Elephant,
+										Lions/Tigers can jump rivers
+									</p>
+									<p>
+										<strong>Goal:</strong> Enter opponent&apos;s den (◆) to win
+									</p>
 								</div>
-							)}
-					</>
-				)}
-			</div>
-		</GameScaffold>
+							</AIGameInstructions>
+						</>
+					) : (
+						<>
+							<DemoSelector
+								demos={jungleDemos}
+								currentDemo={currentDemo}
+								onDemoChange={handleDemoChange}
+							/>
+							<TutorialInstructions
+								title={getCurrentDemo().title}
+								explanation={getCurrentDemo().explanation}
+								tips={[
+									'"Protect your high-ranking pieces but use rats strategically against elephants."',
+									'"Control the center of the board - it provides more movement options."',
+									'"Use river jumps to quickly advance pieces across the board."',
+									'"Pieces in enemy traps become vulnerable - use this to your advantage."',
+									'"Lions and tigers are powerful - use them for both offense and defense."',
+								]}
+								tipsTitle='Jungle Chess Wisdom'
+							/>
+						</>
+					)}
+				</BoardSidePanel>
+			}
+		/>
 	);
 };
 
