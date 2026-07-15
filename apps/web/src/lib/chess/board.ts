@@ -1,6 +1,15 @@
 import type { ChessPiece, PieceColor, PieceType, Position } from './types';
 import { BOARD_SIZE } from './types';
 
+export function getRow(
+	board: (ChessPiece | null)[][],
+	row: number
+): (ChessPiece | null)[] {
+	const r = board[row];
+	if (!r) throw new Error(`Chess board row ${row} is missing`);
+	return r;
+}
+
 export function createInitialBoard(): (ChessPiece | null)[][] {
 	const board: (ChessPiece | null)[][] = Array(BOARD_SIZE)
 		.fill(null)

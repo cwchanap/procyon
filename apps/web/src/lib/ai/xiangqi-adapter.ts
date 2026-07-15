@@ -20,7 +20,7 @@ import {
 } from '../xiangqi/types';
 import { getPossibleMoves } from '../xiangqi/moves';
 import { isKingInCheck } from '../xiangqi/game';
-import { copyBoard, setPieceAt } from '../xiangqi/board';
+import { copyBoard, getRow, setPieceAt } from '../xiangqi/board';
 import { GAME_CONFIGS } from './game-variant-types';
 
 export class XiangqiAdapter implements GameVariantAdapter<XiangqiGameState> {
@@ -49,7 +49,7 @@ export class XiangqiAdapter implements GameVariantAdapter<XiangqiGameState> {
 
 		for (let row = 0; row < 10; row++) {
 			for (let col = 0; col < 9; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.color === currentPlayer) {
 					const fromPos = { row, col };
 					const possibleMoves = getPossibleMoves(board, fromPos);
@@ -160,7 +160,7 @@ Your move:`;
 			const rankNumber = 10 - rank;
 			visual += `${rankNumber.toString().padStart(2)} │ `;
 			for (let file = 0; file < 9; file++) {
-				const piece = board[rank]![file];
+				const piece = getRow(board, rank)[file];
 				if (piece) {
 					const symbol = this.getPieceSymbol(piece);
 					visual += `${symbol} `;
@@ -298,7 +298,7 @@ Your move:`;
 	): { row: number; col: number } | null {
 		for (let row = 0; row < XIANGQI_ROWS; row++) {
 			for (let col = 0; col < XIANGQI_COLS; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.type === type && piece.color === color) {
 					return { row, col };
 				}
@@ -324,7 +324,7 @@ Your move:`;
 
 		for (let row = 0; row < XIANGQI_ROWS; row++) {
 			for (let col = 0; col < XIANGQI_COLS; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.color === color) {
 					total += values[piece.type as keyof typeof values] || 0;
 					// Bonus for crossed river soldiers
@@ -385,14 +385,14 @@ Your move:`;
 			const minRow = Math.min(pos1.row, pos2.row);
 			const maxRow = Math.max(pos1.row, pos2.row);
 			for (let row = minRow + 1; row < maxRow; row++) {
-				if (board[row]![pos1.col]) count++;
+				if (getRow(board, row)[pos1.col]) count++;
 			}
 		} else {
 			// Same row
 			const minCol = Math.min(pos1.col, pos2.col);
 			const maxCol = Math.max(pos1.col, pos2.col);
 			for (let col = minCol + 1; col < maxCol; col++) {
-				if (board[pos1.row]![col]) count++;
+				if (getRow(board, pos1.row)[col]) count++;
 			}
 		}
 
@@ -409,7 +409,7 @@ Your move:`;
 		// Find all cannons of current player
 		for (let row = 0; row < XIANGQI_ROWS; row++) {
 			for (let col = 0; col < XIANGQI_COLS; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.type === 'cannon' && piece.color === color) {
 					cannons.push({ row, col });
 				}
@@ -440,10 +440,8 @@ Your move:`;
 		for (const move of moves) {
 			const pieceMatch = move.match(/\(([^)]+)\)/);
 			const pieceType = pieceMatch ? pieceMatch[1]! : 'Unknown';
-			if (!groups[pieceType]) {
-				groups[pieceType] = [];
-			}
-			groups[pieceType]!.push(move.replace(/\s*\([^)]+\)/, ''));
+			const group = groups[pieceType] ?? (groups[pieceType] = []);
+			group.push(move.replace(/\s*\([^)]+\)/, ''));
 		}
 
 		let result = '';
