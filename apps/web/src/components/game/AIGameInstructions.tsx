@@ -1,6 +1,9 @@
 import React from 'react';
+import type { GameVariant } from '../../lib/ai/game-variant-types';
+import { CAPTURE_SWATCH } from '../../lib/board-accents';
 
 interface AIGameInstructionsProps {
+	variant: GameVariant;
 	providerName?: string;
 	modelName?: string;
 	aiConfigured: boolean;
@@ -8,6 +11,7 @@ interface AIGameInstructionsProps {
 }
 
 const AIGameInstructions: React.FC<AIGameInstructionsProps> = ({
+	variant,
 	providerName,
 	modelName,
 	aiConfigured,
@@ -23,7 +27,9 @@ const AIGameInstructions: React.FC<AIGameInstructionsProps> = ({
 				<span className='w-3 h-3 bg-jungle rounded-full inline-block'></span>
 				Possible moves
 				<span className='mx-2'>•</span>
-				<span className='w-3 h-3 border-2 border-xiangqi rounded inline-block'></span>
+				<span
+					className={`w-3 h-3 ${CAPTURE_SWATCH[variant]} inline-block`}
+				></span>
 				Captures
 			</p>
 			{children}

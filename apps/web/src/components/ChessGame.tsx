@@ -880,6 +880,7 @@ const ChessGame: React.FC = () => {
 								onRetry={retryAIMove}
 							/>
 							<AIGameInstructions
+								variant='chess'
 								providerName={aiConfig.provider}
 								modelName={aiConfig.model}
 								aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}

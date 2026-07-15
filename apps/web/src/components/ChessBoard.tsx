@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ChessPiece, Position } from '../lib/chess/types';
 import { BOARD_SIZE } from '../lib/chess/types';
+import { CAPTURE_RING } from '../lib/board-accents';
 
 interface ChessBoardProps {
 	board: (ChessPiece | null)[][];
@@ -102,9 +103,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 				)}
 
 				{/* Capture indicator */}
-				{isPossible && piece && (
-					<div className='absolute inset-0 border-4 border-xiangqi rounded pointer-events-none' />
-				)}
+				{isPossible && piece && <div className={CAPTURE_RING.chess} />}
 			</button>
 		);
 	};

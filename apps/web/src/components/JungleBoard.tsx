@@ -9,6 +9,7 @@ import {
 	JUNGLE_FILES,
 	JUNGLE_RANKS,
 } from '../lib/jungle/types';
+import { CAPTURE_RING } from '../lib/board-accents';
 
 interface JungleBoardProps {
 	board: (JunglePiece | null)[][];
@@ -199,7 +200,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 
 										{/* Capture indicator */}
 										{isPossibleMove(rowIndex, colIndex) && piece && (
-											<div className='absolute inset-0 border-2 border-xiangqi rounded'></div>
+											<div className={CAPTURE_RING.jungle}></div>
 										)}
 									</button>
 								);
