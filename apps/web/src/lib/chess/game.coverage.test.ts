@@ -16,7 +16,7 @@ import type { ChessPiece, GameState } from './types';
 function emptyState(currentPlayer: 'white' | 'black' = 'white'): GameState {
 	const state = createInitialGameState();
 	for (let row = 0; row < 8; row++)
-		for (let col = 0; col < 8; col++) state.board[row][col] = null;
+		for (let col = 0; col < 8; col++) state.board[row]![col] = null;
 	state.currentPlayer = currentPlayer;
 	return state;
 }
@@ -28,7 +28,11 @@ function emptyState(currentPlayer: 'white' | 'black' = 'white'): GameState {
 describe('makeMove - null returns', () => {
 	test('returns null when no piece at from', () => {
 		const state = emptyState();
-		setPieceAt(state.board, { row: 7, col: 4 }, { type: 'king', color: 'white' });
+		setPieceAt(
+			state.board,
+			{ row: 7, col: 4 },
+			{ type: 'king', color: 'white' }
+		);
 		// from is an empty square
 		expect(makeMove(state, { row: 4, col: 4 }, { row: 3, col: 4 })).toBeNull();
 	});
@@ -142,16 +146,32 @@ describe('getGameStatus - additional scenarios', () => {
 
 	test('returns check when king is attacked and has escape', () => {
 		const state = emptyState('white');
-		setPieceAt(state.board, { row: 7, col: 4 }, { type: 'king', color: 'white' });
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'rook', color: 'black' });
+		setPieceAt(
+			state.board,
+			{ row: 7, col: 4 },
+			{ type: 'king', color: 'white' }
+		);
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 4 },
+			{ type: 'rook', color: 'black' }
+		);
 		// King can escape sideways
 		expect(getGameStatus(state)).toBe('check');
 	});
 
 	test('returns playing when current player has legal moves and is not in check', () => {
 		const state = emptyState('white');
-		setPieceAt(state.board, { row: 7, col: 4 }, { type: 'king', color: 'white' });
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
+		setPieceAt(
+			state.board,
+			{ row: 7, col: 4 },
+			{ type: 'king', color: 'white' }
+		);
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 4 },
+			{ type: 'king', color: 'black' }
+		);
 		expect(getGameStatus(state)).toBe('playing');
 	});
 });

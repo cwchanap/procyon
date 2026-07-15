@@ -25,7 +25,6 @@ function setupBrowserMocks(): {
 } {
 	const localStorageStore: Record<string, string> = {};
 	const originalWindow = globalThis.window;
-	// @ts-expect-error -- test-only: capture existing localStorage to restore later
 	const originalLocalStorage = globalThis.localStorage;
 
 	const ls = {
@@ -46,9 +45,7 @@ function setupBrowserMocks(): {
 	return {
 		localStorageStore,
 		cleanup: () => {
-			// @ts-expect-error -- test-only restore: reset window to original value
 			globalThis.window = originalWindow;
-			// @ts-expect-error -- test-only restore: reset localStorage to original value
 			globalThis.localStorage = originalLocalStorage;
 		},
 	};
@@ -104,12 +101,10 @@ describe('AI Storage', () => {
 
 		beforeEach(() => {
 			({ localStorageStore, cleanup } = setupBrowserMocks());
-			// @ts-expect-error -- test-only: capture existing fetch to restore later
 			originalFetch = globalThis.fetch;
 		});
 
 		afterEach(() => {
-			// @ts-expect-error -- test-only restore: reset fetch to original value
 			globalThis.fetch = originalFetch;
 			cleanup();
 		});

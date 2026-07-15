@@ -2,6 +2,7 @@ import { test, expect, describe, beforeEach } from 'bun:test';
 import { ShogiAdapter } from './shogi-adapter';
 import { createInitialGameState } from '../shogi/game';
 import type { ShogiGameState } from '../shogi/types';
+import type { GamePiece } from './game-variant-types';
 
 describe('ShogiAdapter', () => {
 	let adapter: ShogiAdapter;
@@ -105,28 +106,52 @@ describe('ShogiAdapter', () => {
 	describe('getPieceSymbol', () => {
 		test('should return correct symbols for sente pieces', () => {
 			expect(
-				adapter.getPieceSymbol({ type: 'king', color: 'sente', isPromoted: false })
+				adapter.getPieceSymbol({
+					type: 'king',
+					color: 'sente',
+					isPromoted: false,
+				} as GamePiece)
 			).toBe('玉');
 			expect(
-				adapter.getPieceSymbol({ type: 'rook', color: 'sente', isPromoted: false })
+				adapter.getPieceSymbol({
+					type: 'rook',
+					color: 'sente',
+					isPromoted: false,
+				} as GamePiece)
 			).toBe('飛');
 			expect(
-				adapter.getPieceSymbol({ type: 'pawn', color: 'sente', isPromoted: false })
+				adapter.getPieceSymbol({
+					type: 'pawn',
+					color: 'sente',
+					isPromoted: false,
+				} as GamePiece)
 			).toBe('歩');
 		});
 
 		test('should return correct symbols for gote pieces', () => {
 			expect(
-				adapter.getPieceSymbol({ type: 'king', color: 'gote', isPromoted: false })
+				adapter.getPieceSymbol({
+					type: 'king',
+					color: 'gote',
+					isPromoted: false,
+				} as GamePiece)
 			).toBe('王');
 			expect(
-				adapter.getPieceSymbol({ type: 'rook', color: 'gote', isPromoted: false })
+				adapter.getPieceSymbol({
+					type: 'rook',
+					color: 'gote',
+					isPromoted: false,
+				} as GamePiece)
 			).toBe('飛');
 		});
 
 		test('should return ? for unknown piece type', () => {
 			expect(
-				adapter.getPieceSymbol({ type: 'unknown' as never, color: 'sente', isPromoted: false })
+				adapter.getPieceSymbol({
+					type: 'unknown' as never,
+					color: 'sente',
+					isPromoted: false,
+				} as GamePiece)
 			).toBe('?');
 		});
 	});

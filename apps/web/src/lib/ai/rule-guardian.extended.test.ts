@@ -8,17 +8,13 @@ import {
 import { createInitialBoard as createChessBoard } from '../chess/board';
 import { createInitialGameState as createJungleState } from '../jungle/game';
 import type { AIResponse } from './types';
+import type { GameState } from '../chess/types';
 import type { XiangqiGameState, XiangqiPiece } from '../xiangqi/types';
-import type { ShogiPiece } from '../shogi';
+import type { ShogiGameState } from '../shogi';
 
 describe('ShogiRuleGuardian - uncovered paths', () => {
 	let guardian: ShogiRuleGuardian;
-	let gameState: {
-		board: (ShogiPiece | null)[][];
-		currentPlayer: 'sente' | 'gote';
-		senteHand: ShogiPiece[];
-		goteHand: ShogiPiece[];
-	};
+	let gameState: ShogiGameState;
 
 	beforeEach(() => {
 		guardian = new ShogiRuleGuardian();
@@ -29,7 +25,7 @@ describe('ShogiRuleGuardian - uncovered paths', () => {
 			currentPlayer: 'sente',
 			senteHand: [{ type: 'pawn', color: 'sente' }],
 			goteHand: [],
-		};
+		} as unknown as ShogiGameState;
 	});
 
 	test('should reject drop when pieceType is missing from move', () => {
@@ -72,7 +68,7 @@ describe('ShogiRuleGuardian - uncovered paths', () => {
 		const goteState = {
 			...gameState,
 			currentPlayer: 'gote' as const,
-			goteHand: [{ type: 'rook', color: 'gote' as const }],
+			goteHand: [{ type: 'rook' as const, color: 'gote' as const }],
 		};
 
 		const response: AIResponse = {
@@ -152,7 +148,7 @@ describe('XiangqiRuleGuardian - cannon and other pieces', () => {
 
 	test('should validate horse move for black', () => {
 		gameState.board[0]![1] = { type: 'horse', color: 'black' };
-		const blackState = { ...gameState, currentPlayer: 'black' };
+		const blackState = { ...gameState, currentPlayer: 'black' as const };
 
 		const response: AIResponse = {
 			move: { from: 'b10', to: 'c8' },
@@ -249,7 +245,7 @@ describe('ChessRuleGuardian - additional coverage', () => {
 
 	test('should validate move that captures opponent piece', () => {
 		const board = createChessBoard();
-		const gameState = { board, currentPlayer: 'white' };
+		const gameState = { board, currentPlayer: 'white' } as GameState;
 
 		// Place black pawn on d3 (where white can potentially capture with a pawn)
 		board[5]![3] = { type: 'pawn', color: 'black' };
@@ -265,7 +261,7 @@ describe('ChessRuleGuardian - additional coverage', () => {
 
 	test('should handle invalid algebraic notation gracefully', () => {
 		const board = createChessBoard();
-		const gameState = { board, currentPlayer: 'white' };
+		const gameState = { board, currentPlayer: 'white' } as GameState;
 
 		const response: AIResponse = {
 			// @ts-expect-error - testing invalid move format

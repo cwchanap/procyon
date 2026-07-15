@@ -58,7 +58,7 @@ describe('GameExporter - downloadAsFile', () => {
 			href: '',
 			download: '',
 			clickCount: 0,
-			click() {
+			click(this: { clickCount: number }) {
 				this.clickCount += 1;
 			},
 		} as unknown as HTMLAnchorElement & { clickCount: number };
@@ -79,7 +79,9 @@ describe('GameExporter - downloadAsFile', () => {
 		expect(revokedUrls).toHaveLength(1);
 		expect(appendedChildren).toHaveLength(1);
 		expect(removedChildren).toHaveLength(1);
-		const clickedLink = appendedChildren[0] as HTMLAnchorElement & { clickCount: number };
+		const clickedLink = appendedChildren[0] as HTMLAnchorElement & {
+			clickCount: number;
+		};
 		expect(clickedLink.clickCount).toBe(1);
 	});
 
@@ -112,7 +114,10 @@ describe('GameExporter - exportAndDownload', () => {
 		downloadedFilenames = [];
 
 		(globalThis as Record<string, unknown>).Blob = class MockBlob {
-			constructor(public content: string[], public options: { type: string }) {}
+			constructor(
+				public content: string[],
+				public options: { type: string }
+			) {}
 		};
 
 		(globalThis as Record<string, unknown>).URL = {

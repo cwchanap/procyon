@@ -249,8 +249,8 @@ describe('AUTH_CHANGE_EVENT', () => {
 		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
 
 		expect(received).toHaveLength(2);
-		expect(received[0].user).toBeNull();
-		expect(received[1].user).toEqual({
+		expect(received[0]!.user).toBeNull();
+		expect(received[1]!.user).toEqual({
 			id: 'u1',
 			email: 'a@b.com',
 			username: 'alice',
@@ -438,7 +438,7 @@ describe('useAuth', () => {
 		expect(result.current.isAuthenticated).toBe(true);
 
 		expect(captured.length).toBeGreaterThanOrEqual(1);
-		const authEvent = captured[captured.length - 1];
+		const authEvent = captured[captured.length - 1]!;
 		expect(authEvent.user).toEqual(mockUser);
 
 		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);
@@ -497,7 +497,7 @@ describe('useAuth', () => {
 		expect(result.current.isAuthenticated).toBe(false);
 
 		expect(captured.length).toBeGreaterThanOrEqual(1);
-		const authEvent = captured[captured.length - 1];
+		const authEvent = captured[captured.length - 1]!;
 		expect(authEvent.user).toBeNull();
 
 		globalThis.removeEventListener(AUTH_CHANGE_EVENT, handler);

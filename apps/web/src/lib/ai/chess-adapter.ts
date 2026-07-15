@@ -37,7 +37,7 @@ export class ChessAdapter implements GameVariantAdapter<GameState> {
 
 		for (let row = 0; row < 8; row++) {
 			for (let col = 0; col < 8; col++) {
-				const piece = board[row][col];
+				const piece = board[row]![col];
 				if (piece && piece.color === currentPlayer) {
 					const fromPos = { row, col };
 					const possibleMoves = getPossibleMoves(board, piece, fromPos);
@@ -72,7 +72,7 @@ export class ChessAdapter implements GameVariantAdapter<GameState> {
 		const currentPlayer = gameState.currentPlayer;
 		const moveHistory = this.formatMoveHistory(gameState.moveHistory);
 		const visualBoard = this.createVisualBoard(gameState);
-		const validMoves = this.getAllValidMoves(gameState)[0];
+		const validMoves = this.getAllValidMoves(gameState)[0]!;
 		const exampleMove = this.getExampleMoveFromValidMoves(validMoves);
 
 		// Simplified threat analysis for token efficiency
@@ -116,7 +116,7 @@ Rules:
 		for (let rank = 0; rank < 8; rank++) {
 			visual += `${8 - rank} │ `;
 			for (let file = 0; file < 8; file++) {
-				const piece = board[rank][file];
+				const piece = board[rank]![file];
 				if (piece) {
 					const symbol = this.getPieceSymbol(piece);
 					visual += `${symbol} `;
@@ -193,7 +193,7 @@ Rules:
 	}
 
 	positionToAlgebraic(position: GamePosition): string {
-		return FILES[position.col] + RANKS[position.row];
+		return FILES[position.col]! + RANKS[position.row]!;
 	}
 
 	algebraicToPosition(algebraic: string): GamePosition {
@@ -217,7 +217,7 @@ Rules:
 
 	getPieceSymbol(piece: GamePiece): string {
 		const symbols = this.config.pieceSymbols;
-		return symbols[piece.color][piece.type] || '?';
+		return symbols[piece.color]![piece.type] || '?';
 	}
 
 	private wouldMoveBeValid(
@@ -299,7 +299,7 @@ Rules:
 	): { row: number; col: number } | null {
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row][col];
+				const piece = board[row]![col];
 				if (piece && piece.type === type && piece.color === color) {
 					return { row, col };
 				}
@@ -321,7 +321,7 @@ Rules:
 
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row][col];
+				const piece = board[row]![col];
 				if (piece && piece.color === color) {
 					total += values[piece.type as keyof typeof values] || 0;
 				}
@@ -373,11 +373,11 @@ Rules:
 
 		for (const move of moves) {
 			const pieceMatch = move.match(/\(([^)]+)\)/);
-			const pieceType = pieceMatch ? pieceMatch[1] : 'Unknown';
+			const pieceType = pieceMatch ? pieceMatch[1]! : 'Unknown';
 			if (!groups[pieceType]) {
 				groups[pieceType] = [];
 			}
-			groups[pieceType].push(move.replace(/\s*\([^)]+\)/, ''));
+			groups[pieceType]!.push(move.replace(/\s*\([^)]+\)/, ''));
 		}
 
 		let result = '';
@@ -397,8 +397,8 @@ Rules:
 		const moveMatch = validMovesText.match(/([a-h][1-8])-([a-h][1-8])/);
 		if (moveMatch) {
 			return {
-				from: moveMatch[1],
-				to: moveMatch[2],
+				from: moveMatch[1]!,
+				to: moveMatch[2]!,
 			};
 		}
 		// Fallback to generic example
@@ -418,7 +418,7 @@ Rules:
 		// Find all pieces of the current player
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row][col];
+				const piece = board[row]![col];
 				if (piece && piece.color === color) {
 					const pos = { row, col };
 					// Check if this piece is attacked by any opponent piece
@@ -447,7 +447,7 @@ Rules:
 		// Check if any piece of attackerColor can attack this square
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row][col];
+				const piece = board[row]![col];
 				if (piece && piece.color === attackerColor) {
 					const possibleMoves = getPossibleMoves(board, piece, {
 						row,
@@ -475,7 +475,7 @@ Rules:
 		// (i.e., can move to this square, even if occupied by friendly piece)
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row][col];
+				const piece = board[row]![col];
 				if (
 					piece &&
 					piece.color === defenderColor &&
@@ -508,7 +508,7 @@ Rules:
 		// Find all squares that can be attacked by the given color
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row][col];
+				const piece = board[row]![col];
 				if (piece && piece.color === attackerColor) {
 					const possibleMoves = getPossibleMoves(board, piece, {
 						row,
@@ -524,7 +524,7 @@ Rules:
 		// Convert back to Position array
 		return Array.from(attackedSquares).map(key => {
 			const [row, col] = key.split(',').map(Number);
-			return { row, col };
+			return { row: row!, col: col! };
 		});
 	}
 }

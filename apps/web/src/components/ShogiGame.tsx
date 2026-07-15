@@ -29,6 +29,7 @@ import GameControls from './game/GameControls';
 import DemoSelector from './game/DemoSelector';
 import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
+import DebugOutcomeButtons from './game/DebugOutcomeButtons';
 import { useAuth } from '../lib/auth';
 
 interface ShogiDemo {
@@ -137,26 +138,26 @@ const ShogiGame: React.FC = () => {
 
 			switch (setup) {
 				case 'lance-moves':
-					board[8][0] = { type: 'lance', color: 'sente' };
-					board[6][0] = { type: 'pawn', color: 'gote' };
-					board[4][0] = { type: 'pawn', color: 'gote' };
+					board[8]![0] = { type: 'lance', color: 'sente' };
+					board[6]![0] = { type: 'pawn', color: 'gote' };
+					board[4]![0] = { type: 'pawn', color: 'gote' };
 					break;
 				case 'gold-silver':
-					board[8][4] = { type: 'king', color: 'sente' };
-					board[8][3] = { type: 'gold', color: 'sente' };
-					board[8][5] = { type: 'silver', color: 'sente' };
-					board[0][4] = { type: 'king', color: 'gote' };
+					board[8]![4] = { type: 'king', color: 'sente' };
+					board[8]![3] = { type: 'gold', color: 'sente' };
+					board[8]![5] = { type: 'silver', color: 'sente' };
+					board[0]![4] = { type: 'king', color: 'gote' };
 					break;
 				case 'promotion-zone':
-					board[2][4] = { type: 'pawn', color: 'sente' };
-					board[6][4] = { type: 'pawn', color: 'gote' };
-					board[8][4] = { type: 'king', color: 'sente' };
-					board[0][4] = { type: 'king', color: 'gote' };
+					board[2]![4] = { type: 'pawn', color: 'sente' };
+					board[6]![4] = { type: 'pawn', color: 'gote' };
+					board[8]![4] = { type: 'king', color: 'sente' };
+					board[0]![4] = { type: 'king', color: 'gote' };
 					break;
 				case 'knight-jump':
-					board[8][1] = { type: 'knight', color: 'sente' };
-					board[7][0] = { type: 'pawn', color: 'sente' };
-					board[6][2] = { type: 'pawn', color: 'gote' };
+					board[8]![1] = { type: 'knight', color: 'sente' };
+					board[7]![0] = { type: 'pawn', color: 'sente' };
+					board[6]![2] = { type: 'pawn', color: 'gote' };
 					break;
 				default:
 					return createInitialGameState().board;
@@ -266,7 +267,7 @@ const ShogiGame: React.FC = () => {
 	];
 
 	const getCurrentDemo = useCallback((): ShogiDemo => {
-		return shogiDemos.find(demo => demo.id === currentDemo) || shogiDemos[0];
+		return shogiDemos.find(demo => demo.id === currentDemo) ?? shogiDemos[0]!;
 	}, [currentDemo, shogiDemos]);
 
 	// AI setup and debug callback
@@ -915,32 +916,11 @@ const ShogiGame: React.FC = () => {
 							showDebugWinButton &&
 							hasGameStarted &&
 							!isGameOver ? (
-								<div className='flex gap-2 justify-center text-xs'>
-									<button
-										onClick={triggerDebugWin}
-										className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
-										title='Debug: Win'
-									>
-										🏆 Win
-									</button>
-									<button
-										onClick={triggerDebugLoss}
-										className='px-3 py-1 bg-destructive hover:opacity-90 text-ivory rounded'
-										title='Debug: Loss'
-									>
-										💀 Loss
-									</button>
-									<button
-										onClick={triggerDebugDraw}
-										className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
-										title='Debug: Draw'
-									>
-										🤝 Draw
-									</button>
-									<span className='text-ivory-dim self-center'>
-										(Shift+D to toggle)
-									</span>
-								</div>
+								<DebugOutcomeButtons
+									onWin={triggerDebugWin}
+									onLoss={triggerDebugLoss}
+									onDraw={triggerDebugDraw}
+								/>
 							) : undefined
 						}
 					/>

@@ -81,7 +81,7 @@ const SidebarAIConfig: React.FC = () => {
 	// store avoids a redundant second /ai-config request on every game page.
 	const providerOptions = resolveProviderOptions(availableProviders, hydrated);
 
-	const models = MODEL_OPTIONS[config.provider] || MODEL_OPTIONS.gemini;
+	const models = MODEL_OPTIONS[config.provider] || MODEL_OPTIONS.gemini!;
 	const currentModel = models.some(m => m.value === config.model)
 		? config.model
 		: models[0]?.value || '';

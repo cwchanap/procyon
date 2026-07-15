@@ -16,7 +16,7 @@ describe('Chess Move Validation - Core Check Prevention', () => {
 		// Clear the board and set up a simple check scenario
 		for (let row = 0; row < 8; row++) {
 			for (let col = 0; col < 8; col++) {
-				gameState.board[row][col] = null;
+				gameState.board[row]![col] = null;
 			}
 		}
 
@@ -50,7 +50,7 @@ describe('Chess Move Validation - Core Check Prevention', () => {
 		// Clear the board
 		for (let row = 0; row < 8; row++) {
 			for (let col = 0; col < 8; col++) {
-				gameState.board[row][col] = null;
+				gameState.board[row]![col] = null;
 			}
 		}
 
@@ -86,7 +86,7 @@ describe('Chess Move Validation - Core Check Prevention', () => {
 		// Clear the board
 		for (let row = 0; row < 8; row++) {
 			for (let col = 0; col < 8; col++) {
-				gameState.board[row][col] = null;
+				gameState.board[row]![col] = null;
 			}
 		}
 

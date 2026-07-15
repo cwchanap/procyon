@@ -18,12 +18,12 @@ describe('Xiangqi Board Utilities', () => {
 		test('should create a 10x9 board', () => {
 			const board = createInitialXiangqiBoard();
 			expect(board.length).toBe(10);
-			expect(board[0].length).toBe(9);
+			expect(board[0]!.length).toBe(9);
 		});
 
 		test('should place red king at correct position', () => {
 			const board = createInitialXiangqiBoard();
-			const king = board[9][4];
+			const king = board[9]![4];
 			expect(king).not.toBe(null);
 			expect(king?.type).toBe('king');
 			expect(king?.color).toBe('red');
@@ -31,7 +31,7 @@ describe('Xiangqi Board Utilities', () => {
 
 		test('should place black king at correct position', () => {
 			const board = createInitialXiangqiBoard();
-			const king = board[0][4];
+			const king = board[0]![4];
 			expect(king).not.toBe(null);
 			expect(king?.type).toBe('king');
 			expect(king?.color).toBe('black');
@@ -39,39 +39,39 @@ describe('Xiangqi Board Utilities', () => {
 
 		test('should place chariots in corners', () => {
 			const board = createInitialXiangqiBoard();
-			expect(board[0][0]?.type).toBe('chariot');
-			expect(board[0][8]?.type).toBe('chariot');
-			expect(board[9][0]?.type).toBe('chariot');
-			expect(board[9][8]?.type).toBe('chariot');
+			expect(board[0]![0]?.type).toBe('chariot');
+			expect(board[0]![8]?.type).toBe('chariot');
+			expect(board[9]![0]?.type).toBe('chariot');
+			expect(board[9]![8]?.type).toBe('chariot');
 		});
 
 		test('should place cannons correctly', () => {
 			const board = createInitialXiangqiBoard();
-			expect(board[2][1]?.type).toBe('cannon');
-			expect(board[2][7]?.type).toBe('cannon');
-			expect(board[7][1]?.type).toBe('cannon');
-			expect(board[7][7]?.type).toBe('cannon');
+			expect(board[2]![1]?.type).toBe('cannon');
+			expect(board[2]![7]?.type).toBe('cannon');
+			expect(board[7]![1]?.type).toBe('cannon');
+			expect(board[7]![7]?.type).toBe('cannon');
 		});
 
 		test('should place soldiers on every other column', () => {
 			const board = createInitialXiangqiBoard();
 			// Black soldiers
 			for (let col = 0; col < 9; col += 2) {
-				expect(board[3][col]?.type).toBe('soldier');
-				expect(board[3][col]?.color).toBe('black');
+				expect(board[3]![col]?.type).toBe('soldier');
+				expect(board[3]![col]?.color).toBe('black');
 			}
 			// Red soldiers
 			for (let col = 0; col < 9; col += 2) {
-				expect(board[6][col]?.type).toBe('soldier');
-				expect(board[6][col]?.color).toBe('red');
+				expect(board[6]![col]?.type).toBe('soldier');
+				expect(board[6]![col]?.color).toBe('red');
 			}
 		});
 
 		test('should have river rows empty', () => {
 			const board = createInitialXiangqiBoard();
 			for (let col = 0; col < 9; col++) {
-				expect(board[4][col]).toBe(null);
-				expect(board[5][col]).toBe(null);
+				expect(board[4]![col]).toBe(null);
+				expect(board[5]![col]).toBe(null);
 			}
 		});
 	});

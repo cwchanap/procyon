@@ -335,7 +335,7 @@ export function ProfilePage() {
 						<div className='flex items-center justify-center gap-2 text-ivory-dim'>
 							<span className='text-sm'>Member Since</span>
 							<span className='text-ivory font-mono'>
-								{formatDate(user.createdAt)}
+								{formatDate(user.createdAt as string)}
 							</span>
 						</div>
 					</div>

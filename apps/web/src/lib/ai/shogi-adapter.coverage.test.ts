@@ -16,7 +16,7 @@ describe('ShogiAdapter - formatMoveHistory (via generatePrompt)', () => {
 		const move: ShogiMove = {
 			from: { row: 6, col: 4 },
 			to: { row: 5, col: 4 },
-			piece: { type: 'pawn', color: 'sente', promoted: false },
+			piece: { type: 'pawn', color: 'sente', isPromoted: false },
 			isDrop: false,
 			isPromotion: false,
 		};
@@ -32,7 +32,7 @@ describe('ShogiAdapter - formatMoveHistory (via generatePrompt)', () => {
 		const move: ShogiMove = {
 			from: { row: 3, col: 4 },
 			to: { row: 2, col: 4 },
-			piece: { type: 'pawn', color: 'sente', promoted: false },
+			piece: { type: 'pawn', color: 'sente', isPromoted: false },
 			isDrop: false,
 			isPromotion: true,
 		};
@@ -48,7 +48,7 @@ describe('ShogiAdapter - formatMoveHistory (via generatePrompt)', () => {
 		const move: ShogiMove = {
 			from: null,
 			to: { row: 4, col: 4 },
-			piece: { type: 'pawn', color: 'sente', promoted: false },
+			piece: { type: 'pawn', color: 'sente', isPromoted: false },
 			isDrop: true,
 		};
 		const stateWithHistory: ShogiGameState = {
@@ -66,13 +66,13 @@ describe('ShogiAdapter - formatMoveHistory (via generatePrompt)', () => {
 		const sentMove: ShogiMove = {
 			from: { row: 6, col: 4 },
 			to: { row: 5, col: 4 },
-			piece: { type: 'pawn', color: 'sente', promoted: false },
+			piece: { type: 'pawn', color: 'sente', isPromoted: false },
 			isDrop: false,
 		};
 		const goteMove: ShogiMove = {
 			from: { row: 2, col: 4 },
 			to: { row: 3, col: 4 },
-			piece: { type: 'pawn', color: 'gote', promoted: false },
+			piece: { type: 'pawn', color: 'gote', isPromoted: false },
 			isDrop: false,
 		};
 		const stateWithHistory: ShogiGameState = {
@@ -101,7 +101,7 @@ describe('ShogiAdapter - mustPromote (via getAllValidMoves)', () => {
 		const gotePawn: ShogiPiece = {
 			type: 'pawn',
 			color: 'gote',
-			promoted: false,
+			isPromoted: false,
 		};
 		board[7]![3] = gotePawn;
 
@@ -129,7 +129,7 @@ describe('ShogiAdapter - mustPromote (via getAllValidMoves)', () => {
 		const goteKnight: ShogiPiece = {
 			type: 'knight',
 			color: 'gote',
-			promoted: false,
+			isPromoted: false,
 		};
 		board[6]![3] = goteKnight;
 

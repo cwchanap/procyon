@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function useGameDebugOutcomes<TPlayer extends string>(options: {
 	aiPlayer: TPlayer;
@@ -27,21 +27,39 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 
+	// Callers pass inline `setOutcome` / `onPrepareTriggerWin` closures that
+	// change identity every render. Stash them in refs so the trigger
+	// callbacks (and the DEV global registration effect) stay stable and the
+	// effect re-runs only when `debugVariantKey` actually changes.
+	const setOutcomeRef = useRef(setOutcome);
+	setOutcomeRef.current = setOutcome;
+	const onPrepareRef = useRef(onPrepareTriggerWin);
+	onPrepareRef.current = onPrepareTriggerWin;
+
 	const triggerDebugWin = useCallback(() => {
-		setOutcome({ status: winStatus, currentPlayer: aiPlayer });
-	}, [setOutcome, winStatus, aiPlayer]);
+		setOutcomeRef.current({ status: winStatus, currentPlayer: aiPlayer });
+	}, [winStatus, aiPlayer]);
 
 	const triggerDebugLoss = useCallback(() => {
-		setOutcome({
+		setOutcomeRef.current({
 			status: winStatus,
 			currentPlayer: getHumanPlayer(aiPlayer),
 		});
-	}, [setOutcome, winStatus, getHumanPlayer, aiPlayer]);
+	}, [winStatus, getHumanPlayer, aiPlayer]);
 
 	const triggerDebugDraw = useCallback(() => {
 		// Status only — do not include currentPlayer key
-		setOutcome({ status: drawStatus });
-	}, [setOutcome, drawStatus]);
+		setOutcomeRef.current({ status: drawStatus });
+	}, [drawStatus]);
+
+	// Latest "trigger win" sequence (prepare + show + win) via ref so the
+	// global registration effect below can depend only on `debugVariantKey`.
+	const triggerWinSequenceRef = useRef<() => void>(() => {});
+	triggerWinSequenceRef.current = () => {
+		onPrepareRef.current?.();
+		setShowDebugWinButton(true);
+		triggerDebugWin();
+	};
 
 	// DEV global win trigger
 	useEffect(() => {
@@ -51,15 +69,11 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 			string,
 			(() => void) | undefined
 		>;
-		global[key] = () => {
-			onPrepareTriggerWin?.();
-			setShowDebugWinButton(true);
-			triggerDebugWin();
-		};
+		global[key] = () => triggerWinSequenceRef.current();
 		return () => {
 			delete global[key];
 		};
-	}, [debugVariantKey, onPrepareTriggerWin, triggerDebugWin]);
+	}, [debugVariantKey]);
 
 	// Shift+D
 	useEffect(() => {

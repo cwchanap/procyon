@@ -20,6 +20,7 @@ import GameControls from './game/GameControls';
 import DemoSelector from './game/DemoSelector';
 import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
+import DebugOutcomeButtons from './game/DebugOutcomeButtons';
 import type { AIMove } from './ai/AIDebugDialog';
 import { createChessAI } from '../lib/ai';
 import { defaultAIConfig } from '../lib/ai/storage';
@@ -314,7 +315,7 @@ const ChessGame: React.FC = () => {
 	];
 
 	const getCurrentDemo = useCallback((): LogicDemo => {
-		return logicDemos.find(demo => demo.id === currentDemo) ?? logicDemos[0];
+		return logicDemos.find(demo => demo.id === currentDemo) ?? logicDemos[0]!;
 	}, [currentDemo, logicDemos]);
 
 	// AI Move handling
@@ -767,29 +768,11 @@ const ChessGame: React.FC = () => {
 						showDebugWinButton &&
 						gameStarted &&
 						!isGameOver ? (
-							<div className='flex gap-2 justify-center text-xs'>
-								<button
-									onClick={triggerDebugWin}
-									className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
-									title='Debug: Win'
-								>
-									Win
-								</button>
-								<button
-									onClick={triggerDebugLoss}
-									className='px-3 py-1 bg-destructive hover:opacity-90 text-ivory rounded'
-									title='Debug: Loss'
-								>
-									Loss
-								</button>
-								<button
-									onClick={triggerDebugDraw}
-									className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
-									title='Debug: Draw'
-								>
-									Draw
-								</button>
-							</div>
+							<DebugOutcomeButtons
+								onWin={triggerDebugWin}
+								onLoss={triggerDebugLoss}
+								onDraw={triggerDebugDraw}
+							/>
 						) : undefined
 					}
 				/>
@@ -821,7 +804,7 @@ const ChessGame: React.FC = () => {
 							<AIStatusPanel
 								aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
 								hasGameStarted={gameStarted}
-								isAIThinking={gameState.isAiThinking}
+								isAIThinking={gameState.isAiThinking ?? false}
 								isAIPaused={isAiPaused}
 								aiError={aiError}
 								aiDebugMoves={aiDebugMoves}

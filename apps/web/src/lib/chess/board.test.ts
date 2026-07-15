@@ -225,7 +225,7 @@ describe('Chess Board Utilities', () => {
 
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					expect(copy[row]?.[col]).toEqual(board[row]?.[col]);
+					expect(copy[row]?.[col]).toEqual(board[row]?.[col] ?? null);
 				}
 			}
 		});
