@@ -73,8 +73,7 @@ const SidebarAIConfig: React.FC = () => {
 	// disabled until setProvider finishes — otherwise a model pick made
 	// before setProvider's setConfigSlice resolves is silently overwritten
 	// by the saved provider's model (setProvider writes `full.model ||
-	// fallbackModel` into the store). Mirrors AISettingsDialog's
-	// isProviderSwitching guard.
+	// fallbackModel` into the store).
 	const [isProviderSwitching, setIsProviderSwitching] = useState(false);
 
 	// `availableProviders` is populated once by the store's hydrate() (called

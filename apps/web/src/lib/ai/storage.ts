@@ -7,7 +7,7 @@ const AI_CONFIG_KEY = 'procyon_ai_config';
  * Timeout for AI config fetches (/ai-config list and /ai-config/:id/full).
  * Prevents `setProvider` and `hydrate` from hanging indefinitely on a stalled
  * connection — without this, a hung fetch leaves `isProviderSwitching` stuck
- * true in AISettingsDialog (both selects permanently disabled) because the
+ * true in SidebarAIConfig (both selects permanently disabled) because the
  * `await onProviderChange(...)` never resolves and the `finally` never runs.
  * The resulting AbortError throws and is caught by the callers' catch blocks.
  */

@@ -49,14 +49,9 @@ export function AppShell() {
 	const [mobileAIOpen, setMobileAIOpen] = useState(false);
 	const isDesktop = useIsDesktop();
 
-	// SidebarAIConfig (the rail + mobile panel) is only rendered on /chess;
-	// the other variants still drive AI settings through AISettingsDialog.
-	// Showing SidebarAIConfig on those pages would duplicate the dialog, so
-	// scope the rail panel to /chess only.
-	const isChessPage = (p: string) => p.startsWith('/chess');
-
-	// All four game variants now consume the cross-island ai-config-store
-	// via useAIConfig(), so the store must hydrate on any game page.
+	// All four game variants consume the cross-island ai-config-store via
+	// useAIConfig() and edit provider/model through SidebarAIConfig (rail +
+	// mobile panel). Scope both the rail and store hydrate to game pages.
 	const isGamePage = (p: string) =>
 		p.startsWith('/chess') ||
 		p.startsWith('/xiangqi') ||
@@ -180,7 +175,7 @@ export function AppShell() {
 						</a>
 					))}
 				</nav>
-				{isChessPage(path) && isDesktop && (
+				{isGamePage(path) && isDesktop && (
 					<div className='mt-6'>
 						<SidebarAIConfig />
 					</div>
@@ -205,7 +200,7 @@ export function AppShell() {
 					</span>
 				</a>
 				<div className='flex items-center gap-2'>
-					{isChessPage(path) && (
+					{isGamePage(path) && (
 						<button
 							type='button'
 							onClick={() => setMobileAIOpen(o => !o)}
@@ -226,13 +221,12 @@ export function AppShell() {
 				</div>
 			</header>
 
-			{/* Mobile AI config panel (chess pages only). The desktop rail
-			    renders SidebarAIConfig inside a `hidden lg:flex` aside, so below
-			    the lg breakpoint there is no other surface to change provider /
-			    model before starting a chess AI game. This collapsible
-			    panel mirrors the desktop rail panel using the same store-backed
-			    component. */}
-			{isChessPage(path) && mobileAIOpen && !isDesktop && (
+			{/* Mobile AI config panel (game pages). The desktop rail renders
+			    SidebarAIConfig inside a `hidden lg:flex` aside, so below the
+			    lg breakpoint there is no other surface to change provider /
+			    model before starting an AI game. This collapsible panel mirrors
+			    the desktop rail using the same store-backed component. */}
+			{isGamePage(path) && mobileAIOpen && !isDesktop && (
 				<div
 					id='procyon-mobile-ai-config'
 					className='fixed inset-x-0 top-16 z-30 border-b border-line bg-ink-800 px-4 py-4 lg:hidden'
