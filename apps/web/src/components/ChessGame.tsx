@@ -75,6 +75,7 @@ const ChessGame: React.FC = () => {
 	// position or set a stale error after the auth-loss reset has
 	// already cleared it.
 	const aiMoveGenRef = useRef(0);
+
 	const [hasGameEnded, setHasGameEnded] = useState(false);
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 
@@ -154,7 +155,17 @@ const ChessGame: React.FC = () => {
 
 		// Set up debug callback
 		if (isDebugMode) {
-			aiService.setDebugCallback((type, message, _data) => {
+			aiService.setDebugCallback((type, message, data) => {
+				// Skip if a reset/account-switch invalidated the in-flight
+				// request that triggered this callback. Each makeMove call
+				// stamps its gen into data.requestId, so a late callback
+				// from a superseded request sees a stale requestId and
+				// bails instead of appending to the new game's history.
+				if (
+					data?.requestId !== undefined &&
+					data.requestId !== aiMoveGenRef.current
+				)
+					return;
 				const thinking = type === 'ai-thinking' ? message : undefined;
 				const error = type === 'ai-error' ? message : undefined;
 
@@ -330,7 +341,7 @@ const ChessGame: React.FC = () => {
 		setAiError(null); // Clear previous errors
 
 		try {
-			const aiResponse = await aiService.makeMove(gameState);
+			const aiResponse = await aiService.makeMove(gameState, gen);
 			if (gen !== aiMoveGenRef.current) return;
 
 			if (aiResponse && aiResponse.move) {

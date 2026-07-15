@@ -36,6 +36,11 @@ export interface AIInteractionData {
 	parsedResponse: AIResponse | null;
 }
 
+export interface AIDebugEventData {
+	requestId?: number;
+	[key: string]: unknown;
+}
+
 export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 	private config: AIConfig;
 	public adapter: GameVariantAdapter<T>;
@@ -43,7 +48,7 @@ export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 	private debugCallback?: (
 		type: string,
 		message: string,
-		data?: unknown
+		data?: AIDebugEventData
 	) => void;
 	private lastInteraction?: AIInteractionData;
 
@@ -54,7 +59,7 @@ export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 	}
 
 	setDebugCallback(
-		callback: (type: string, message: string, data?: unknown) => void
+		callback: (type: string, message: string, data?: AIDebugEventData) => void
 	) {
 		this.debugCallback = callback;
 	}
@@ -63,7 +68,7 @@ export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 		return this.lastInteraction;
 	}
 
-	async makeMove(gameState: T): Promise<AIResponse | null> {
+	async makeMove(gameState: T, requestId?: number): Promise<AIResponse | null> {
 		if (!this.config.enabled || !this.config.apiKey) {
 			return null;
 		}
@@ -77,6 +82,7 @@ export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 					'ai-debug',
 					`🤔 AI is thinking as ${baseGameState.currentPlayer}...`,
 					{
+						requestId,
 						player: baseGameState.currentPlayer,
 						status: baseGameState.status,
 						moveNumber: Math.floor(baseGameState.moveHistory.length / 2) + 1,
@@ -102,6 +108,7 @@ export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 						'ai-move',
 						`🎯 AI suggests: ${parsedResponse.move.from} → ${parsedResponse.move.to}`,
 						{
+							requestId,
 							move: parsedResponse.move,
 							reasoning: parsedResponse.thinking,
 							confidence: parsedResponse.confidence,
@@ -110,6 +117,7 @@ export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 					);
 				} else {
 					this.debugCallback?.('ai-error', '❌ Failed to parse AI response', {
+						requestId,
 						rawResponse: response,
 					});
 				}
@@ -128,6 +136,7 @@ export class UniversalAIService<T extends AnyGameState = AnyGameState> {
 							'ai-error',
 							`🚫 Invalid AI move: ${validation.reason}`,
 							{
+								requestId,
 								move: parsedResponse.move,
 								reason: validation.reason,
 								gameVariant: this.adapter.gameVariant,
