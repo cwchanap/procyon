@@ -12,6 +12,8 @@ import {
 import { createInitialBoard, getPieceAt } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
 import BoardSidePanel, { type Mode } from './game/BoardSidePanel';
+import BoardColumn from './game/BoardColumn';
+import GamePlayLayout from './game/GamePlayLayout';
 import GameStartOverlay from './game/GameStartOverlay';
 import AIStatusPanel from './game/AIStatusPanel';
 import GameControls from './game/GameControls';
@@ -21,8 +23,13 @@ import AIGameInstructions from './game/AIGameInstructions';
 import type { AIMove } from './ai/AIDebugDialog';
 import { createChessAI } from '../lib/ai';
 import { defaultAIConfig } from '../lib/ai/storage';
-import { usePlayHistory } from '../hooks/usePlayHistory';
-import { useAIConfigHydration } from '../hooks/useAIConfigHydration';
+import {
+	usePlayHistory,
+	useAIConfigHydration,
+	useAiMoveGenerationToken,
+	useGameIdentityReset,
+	useGameDebugOutcomes,
+} from '../hooks';
 import { useAuth } from '../lib/auth';
 import { GameExporter } from '../lib/ai/game-export';
 
@@ -68,16 +75,14 @@ const ChessGame: React.FC = () => {
 	const [isAiPaused, setIsAiPaused] = useState(false);
 	const [aiError, setAiError] = useState<string | null>(null);
 	const gameExporterRef = useRef<GameExporter | null>(null);
-	// Monotonic generation token for in-flight AI moves. Incremented on
-	// logout so a makeAIMoveAsync callback still awaiting an AI response
-	// can detect it is stale and skip its setGameState/setAiError calls —
-	// otherwise the resolved promise would resurrect the pre-logout board
-	// position or set a stale error after the auth-loss reset has
-	// already cleared it.
-	const aiMoveGenRef = useRef(0);
+	// Monotonic generation token for in-flight AI moves. Invalidated on
+	// logout / identity change / mode switch / reset so a makeAIMoveAsync
+	// callback still awaiting an AI response can detect it is stale and
+	// skip its setGameState/setAiError calls — otherwise the resolved
+	// promise would resurrect the pre-reset board or set a stale error.
+	const { genRef, invalidate, isStale } = useAiMoveGenerationToken();
 
 	const [hasGameEnded, setHasGameEnded] = useState(false);
-	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
@@ -135,20 +140,6 @@ const ChessGame: React.FC = () => {
 		}
 	}, [gameState.status, hasGameEnded]);
 
-	// Trigger debug button with Shift+D (development only)
-	useEffect(() => {
-		if (!import.meta.env.DEV || typeof window === 'undefined') {
-			return;
-		}
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.shiftKey && e.key.toLowerCase() === 'd') {
-				setShowDebugWinButton(prev => !prev);
-			}
-		};
-		window.addEventListener('keydown', handleKeyDown);
-		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, []);
-
 	// Update AI service when debug mode changes
 	useEffect(() => {
 		aiService.updateConfig({ ...aiConfig, debug: isDebugMode });
@@ -161,11 +152,7 @@ const ChessGame: React.FC = () => {
 				// stamps its gen into data.requestId, so a late callback
 				// from a superseded request sees a stale requestId and
 				// bails instead of appending to the new game's history.
-				if (
-					data?.requestId !== undefined &&
-					data.requestId !== aiMoveGenRef.current
-				)
-					return;
+				if (isStale(data?.requestId as number | undefined)) return;
 				const thinking = type === 'ai-thinking' ? message : undefined;
 				const error = type === 'ai-error' ? message : undefined;
 
@@ -180,7 +167,7 @@ const ChessGame: React.FC = () => {
 				]);
 			});
 		}
-	}, [isDebugMode, aiConfig, aiService, createAIMove]);
+	}, [isDebugMode, aiConfig, aiService, createAIMove, isStale]);
 
 	const createCustomBoard = useCallback(
 		(setup: string): (ChessPiece | null)[][] => {
@@ -335,14 +322,14 @@ const ChessGame: React.FC = () => {
 		if (!isAITurn(gameState) || gameState.isAiThinking) {
 			return;
 		}
-		const gen = aiMoveGenRef.current;
+		const gen = genRef.current;
 
 		setGameState(prev => setAIThinking(prev, true));
 		setAiError(null); // Clear previous errors
 
 		try {
 			const aiResponse = await aiService.makeMove(gameState, gen);
-			if (gen !== aiMoveGenRef.current) return;
+			if (gen !== genRef.current) return;
 
 			if (aiResponse && aiResponse.move) {
 				if (isDebugMode) {
@@ -411,7 +398,7 @@ const ChessGame: React.FC = () => {
 				setIsAiPaused(true);
 			}
 		} catch (error) {
-			if (gen !== aiMoveGenRef.current) return;
+			if (gen !== genRef.current) return;
 			// eslint-disable-next-line no-console
 			console.error('AI move failed:', error);
 			const errorMessage =
@@ -426,11 +413,11 @@ const ChessGame: React.FC = () => {
 				]);
 			}
 		} finally {
-			if (gen === aiMoveGenRef.current) {
+			if (gen === genRef.current) {
 				setGameState(prev => setAIThinking(prev, false));
 			}
 		}
-	}, [gameState, aiService, isDebugMode, createAIMove]);
+	}, [gameState, aiService, isDebugMode, createAIMove, genRef]);
 
 	// Retry AI move
 	const retryAIMove = useCallback(() => {
@@ -472,7 +459,7 @@ const ChessGame: React.FC = () => {
 			// Invalidate any in-flight makeAIMoveAsync callback so a stale
 			// AI response from the previous mode cannot overwrite the newly
 			// selected game state. Mirrors Xiangqi/Shogi/Jungle toggles.
-			aiMoveGenRef.current++;
+			invalidate();
 			setGameMode(newMode);
 			setGameStarted(false);
 			setIsAiPaused(false);
@@ -501,7 +488,7 @@ const ChessGame: React.FC = () => {
 				}
 			}
 		},
-		[getCurrentDemo, aiPlayer, aiConfig.enabled, aiConfig.apiKey]
+		[getCurrentDemo, aiPlayer, aiConfig.enabled, aiConfig.apiKey, invalidate]
 	);
 
 	const handleSquareClick = useCallback(
@@ -602,7 +589,7 @@ const ChessGame: React.FC = () => {
 	const resetGame = useCallback(() => {
 		// Invalidate any in-flight makeAIMoveAsync callback so it cannot
 		// apply stale setGameState/setAiError results after the reset.
-		aiMoveGenRef.current++;
+		invalidate();
 		if (gameMode === 'ai') {
 			setGameState(createInitialGameState('human-vs-ai', aiPlayer));
 		} else {
@@ -614,83 +601,47 @@ const ChessGame: React.FC = () => {
 		setAiError(null);
 		setHasGameEnded(false);
 		setGameActive(false);
-	}, [gameMode, aiPlayer]);
+	}, [gameMode, aiPlayer, invalidate]);
 
 	// Reset local game state when authentication is lost (logout) OR when
 	// the authenticated user identity changes (account switch in another
-	// tab). The auth context wipes the AI config store on logout, but
-	// `gameActive` and `aiPlayer` live here in local state — without this
-	// reset the mounted page keeps the AI-side selector disabled
-	// (gameActive stays true) and the active game continues against the
-	// store's freshly reset default (no-key) config until a manual game
-	// reset. On an identity change (A→B), isAuthenticated stays true so
-	// the true→false-only check would leave the old board alive — on game
-	// over, usePlayHistory would then record A's result under B's id and
-	// rating. Track the previous auth value and user id so we fire on
-	// logout (true→false) and on identity change (id change while
-	// authenticated), not on mount or initial login from anonymous.
-	// Also bump aiMoveGenRef so any in-flight makeAIMoveAsync callback
-	// skips its setGameState/setAiError calls instead of resurrecting the
-	// pre-reset position after the reset.
-	const prevAuthenticatedRef = useRef(isAuthenticated);
-	const prevUserIdRef = useRef<string | null | undefined>(user?.id);
-	useEffect(() => {
-		const currentUserId = user?.id;
-		const authLost = prevAuthenticatedRef.current && !isAuthenticated;
-		const identityChanged =
-			isAuthenticated &&
-			prevUserIdRef.current != null &&
-			prevUserIdRef.current !== currentUserId;
-		if (authLost || identityChanged) {
+	// tab). Also invalidates the AI move generation token so any in-flight
+	// makeAIMoveAsync callback skips its setGameState/setAiError calls.
+	useGameIdentityReset({
+		isAuthenticated,
+		userId: user?.id,
+		invalidate,
+		onReset: () => {
 			resetGame();
 			setAIPlayer('black');
-			aiMoveGenRef.current++;
-		}
-		prevAuthenticatedRef.current = isAuthenticated;
-		prevUserIdRef.current = currentUserId;
-	}, [isAuthenticated, user?.id, resetGame]);
+		},
+	});
 
-	const triggerDebugWin = useCallback(() => {
-		setGameState(prev => ({
-			...prev,
-			status: 'checkmate',
-			currentPlayer: aiPlayer, // AI player in checkmate = human won
-		}));
-	}, [aiPlayer]);
-
-	const triggerDebugLoss = useCallback(() => {
-		const humanPlayer = aiPlayer === 'white' ? 'black' : 'white';
-		setGameState(prev => ({
-			...prev,
-			status: 'checkmate',
-			currentPlayer: humanPlayer, // Human player in checkmate = AI won
-		}));
-	}, [aiPlayer]);
-
-	const triggerDebugDraw = useCallback(() => {
-		setGameState(prev => ({
-			...prev,
-			status: 'stalemate',
-		}));
-	}, []);
-
-	useEffect(() => {
-		if (!import.meta.env.DEV || typeof window === 'undefined') {
-			return;
-		}
-		const global = window as unknown as {
-			__PROCYON_DEBUG_CHESS_TRIGGER_WIN__?: () => void;
-		};
-		// Helper for tests and manual debugging to force a human win
-		global.__PROCYON_DEBUG_CHESS_TRIGGER_WIN__ = () => {
-			// Ensure we are in AI mode so play history saving conditions are met
+	const {
+		triggerDebugWin,
+		triggerDebugLoss,
+		triggerDebugDraw,
+		showDebugWinButton,
+	} = useGameDebugOutcomes<'white' | 'black'>({
+		aiPlayer,
+		getHumanPlayer: ai => (ai === 'white' ? 'black' : 'white'),
+		setOutcome: patch =>
+			setGameState(prev => ({
+				...prev,
+				status: patch.status as GameState['status'],
+				...(patch.currentPlayer !== undefined
+					? { currentPlayer: patch.currentPlayer }
+					: {}),
+			})),
+		debugVariantKey: 'CHESS',
+		winStatus: 'checkmate',
+		drawStatus: 'stalemate',
+		onPrepareTriggerWin: () => {
 			setGameMode('ai');
 			setGameStarted(true);
 			setHasGameEnded(false);
-			setShowDebugWinButton(true);
-			triggerDebugWin();
-		};
-	}, [triggerDebugWin]);
+		},
+	});
 
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {
@@ -776,49 +727,46 @@ const ChessGame: React.FC = () => {
 				: '';
 
 	return (
-		<div className='mx-auto w-full max-w-7xl px-4 py-6'>
-			<div className='mb-6 text-center'>
-				<h1 className='mb-2 font-display text-4xl font-bold text-ivory'>
-					{title}
-				</h1>
-				<p className='text-xl font-medium text-ivory-dim'>{subtitle}</p>
-			</div>
-
-			<div className='flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-center'>
-				{/* Board column */}
-				<div className='flex flex-col items-center gap-6'>
-					<GameStartOverlay active={!gameStarted && gameMode !== 'tutorial'}>
-						<ChessBoard
-							board={currentBoard}
-							selectedSquare={gameState.selectedSquare}
-							possibleMoves={gameState.possibleMoves}
-							onSquareClick={handleSquareClick}
-							highlightSquares={currentHighlightSquares}
-							disabled={!gameStarted && gameMode !== 'tutorial'}
-						/>
-					</GameStartOverlay>
-
-					{gameMode === 'ai' && (
-						<GameControls
-							hasGameStarted={gameStarted}
-							isGameOver={isGameOver}
-							aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
-							startDisabled={aiStarting}
-							isDebugMode={isDebugMode}
-							canExport={gameStarted && !!gameExporterRef.current}
-							onStartOrReset={handleStartOrReset}
-							onReset={resetGame}
-							onToggleDebug={() => setIsDebugMode(!isDebugMode)}
-							onExport={() =>
-								gameExporterRef.current?.exportAndDownload(gameState.status)
-							}
-						/>
-					)}
-
-					{import.meta.env.DEV &&
+		<GamePlayLayout
+			title={title}
+			subtitle={subtitle}
+			boardColumn={
+				<BoardColumn
+					board={
+						<GameStartOverlay active={!gameStarted && gameMode !== 'tutorial'}>
+							<ChessBoard
+								board={currentBoard}
+								selectedSquare={gameState.selectedSquare}
+								possibleMoves={gameState.possibleMoves}
+								onSquareClick={handleSquareClick}
+								highlightSquares={currentHighlightSquares}
+								disabled={!gameStarted && gameMode !== 'tutorial'}
+							/>
+						</GameStartOverlay>
+					}
+					controls={
+						gameMode === 'ai' ? (
+							<GameControls
+								hasGameStarted={gameStarted}
+								isGameOver={isGameOver}
+								aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
+								startDisabled={aiStarting}
+								isDebugMode={isDebugMode}
+								canExport={gameStarted && !!gameExporterRef.current}
+								onStartOrReset={handleStartOrReset}
+								onReset={resetGame}
+								onToggleDebug={() => setIsDebugMode(!isDebugMode)}
+								onExport={() =>
+									gameExporterRef.current?.exportAndDownload(gameState.status)
+								}
+							/>
+						) : undefined
+					}
+					debugTools={
+						import.meta.env.DEV &&
 						showDebugWinButton &&
 						gameStarted &&
-						!isGameOver && (
+						!isGameOver ? (
 							<div className='flex gap-2 justify-center text-xs'>
 								<button
 									onClick={triggerDebugWin}
@@ -842,10 +790,11 @@ const ChessGame: React.FC = () => {
 									Draw
 								</button>
 							</div>
-						)}
-				</div>
-
-				{/* Board-side panel */}
+						) : undefined
+					}
+				/>
+			}
+			sidePanel={
 				<BoardSidePanel gameMode={gameMode} onModeChange={toggleToMode}>
 					{gameMode === 'ai' ? (
 						<>
@@ -907,8 +856,8 @@ const ChessGame: React.FC = () => {
 						</>
 					)}
 				</BoardSidePanel>
-			</div>
-		</div>
+			}
+		/>
 	);
 };
 
