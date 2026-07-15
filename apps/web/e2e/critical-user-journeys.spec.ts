@@ -60,11 +60,9 @@ const waitForPuzzleListReady = async (page: Page) => {
 };
 
 const waitForConfiguredAIProviders = async (page: Page) => {
-	const noProvidersMessage = page.getByText('⚠️ No AI providers configured');
-	const providerSelect = page
-		.locator('label', { hasText: 'AI Provider' })
-		.locator('xpath=..')
-		.locator('select');
+	// SidebarAIConfig rail empty-state copy (no emoji warning prefix).
+	const noProvidersMessage = page.getByText('No AI providers configured');
+	const providerSelect = page.getByLabel('AI Provider');
 
 	await expect(providerSelect).toBeVisible({ timeout: 15000 });
 	await expect(noProvidersMessage).not.toBeVisible({ timeout: 15000 });
@@ -79,9 +77,10 @@ const waitForShogiReady = async (page: Page) => {
 		};
 		return !!global.__PROCYON_DEBUG_SHOGI_STATE__;
 	});
-	await expect(
-		page.getByRole('button', { name: '⚙️ AI Settings' })
-	).toBeVisible({ timeout: 15000 });
+	// Provider/model live in AppShell's SidebarAIConfig rail (all game pages).
+	await expect(page.getByRole('heading', { name: 'AI Config' })).toBeVisible({
+		timeout: 15000,
+	});
 };
 
 test.describe('Critical user journeys', () => {
@@ -225,13 +224,9 @@ test.describe('Critical user journeys', () => {
 
 		await page.goto('/shogi');
 		await waitForShogiReady(page);
-		await page.getByRole('button', { name: '⚙️ AI Settings' }).click();
-		await expect(
-			page.getByRole('heading', { name: 'AI Settings' })
-		).toBeVisible({ timeout: 15000 });
-		await expect(page.getByText('AI Player')).toBeVisible();
 		await expect(page.getByText('AI Provider')).toBeVisible();
-		const aiPlayerSelect = page.getByLabel('AI Player');
+		// Side select lives on the game panel; provider lives on the rail.
+		const aiPlayerSelect = page.locator('#shogi-ai-side');
 		const providerSelect = await waitForConfiguredAIProviders(page);
 		await aiPlayerSelect
 			.locator('option', { hasText: 'AI plays Gote (後手)' })
