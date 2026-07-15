@@ -5,23 +5,29 @@ import { useGameDebugOutcomes } from './useGameDebugOutcomes';
 
 setupReactDom();
 
+type ChessColor = 'black' | 'white';
+
+function chessHumanPlayer(ai: ChessColor): ChessColor {
+	return ai === 'black' ? 'white' : 'black';
+}
+
 describe('useGameDebugOutcomes', () => {
 	const winStatus = 'checkmate';
 	const drawStatus = 'stalemate';
 
 	beforeEach(() => {
-		// @ts-expect-error test env
-		import.meta.env.DEV = true;
+		// Ensure DEV so global trigger + Shift+D effects register
+		(import.meta.env as { DEV: boolean }).DEV = true;
 	});
 
 	test('triggerDebugWin calls setOutcome with winStatus and aiPlayer', () => {
 		const setOutcome = mock(
-			(_p: { status: string; currentPlayer?: string }) => {}
+			(_p: { status: string; currentPlayer?: ChessColor }) => {}
 		);
 		const { result } = renderHook(() =>
-			useGameDebugOutcomes({
+			useGameDebugOutcomes<ChessColor>({
 				aiPlayer: 'black',
-				getHumanPlayer: ai => (ai === 'black' ? 'white' : 'black'),
+				getHumanPlayer: chessHumanPlayer,
 				setOutcome,
 				debugVariantKey: 'CHESS',
 				winStatus,
@@ -39,12 +45,12 @@ describe('useGameDebugOutcomes', () => {
 
 	test('triggerDebugLoss uses human as currentPlayer', () => {
 		const setOutcome = mock(
-			(_p: { status: string; currentPlayer?: string }) => {}
+			(_p: { status: string; currentPlayer?: ChessColor }) => {}
 		);
 		const { result } = renderHook(() =>
-			useGameDebugOutcomes({
+			useGameDebugOutcomes<ChessColor>({
 				aiPlayer: 'black',
-				getHumanPlayer: ai => (ai === 'black' ? 'white' : 'black'),
+				getHumanPlayer: chessHumanPlayer,
 				setOutcome,
 				debugVariantKey: 'CHESS',
 				winStatus,
@@ -62,12 +68,12 @@ describe('useGameDebugOutcomes', () => {
 
 	test('triggerDebugDraw omits currentPlayer', () => {
 		const setOutcome = mock(
-			(_p: { status: string; currentPlayer?: string }) => {}
+			(_p: { status: string; currentPlayer?: ChessColor }) => {}
 		);
 		const { result } = renderHook(() =>
-			useGameDebugOutcomes({
+			useGameDebugOutcomes<ChessColor>({
 				aiPlayer: 'black',
-				getHumanPlayer: ai => (ai === 'black' ? 'white' : 'black'),
+				getHumanPlayer: chessHumanPlayer,
 				setOutcome,
 				debugVariantKey: 'CHESS',
 				winStatus,
@@ -78,7 +84,9 @@ describe('useGameDebugOutcomes', () => {
 			result.current.triggerDebugDraw();
 		});
 		expect(setOutcome).toHaveBeenCalledTimes(1);
-		const arg = setOutcome.mock.calls[0][0];
+		const firstCall = setOutcome.mock.calls[0];
+		expect(firstCall).toBeDefined();
+		const arg = firstCall![0];
 		expect(arg.status).toBe('stalemate');
 		expect('currentPlayer' in arg).toBe(false);
 	});
@@ -87,9 +95,9 @@ describe('useGameDebugOutcomes', () => {
 		const setOutcome = mock(() => {});
 		const onPrepareTriggerWin = mock(() => {});
 		renderHook(() =>
-			useGameDebugOutcomes({
+			useGameDebugOutcomes<ChessColor>({
 				aiPlayer: 'black',
-				getHumanPlayer: ai => (ai === 'black' ? 'white' : 'black'),
+				getHumanPlayer: chessHumanPlayer,
 				setOutcome,
 				debugVariantKey: 'CHESS',
 				winStatus,
@@ -110,9 +118,9 @@ describe('useGameDebugOutcomes', () => {
 
 	test('Shift+D toggles showDebugWinButton in DEV', () => {
 		const { result } = renderHook(() =>
-			useGameDebugOutcomes({
+			useGameDebugOutcomes<ChessColor>({
 				aiPlayer: 'black',
-				getHumanPlayer: ai => (ai === 'black' ? 'white' : 'black'),
+				getHumanPlayer: chessHumanPlayer,
 				setOutcome: () => {},
 				debugVariantKey: 'CHESS',
 				winStatus,
