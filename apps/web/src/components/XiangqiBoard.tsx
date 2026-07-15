@@ -7,6 +7,7 @@ import {
 	PALACE_ROWS,
 	PALACE_COLS,
 } from '../lib/xiangqi/types';
+import { CAPTURE_RING } from '../lib/board-accents';
 
 interface XiangqiBoardProps {
 	board: (XiangqiPiece | null)[][];
@@ -154,9 +155,7 @@ const XiangqiBoard: React.FC<XiangqiBoardProps> = ({
 				)}
 
 				{/* Capture indicator */}
-				{isPossible && piece && (
-					<div className='absolute inset-0 border-4 border-xiangqi rounded pointer-events-none' />
-				)}
+				{isPossible && piece && <div className={CAPTURE_RING.xiangqi} />}
 
 				{/* River indicator */}
 				{row === 4 && (

@@ -754,6 +754,7 @@ const XiangqiGame: React.FC = () => {
 				{gameMode === 'ai' ? (
 					<>
 						<AIGameInstructions
+							variant='xiangqi'
 							providerName={aiConfig.provider}
 							modelName={aiConfig.model}
 							aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}

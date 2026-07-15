@@ -649,6 +649,7 @@ const JungleGame: React.FC = () => {
 			<div className='w-full max-w-4xl mx-auto space-y-6'>
 				{gameMode === 'ai' ? (
 					<AIGameInstructions
+						variant='jungle'
 						providerName={aiConfig.provider}
 						modelName={aiConfig.model}
 						aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ShogiPiece, ShogiPosition } from '../lib/shogi';
 import { SHOGI_BOARD_SIZE, PIECE_UNICODE } from '../lib/shogi';
+import { CAPTURE_RING } from '../lib/board-accents';
 
 interface ShogiBoardProps {
 	board: (ShogiPiece | null)[][];
@@ -90,9 +91,7 @@ const ShogiBoard: React.FC<ShogiBoardProps> = ({
 				)}
 
 				{/* Capture indicator */}
-				{isPossible && piece && (
-					<div className='absolute inset-0 border-2 border-xiangqi rounded pointer-events-none' />
-				)}
+				{isPossible && piece && <div className={CAPTURE_RING.shogi} />}
 
 				{/* File and Rank labels */}
 				{row === 0 && (
