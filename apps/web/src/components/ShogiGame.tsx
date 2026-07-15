@@ -4,26 +4,31 @@ import {
 	createInitialGameState,
 	selectSquare,
 	selectHandPiece,
-	clearSelection,
 	confirmPromotion,
 	makeAIMove as makeShogiAIMove,
 	SHOGI_BOARD_SIZE,
 } from '../lib/shogi';
 import { createShogiAI } from '../lib/ai';
+import { rehydrate as rehydrateAIConfig } from '../lib/ai/ai-config-store';
 import {
-	setProvider as setAIProvider,
-	setModel as setAIModel,
-	rehydrate as rehydrateAIConfig,
-} from '../lib/ai/ai-config-store';
-import { usePlayHistory } from '../hooks/usePlayHistory';
-import { useAIConfigHydration } from '../hooks/useAIConfigHydration';
-import type { AIProvider } from '../lib/ai/types';
+	usePlayHistory,
+	useAIConfigHydration,
+	useAiMoveGenerationToken,
+	useGameIdentityReset,
+	useGameDebugOutcomes,
+} from '../hooks';
+import type { AIMove } from './ai/AIDebugDialog';
 import ShogiBoard from './ShogiBoard';
 import ShogiHand from './ShogiHand';
-import GameScaffold from './game/GameScaffold';
+import BoardSidePanel, { type Mode } from './game/BoardSidePanel';
+import BoardColumn from './game/BoardColumn';
+import GamePlayLayout from './game/GamePlayLayout';
 import GameStartOverlay from './game/GameStartOverlay';
-import AIDebugDialog, { type AIMove } from './ai/AIDebugDialog';
-import AISettingsDialog from './ai/AISettingsDialog';
+import AIStatusPanel from './game/AIStatusPanel';
+import GameControls from './game/GameControls';
+import DemoSelector from './game/DemoSelector';
+import TutorialInstructions from './game/TutorialInstructions';
+import AIGameInstructions from './game/AIGameInstructions';
 import { useAuth } from '../lib/auth';
 
 interface ShogiDemo {
@@ -36,7 +41,7 @@ interface ShogiDemo {
 	explanation: string;
 }
 
-type ShogiGameMode = 'tutorial' | 'ai';
+type ShogiGameMode = Mode;
 
 const ShogiGame: React.FC = () => {
 	const [gameMode, setGameMode] = useState<ShogiGameMode>('ai');
@@ -54,7 +59,6 @@ const ShogiGame: React.FC = () => {
 	} = useAuth();
 	const {
 		config: aiConfig,
-		hydrated: aiConfigHydrated,
 		hydrateError,
 		isRehydrating: aiConfigRehydrating,
 		configPending,
@@ -69,15 +73,14 @@ const ShogiGame: React.FC = () => {
 	const [isAIThinking, setIsAIThinking] = useState(false);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
-	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-	// Monotonic generation token for in-flight AI moves. Incremented on
-	// logout so a makeAIMove async callback still awaiting an AI response
-	// can detect it is stale and skip its setGameState call — otherwise
-	// the resolved promise would resurrect the pre-logout board position
-	// after the auth-loss reset has already cleared it.
-	const aiMoveGenRef = useRef(0);
+	// Monotonic generation token for in-flight AI moves. Invalidated on
+	// logout / identity change / mode switch / reset so a makeAIMove
+	// callback still awaiting an AI response can detect it is stale and
+	// skip its setGameState call — otherwise the resolved promise would
+	// resurrect the pre-reset board position.
+	const { genRef, invalidate, isStale } = useAiMoveGenerationToken();
 
 	// Refs for promotion modal focus management
 	const modalRef = useRef<HTMLDivElement>(null);
@@ -125,20 +128,6 @@ const ShogiGame: React.FC = () => {
 		userId: user?.id,
 		debugVariantKey: 'SHOGI',
 	});
-
-	// Trigger debug button with Shift+D (development only)
-	useEffect(() => {
-		if (!import.meta.env.DEV || typeof window === 'undefined') {
-			return;
-		}
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.shiftKey && e.key.toLowerCase() === 'd') {
-				setShowDebugWinButton(prev => !prev);
-			}
-		};
-		window.addEventListener('keydown', handleKeyDown);
-		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, []);
 
 	const createCustomShogiBoard = useCallback(
 		(setup: string): (ShogiPiece | null)[][] => {
@@ -292,11 +281,7 @@ const ShogiGame: React.FC = () => {
 				// stamps its gen into data.requestId, so a late callback
 				// from a superseded request sees a stale requestId and
 				// bails instead of appending to the new game's history.
-				if (
-					data?.requestId !== undefined &&
-					data.requestId !== aiMoveGenRef.current
-				)
-					return;
+				if (isStale(data?.requestId as number | undefined)) return;
 				const thinking = type === 'ai-thinking' ? message : undefined;
 				const error = type === 'ai-error' ? message : undefined;
 
@@ -311,7 +296,7 @@ const ShogiGame: React.FC = () => {
 				]);
 			});
 		}
-	}, [aiService, aiConfig, createAIMove, isDebugMode]);
+	}, [aiService, aiConfig, createAIMove, isDebugMode, isStale]);
 
 	// AI move handling
 	useEffect(() => {
@@ -325,11 +310,11 @@ const ShogiGame: React.FC = () => {
 			!gameState.pendingPromotion
 		) {
 			const makeAIMove = async () => {
-				const gen = aiMoveGenRef.current;
+				const gen = genRef.current;
 				setIsAIThinking(true);
 				try {
 					const aiResponse = await aiService.makeMove(gameState, gen);
-					if (gen !== aiMoveGenRef.current) return;
+					if (gen !== genRef.current) return;
 					if (aiResponse) {
 						// Parse AI move from algebraic notation
 						if (aiResponse.move.from === '*') {
@@ -439,7 +424,7 @@ const ShogiGame: React.FC = () => {
 				} catch (_error) {
 					// console.error('AI move failed:', error);
 				} finally {
-					if (gen === aiMoveGenRef.current) {
+					if (gen === genRef.current) {
 						setIsAIThinking(false);
 					}
 				}
@@ -458,6 +443,7 @@ const ShogiGame: React.FC = () => {
 		isAIThinking,
 		isDebugMode,
 		createAIMove,
+		genRef,
 	]);
 
 	const handleSquareClick = useCallback(
@@ -500,7 +486,7 @@ const ShogiGame: React.FC = () => {
 				setGameState(newGameState);
 			}
 		},
-		[gameMode, gameState, getCurrentDemo, aiPlayer]
+		[gameMode, gameState, getCurrentDemo]
 	);
 
 	const handleHandPieceClick = useCallback(
@@ -593,86 +579,68 @@ const ShogiGame: React.FC = () => {
 		}
 	}, [gameState.pendingPromotion, handlePromotionChoice]);
 
-	const resetGame = useCallback(() => {
+	const handleResetGame = useCallback(() => {
 		// Invalidate any in-flight makeAIMove callback so it cannot
 		// apply a stale setGameState after the reset. Clear isAIThinking
 		// because the callback's finally-block skips on gen mismatch.
-		aiMoveGenRef.current++;
+		invalidate();
 		setIsAIThinking(false);
 		setGameState(createInitialGameState());
 		setGameStarted(false);
-	}, []);
+		// Clear AI UI state so a logout or cross-account identity change
+		// (handled by useGameIdentityReset) does not leave the previous
+		// session's error message or debug move history visible.
+		setErrorMsg(null);
+		setAIDebugMoves([]);
+	}, [invalidate]);
 
 	// Reset local game state when authentication is lost (logout) OR when
 	// the authenticated user identity changes (account switch in another
-	// tab). The auth context wipes the AI config store on logout, but
-	// `gameStarted` and board state live here in local state — without
-	// this reset the mounted page keeps the AI service disabled (no API
-	// key) and the AI turn stalls indefinitely. On an identity change
-	// (A→B), isAuthenticated stays true so the true→false-only check
-	// would leave the old board alive — on game over, usePlayHistory
-	// would then record A's result under B's id and rating. resetGame
-	// handles gen invalidation and isAIThinking clearing. Track the
-	// previous auth value and user id so we fire on logout (true→false)
-	// and on identity change (id change while authenticated), not on
-	// mount or initial login from anonymous.
-	const prevAuthenticatedRef = useRef(isAuthenticated);
-	const prevUserIdRef = useRef<string | null | undefined>(user?.id);
-	useEffect(() => {
-		const currentUserId = user?.id;
-		const authLost = prevAuthenticatedRef.current && !isAuthenticated;
-		const identityChanged =
-			isAuthenticated &&
-			prevUserIdRef.current != null &&
-			prevUserIdRef.current !== currentUserId;
-		if (authLost || identityChanged) {
-			resetGame();
+	// tab). The hook invalidates the AI move generation token so any
+	// in-flight makeAIMove callback skips its setGameState calls.
+	useGameIdentityReset({
+		isAuthenticated,
+		userId: user?.id,
+		invalidate,
+		onReset: () => {
+			handleResetGame();
 			setAIPlayer('gote');
-		}
-		prevAuthenticatedRef.current = isAuthenticated;
-		prevUserIdRef.current = currentUserId;
-	}, [isAuthenticated, user?.id, resetGame]);
+		},
+	});
 
-	const triggerDebugWin = useCallback(() => {
-		setGameState(prev => ({
-			...prev,
-			status: 'checkmate',
-			currentPlayer: aiPlayer,
-		}));
-	}, [aiPlayer]);
+	const {
+		triggerDebugWin,
+		triggerDebugLoss,
+		triggerDebugDraw,
+		showDebugWinButton,
+	} = useGameDebugOutcomes<'sente' | 'gote'>({
+		aiPlayer,
+		getHumanPlayer: ai => (ai === 'sente' ? 'gote' : 'sente'),
+		setOutcome: patch =>
+			setGameState(prev => ({
+				...prev,
+				status: patch.status as ShogiGameState['status'],
+				...(patch.currentPlayer !== undefined
+					? { currentPlayer: patch.currentPlayer }
+					: {}),
+			})),
+		debugVariantKey: 'SHOGI',
+		winStatus: 'checkmate',
+		drawStatus: 'draw',
+		onPrepareTriggerWin: () => {
+			setGameMode('ai');
+			setGameStarted(true);
+		},
+	});
 
-	const triggerDebugLoss = useCallback(() => {
-		const humanPlayer = aiPlayer === 'sente' ? 'gote' : 'sente';
-		setGameState(prev => ({
-			...prev,
-			status: 'checkmate',
-			currentPlayer: humanPlayer,
-		}));
-	}, [aiPlayer]);
-
-	const triggerDebugDraw = useCallback(() => {
-		setGameState(prev => ({
-			...prev,
-			status: 'draw',
-		}));
-	}, []);
-
+	// Shogi-only promotion dialog trigger for E2E / manual debugging.
 	useEffect(() => {
 		if (!import.meta.env.DEV || typeof window === 'undefined') {
 			return;
 		}
 		const global = window as unknown as {
-			__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__?: () => void;
 			__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__?: () => void;
 		};
-		// Helper for tests and manual debugging to force a human win
-		global.__PROCYON_DEBUG_SHOGI_TRIGGER_WIN__ = () => {
-			setGameStarted(true);
-			setShowDebugWinButton(true);
-			triggerDebugWin();
-		};
-
-		// Helper for tests to trigger promotion dialog
 		global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__ = () => {
 			setGameStarted(true);
 			setGameState(prev => ({
@@ -684,11 +652,15 @@ const ShogiGame: React.FC = () => {
 				},
 			}));
 		};
-	}, [triggerDebugWin]);
+		return () => {
+			delete global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__;
+		};
+	}, []);
 
 	// Calculate hasGameStarted before using it in callbacks
 	const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
 
+	// Local debug state mirror for E2E tests (not covered by shared hooks).
 	useEffect(() => {
 		if (!import.meta.env.DEV || typeof window === 'undefined') {
 			return;
@@ -720,6 +692,12 @@ const ShogiGame: React.FC = () => {
 		gameState.pendingPromotion,
 	]);
 
+	const isGameOver =
+		gameState.status === 'checkmate' || gameState.status === 'draw';
+
+	// Lock AI-side select while a game is in progress (started and not over).
+	const gameActive = hasGameStarted && !isGameOver;
+
 	const handleStartOrReset = useCallback(() => {
 		if (!hasGameStarted) {
 			if (aiStarting) return; // config still loading; Start is disabled
@@ -728,17 +706,21 @@ const ShogiGame: React.FC = () => {
 			setGameStarted(true);
 		} else {
 			// Resetting the game
-			resetGame();
+			handleResetGame();
 		}
-	}, [hasGameStarted, resetGame, aiStarting]);
+	}, [hasGameStarted, handleResetGame, aiStarting]);
 
 	const toggleToMode = useCallback(
 		(newMode: ShogiGameMode) => {
-			aiMoveGenRef.current++;
+			// Invalidate any in-flight makeAIMove callback so a stale
+			// AI response from the previous mode cannot overwrite the newly
+			// selected game state.
+			invalidate();
 			setGameMode(newMode);
 			setGameStarted(false);
 			setIsAIThinking(false);
 			setAIDebugMoves([]);
+			setErrorMsg(null);
 
 			if (newMode === 'tutorial') {
 				const demo = getCurrentDemo();
@@ -757,7 +739,7 @@ const ShogiGame: React.FC = () => {
 				setGameState(createInitialGameState());
 			}
 		},
-		[getCurrentDemo]
+		[getCurrentDemo, invalidate]
 	);
 
 	const handleDemoChange = useCallback(
@@ -775,11 +757,6 @@ const ShogiGame: React.FC = () => {
 		},
 		[shogiDemos]
 	);
-
-	const _clearCurrentSelection = useCallback(() => {
-		const newGameState = clearSelection(gameState);
-		setGameState(newGameState);
-	}, [gameState]);
 
 	const getStatusMessage = (): string => {
 		const playerName = gameState.currentPlayer === 'sente' ? '先手' : '後手';
@@ -806,9 +783,6 @@ const ShogiGame: React.FC = () => {
 		}
 	};
 
-	const isGameOver =
-		gameState.status === 'checkmate' || gameState.status === 'draw';
-
 	const currentBoard =
 		gameMode === 'tutorial' ? getCurrentDemo().board : gameState.board;
 	const currentHighlightSquares =
@@ -822,42 +796,52 @@ const ShogiGame: React.FC = () => {
 			: hasGameStarted
 				? getStatusMessage()
 				: '';
-	const showModeToggle = gameMode === 'tutorial' || !hasGameStarted;
 
-	return (
-		<GameScaffold
-			title={title}
-			subtitle={subtitle}
-			titleClassName='text-ivory'
-			subtitleClassName='text-ivory-dim'
-			currentMode={gameMode}
-			onModeChange={toggleToMode}
-			showModeToggle={showModeToggle}
-			inactiveModeClassName='text-ivory-dim hover:bg-ink-600'
-			aiSettingsButton={
-				<AISettingsDialog
-					aiPlayer={aiPlayer}
-					onAIPlayerChange={player => setAIPlayer(player as 'sente' | 'gote')}
-					provider={aiConfig.provider}
-					model={aiConfig.model}
-					onProviderChange={async provider => {
-						const err = await setAIProvider(provider as AIProvider);
-						setErrorMsg(err);
-					}}
-					onModelChange={model => setAIModel(model)}
-					hydrated={aiConfigHydrated}
-					isRehydrating={aiConfigRehydrating}
-					aiPlayerOptions={[
-						{ value: 'gote', label: 'AI plays Gote (後手)' },
-						{ value: 'sente', label: 'AI plays Sente (先手)' },
-					]}
-					isActive={gameMode === 'ai'}
-					onActivate={() => toggleToMode('ai')}
+	const handsDisabled = !hasGameStarted && gameMode !== 'tutorial';
+
+	// Custom board column: always stack gote hand → board → sente hand so the
+	// column stays within GamePageLayout's max-w-6xl at 1024/1280 (hands are
+	// w-48 each and would overflow if they flanked the 9×9 board). Side panel
+	// is never placed in this column (GamePlayLayout stacks it until xl).
+	const boardWithHands =
+		gameMode === 'ai' ? (
+			<div className='flex flex-col items-center justify-center gap-4'>
+				<ShogiHand
+					pieces={gameState.goteHand}
+					color='gote'
+					selectedPiece={gameState.selectedHandPiece}
+					onPieceClick={handleHandPieceClick}
+					disabled={handsDisabled}
 				/>
-			}
-		>
-			{errorMsg && (
-				<div className='w-full max-w-4xl mx-auto mb-6'>
+				<ShogiBoard
+					board={currentBoard}
+					selectedSquare={gameState.selectedSquare}
+					possibleMoves={gameState.possibleMoves}
+					onSquareClick={hasGameStarted ? handleSquareClick : () => {}}
+					highlightSquares={currentHighlightSquares}
+				/>
+				<ShogiHand
+					pieces={gameState.senteHand}
+					color='sente'
+					selectedPiece={gameState.selectedHandPiece}
+					onPieceClick={handleHandPieceClick}
+					disabled={handsDisabled}
+				/>
+			</div>
+		) : (
+			<ShogiBoard
+				board={currentBoard}
+				selectedSquare={gameState.selectedSquare}
+				possibleMoves={gameState.possibleMoves}
+				onSquareClick={handleSquareClick}
+				highlightSquares={currentHighlightSquares}
+			/>
+		);
+
+	const errorBanner =
+		errorMsg || (gameMode === 'ai' && hydrateError) ? (
+			<div className='w-full max-w-4xl mx-auto mb-6 space-y-3'>
+				{errorMsg && (
 					<div
 						className='flex items-start justify-between gap-4 rounded-lg border border-shogi/40 bg-shogi/10 px-4 py-3 text-ivory'
 						role='alert'
@@ -871,11 +855,8 @@ const ShogiGame: React.FC = () => {
 							Dismiss
 						</button>
 					</div>
-				</div>
-			)}
-
-			{gameMode === 'ai' && hydrateError && (
-				<div className='w-full max-w-4xl mx-auto mb-6'>
+				)}
+				{gameMode === 'ai' && hydrateError && (
 					<div
 						className='flex items-center justify-between gap-4 rounded-lg border border-shogi/40 bg-shogi/10 px-4 py-3 text-ivory'
 						role='alert'
@@ -888,136 +869,155 @@ const ShogiGame: React.FC = () => {
 							type='button'
 							className='text-xs font-semibold uppercase tracking-wide text-brass hover:underline'
 							onClick={() => void rehydrateAIConfig()}
+							disabled={aiConfigRehydrating}
 						>
-							Retry
+							{aiConfigRehydrating ? 'Retrying…' : 'Retry'}
 						</button>
 					</div>
-				</div>
-			)}
-
-			{gameMode === 'ai' && (
-				<div className='flex flex-col gap-4 max-w-2xl mx-auto'>
-					<div className='text-center'>
-						{isAIThinking && (
-							<div className='flex items-center justify-center gap-2 text-ivory-dim'>
-								<div className='animate-spin w-4 h-4 border-2 border-brass border-t-transparent rounded-full'></div>
-								AI is thinking...
-							</div>
-						)}
-
-						<AIDebugDialog moves={aiDebugMoves} isVisible={isDebugMode} />
-					</div>
-				</div>
-			)}
-
-			{gameMode === 'tutorial' && (
-				<div className='flex flex-wrap gap-3 justify-center max-w-4xl'>
-					{shogiDemos.map(demoItem => (
-						<button
-							key={demoItem.id}
-							onClick={() => handleDemoChange(demoItem.id)}
-							className={`bg-ink-700 border border-line px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 ${
-								currentDemo === demoItem.id
-									? 'bg-shogi text-ivory border-shogi shadow-lg'
-									: 'text-ivory-dim hover:bg-ink-600'
-							}`}
-						>
-							{demoItem.title}
-						</button>
-					))}
-				</div>
-			)}
-
-			<div className='w-full max-w-4xl mx-auto space-y-6'>
-				{gameMode === 'ai' ? (
-					<>
-						<div className='text-sm text-ivory-dim text-center max-w-2xl mx-auto space-y-2 bg-ink-700 rounded-lg p-4 border border-line'>
-							<p className='flex items-center justify-center gap-2'>
-								Click on a piece to select it, then click on a highlighted
-								square to move.
-							</p>
-							<p className='flex items-center justify-center gap-2'>
-								<span>✋</span>
-								Click on pieces in your hand to drop them on the board.
-							</p>
-							<p className='flex items-center justify-center gap-2'>
-								<span className='w-3 h-3 bg-shogi/70 rounded-full inline-block'></span>
-								Possible moves
-								<span className='mx-2'>•</span>
-								<span className='w-3 h-3 border-2 border-xiangqi rounded inline-block'></span>
-								Captures
-							</p>
-							<p className='text-xs text-ivory-dim'>
-								先手 (Sente) plays first and pieces point upward. 後手 (Gote)
-								pieces are rotated and point downward.
-							</p>
-						</div>
-					</>
-				) : (
-					<>
-						<div className='bg-ink-700 border border-line p-6 rounded-lg'>
-							<h2 className='text-2xl font-bold text-ivory mb-3'>
-								{getCurrentDemo().title}
-							</h2>
-							<div className='bg-ink-800 p-4 rounded-lg border border-shogi/30'>
-								<p className='text-ivory-dim leading-relaxed'>
-									{getCurrentDemo().explanation}
-								</p>
-							</div>
-						</div>
-
-						<div className='bg-ink-700 border border-line p-6 rounded-lg'>
-							<h3 className='text-xl font-semibold text-ivory mb-3 flex items-center gap-2'>
-								<span>🎯</span>
-								How to Use This Demo
-							</h3>
-							<div className='space-y-3 text-ivory-dim'>
-								<p className='flex items-center gap-3'>
-									<span className='text-jungle'>•</span>
-									Click on any piece to see its possible moves
-								</p>
-								<p className='flex items-center gap-3'>
-									<span className='text-shogi'>•</span>
-									Highlighted squares show legal moves
-								</p>
-								<p className='flex items-center gap-3'>
-									<span className='text-shogi'>•</span>
-									Red outlines indicate capture moves
-								</p>
-								<p className='flex items-center gap-3'>
-									<span className='text-brass'>•</span>
-									Accent rings show tutorial highlights
-								</p>
-							</div>
-						</div>
-
-						<div className='bg-ink-700 border border-line p-6 rounded-lg'>
-							<h3 className='text-xl font-semibold text-ivory mb-3 flex items-center gap-2'>
-								<span>💡</span>
-								Shogi Wisdom
-							</h3>
-							<div className='space-y-2 text-ivory-dim text-sm'>
-								<p>
-									"Promotion is key - advance your pieces to gain strength in
-									the enemy camp."
-								</p>
-								<p>
-									"The drop rule makes Shogi unique - captured pieces join your
-									army."
-								</p>
-								<p>
-									"Protect your king while building attacking formations with
-									gold and silver."
-								</p>
-								<p>
-									"Lance and knight are powerful but vulnerable - support them
-									well."
-								</p>
-							</div>
-						</div>
-					</>
 				)}
 			</div>
+		) : undefined;
+
+	return (
+		<>
+			<GamePlayLayout
+				title={title}
+				subtitle={subtitle}
+				banner={errorBanner}
+				sideBySideFrom='xl'
+				boardColumn={
+					<BoardColumn
+						board={
+							<GameStartOverlay
+								active={!hasGameStarted && gameMode !== 'tutorial'}
+							>
+								{boardWithHands}
+							</GameStartOverlay>
+						}
+						controls={
+							gameMode === 'ai' ? (
+								<GameControls
+									hasGameStarted={hasGameStarted}
+									isGameOver={isGameOver}
+									aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+									startDisabled={aiStarting}
+									isDebugMode={isDebugMode}
+									canExport={false}
+									onStartOrReset={handleStartOrReset}
+									onReset={handleResetGame}
+									onToggleDebug={() => setIsDebugMode(!isDebugMode)}
+									onExport={() => {}}
+								/>
+							) : undefined
+						}
+						debugTools={
+							import.meta.env.DEV &&
+							showDebugWinButton &&
+							hasGameStarted &&
+							!isGameOver ? (
+								<div className='flex gap-2 justify-center text-xs'>
+									<button
+										onClick={triggerDebugWin}
+										className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
+										title='Debug: Win'
+									>
+										🏆 Win
+									</button>
+									<button
+										onClick={triggerDebugLoss}
+										className='px-3 py-1 bg-destructive hover:opacity-90 text-ivory rounded'
+										title='Debug: Loss'
+									>
+										💀 Loss
+									</button>
+									<button
+										onClick={triggerDebugDraw}
+										className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
+										title='Debug: Draw'
+									>
+										🤝 Draw
+									</button>
+									<span className='text-ivory-dim self-center'>
+										(Shift+D to toggle)
+									</span>
+								</div>
+							) : undefined
+						}
+					/>
+				}
+				sidePanel={
+					<BoardSidePanel gameMode={gameMode} onModeChange={toggleToMode}>
+						{gameMode === 'ai' ? (
+							<>
+								<div className='flex items-center justify-between gap-3'>
+									<label
+										htmlFor='shogi-ai-side'
+										className='text-sm font-medium text-ivory-dim'
+									>
+										AI plays
+									</label>
+									<select
+										id='shogi-ai-side'
+										value={aiPlayer}
+										onChange={e =>
+											setAIPlayer(e.target.value as 'sente' | 'gote')
+										}
+										disabled={gameActive}
+										className='rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
+									>
+										<option value='gote'>AI plays Gote (後手)</option>
+										<option value='sente'>AI plays Sente (先手)</option>
+									</select>
+								</div>
+								<AIStatusPanel
+									aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+									hasGameStarted={hasGameStarted}
+									isAIThinking={isAIThinking}
+									isAIPaused={false}
+									aiError={null}
+									aiDebugMoves={aiDebugMoves}
+									isDebugMode={isDebugMode}
+									onRetry={() => {}}
+								/>
+								<AIGameInstructions
+									variant='shogi'
+									providerName={aiConfig.provider}
+									modelName={aiConfig.model}
+									aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
+								>
+									<p className='flex items-center justify-center gap-2'>
+										<span>✋</span>
+										Click on pieces in your hand to drop them on the board.
+									</p>
+									<p className='text-xs text-ivory-dim'>
+										先手 (Sente) plays first and pieces point upward. 後手
+										(Gote) pieces are rotated and point downward.
+									</p>
+								</AIGameInstructions>
+							</>
+						) : (
+							<>
+								<DemoSelector
+									demos={shogiDemos}
+									currentDemo={currentDemo}
+									onDemoChange={handleDemoChange}
+								/>
+								<TutorialInstructions
+									title={getCurrentDemo().title}
+									explanation={getCurrentDemo().explanation}
+									tips={[
+										'"Promotion is key - advance your pieces to gain strength in the enemy camp."',
+										'"The drop rule makes Shogi unique - captured pieces join your army."',
+										'"Protect your king while building attacking formations with gold and silver."',
+										'"Lance and knight are powerful but vulnerable - support them well."',
+									]}
+									tipsTitle='Shogi Wisdom'
+								/>
+							</>
+						)}
+					</BoardSidePanel>
+				}
+			/>
 
 			{/* Promotion Dialog */}
 			{gameState.pendingPromotion && (
@@ -1062,130 +1062,7 @@ const ShogiGame: React.FC = () => {
 					</div>
 				</div>
 			)}
-
-			{gameMode === 'ai' ? (
-				<div className='flex justify-center'>
-					<GameStartOverlay active={!hasGameStarted && gameMode !== 'tutorial'}>
-						<div className='flex gap-8 items-start'>
-							<div className='flex flex-col gap-4'>
-								<ShogiHand
-									pieces={gameState.goteHand}
-									color='gote'
-									selectedPiece={gameState.selectedHandPiece}
-									onPieceClick={handleHandPieceClick}
-									disabled={!hasGameStarted && gameMode !== 'tutorial'}
-								/>
-							</div>
-
-							<ShogiBoard
-								board={currentBoard}
-								selectedSquare={gameState.selectedSquare}
-								possibleMoves={gameState.possibleMoves}
-								onSquareClick={
-									hasGameStarted || gameMode === 'tutorial'
-										? handleSquareClick
-										: () => {}
-								}
-								highlightSquares={currentHighlightSquares}
-							/>
-
-							<div className='flex flex-col gap-4'>
-								<ShogiHand
-									pieces={gameState.senteHand}
-									color='sente'
-									selectedPiece={gameState.selectedHandPiece}
-									onPieceClick={handleHandPieceClick}
-									disabled={!hasGameStarted && gameMode !== 'tutorial'}
-								/>
-							</div>
-						</div>
-					</GameStartOverlay>
-				</div>
-			) : (
-				<div className='flex justify-center'>
-					<ShogiBoard
-						board={currentBoard}
-						selectedSquare={gameState.selectedSquare}
-						possibleMoves={gameState.possibleMoves}
-						onSquareClick={handleSquareClick}
-						highlightSquares={currentHighlightSquares}
-					/>
-				</div>
-			)}
-
-			<div className='w-full max-w-4xl mx-auto space-y-6'>
-				{gameMode === 'ai' && (
-					<>
-						<div className='flex gap-4 justify-center'>
-							<button
-								onClick={handleStartOrReset}
-								disabled={aiStarting}
-								className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
-							>
-								{aiStarting
-									? '⏳ Loading AI config…'
-									: hasGameStarted
-										? '🆕 New Game'
-										: '▶️ Start'}
-							</button>
-
-							{aiConfig.enabled && aiConfig.apiKey && (
-								<button
-									onClick={() => setIsDebugMode(!isDebugMode)}
-									className={`bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 ${
-										isDebugMode
-											? 'bg-brass/20 text-brass border-brass'
-											: 'text-ivory-dim border-line hover:bg-ink-600'
-									}`}
-								>
-									🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
-								</button>
-							)}
-
-							{isGameOver && (
-								<button
-									onClick={resetGame}
-									className='bg-brass text-ink-900 px-6 py-3 font-semibold rounded-lg hover:bg-brass-bright transition-colors duration-150 shadow-lg'
-								>
-									🎮 Play Again
-								</button>
-							)}
-						</div>
-						{import.meta.env.DEV &&
-							showDebugWinButton &&
-							hasGameStarted &&
-							!isGameOver && (
-								<div className='flex gap-2 justify-center text-xs'>
-									<button
-										onClick={triggerDebugWin}
-										className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
-										title='Debug: Win'
-									>
-										🏆 Win
-									</button>
-									<button
-										onClick={triggerDebugLoss}
-										className='px-3 py-1 bg-destructive hover:opacity-90 text-ivory rounded'
-										title='Debug: Loss'
-									>
-										💀 Loss
-									</button>
-									<button
-										onClick={triggerDebugDraw}
-										className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
-										title='Debug: Draw'
-									>
-										🤝 Draw
-									</button>
-									<span className='text-ivory-dim self-center'>
-										(Shift+D to toggle)
-									</span>
-								</div>
-							)}
-					</>
-				)}
-			</div>
-		</GameScaffold>
+		</>
 	);
 };
 
