@@ -1,6 +1,6 @@
 # Tier 4 — Extract Shared React Hooks and Layout Components (Design Spec)
 
-**Status:** Design approved in brainstorming (revised after codebase + implementation-risk review)  
+**Status:** Design approved in brainstorming (revised after layout/API/test risk review)  
 **Date:** 2026-07-14  
 **Ticket:** [HPA-155](https://linear.app/cwchanap/issue/HPA-155/tier-4-extract-shared-react-hooks-and-layout-components)  
 **Project:** [procyon](https://linear.app/cwchanap/project/procyon-b82f2cc99230)  
@@ -161,11 +161,18 @@ function useGameDebugOutcomes<TPlayer extends string>(options: {
   aiPlayer: TPlayer;
   getHumanPlayer: (ai: TPlayer) => TPlayer;
   /**
-   * Apply only the terminal outcome fields. Each game wraps its full setter:
-   *   setOutcome: (p) => setGameState(prev => ({ ...prev, ...p }))
-   * with status cast/narrowed to the variant's status union as needed.
+   * Apply terminal outcome fields. Each game wraps its full setter, e.g.:
+   *   setOutcome: (p) =>
+   *     setGameState(prev => ({
+   *       ...prev,
+   *       status: p.status as GameStatus,
+   *       ...(p.currentPlayer !== undefined ? { currentPlayer: p.currentPlayer } : {}),
+   *     }))
+   *
+   * currentPlayer is optional: win/loss always pass it; draw must omit it
+   * so the previous player is preserved (matches today's handlers).
    */
-  setOutcome: (patch: { status: string; currentPlayer: TPlayer }) => void;
+  setOutcome: (patch: { status: string; currentPlayer?: TPlayer }) => void;
   /** e.g. 'chess' → window.__PROCYON_DEBUG_CHESS_TRIGGER_WIN__ */
   debugVariantKey: string;
   /** Terminal status for forced win/loss (today: 'checkmate' on all four) */
@@ -182,29 +189,28 @@ function useGameDebugOutcomes<TPlayer extends string>(options: {
 };
 ```
 
-**Acceptable alternative:** generic over the full state type
+**Draw vs win/loss (preserve current behavior):**
 
-```ts
-function useGameDebugOutcomes<
-  TPlayer extends string,
-  TState extends { status: string; currentPlayer: TPlayer },
->(options: {
-  setGameState: React.Dispatch<React.SetStateAction<TState>>;
-  winStatus: TState['status'];
-  drawStatus: TState['status'];
-  // ...same other options
-}): /* same returns */;
-// internally: setGameState(prev => ({ ...prev, status, currentPlayer }))
-```
+| Action     | `status`          | `currentPlayer`                                            |
+| ---------- | ----------------- | ---------------------------------------------------------- |
+| Win / loss | `winStatus`       | required (AI-to-move vs human-to-move encoding)            |
+| Draw       | `drawStatus` only | **omitted** — do not pass; leave previous player unchanged |
+
+Today’s `triggerDebugDraw` is `setGameState(prev => ({ ...prev, status: 'stalemate' }))` with no player field. A required `currentPlayer` on every `setOutcome` call would change behavior or force inventing a player. **Status-only draw patches are required.**
+
+**Acceptable alternative:** generic over the full state type with the same win/draw semantics (`setGameState(prev => ({ ...prev, status, ...(player !== undefined ? { currentPlayer: player } : {}) }))`).
 
 Prefer `setOutcome` in the implementation plan unless a strong reason emerges for the generic form. Do **not** invent a structural partial-state `Dispatch` type.
 
 **Behavior pins:**
 
 - Win/loss set a checkmate-like terminal `status` (`winStatus`) and set `currentPlayer` so existing `getWinnerColor` / play-history logic still works per variant.
-- Draw uses the variant’s existing terminal status string (`drawStatus`) — no shared status enum.
+- Draw uses the variant’s existing terminal status string (`drawStatus`) and **does not** touch `currentPlayer` — no shared status enum.
 - Global debug helper and DEV-only UI stay behind `import.meta.env.DEV`.
 - Preserve existing `__PROCYON_DEBUG_<VARIANT>_TRIGGER_WIN__` globals used by tests/manual debug.
+
+**Shift+D ownership (in scope for this hook):**  
+All four games today register a DEV-only `keydown` listener (`Shift+D` → toggle `showDebugWinButton`). That is pure debug-outcome chrome, not variant rules. **`useGameDebugOutcomes` owns the Shift+D listener** (register/cleanup under `import.meta.env.DEV`) so the four copies are deleted. Promotion focus traps and other non-debug key handlers stay local.
 
 **`onPrepareTriggerWin` is a callback because prep differs per variant today** (do not hardcode uniform prep inside the hook):
 
@@ -227,10 +233,24 @@ Each game supplies its current prep sequence via `onPrepareTriggerWin` (or an eq
 
 ### 4.4 Explicitly not extracted
 
-- Mode toggle / start-reset handlers (still call variant `createInitialGameState`)
+- Mode toggle / start-reset handlers (still call variant `createInitialGameState`) — but they **must** call `invalidate()`; see §4.6
 - Full AI turn effect / adapter call loop
 - Square-click / drop / promotion handlers
 - Promotion debug trigger and `*_STATE__` debug globals (§4.3)
+
+### 4.6 Gen-token invalidation sites (all required)
+
+`useAiMoveGenerationToken().invalidate()` (or equivalent gen bump) must run on **every** path that abandons an in-flight AI turn, not only identity reset:
+
+| Site                             | Today                                 | After this tier                                       |
+| -------------------------------- | ------------------------------------- | ----------------------------------------------------- |
+| Identity logout / account switch | via `onReset`                         | `onReset` must call `invalidate()` (§4.2)             |
+| Manual reset / New Game          | `aiMoveGenRef.current++` in each game | same, via token hook                                  |
+| Mode switch (`toggleToMode`)     | all four games bump gen               | same — **must not drop** when wiring `BoardSidePanel` |
+
+**Optional API tightening:** `useGameIdentityReset({ …, invalidate })` may accept the invalidate function and call it **before** `onReset`, so identity paths cannot forget the bump. Manual reset and mode switch still call `invalidate()` in the game (or a tiny shared `resetGameSession()` helper if one is introduced). Do **not** put mode-switch logic inside `useGameIdentityReset`.
+
+**Tests:** see §9.1b — coverage must include mode-switch and new-game late-callback cases, not only account switch.
 
 ### 4.5 Naming note vs Tier 1 sketch
 
@@ -254,23 +274,40 @@ type GamePlayLayoutProps = {
   sidePanel: React.ReactNode;
   banner?: React.ReactNode;
   className?: string;
+  /**
+   * Min breakpoint at which board column and side panel sit side-by-side.
+   * Default: 'lg' (1024px) — Chess / Xiangqi / Jungle.
+   * Shogi: 'xl' (1280px) — see §5.1.1.
+   */
+  sideBySideFrom?: 'lg' | 'xl';
 };
 ```
 
 Structure:
 
 ```
-<div>  <!-- Chess island root classes (max-w-7xl etc.); nested under GamePageLayout's max-w-6xl -->
+<div>  <!-- Chess island root classes; nested under GamePageLayout's max-w-6xl -->
   <header> title + subtitle </header>
   {banner}
-  <div class="flex flex-col gap-6 lg:flex-row ...">
+  <div class="flex flex-col gap-6 {sideBySideFrom}:flex-row ...">
     {boardColumn}
     {sidePanel}
   </div>
 </div>
 ```
 
-Chess cutover is behavior-preserving: same classes, same structure extracted into the component.
+Chess cutover is behavior-preserving: same classes, same structure extracted into the component (`sideBySideFrom='lg'`).
+
+#### 5.1.1 Shogi width / stacking (required — escape hatch is not enough)
+
+**Problem:** `GamePageLayout` caps content at `max-w-6xl` (1152px). Shogi AI mode renders **two** `ShogiHand` panels at `w-48` each (~192px) flanking the board, plus `BoardSidePanel` at `lg:w-72` (~288px). Naively applying Chess’s `lg:flex-row` puts hands + board + side panel in one row inside 1152px and overflows/crushes at 1024px. A custom `boardColumn` only reorders content **inside** the board column; it does **not** fix the parent row (board column + side panel).
+
+**Required Shogi rules:**
+
+1. **`GamePlayLayout` for Shogi uses `sideBySideFrom="xl"`** — side panel stacks **below** the board row at `lg` (1024px); side-by-side only from `xl` (1280px).
+2. **Hands layout is Shogi-owned** (custom board column is fine): prefer a layout that remains usable at 1024px (e.g. hands flank the board only when there is room; otherwise stack hands above/below the board). Exact DOM is an implementation choice so long as tests below pass and promotion modal still works.
+3. **Do not widen `GamePageLayout` globally** for this tier unless a measured Shogi-only page override is clearly needed after stacking is applied; prefer stacking over fighting the outer `max-w-6xl`.
+4. **Layout tests (required):** viewport assertions at **1024×800** and **1280×800** for `/shogi` — no horizontal page overflow (`document.documentElement.scrollWidth <= viewport`), board and both hands visible/interactable, side panel mode toggles visible (stacked or beside per breakpoint). Chess layout tests at 1024 remain the baseline for the default shell.
 
 ### 5.2 `BoardColumn`
 
@@ -288,7 +325,7 @@ type BoardColumnProps = {
 
 Default stack order: `board → aboveControls → controls → debugTools → belowBoard`.
 
-**Escape hatch (decision B):** games that need a different order pass a custom `boardColumn` node into `GamePlayLayout` instead of using `BoardColumn`.
+**Escape hatch (decision B):** games that need a different order pass a custom `boardColumn` node into `GamePlayLayout` instead of using `BoardColumn`. **Shogi width is not solved by this hatch alone** — see §5.1.1.
 
 ### 5.3 `BoardSidePanel` (existing)
 
@@ -300,6 +337,27 @@ API unchanged. All four games put:
 | Tutorial | `DemoSelector` + `TutorialInstructions`                              |
 
 AI **side/color** stays in the side panel (Chess pattern), **not** in `SidebarAIConfig`.
+
+### 5.3.1 AI-side selector behavior (required after dialog removal)
+
+Today’s behaviors differ:
+
+| Surface                      | AI-side control                                                                                                                                                                                                                                    |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chess `BoardSidePanel`       | Always visible in AI mode; **`disabled={gameActive}`** while a game is in progress; stable `id` / label (`chess-ai-side` / “AI plays”)                                                                                                             |
+| Non-chess `AISettingsDialog` | Side control lives **inside the dialog**; mode toggle (and thus the settings button) is often **hidden after start** (`showModeToggle = tutorial \|\| !hasGameStarted`), so the side cannot be changed mid-game because the entry point disappears |
+
+After convergence the side panel (and its AI-side select) is **always mounted** in AI mode (Chess pattern). **Do not** leave the select enabled mid-game on Xiangqi/Shogi/Jungle — that would be a behavior regression vs “cannot change side once started.”
+
+**Required for all four games:**
+
+1. AI-side `<select>` lives in `BoardSidePanel` AI mode content.
+2. **`disabled` when the game is active** — use the same notion Chess uses (`gameActive`, or equivalent “game started and not over” flag the game already maintains). Re-enabled after reset / new game / identity reset.
+3. **Stable accessible wiring per variant:**
+   - `id`: `{variant}-ai-side` (e.g. `xiangqi-ai-side`, `shogi-ai-side`, `jungle-ai-side`; Chess keeps `chess-ai-side`)
+   - `<label htmlFor={id}>` with clear text (“AI plays” or existing localized labels)
+4. Options keep existing variant labels (White/Black, Red/Black, Sente/Gote, Red/Blue).
+5. Provider/model remain in `SidebarAIConfig` only (rail may stay usable mid-game as today on Chess — out of scope to lock mid-game).
 
 ### 5.4 Files deleted after zero importers
 
@@ -338,22 +396,24 @@ For Xiangqi / Shogi / Jungle:
 
 1. Drop `AISettingsDialog` / `GameScaffold`
 2. Wrap with `GamePlayLayout` + `BoardColumn` (or custom column) + `BoardSidePanel`
-3. AI mode: AI-side select (existing labels) + `AIStatusPanel` (+ instructions where Chess has them)
+3. AI mode: AI-side select per §5.3.1 (disabled when active, stable ids) + `AIStatusPanel` (+ instructions where Chess has them)
 4. Prefer `GamePlayLayout` `banner` for hydrate/provider errors
 5. Ensure the corresponding `*.astro` page uses `GamePageLayout` (Jungle: replace inlined accent markup — §3.2)
+6. Shogi: `sideBySideFrom="xl"` + hands layout per §5.1.1
 
-## 7. Board accent fix
+## 7. Accent fix (capture indicators)
 
 ### 7.1 Problem
 
-Capture/selection rings hardcode `border-xiangqi` on non-xiangqi boards.
+Capture **indicators** hardcode `border-xiangqi` on non-xiangqi surfaces in more than just board overlays:
 
-| Board          | Wrong usage                   | Fix             |
-| -------------- | ----------------------------- | --------------- |
-| `ChessBoard`   | capture ring `border-xiangqi` | `border-chess`  |
-| `ShogiBoard`   | capture ring `border-xiangqi` | `border-shogi`  |
-| `JungleBoard`  | capture ring `border-xiangqi` | `border-jungle` |
-| `XiangqiBoard` | `border-xiangqi`              | keep            |
+| Location                                                    | Wrong usage         | In scope?                                                                                           |
+| ----------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------- |
+| `ChessBoard` / `ShogiBoard` / `JungleBoard` capture rings   | `border-xiangqi`    | **Yes** — fix to variant accent                                                                     |
+| `XiangqiBoard` rings / lines                                | `border-xiangqi`    | Keep (correct)                                                                                      |
+| `AIGameInstructions` capture legend swatch                  | `border-xiangqi`    | **Yes** — pass variant accent (or accept `captureSwatchClass`) so the legend matches the board ring |
+| Shogi inline capture legend (`ShogiGame` “Captures” swatch) | `border-xiangqi`    | **Yes** — same as instructions; use shogi accent                                                    |
+| `ShogiHand` gote border `border-xiangqi/40`                 | player-color coding | **No** — same class of intentional multi-palette player tint as Jungle red/blue (§7.3)              |
 
 Tailwind already defines per-variant DEFAULT accents; `GameVariant` / `Accent` live in `lib/ai/game-variant-types.ts`.
 
@@ -369,20 +429,33 @@ export const CAPTURE_RING: Record<GameVariant, string> = {
   shogi: 'absolute inset-0 border-2 border-shogi rounded pointer-events-none',
   jungle: 'absolute inset-0 border-2 border-jungle rounded pointer-events-none',
 };
+
+/** Small legend swatches (AIGameInstructions, inline tips) — border color only */
+export const CAPTURE_SWATCH: Record<GameVariant, string> = {
+  chess: 'border-2 border-chess rounded',
+  xiangqi: 'border-2 border-xiangqi rounded',
+  shogi: 'border-2 border-shogi rounded',
+  jungle: 'border-2 border-jungle rounded',
+};
 ```
 
-Preserve existing ring thickness differences (chess/xiangqi `border-4`, shogi/jungle `border-2`) unless a later visual pass intentionally unifies them.
+Preserve existing board ring thickness differences (chess/xiangqi `border-4`, shogi/jungle `border-2`) unless a later visual pass intentionally unifies them.
+
+`AIGameInstructions` gains a required `variant: GameVariant` (or `captureSwatchClass: string`) so the capture legend is not hard-coded to xiangqi. Call sites pass the page’s variant.
+
+**Success criterion for accents:** board capture overlays **and** capture-legend swatches match the page variant. Player-tint borders are out of scope.
 
 ### 7.3 Out of scope for accents
 
-Jungle **player-tint** classes that use `xiangqi` / `shogi` tokens for red vs blue pieces/traps (`bg-xiangqi/15`, `border-shogi/40`, etc.) stay as-is. Those are two-player color coding, not mis-branded page accents.
+- Jungle **player-tint** classes that use `xiangqi` / `shogi` tokens for red vs blue pieces/traps (`bg-xiangqi/15`, `border-shogi/40`, etc.)
+- `ShogiHand` gote/sente border colors used as **side identity**, not capture indicators
 
 ## 8. Migration order (Approach 1)
 
 1. Add hooks + `GamePlayLayout` / `BoardColumn`; unit-test hooks; extend `hooks/index.ts` barrel (§4.0).
 2. Adopt hooks + layout on **Chess** (behavior-neutral refactor); **keep ChessGame.test.tsx** identity-reset / stale-AI coverage green.
 3. Migrate **Xiangqi** → shell + side-panel AI side; remove dialog from that file; rewrite **xiangqi-ai** E2E dialog steps (§9.2); add §9.1b component tests.
-4. Migrate **Shogi** (hands via `BoardColumn` slots or custom column); rewrite **shogi-ai** E2E; add §9.1b tests.
+4. Migrate **Shogi** (`sideBySideFrom="xl"`, hands layout per §5.1.1); rewrite **shogi-ai** E2E + 1024/1280 layout tests; add §9.1b tests.
 5. Migrate **Jungle** (island shell + `jungle.astro` → `GamePageLayout`); add §9.1b tests.
 6. Flip AppShell to `isGamePage` for SidebarAIConfig (if not done path-by-path); rewrite **critical-user-journeys** AI-settings steps; delete unused files; comment cleanup.
 7. Board accent map (`lib/board-accents.ts`) + board component updates (can land with or right after layout migration so visual QA is once).
@@ -393,26 +466,30 @@ Land as one PR if reviewable, or a short stack with the above commit order. E2E 
 
 ### 9.1 Unit — hooks
 
-- `useGameIdentityReset`: fires on logout and user-id change; does not fire on mount or first login. **These tests only prove _when_ the hook fires** — they do not prove each game’s `onReset` body is correct (§9.1b).
+- `useGameIdentityReset`: fires on logout and user-id change; does not fire on mount or first login. **These tests only prove _when_ the hook fires** — they do not prove each game’s `onReset` body is correct (§9.1b). If the hook accepts `invalidate`, assert it is invoked on fire.
 - `useAiMoveGenerationToken`: `invalidate` bumps gen; `isStale` true only when requestId set and mismatched.
-- `useGameDebugOutcomes`: win/loss/draw call `setOutcome` with expected status/player; registers `__PROCYON_DEBUG_<VARIANT>_TRIGGER_WIN__` only (not `_STATE__` / `_TRIGGER_PROMOTION__`); `onPrepareTriggerWin` is invoked before win when provided.
+- `useGameDebugOutcomes`:
+  - win/loss call `setOutcome` with `status` + `currentPlayer`
+  - **draw calls `setOutcome` with `status` only** (no `currentPlayer` key)
+  - registers `__PROCYON_DEBUG_<VARIANT>_TRIGGER_WIN__` only (not `_STATE__` / `_TRIGGER_PROMOTION__`)
+  - `onPrepareTriggerWin` invoked before win when provided
+  - **Shift+D** toggles `showDebugWinButton` in DEV (listener registered/cleaned up)
 
-### 9.1b Unit — caller obligations (identity reset + stale AI)
+### 9.1b Unit — caller obligations (invalidation + stale AI)
 
-The identity-reset **contract** requires every game’s `onReset` to:
+Every path that abandons an in-flight AI turn must `invalidate()` (§4.6). Hook fire tests alone stay green if a migrated game forgets cleanup.
 
-1. Reset board / `gameStarted` / `gameActive` (as applicable)
-2. Clear errors + debug move history (+ thinking flags where used)
-3. Call `invalidate()` on the gen token (so in-flight `makeAIMove` cannot resurrect pre-reset state)
-4. Restore default AI side
+**Required coverage:**
 
-Hook-only tests stay green if a migrated game forgets (2) or (3). **Required coverage:**
+| Coverage                                                                                                                                           | Notes                                                                                                                         |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Preserve** existing Chess integration tests in `ChessGame.test.tsx` (identity-change re-enables AI-side select; AI gen stale / requestId guards) | Do not delete or weaken these when extracting hooks                                                                           |
+| **Identity change** (all four games after migration)                                                                                               | Account-switch mid-game resets local lock/state; late AI callback with stale `requestId` does not apply board/error updates   |
+| **Mode switch** (all four)                                                                                                                         | After `toggleToMode` / BoardSidePanel mode change mid-AI-turn, a late callback must not apply; gen must have been invalidated |
+| **Manual reset / New Game** (all four)                                                                                                             | Same late-callback guarantee after Start→play→New Game (or Reset)                                                             |
+| Prefer **parameterized** helpers / `test.each` over copy-pasted suites                                                                             | Shared fixture for “schedule stale AI apply after action X”                                                                   |
 
-| Coverage                                                                                                                                                  | Notes                                                                                                                                                                                                                                                  |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Preserve** existing Chess integration tests in `ChessGame.test.tsx` (identity-change re-enables AI-side select; AI gen stale / requestId guards)        | Do not delete or weaken these when extracting hooks                                                                                                                                                                                                    |
-| **Add equivalent component-level tests** for Xiangqi / Shogi / Jungle after migration                                                                     | Prefer a **parameterized** pattern (shared helpers or `test.each` over variant fixtures) covering at least: account-switch mid-game resets local lock/state; after reset, a late AI callback with stale `requestId` does not apply board/error updates |
-| Optional: unit-test a documented “canonical `onReset` recipe” helper if one is extracted; otherwise keep the obligations enforced at the `*Game` boundary |
+Optional: `useGameIdentityReset` takes `invalidate` and calls it so identity paths cannot skip the bump; mode-switch and manual-reset still need component tests.
 
 ### 9.2 E2E — rewrite required (not “keep green as-is”)
 
@@ -432,6 +509,8 @@ Implementation plan must include an explicit task: _“Update E2E that target AI
 ### 9.3 E2E additions (small)
 
 - Side panel Tutorial / Play vs AI visible on **xiangqi** and **shogi** (mirror `chess-layout`) — may fold into the rewrites in §9.2.
+- **Shogi layout:** 1024px and 1280px viewports — no horizontal overflow; hands + board usable; side panel present (stacked at 1024, side-by-side at 1280) — §5.1.1.
+- AI-side select: visible in AI mode with stable label; **disabled after Start** until reset (sample at least Chess + one non-chess).
 - Optional jungle smoke if cheap.
 - Assert `SidebarAIConfig` (or mobile AI toggle) on a non-chess game page at desktop width.
 
@@ -444,13 +523,15 @@ Each game: start AI game, switch provider in rail, change AI side in panel, logo
 1. All four game islands use `GamePlayLayout` + board column chrome + `BoardSidePanel`.
 2. All four `*.astro` game pages use `GamePageLayout` (including Jungle).
 3. `SidebarAIConfig` on all game routes; no game page mounts `AISettingsDialog`.
-4. Shared hooks used by all four games; no remaining copy-pasted identity-reset / debug-win blocks.
-5. Capture rings use correct variant accents.
-6. `AISettingsDialog`, `GameScaffold`, `GameModeToggle` deleted; comments updated.
-7. Hook barrel exports include new hooks + `useAIConfigHydration`; migrated games import consistently.
-8. E2E suites that targeted `⚙️ AI Settings` are rewritten for `BoardSidePanel` + `SidebarAIConfig` and pass (§9.2).
-9. Chess identity-reset / stale-AI component tests preserved; Xiangqi/Shogi/Jungle have equivalent coverage after migration (§9.1b).
-10. Unit + relevant E2E green; no intentional changes to rules, AI adapters, or play-history save semantics beyond where config UI lives.
+4. Shared hooks used by all four games; no remaining copy-pasted identity-reset / debug-win / Shift+D blocks.
+5. Capture rings **and** capture-legend swatches use correct variant accents (§7); player-tint borders unchanged.
+6. AI-side selects disabled while game active; stable `{variant}-ai-side` ids/labels (§5.3.1).
+7. Shogi usable at 1024 and 1280 without horizontal overflow (§5.1.1).
+8. `AISettingsDialog`, `GameScaffold`, `GameModeToggle` deleted; comments updated.
+9. Hook barrel exports include new hooks + `useAIConfigHydration`; migrated games import consistently.
+10. E2E suites that targeted `⚙️ AI Settings` are rewritten for `BoardSidePanel` + `SidebarAIConfig` and pass (§9.2).
+11. Chess identity-reset / stale-AI component tests preserved; all variants cover identity **and** mode-switch/new-game invalidation (§9.1b).
+12. Unit + relevant E2E green; no intentional changes to rules, AI adapters, or play-history save semantics beyond where config UI lives.
 
 ## 11. Out of scope
 
@@ -463,16 +544,19 @@ Each game: start AI game, switch provider in rail, change AI side in panel, logo
 
 ## 12. Risks
 
-| Risk                                           | Mitigation                                                                                                                                                          |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth identity reset omits gen invalidation     | Hook contract requires `onReset` to call `invalidate()`; **component-level** tests per variant (§9.1b), not hook fire tests alone; preserve Chess integration tests |
-| Debug globals break E2E                        | Keep `__…_TRIGGER_WIN__` via the shared hook; leave `_STATE__` / `_TRIGGER_PROMOTION__` in game components                                                          |
-| Name collision `GameLayout` / `GamePageLayout` | New island shell is **`GamePlayLayout`**; page wrapper stays `GamePageLayout` (§3.2)                                                                                |
-| `setGameState` type vs real setters            | Use `setOutcome` callback (or full-state generic) — §4.3; never partial-state `Dispatch`                                                                            |
-| E2E still clicks deleted dialog                | Mandatory rewrite of xiangqi-ai / shogi-ai / critical-user-journeys (§9.2) before claiming green                                                                    |
-| Duplicate provider UI mid-migration            | Hard cutover rule §6.2                                                                                                                                              |
-| Shogi layout regressions (hands / promotion)   | Slots / custom board column; do not force hands into Chess’s exact DOM order                                                                                        |
-| Large PR review cost                           | Stacked commits or PRs per migration step                                                                                                                           |
+| Risk                                                   | Mitigation                                                                                                                  |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Auth identity reset omits gen invalidation             | Hook contract + optional hook-owned `invalidate`; **component-level** tests for identity, mode-switch, and new-game (§9.1b) |
+| Mode-switch / reset forgets gen bump after refactor    | §4.6 checklist; late-callback tests after mode change and New Game                                                          |
+| Debug globals break E2E                                | Keep `__…_TRIGGER_WIN__` via the shared hook; leave `_STATE__` / `_TRIGGER_PROMOTION__` in game components                  |
+| Name collision `GameLayout` / `GamePageLayout`         | New island shell is **`GamePlayLayout`**; page wrapper stays `GamePageLayout` (§3.2)                                        |
+| `setGameState` type / draw overwrites player           | `setOutcome` with optional `currentPlayer`; draw omits player (§4.3)                                                        |
+| Shogi overflow at `lg`                                 | `sideBySideFrom="xl"` + hands stacking rules + 1024/1280 tests (§5.1.1)                                                     |
+| AI side changeable mid-game after always-visible panel | Disable select when game active; stable a11y ids (§5.3.1)                                                                   |
+| E2E still clicks deleted dialog                        | Mandatory rewrite of xiangqi-ai / shogi-ai / critical-user-journeys (§9.2)                                                  |
+| Accent “fixed” only on boards, legends still wrong     | Capture rings + legend swatches + `AIGameInstructions` variant prop (§7)                                                    |
+| Duplicate provider UI mid-migration                    | Hard cutover rule §6.2                                                                                                      |
+| Large PR review cost                                   | Stacked commits or PRs per migration step                                                                                   |
 
 ## 13. File touch map (expected)
 
@@ -490,14 +574,15 @@ Each game: start AI game, switch provider in rail, change AI side in panel, logo
 - `apps/web/src/hooks/index.ts` (export new hooks + `useAIConfigHydration`)
 - `apps/web/src/components/{Chess,Xiangqi,Shogi,Jungle}Game.tsx`
 - `apps/web/src/components/{Chess,Xiangqi,Shogi,Jungle}Board.tsx` (accents)
+- `apps/web/src/components/game/AIGameInstructions.tsx` — variant/swatch prop for capture legend
 - `apps/web/src/components/AppShell.tsx`
 - `apps/web/src/pages/jungle.astro` (use `GamePageLayout`)
 - `apps/web/e2e/xiangqi-ai.spec.ts` — remove `⚙️ AI Settings` / dialog flows; BoardSidePanel + SidebarAIConfig
-- `apps/web/e2e/shogi-ai.spec.ts` — same
+- `apps/web/e2e/shogi-ai.spec.ts` — same + 1024/1280 layout assertions (§5.1.1)
 - `apps/web/e2e/critical-user-journeys.spec.ts` — same for non-chess AI settings steps
 - `apps/web/e2e/chess-layout.spec.ts` and/or new layout assertions for xiangqi/shogi as needed
 - `apps/web/src/components/ChessGame.test.tsx` — preserve identity-reset / stale-AI coverage through hook adoption
-- New or extended `*Game` tests for Xiangqi/Shogi/Jungle identity-reset + stale AI (§9.1b)
+- New or extended `*Game` tests for all variants: identity, mode-switch, new-game invalidation (§9.1b)
 
 **Unchanged (layer remains)**
 
