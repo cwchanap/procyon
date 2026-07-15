@@ -6,7 +6,7 @@ import XiangqiGame from './XiangqiGame';
 import ShogiGame from './ShogiGame';
 import JungleGame from './JungleGame';
 import { AUTH_CHANGE_EVENT } from '../lib/auth';
-import { resetAIConfigStore } from '../lib/ai/ai-config-store';
+import { resetAIConfigStore, setConfig } from '../lib/ai/ai-config-store';
 
 setupReactDom();
 
@@ -264,3 +264,135 @@ describe.each(GAMES)(
 		});
 	}
 );
+
+// Direct verification that a late makeAIMove callback is dropped after
+// invalidate. The parameterized tests above prove invalidate fires on
+// mode-switch/reset and the UI recovers, but the AI-turn setTimeout is
+// cleared before it fires in those tests, so the stale-gen bail path in
+// makeAIMove is never actually exercised. Here we hold the LLM fetch
+// in-flight across the invalidate boundary so makeAIMove reaches its
+// `if (gen !== genRef.current) return` check with a stale gen, then
+// assert no move was applied and no error surfaced. Xiangqi stands in
+// for all variants — the gen-check pattern is shared (useAiMoveGenerationToken).
+describe('XiangqiGame — late AI callback dropped after invalidate', () => {
+	beforeEach(() => {
+		clearInitialAuthUser();
+		resetAIConfigStore();
+	});
+
+	afterEach(() => {
+		clearInitialAuthUser();
+		resetAIConfigStore();
+	});
+
+	test('in-flight makeAIMove bails on stale gen (no move, no error)', async () => {
+		// setConfig → saveAIConfig touches localStorage, which only exists
+		// on window in the test env — mirror withHydrationEnv's setup.
+		const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
+			globalThis,
+			'localStorage'
+		);
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			value: window.localStorage,
+		});
+
+		// Controllable LLM response so we can hold makeMove in-flight
+		// across the invalidate boundary.
+		let resolveLLM!: (value: string) => void;
+		const llmPromise = new Promise<string>(r => {
+			resolveLLM = r;
+		});
+		let llmFetchCalled = false;
+		const originalFetch = globalThis.fetch;
+
+		(globalThis as unknown as { fetch: unknown }).fetch = ((url: string) => {
+			if (url.includes('/auth/session')) {
+				return Promise.resolve({
+					ok: false,
+					status: 401,
+					json: () => Promise.resolve({}),
+				});
+			}
+			// LLM call (gemini) — hold in-flight so invalidate can race it.
+			llmFetchCalled = true;
+			return llmPromise.then(text => ({
+				ok: true,
+				status: 200,
+				json: () =>
+					Promise.resolve({
+						candidates: [
+							{ content: { parts: [{ text }] }, finishReason: 'STOP' },
+						],
+					}),
+			}));
+		}) as unknown as typeof fetch;
+
+		try {
+			const { getByLabelText, getByRole, queryByRole, queryByText } = render(
+				<XiangqiGame />
+			);
+
+			// Wait for the AI-side select to appear.
+			const select = (await waitFor(() =>
+				getByLabelText(/AI plays/i)
+			)) as HTMLSelectElement;
+
+			// The 401 from /auth/session triggers resetAIConfigStore()
+			// (auth.ts:361-362), which wipes any config set before render.
+			// Wait for that to settle, THEN enable the AI config so the
+			// store update sticks. The service's updateConfig effect picks
+			// up the new config on the next render.
+			await new Promise(resolve => setTimeout(resolve, 150));
+			setConfig({ enabled: true, apiKey: 'fake-key' });
+
+			// AI plays red (first-moving side) so the AI-turn effect fires
+			// immediately on Start.
+			fireEvent.change(select, { target: { value: 'red' } });
+
+			const startButton = getByRole('button', { name: /start/i });
+			fireEvent.click(startButton);
+
+			// Wait for the 1s setTimeout to fire and makeMove to reach the
+			// LLM fetch — makeAIMove is now in-flight, past the effect
+			// cleanup's clearTimeout.
+			await waitFor(() => expect(llmFetchCalled).toBe(true), {
+				timeout: 3000,
+			});
+
+			// New Game → handleResetGame calls invalidate (gen bumps),
+			// setGameState(resetGame()), setGameStarted(false).
+			const newGameButton = getByRole('button', { name: /new game/i });
+			fireEvent.click(newGameButton);
+
+			// Resolve the in-flight LLM fetch. makeMove returns, but
+			// makeAIMove's `if (gen !== genRef.current) return` bails
+			// before setGameState / setErrorMsg.
+			resolveLLM('{"move":{"from":"a0","to":"a0"},"thinking":"stale"}');
+
+			// Let the promise microtask chain drain so the stale callback
+			// settles (fetch .then → response.json → callLLM → makeMove →
+			// gen check). 100ms is far more than the ~7 microtask hops.
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			// No error banner — the catch-block gen check also bailed.
+			expect(queryByRole('alert')).toBeNull();
+
+			// No move was applied: the Move History panel only renders when
+			// moveHistory.length > 0. A stale callback that failed to bail
+			// would have setGameState with a moved board (moveHistory 1).
+			expect(queryByText(/Move History \(\d+\)/i)).toBeNull();
+		} finally {
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			if (originalLocalStorageDesc) {
+				Object.defineProperty(
+					globalThis,
+					'localStorage',
+					originalLocalStorageDesc
+				);
+			} else {
+				delete (globalThis as Record<string, unknown>).localStorage;
+			}
+		}
+	});
+});

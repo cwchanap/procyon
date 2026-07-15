@@ -256,7 +256,7 @@ const JungleGame: React.FC = () => {
 				// stamps its gen into data.requestId, so a late callback
 				// from a superseded request sees a stale requestId and
 				// bails instead of appending to the new game's history.
-				if (isStale(data?.requestId as number | undefined)) return;
+				if (isStale(data?.requestId)) return;
 				const thinking = type === 'ai-thinking' ? message : undefined;
 				const error = type === 'ai-error' ? message : undefined;
 
