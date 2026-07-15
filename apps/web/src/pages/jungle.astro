@@ -1,13 +1,11 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import GamePageLayout from '../components/GamePageLayout.tsx';
 import JungleGame from '../components/JungleGame';
 ---
 
 <Layout title='Jungle Chess (鬥獸棋) - Procyon'>
-  <div class='min-h-screen'>
-    <div class='h-0.5 w-full bg-jungle'></div>
-    <div class='mx-auto max-w-6xl px-4 py-8'>
-      <JungleGame client:load />
-    </div>
-  </div>
+  <GamePageLayout variant='jungle' client:load>
+    <JungleGame client:load />
+  </GamePageLayout>
 </Layout>
