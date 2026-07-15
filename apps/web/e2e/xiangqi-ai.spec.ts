@@ -14,14 +14,17 @@ test.describe('Xiangqi AI Integration', () => {
 			page.getByRole('heading', { name: 'Chinese Chess (象棋)' })
 		).toBeVisible();
 		await expect(
-			page.getByRole('button', { name: '⚙️ AI Settings' })
+			page.getByRole('button', { name: /Play vs AI/i })
+		).toBeVisible();
+		await expect(
+			page.getByRole('button', { name: /^Tutorial$/ })
 		).toBeVisible();
 		await expect(page.getByRole('button', { name: '▶️ Start' })).toBeVisible();
 	});
 
 	test('should switch between tutorial and AI modes', async ({ page }) => {
-		// Switch to tutorial mode
-		await page.getByRole('button', { name: '📚 Tutorial Mode' }).click();
+		// Switch to tutorial mode via BoardSidePanel
+		await page.getByRole('button', { name: /^Tutorial$/ }).click();
 		await page.waitForFunction(() => {
 			const global = window as any;
 			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__;
@@ -32,8 +35,8 @@ test.describe('Xiangqi AI Integration', () => {
 		).toBeVisible();
 		await expect(page.getByText(/Xiangqi Wisdom/)).toBeVisible();
 
-		// Switch back to AI mode via AI Settings button (which also opens dialog)
-		await page.getByRole('button', { name: '⚙️ AI Settings' }).click();
+		// Switch back to AI mode via BoardSidePanel
+		await page.getByRole('button', { name: /Play vs AI/i }).click();
 		await page.waitForFunction(() => {
 			const global = window as any;
 			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__;
@@ -80,7 +83,7 @@ test.describe('Xiangqi AI Integration', () => {
 			page.getByText('马=Horse, 车=Chariot, 炮=Cannon, 兵/卒=Soldier')
 		).toBeVisible();
 		await expect(
-			page.getByText("Checkmate the opponent's General (King)")
+			page.getByText(/Checkmate the opponent.?s General \(King\)/)
 		).toBeVisible();
 	});
 
