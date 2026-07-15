@@ -15,9 +15,6 @@ export type GamePlayLayoutProps = {
 /**
  * Shared play-shell layout for game islands: title, optional subtitle/banner,
  * then board column + side panel in a responsive row.
- *
- * Extracted from ChessGame's root structure; adoption on game components is
- * deferred to later tasks.
  */
 export default function GamePlayLayout({
 	title,

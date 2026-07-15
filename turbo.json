@@ -21,6 +21,7 @@
     },
     "lint": {},
     "lint:fix": {},
+    "typecheck": {},
     "dev": {
       "cache": false,
       "persistent": true
