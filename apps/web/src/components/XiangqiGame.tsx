@@ -10,7 +10,11 @@ import {
 	resetGame,
 } from '../lib/xiangqi/game';
 import { getPossibleMoves } from '../lib/xiangqi/moves';
-import { createInitialXiangqiBoard, getPieceAt } from '../lib/xiangqi/board';
+import {
+	createInitialXiangqiBoard,
+	getPieceAt,
+	getRow,
+} from '../lib/xiangqi/board';
 import { createXiangqiAI } from '../lib/ai';
 import {
 	usePlayHistory,
@@ -136,27 +140,27 @@ const XiangqiGame: React.FC = () => {
 
 			switch (setup) {
 				case 'horse-moves':
-					board[5]![4] = { type: 'horse', color: 'red' };
-					board[3]![2] = { type: 'soldier', color: 'black' };
-					board[7]![6] = { type: 'soldier', color: 'black' };
+					getRow(board, 5)[4] = { type: 'horse', color: 'red' };
+					getRow(board, 3)[2] = { type: 'soldier', color: 'black' };
+					getRow(board, 7)[6] = { type: 'soldier', color: 'black' };
 					break;
 				case 'cannon-demo':
-					board[9]![4] = { type: 'king', color: 'red' };
-					board[7]![4] = { type: 'cannon', color: 'red' };
-					board[5]![4] = { type: 'soldier', color: 'black' };
-					board[3]![4] = { type: 'king', color: 'black' };
+					getRow(board, 9)[4] = { type: 'king', color: 'red' };
+					getRow(board, 7)[4] = { type: 'cannon', color: 'red' };
+					getRow(board, 5)[4] = { type: 'soldier', color: 'black' };
+					getRow(board, 3)[4] = { type: 'king', color: 'black' };
 					break;
 				case 'palace-demo':
-					board[9]![4] = { type: 'king', color: 'red' };
-					board[9]![3] = { type: 'advisor', color: 'red' };
-					board[9]![5] = { type: 'advisor', color: 'red' };
-					board[0]![4] = { type: 'king', color: 'black' };
+					getRow(board, 9)[4] = { type: 'king', color: 'red' };
+					getRow(board, 9)[3] = { type: 'advisor', color: 'red' };
+					getRow(board, 9)[5] = { type: 'advisor', color: 'red' };
+					getRow(board, 0)[4] = { type: 'king', color: 'black' };
 					break;
 				case 'river-crossing':
-					board[6]![0] = { type: 'soldier', color: 'red' };
-					board[3]![0] = { type: 'soldier', color: 'red' };
-					board[9]![4] = { type: 'king', color: 'red' };
-					board[0]![4] = { type: 'king', color: 'black' };
+					getRow(board, 6)[0] = { type: 'soldier', color: 'red' };
+					getRow(board, 3)[0] = { type: 'soldier', color: 'red' };
+					getRow(board, 9)[4] = { type: 'king', color: 'red' };
+					getRow(board, 0)[4] = { type: 'king', color: 'black' };
 					break;
 				default:
 					return createInitialXiangqiBoard();

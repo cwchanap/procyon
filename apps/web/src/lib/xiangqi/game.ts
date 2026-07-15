@@ -9,6 +9,7 @@ import { XIANGQI_ROWS, XIANGQI_COLS } from './types';
 import {
 	createInitialXiangqiBoard,
 	getPieceAt,
+	getRow,
 	findKing,
 	copyBoard,
 } from './board';
@@ -147,7 +148,7 @@ export function isKingInCheck(
 	// Check if any opponent piece can attack the king
 	for (let row = 0; row < XIANGQI_ROWS; row++) {
 		for (let col = 0; col < XIANGQI_COLS; col++) {
-			const piece = board[row]![col];
+			const piece = getRow(board, row)[col];
 			if (piece && piece.color === opponentColor) {
 				const from = { row, col };
 				if (isValidMove(board, from, kingPosition)) {
@@ -165,7 +166,7 @@ function playerHasValidMoves(
 ): boolean {
 	for (let row = 0; row < XIANGQI_ROWS; row++) {
 		for (let col = 0; col < XIANGQI_COLS; col++) {
-			const piece = board[row]![col];
+			const piece = getRow(board, row)[col];
 			if (piece && piece.color === playerColor) {
 				const from = { row, col };
 				const moves = getPossibleMoves(board, from);
@@ -197,13 +198,13 @@ export function undoMove(gameState: XiangqiGameState): XiangqiGameState {
 	const newBoard = copyBoard(gameState.board);
 
 	// Restore the piece to its original position
-	newBoard[lastMove.from.row]![lastMove.from.col] = lastMove.piece;
+	getRow(newBoard, lastMove.from.row)[lastMove.from.col] = lastMove.piece;
 
 	// Restore captured piece if any
 	if (lastMove.capturedPiece) {
-		newBoard[lastMove.to.row]![lastMove.to.col] = lastMove.capturedPiece;
+		getRow(newBoard, lastMove.to.row)[lastMove.to.col] = lastMove.capturedPiece;
 	} else {
-		newBoard[lastMove.to.row]![lastMove.to.col] = null;
+		getRow(newBoard, lastMove.to.row)[lastMove.to.col] = null;
 	}
 
 	const previousPlayer = gameState.currentPlayer === 'red' ? 'black' : 'red';

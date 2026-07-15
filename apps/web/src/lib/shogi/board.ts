@@ -6,6 +6,15 @@ import type {
 } from './types';
 import { SHOGI_BOARD_SIZE, SHOGI_FILES, SHOGI_RANKS } from './types';
 
+export function getRow(
+	board: (ShogiPiece | null)[][],
+	row: number
+): (ShogiPiece | null)[] {
+	const r = board[row];
+	if (!r) throw new Error(`Shogi board row ${row} is missing`);
+	return r;
+}
+
 export function createInitialBoard(): (ShogiPiece | null)[][] {
 	const board: (ShogiPiece | null)[][] = Array(SHOGI_BOARD_SIZE)
 		.fill(null)

@@ -7,6 +7,7 @@ import {
 	confirmPromotion,
 	makeAIMove as makeShogiAIMove,
 	SHOGI_BOARD_SIZE,
+	getRow,
 } from '../lib/shogi';
 import { createShogiAI } from '../lib/ai';
 import { rehydrate as rehydrateAIConfig } from '../lib/ai/ai-config-store';
@@ -138,26 +139,26 @@ const ShogiGame: React.FC = () => {
 
 			switch (setup) {
 				case 'lance-moves':
-					board[8]![0] = { type: 'lance', color: 'sente' };
-					board[6]![0] = { type: 'pawn', color: 'gote' };
-					board[4]![0] = { type: 'pawn', color: 'gote' };
+					getRow(board, 8)[0] = { type: 'lance', color: 'sente' };
+					getRow(board, 6)[0] = { type: 'pawn', color: 'gote' };
+					getRow(board, 4)[0] = { type: 'pawn', color: 'gote' };
 					break;
 				case 'gold-silver':
-					board[8]![4] = { type: 'king', color: 'sente' };
-					board[8]![3] = { type: 'gold', color: 'sente' };
-					board[8]![5] = { type: 'silver', color: 'sente' };
-					board[0]![4] = { type: 'king', color: 'gote' };
+					getRow(board, 8)[4] = { type: 'king', color: 'sente' };
+					getRow(board, 8)[3] = { type: 'gold', color: 'sente' };
+					getRow(board, 8)[5] = { type: 'silver', color: 'sente' };
+					getRow(board, 0)[4] = { type: 'king', color: 'gote' };
 					break;
 				case 'promotion-zone':
-					board[2]![4] = { type: 'pawn', color: 'sente' };
-					board[6]![4] = { type: 'pawn', color: 'gote' };
-					board[8]![4] = { type: 'king', color: 'sente' };
-					board[0]![4] = { type: 'king', color: 'gote' };
+					getRow(board, 2)[4] = { type: 'pawn', color: 'sente' };
+					getRow(board, 6)[4] = { type: 'pawn', color: 'gote' };
+					getRow(board, 8)[4] = { type: 'king', color: 'sente' };
+					getRow(board, 0)[4] = { type: 'king', color: 'gote' };
 					break;
 				case 'knight-jump':
-					board[8]![1] = { type: 'knight', color: 'sente' };
-					board[7]![0] = { type: 'pawn', color: 'sente' };
-					board[6]![2] = { type: 'pawn', color: 'gote' };
+					getRow(board, 8)[1] = { type: 'knight', color: 'sente' };
+					getRow(board, 7)[0] = { type: 'pawn', color: 'sente' };
+					getRow(board, 6)[2] = { type: 'pawn', color: 'gote' };
 					break;
 				default:
 					return createInitialGameState().board;

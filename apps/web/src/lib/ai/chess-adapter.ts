@@ -8,7 +8,7 @@ import type { GameState, Position, Move, ChessPiece } from '../chess/types';
 import { RANKS, FILES, BOARD_SIZE } from '../chess/types';
 import { getPossibleMoves, isMoveValid } from '../chess/moves';
 import { isKingInCheck } from '../chess/game';
-import { copyBoard, setPieceAt } from '../chess/board';
+import { copyBoard, getRow, setPieceAt } from '../chess/board';
 import { GAME_CONFIGS } from './game-variant-types';
 
 export class ChessAdapter implements GameVariantAdapter<GameState> {
@@ -37,7 +37,7 @@ export class ChessAdapter implements GameVariantAdapter<GameState> {
 
 		for (let row = 0; row < 8; row++) {
 			for (let col = 0; col < 8; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.color === currentPlayer) {
 					const fromPos = { row, col };
 					const possibleMoves = getPossibleMoves(board, piece, fromPos);
@@ -116,7 +116,7 @@ Rules:
 		for (let rank = 0; rank < 8; rank++) {
 			visual += `${8 - rank} │ `;
 			for (let file = 0; file < 8; file++) {
-				const piece = board[rank]![file];
+				const piece = getRow(board, rank)[file];
 				if (piece) {
 					const symbol = this.getPieceSymbol(piece);
 					visual += `${symbol} `;
@@ -217,7 +217,9 @@ Rules:
 
 	getPieceSymbol(piece: GamePiece): string {
 		const symbols = this.config.pieceSymbols;
-		return symbols[piece.color]![piece.type] || '?';
+		const colorSymbols = symbols[piece.color];
+		if (!colorSymbols) return '?';
+		return colorSymbols[piece.type] || '?';
 	}
 
 	private wouldMoveBeValid(
@@ -299,7 +301,7 @@ Rules:
 	): { row: number; col: number } | null {
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.type === type && piece.color === color) {
 					return { row, col };
 				}
@@ -321,7 +323,7 @@ Rules:
 
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.color === color) {
 					total += values[piece.type as keyof typeof values] || 0;
 				}
@@ -374,10 +376,8 @@ Rules:
 		for (const move of moves) {
 			const pieceMatch = move.match(/\(([^)]+)\)/);
 			const pieceType = pieceMatch ? pieceMatch[1]! : 'Unknown';
-			if (!groups[pieceType]) {
-				groups[pieceType] = [];
-			}
-			groups[pieceType]!.push(move.replace(/\s*\([^)]+\)/, ''));
+			const group = groups[pieceType] ?? (groups[pieceType] = []);
+			group.push(move.replace(/\s*\([^)]+\)/, ''));
 		}
 
 		let result = '';
@@ -418,7 +418,7 @@ Rules:
 		// Find all pieces of the current player
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.color === color) {
 					const pos = { row, col };
 					// Check if this piece is attacked by any opponent piece
@@ -447,7 +447,7 @@ Rules:
 		// Check if any piece of attackerColor can attack this square
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.color === attackerColor) {
 					const possibleMoves = getPossibleMoves(board, piece, {
 						row,
@@ -475,7 +475,7 @@ Rules:
 		// (i.e., can move to this square, even if occupied by friendly piece)
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (
 					piece &&
 					piece.color === defenderColor &&
@@ -508,7 +508,7 @@ Rules:
 		// Find all squares that can be attacked by the given color
 		for (let row = 0; row < BOARD_SIZE; row++) {
 			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = board[row]![col];
+				const piece = getRow(board, row)[col];
 				if (piece && piece.color === attackerColor) {
 					const possibleMoves = getPossibleMoves(board, piece, {
 						row,

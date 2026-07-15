@@ -22,6 +22,7 @@ export {
 // Re-export board functions
 export {
 	createInitialBoard,
+	getRow,
 	isValidPosition,
 	getPieceAt,
 	setPieceAt,

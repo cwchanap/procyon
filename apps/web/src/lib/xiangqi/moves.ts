@@ -6,6 +6,7 @@ import {
 	isOnSameSideOfRiver,
 	hasCrossedRiver,
 	getPieceAt,
+	getRow,
 	copyBoard,
 	findKing,
 } from './board';
@@ -80,7 +81,7 @@ function isValidKingMove(
 			const startRow = Math.min(to.row, opponentKingPos.row);
 			const endRow = Math.max(to.row, opponentKingPos.row);
 			for (let row = startRow + 1; row < endRow; row++) {
-				if (board[row]![to.col] !== null) {
+				if (getRow(board, row)[to.col] !== null) {
 					return true; // There's a piece blocking, move is valid
 				}
 			}
@@ -122,7 +123,7 @@ function isValidElephantMove(
 		// Check if the path is blocked (elephant eye)
 		const blockRow = from.row + rowDiff / 2;
 		const blockCol = from.col + colDiff / 2;
-		return board[blockRow]![blockCol] === null;
+		return getRow(board, blockRow)[blockCol] === null;
 	}
 	return false;
 }
@@ -153,7 +154,7 @@ function isValidHorseMove(
 			blockCol = from.col + (colDiff > 0 ? 1 : -1);
 		}
 
-		return board[blockRow]![blockCol] === null;
+		return getRow(board, blockRow)[blockCol] === null;
 	}
 	return false;
 }
@@ -233,7 +234,7 @@ function isPathClear(
 	let currentCol = from.col + colStep;
 
 	while (currentRow !== to.row || currentCol !== to.col) {
-		if (board[currentRow]![currentCol] !== null) {
+		if (getRow(board, currentRow)[currentCol] !== null) {
 			return false;
 		}
 		currentRow += rowStep;
@@ -255,7 +256,7 @@ function countPiecesInPath(
 	let currentCol = from.col + colStep;
 
 	while (currentRow !== to.row || currentCol !== to.col) {
-		if (board[currentRow]![currentCol] !== null) {
+		if (getRow(board, currentRow)[currentCol] !== null) {
 			count++;
 		}
 		currentRow += rowStep;
@@ -289,15 +290,15 @@ export function makeMove(
 	const newBoard = copyBoard(board);
 
 	// Move the piece
-	newBoard[move.to.row]![move.to.col] = move.piece;
-	newBoard[move.from.row]![move.from.col] = null;
+	getRow(newBoard, move.to.row)[move.to.col] = move.piece;
+	getRow(newBoard, move.from.row)[move.from.col] = null;
 
 	// Update soldier crossing river status
 	if (
 		move.piece.type === 'soldier' &&
 		hasCrossedRiver(move.to, move.piece.color)
 	) {
-		const piece = newBoard[move.to.row]![move.to.col];
+		const piece = getRow(newBoard, move.to.row)[move.to.col];
 		if (piece) {
 			piece.hasCrossedRiver = true;
 		}
