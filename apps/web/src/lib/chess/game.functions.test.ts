@@ -178,7 +178,7 @@ describe('Chess Game - makeMove captures move history', () => {
 		const newState = makeMove(state, { row: 6, col: 4 }, { row: 4, col: 4 });
 
 		expect(newState?.moveHistory).toHaveLength(1);
-		expect(newState?.moveHistory[0].piece.type).toBe('pawn');
+		expect(newState?.moveHistory[0]!.piece.type).toBe('pawn');
 	});
 
 	test('capture is recorded in move history', () => {
@@ -198,6 +198,6 @@ describe('Chess Game - makeMove captures move history', () => {
 
 		const newState = makeMove(state, { row: 4, col: 4 }, { row: 4, col: 6 });
 
-		expect(newState?.moveHistory[0].capturedPiece?.type).toBe('pawn');
+		expect(newState?.moveHistory[0]!.capturedPiece?.type).toBe('pawn');
 	});
 });

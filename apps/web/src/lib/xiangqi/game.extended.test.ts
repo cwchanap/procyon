@@ -9,7 +9,9 @@ import { setPieceAt } from './board';
 import type { XiangqiPiece } from './types';
 
 function makeEmptyBoard(): (XiangqiPiece | null)[][] {
-	return Array.from({ length: 10 }, () => Array<XiangqiPiece | null>(9).fill(null));
+	return Array.from({ length: 10 }, () =>
+		Array<XiangqiPiece | null>(9).fill(null)
+	);
 }
 
 // Helper to create a clean empty board state for red to move
@@ -17,7 +19,7 @@ function makeEmptyState(currentPlayer: 'red' | 'black' = 'red') {
 	const state = createInitialXiangqiGameState();
 	for (let row = 0; row < 10; row++) {
 		for (let col = 0; col < 9; col++) {
-			state.board[row][col] = null;
+			state.board[row]![col] = null;
 		}
 	}
 	state.currentPlayer = currentPlayer;
@@ -32,7 +34,11 @@ describe('Xiangqi flying general rule', () => {
 		const state = makeEmptyState('red');
 
 		setPieceAt(state.board, { row: 9, col: 4 }, { type: 'king', color: 'red' });
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 4 },
+			{ type: 'king', color: 'black' }
+		);
 
 		let newState = selectSquare(state, { row: 9, col: 4 }); // Select red king
 		expect(newState.selectedSquare).toEqual({ row: 9, col: 4 });
@@ -41,8 +47,8 @@ describe('Xiangqi flying general rule', () => {
 		// isValidMove returns false for flying general, so selection is cleared
 		expect(newState.selectedSquare).toBeNull();
 		// King must not have moved
-		expect(newState.board[9][4]?.type).toBe('king');
-		expect(newState.board[8][4]).toBeNull();
+		expect(newState.board[9]![4]?.type).toBe('king');
+		expect(newState.board[8]![4]).toBeNull();
 	});
 
 	test('should allow king move to column not facing opponent king', () => {
@@ -51,15 +57,19 @@ describe('Xiangqi flying general rule', () => {
 		const state = makeEmptyState('red');
 
 		setPieceAt(state.board, { row: 9, col: 4 }, { type: 'king', color: 'red' });
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 4 },
+			{ type: 'king', color: 'black' }
+		);
 
 		let newState = selectSquare(state, { row: 9, col: 4 });
 		newState = selectSquare(newState, { row: 9, col: 3 }); // Move to (9,3) - different col
 
 		// Move should succeed: king now at (9,3)
 		expect(newState.currentPlayer).toBe('black');
-		expect(newState.board[9][3]?.type).toBe('king');
-		expect(newState.board[9][4]).toBeNull();
+		expect(newState.board[9]![3]?.type).toBe('king');
+		expect(newState.board[9]![4]).toBeNull();
 	});
 
 	test('should allow king move when a piece blocks direct opposition', () => {
@@ -68,15 +78,23 @@ describe('Xiangqi flying general rule', () => {
 		const state = makeEmptyState('red');
 
 		setPieceAt(state.board, { row: 9, col: 4 }, { type: 'king', color: 'red' });
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
-		setPieceAt(state.board, { row: 5, col: 4 }, { type: 'chariot', color: 'red' }); // blocker
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 4 },
+			{ type: 'king', color: 'black' }
+		);
+		setPieceAt(
+			state.board,
+			{ row: 5, col: 4 },
+			{ type: 'chariot', color: 'red' }
+		); // blocker
 
 		let newState = selectSquare(state, { row: 9, col: 4 });
 		newState = selectSquare(newState, { row: 8, col: 4 }); // (8,4) – piece at (5,4) blocks direct opposition
 
 		// Move should be valid
 		expect(newState.currentPlayer).toBe('black');
-		expect(newState.board[8][4]?.type).toBe('king');
+		expect(newState.board[8]![4]?.type).toBe('king');
 	});
 });
 
@@ -87,8 +105,16 @@ describe('Xiangqi game status after move', () => {
 		const state = makeEmptyState('red');
 
 		setPieceAt(state.board, { row: 9, col: 3 }, { type: 'king', color: 'red' });
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
-		setPieceAt(state.board, { row: 5, col: 4 }, { type: 'chariot', color: 'red' });
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 4 },
+			{ type: 'king', color: 'black' }
+		);
+		setPieceAt(
+			state.board,
+			{ row: 5, col: 4 },
+			{ type: 'chariot', color: 'red' }
+		);
 
 		let newState = selectSquare(state, { row: 5, col: 4 }); // Select chariot
 		newState = selectSquare(newState, { row: 1, col: 4 }); // Move to (1,4)
@@ -96,16 +122,24 @@ describe('Xiangqi game status after move', () => {
 		expect(newState.currentPlayer).toBe('black');
 		expect(newState.status).toBe('check');
 		// Chariot is now at (1,4)
-		expect(newState.board[1][4]?.type).toBe('chariot');
-		expect(newState.board[5][4]).toBeNull();
+		expect(newState.board[1]![4]?.type).toBe('chariot');
+		expect(newState.board[5]![4]).toBeNull();
 	});
 
 	test('should remain playing status after a normal move', () => {
 		const state = makeEmptyState('red');
 
 		setPieceAt(state.board, { row: 9, col: 3 }, { type: 'king', color: 'red' });
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
-		setPieceAt(state.board, { row: 6, col: 0 }, { type: 'soldier', color: 'red' });
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 4 },
+			{ type: 'king', color: 'black' }
+		);
+		setPieceAt(
+			state.board,
+			{ row: 6, col: 0 },
+			{ type: 'soldier', color: 'red' }
+		);
 
 		// Move red soldier forward - no check
 		let newState = selectSquare(state, { row: 6, col: 0 });
@@ -125,17 +159,41 @@ describe('Xiangqi game status after move', () => {
 		//   - (1,5) covered by chariot at (1,8) sliding left
 		//   - (1,4) occupied by checking chariot; capturing it still leaves king attacked by (1,0)
 		setPieceAt(state.board, { row: 9, col: 3 }, { type: 'king', color: 'red' });
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 4 },
+			{ type: 'king', color: 'black' }
+		);
 		// Chariot at (5,4) - will move to (1,4) to check black king
-		setPieceAt(state.board, { row: 5, col: 4 }, { type: 'chariot', color: 'red' });
+		setPieceAt(
+			state.board,
+			{ row: 5, col: 4 },
+			{ type: 'chariot', color: 'red' }
+		);
 		// Chariot at (0,0) - covers (0,1), (0,2), (0,3) on row 0
-		setPieceAt(state.board, { row: 0, col: 0 }, { type: 'chariot', color: 'red' });
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 0 },
+			{ type: 'chariot', color: 'red' }
+		);
 		// Chariot at (1,0) - covers (1,1), (1,2), (1,3) on row 1
-		setPieceAt(state.board, { row: 1, col: 0 }, { type: 'chariot', color: 'red' });
+		setPieceAt(
+			state.board,
+			{ row: 1, col: 0 },
+			{ type: 'chariot', color: 'red' }
+		);
 		// Chariot at (0,8) - covers (0,5), (0,6), (0,7) on row 0
-		setPieceAt(state.board, { row: 0, col: 8 }, { type: 'chariot', color: 'red' });
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 8 },
+			{ type: 'chariot', color: 'red' }
+		);
 		// Chariot at (1,8) - covers (1,5), (1,6), (1,7) on row 1
-		setPieceAt(state.board, { row: 1, col: 8 }, { type: 'chariot', color: 'red' });
+		setPieceAt(
+			state.board,
+			{ row: 1, col: 8 },
+			{ type: 'chariot', color: 'red' }
+		);
 
 		// Move chariot from (5,4) to (1,4) for the check
 		let newState = selectSquare(state, { row: 5, col: 4 });
@@ -262,7 +320,7 @@ describe('Xiangqi undoMove - edge cases', () => {
 		s = undoMove(s);
 		expect(s.moveHistory.length).toBe(0);
 		expect(s.currentPlayer).toBe('red');
-		expect(s.board[6][0]?.type).toBe('soldier');
+		expect(s.board[6]![0]?.type).toBe('soldier');
 	});
 
 	test('should clear selectedSquare and possibleMoves after undo', () => {

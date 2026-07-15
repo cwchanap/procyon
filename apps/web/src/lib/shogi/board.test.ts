@@ -42,7 +42,7 @@ describe('Shogi Board Utilities', () => {
 				'silver',
 				'knight',
 				'lance',
-			];
+			] as const;
 			expected.forEach((type, col) => {
 				expect(board[0]?.[col]?.type).toBe(type);
 				expect(board[0]?.[col]?.color).toBe('gote');
@@ -93,7 +93,7 @@ describe('Shogi Board Utilities', () => {
 				'silver',
 				'knight',
 				'lance',
-			];
+			] as const;
 			expected.forEach((type, col) => {
 				expect(board[8]?.[col]?.type).toBe(type);
 				expect(board[8]?.[col]?.color).toBe('sente');

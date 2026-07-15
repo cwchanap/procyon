@@ -30,6 +30,7 @@ import GameControls from './game/GameControls';
 import DemoSelector from './game/DemoSelector';
 import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
+import DebugOutcomeButtons from './game/DebugOutcomeButtons';
 import { rehydrate as rehydrateAIConfig } from '../lib/ai/ai-config-store';
 import { useAuth } from '../lib/auth';
 
@@ -135,27 +136,27 @@ const XiangqiGame: React.FC = () => {
 
 			switch (setup) {
 				case 'horse-moves':
-					board[5][4] = { type: 'horse', color: 'red' };
-					board[3][2] = { type: 'soldier', color: 'black' };
-					board[7][6] = { type: 'soldier', color: 'black' };
+					board[5]![4] = { type: 'horse', color: 'red' };
+					board[3]![2] = { type: 'soldier', color: 'black' };
+					board[7]![6] = { type: 'soldier', color: 'black' };
 					break;
 				case 'cannon-demo':
-					board[9][4] = { type: 'king', color: 'red' };
-					board[7][4] = { type: 'cannon', color: 'red' };
-					board[5][4] = { type: 'soldier', color: 'black' };
-					board[3][4] = { type: 'king', color: 'black' };
+					board[9]![4] = { type: 'king', color: 'red' };
+					board[7]![4] = { type: 'cannon', color: 'red' };
+					board[5]![4] = { type: 'soldier', color: 'black' };
+					board[3]![4] = { type: 'king', color: 'black' };
 					break;
 				case 'palace-demo':
-					board[9][4] = { type: 'king', color: 'red' };
-					board[9][3] = { type: 'advisor', color: 'red' };
-					board[9][5] = { type: 'advisor', color: 'red' };
-					board[0][4] = { type: 'king', color: 'black' };
+					board[9]![4] = { type: 'king', color: 'red' };
+					board[9]![3] = { type: 'advisor', color: 'red' };
+					board[9]![5] = { type: 'advisor', color: 'red' };
+					board[0]![4] = { type: 'king', color: 'black' };
 					break;
 				case 'river-crossing':
-					board[6][0] = { type: 'soldier', color: 'red' };
-					board[3][0] = { type: 'soldier', color: 'red' };
-					board[9][4] = { type: 'king', color: 'red' };
-					board[0][4] = { type: 'king', color: 'black' };
+					board[6]![0] = { type: 'soldier', color: 'red' };
+					board[3]![0] = { type: 'soldier', color: 'red' };
+					board[9]![4] = { type: 'king', color: 'red' };
+					board[0]![4] = { type: 'king', color: 'black' };
 					break;
 				default:
 					return createInitialXiangqiBoard();
@@ -238,7 +239,7 @@ const XiangqiGame: React.FC = () => {
 
 	const getCurrentDemo = useCallback((): XiangqiDemo => {
 		return (
-			xiangqiDemos.find(demo => demo.id === currentDemo) || xiangqiDemos[0]
+			xiangqiDemos.find(demo => demo.id === currentDemo) ?? xiangqiDemos[0]!
 		);
 	}, [currentDemo, xiangqiDemos]);
 
@@ -694,32 +695,11 @@ const XiangqiGame: React.FC = () => {
 						hasGameStarted &&
 						!isGameOver &&
 						isAuthenticated ? (
-							<div className='flex gap-2 justify-center text-xs'>
-								<button
-									onClick={triggerDebugWin}
-									className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
-									title='Debug: Win'
-								>
-									🏆 Win
-								</button>
-								<button
-									onClick={triggerDebugLoss}
-									className='px-3 py-1 bg-destructive hover:opacity-90 text-ivory rounded'
-									title='Debug: Loss'
-								>
-									💀 Loss
-								</button>
-								<button
-									onClick={triggerDebugDraw}
-									className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
-									title='Debug: Draw'
-								>
-									🤝 Draw
-								</button>
-								<span className='text-ivory-dim self-center'>
-									(Shift+D to toggle)
-								</span>
-							</div>
+							<DebugOutcomeButtons
+								onWin={triggerDebugWin}
+								onLoss={triggerDebugLoss}
+								onDraw={triggerDebugDraw}
+							/>
 						) : undefined
 					}
 					belowBoard={

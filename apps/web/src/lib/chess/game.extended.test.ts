@@ -13,7 +13,7 @@ function makeEmptyState(currentPlayer: 'white' | 'black' = 'white'): GameState {
 	const state = createInitialGameState();
 	for (let row = 0; row < 8; row++) {
 		for (let col = 0; col < 8; col++) {
-			state.board[row][col] = null;
+			state.board[row]![col] = null;
 		}
 	}
 	state.currentPlayer = currentPlayer;
@@ -28,8 +28,16 @@ describe('Chess getGameStatus - playing state', () => {
 
 	test('should return playing when current player has moves and is not in check', () => {
 		const state = makeEmptyState('white');
-		setPieceAt(state.board, { row: 7, col: 4 }, { type: 'king', color: 'white' });
-		setPieceAt(state.board, { row: 0, col: 4 }, { type: 'king', color: 'black' });
+		setPieceAt(
+			state.board,
+			{ row: 7, col: 4 },
+			{ type: 'king', color: 'white' }
+		);
+		setPieceAt(
+			state.board,
+			{ row: 0, col: 4 },
+			{ type: 'king', color: 'black' }
+		);
 		// Only kings on board, white king has multiple escape squares
 		expect(getGameStatus(state)).toBe('playing');
 	});
@@ -156,7 +164,11 @@ describe('Chess makeMove - piece captures and state updates', () => {
 			selectedSquare: { row: 6, col: 4 },
 			possibleMoves: [{ row: 4, col: 4 }],
 		};
-		const result = makeMove(stateWithSelection, { row: 6, col: 4 }, { row: 4, col: 4 });
+		const result = makeMove(
+			stateWithSelection,
+			{ row: 6, col: 4 },
+			{ row: 4, col: 4 }
+		);
 		expect(result?.selectedSquare).toBeNull();
 		expect(result?.possibleMoves).toEqual([]);
 	});

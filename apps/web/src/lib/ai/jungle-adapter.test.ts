@@ -2,6 +2,7 @@ import { test, expect, describe, beforeEach } from 'bun:test';
 import { JungleAdapter } from './jungle-adapter';
 import { createInitialGameState } from '../jungle/game';
 import type { JungleGameState } from '../jungle/types';
+import type { GamePiece } from './game-variant-types';
 
 describe('JungleAdapter', () => {
 	let adapter: JungleAdapter;
@@ -46,8 +47,12 @@ describe('JungleAdapter', () => {
 		});
 
 		test('should throw RangeError for out-of-bounds positions', () => {
-			expect(() => adapter.positionToAlgebraic({ row: 0, col: 99 })).toThrow(RangeError);
-			expect(() => adapter.positionToAlgebraic({ row: 99, col: 0 })).toThrow(RangeError);
+			expect(() => adapter.positionToAlgebraic({ row: 0, col: 99 })).toThrow(
+				RangeError
+			);
+			expect(() => adapter.positionToAlgebraic({ row: 99, col: 0 })).toThrow(
+				RangeError
+			);
 		});
 	});
 
@@ -109,19 +114,61 @@ describe('JungleAdapter', () => {
 
 	describe('getPieceSymbol', () => {
 		test('should return correct symbols for red pieces', () => {
-			expect(adapter.getPieceSymbol({ type: 'elephant', color: 'red', rank: 8 })).toBe('象');
-			expect(adapter.getPieceSymbol({ type: 'lion', color: 'red', rank: 7 })).toBe('獅');
-			expect(adapter.getPieceSymbol({ type: 'tiger', color: 'red', rank: 6 })).toBe('虎');
-			expect(adapter.getPieceSymbol({ type: 'rat', color: 'red', rank: 1 })).toBe('鼠');
+			expect(
+				adapter.getPieceSymbol({
+					type: 'elephant',
+					color: 'red',
+					rank: 8,
+				} as GamePiece)
+			).toBe('象');
+			expect(
+				adapter.getPieceSymbol({
+					type: 'lion',
+					color: 'red',
+					rank: 7,
+				} as GamePiece)
+			).toBe('獅');
+			expect(
+				adapter.getPieceSymbol({
+					type: 'tiger',
+					color: 'red',
+					rank: 6,
+				} as GamePiece)
+			).toBe('虎');
+			expect(
+				adapter.getPieceSymbol({
+					type: 'rat',
+					color: 'red',
+					rank: 1,
+				} as GamePiece)
+			).toBe('鼠');
 		});
 
 		test('should return correct symbols for blue pieces', () => {
-			expect(adapter.getPieceSymbol({ type: 'elephant', color: 'blue', rank: 8 })).toBe('象');
-			expect(adapter.getPieceSymbol({ type: 'rat', color: 'blue', rank: 1 })).toBe('鼠');
+			expect(
+				adapter.getPieceSymbol({
+					type: 'elephant',
+					color: 'blue',
+					rank: 8,
+				} as GamePiece)
+			).toBe('象');
+			expect(
+				adapter.getPieceSymbol({
+					type: 'rat',
+					color: 'blue',
+					rank: 1,
+				} as GamePiece)
+			).toBe('鼠');
 		});
 
 		test('should return ? for unknown piece', () => {
-			expect(adapter.getPieceSymbol({ type: 'unknown' as never, color: 'red', rank: 0 })).toBe('?');
+			expect(
+				adapter.getPieceSymbol({
+					type: 'unknown' as never,
+					color: 'red',
+					rank: 0,
+				} as GamePiece)
+			).toBe('?');
 		});
 	});
 
@@ -173,7 +220,7 @@ describe('JungleAdapter', () => {
 			const moves = adapter.getLegalMoves(gameState);
 
 			expect(moves.length).toBeGreaterThan(0);
-			const firstMove = moves[0];
+			const firstMove = moves[0]!;
 			expect(firstMove).toHaveProperty('from');
 			expect(firstMove).toHaveProperty('to');
 			expect(firstMove.from).toHaveProperty('row');

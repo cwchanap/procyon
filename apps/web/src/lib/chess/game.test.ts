@@ -27,7 +27,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board first
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -68,7 +68,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -119,7 +119,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -155,7 +155,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -195,7 +195,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -229,7 +229,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -266,7 +266,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -295,7 +295,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -350,7 +350,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -387,7 +387,7 @@ describe('Chess Game - Move Validation with Check Handling', () => {
 			// Clear the board
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 

@@ -22,11 +22,9 @@ const localStorageMock = {
 };
 
 const originalLocalStorage = globalThis.localStorage;
-// @ts-expect-error - replacing global localStorage in test environment
 globalThis.localStorage = localStorageMock;
 
 afterAll(() => {
-	// @ts-expect-error - restoring original localStorage after tests
 	globalThis.localStorage = originalLocalStorage;
 });
 

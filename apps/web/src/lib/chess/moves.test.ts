@@ -36,7 +36,7 @@ describe('Chess Move Generation', () => {
 			// Clear board and place pawn at e3
 			for (let row = 0; row < 8; row++) {
 				for (let col = 0; col < 8; col++) {
-					board[row][col] = null;
+					board[row]![col] = null;
 				}
 			}
 			setPieceAt(board, { row: 5, col: 4 }, pawn);

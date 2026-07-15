@@ -354,8 +354,8 @@ describe('Jungle Board Utilities', () => {
 			const copy = copyGameState(state);
 
 			// Record pre-mutation values from the copy
-			const originalBoardCell = copy.board[8]?.[0]?.type;
-			const originalTerrainCell = copy.terrain[8]?.[3]?.type;
+			const originalBoardCell = copy.board[8]![0]!.type;
+			const originalTerrainCell = copy.terrain[8]![3]!.type;
 			const originalPossibleMoves = [...copy.possibleMoves];
 
 			// Mutate primitives

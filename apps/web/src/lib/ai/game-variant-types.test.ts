@@ -222,7 +222,7 @@ describe('GAME_CONFIGS', () => {
 			const redPieces = cfg.pieceSymbols['red']!;
 			const bluePieces = cfg.pieceSymbols['blue']!;
 			for (const type of Object.keys(redPieces)) {
-				expect(redPieces[type]).toBe(bluePieces[type]);
+				expect(redPieces[type]).toBe(bluePieces[type]!);
 			}
 		});
 	});

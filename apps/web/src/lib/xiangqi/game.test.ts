@@ -25,8 +25,8 @@ describe('Xiangqi Game Logic', () => {
 			const gameState = createInitialXiangqiGameState();
 
 			// Check kings are present
-			expect(gameState.board[0][4]?.type).toBe('king');
-			expect(gameState.board[9][4]?.type).toBe('king');
+			expect(gameState.board[0]![4]?.type).toBe('king');
+			expect(gameState.board[9]![4]?.type).toBe('king');
 		});
 	});
 
@@ -163,8 +163,8 @@ describe('Xiangqi Game Logic', () => {
 
 			expect(undoneState.currentPlayer).toBe('red');
 			expect(undoneState.moveHistory.length).toBe(0);
-			expect(undoneState.board[6][0]?.type).toBe('soldier');
-			expect(undoneState.board[5][0]).toBe(null);
+			expect(undoneState.board[6]![0]?.type).toBe('soldier');
+			expect(undoneState.board[5]![0]).toBe(null);
 		});
 
 		test('should restore captured piece', () => {
@@ -182,13 +182,13 @@ describe('Xiangqi Game Logic', () => {
 			testState = selectSquare(testState, { row: 6, col: 0 });
 			testState = selectSquare(testState, { row: 5, col: 0 });
 
-			expect(testState.board[5][0]?.color).toBe('red');
+			expect(testState.board[5]![0]?.color).toBe('red');
 
 			// Undo
 			const undoneState = undoMove(testState);
 
-			expect(undoneState.board[5][0]?.color).toBe('black');
-			expect(undoneState.board[6][0]?.color).toBe('red');
+			expect(undoneState.board[5]![0]?.color).toBe('black');
+			expect(undoneState.board[6]![0]?.color).toBe('red');
 		});
 
 		test('should do nothing when no moves to undo', () => {
@@ -224,7 +224,7 @@ describe('Xiangqi Game Logic', () => {
 			// Clear board and set up check
 			for (let row = 0; row < 10; row++) {
 				for (let col = 0; col < 9; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
@@ -255,7 +255,7 @@ describe('Xiangqi Game Logic', () => {
 			// Clear board and set up scenario
 			for (let row = 0; row < 10; row++) {
 				for (let col = 0; col < 9; col++) {
-					gameState.board[row][col] = null;
+					gameState.board[row]![col] = null;
 				}
 			}
 
