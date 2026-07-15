@@ -264,7 +264,17 @@ const XiangqiGame: React.FC = () => {
 
 		// Set up debug callback
 		if (isDebugMode) {
-			aiService.setDebugCallback((type, message, _data) => {
+			aiService.setDebugCallback((type, message, data) => {
+				// Skip if a reset/account-switch invalidated the in-flight
+				// request that triggered this callback. Each makeMove call
+				// stamps its gen into data.requestId, so a late callback
+				// from a superseded request sees a stale requestId and
+				// bails instead of appending to the new game's history.
+				if (
+					data?.requestId !== undefined &&
+					data.requestId !== aiMoveGenRef.current
+				)
+					return;
 				const thinking = type === 'ai-thinking' ? message : undefined;
 				const error = type === 'ai-error' ? message : undefined;
 
@@ -296,7 +306,7 @@ const XiangqiGame: React.FC = () => {
 				setIsAIThinking(true);
 				setErrorMsg(null);
 				try {
-					const aiResponse = await aiService.makeMove(gameState);
+					const aiResponse = await aiService.makeMove(gameState, gen);
 					if (gen !== aiMoveGenRef.current) return;
 					if (aiResponse) {
 						const fromMove = aiResponse.move?.from;
@@ -430,6 +440,11 @@ const XiangqiGame: React.FC = () => {
 		setIsAIThinking(false);
 		setGameState(resetGame());
 		setGameStarted(false);
+		// Clear AI UI state so a logout or cross-account identity change
+		// (handled by the auth-driven effect below) does not leave the
+		// previous session's error message or debug move history visible.
+		setErrorMsg(null);
+		setAIDebugMoves([]);
 	}, []);
 
 	// Reset local game state when authentication is lost (logout) OR when
