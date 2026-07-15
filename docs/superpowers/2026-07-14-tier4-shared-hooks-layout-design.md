@@ -1,6 +1,6 @@
 # Tier 4 — Extract Shared React Hooks and Layout Components (Design Spec)
 
-**Status:** Design approved in brainstorming (pending written-spec review)  
+**Status:** Design approved in brainstorming (revised after codebase review)  
 **Date:** 2026-07-14  
 **Ticket:** [HPA-155](https://linear.app/cwchanap/issue/HPA-155/tier-4-extract-shared-react-hooks-and-layout-components)  
 **Project:** [procyon](https://linear.app/cwchanap/project/procyon-b82f2cc99230)  
@@ -12,11 +12,12 @@ Bring all four game pages (Chess, Xiangqi, Shogi, Jungle) onto one **UI/lifecycl
 
 **End state:**
 
-- Every game page uses `GameLayout` + board-column chrome + `BoardSidePanel`
+- Every game page uses `GamePlayLayout` + board-column chrome + `BoardSidePanel` (inside existing page chrome — see §3.2)
 - App shell shows `SidebarAIConfig` on **all** game routes (`/chess`, `/xiangqi`, `/shogi`, `/jungle`)
 - Shared lifecycle hooks replace copy-pasted identity-reset, AI gen-token, and debug-outcome logic
 - Board capture rings use the correct per-variant accent (no more wrong `border-xiangqi` on Chess/Shogi/Jungle)
 - `AISettingsDialog`, `GameScaffold`, and `GameModeToggle` are deleted
+- `jungle.astro` uses `GamePageLayout` like the other three game pages (today it inlines the same markup)
 
 **Guiding principle (same as Tier 1):** _Normalize to one behavior._ Where Chess shell and a non-chess page disagree on chrome, prefer the Chess pattern, except where a variant needs real layout extras (e.g. Shogi hands).
 
@@ -52,36 +53,64 @@ Approximate component sizes: Chess ~914, Xiangqi ~886, Shogi ~1192, Jungle ~756 
 ## 3. Architecture
 
 ```
-AppShell
-  └─ SidebarAIConfig          (all game pages; provider/model only)
-  └─ page island: *Game.tsx
-        ├─ useAIConfigHydration / usePlayHistory   (Tier 1 — unchanged ownership)
-        ├─ useGameIdentityReset                   (new)
-        ├─ useAiMoveGenerationToken               (new — ref + invalidate only)
-        ├─ useGameDebugOutcomes                   (new)
-        └─ GameLayout
-              ├─ header (title / subtitle)
-              ├─ optional banner (hydrate / provider errors)
-              ├─ boardColumn: BoardColumn slots
-              │     board, overlay, controls, variant extras
-              └─ sidePanel: BoardSidePanel children
-                    AI side select | AIStatusPanel | instructions | demos
+Layout.astro
+  └─ AppShell (nav + SidebarAIConfig on all game pages)
+  └─ GamePageLayout            (existing — page accent bar + max-w-6xl)
+        └─ *Game.tsx island
+              ├─ useAIConfigHydration / usePlayHistory   (Tier 1)
+              ├─ useGameIdentityReset                   (new)
+              ├─ useAiMoveGenerationToken               (new — ref + invalidate only)
+              ├─ useGameDebugOutcomes                   (new)
+              └─ GamePlayLayout                         (new — island content shell)
+                    ├─ header (title / subtitle)
+                    ├─ optional banner (hydrate / provider errors)
+                    ├─ boardColumn: BoardColumn slots
+                    │     board, overlay, controls, variant extras
+                    └─ sidePanel: BoardSidePanel children
+                          AI side select | AIStatusPanel | instructions | demos
 ```
 
 ### 3.1 Ownership
 
-| Shared (this tier)                        | Per game (stays local)                                            |
-| ----------------------------------------- | ----------------------------------------------------------------- |
-| Page chrome (`GameLayout`, `BoardColumn`) | Board engine, click handlers                                      |
-| Auth identity reset timing                | `makeAIMove` body / adapter calls                                 |
-| AI gen-token invalidate / stale check     | Demos, tips, color names                                          |
-| Debug win/loss/draw + DEV globals         | Win conditions, hands, promotion                                  |
-| Capture-ring accent tokens                | Player-tint colors that intentionally cross-map (Jungle red/blue) |
-| `SidebarAIConfig` rail visibility         | Default AI side after reset                                       |
+| Shared (this tier)                              | Per game (stays local)                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------ |
+| Island chrome (`GamePlayLayout`, `BoardColumn`) | Board engine, click handlers                                             |
+| Auth identity reset timing                      | `makeAIMove` body / adapter calls                                        |
+| AI gen-token invalidate / stale check           | Demos, tips, color names                                                 |
+| Debug win/loss/draw + `__…_TRIGGER_WIN__` only  | Other DEV globals (`_STATE__`, `_TRIGGER_PROMOTION__`), hands, promotion |
+| Capture-ring accent tokens                      | Player-tint colors that intentionally cross-map (Jungle red/blue)        |
+| `SidebarAIConfig` rail visibility               | Default AI side after reset                                              |
+| `GamePageLayout` on all four `.astro` pages     | —                                                                        |
+
+### 3.2 `GamePageLayout` vs `GamePlayLayout` (coexist; different layers)
+
+These are **not** the same component and neither subsumes the other:
+
+| Component                                                             | Layer                                                | Role today / after this tier                                                                                                                                   |
+| --------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GamePageLayout`                                                      | Astro page wrapper (`components/GamePageLayout.tsx`) | Variant accent bar (`h-0.5 bg-*`) + `max-w-6xl` content well + optional back button. Used by `chess.astro`, `xiangqi.astro`, `shogi.astro`. **Unchanged API.** |
+| `GamePlayLayout` (new; was sketched as `GameLayout` in brainstorming) | React island inside `*Game.tsx`                      | Title/subtitle + optional banner + two-column board/side panel. Extracted from Chess’s inner markup.                                                           |
+
+**Why not name the new component `GameLayout`:** that name collides with `GamePageLayout` and is easy to confuse during implementation and review. **`GamePlayLayout`** names the play-area shell; page chrome stays `GamePageLayout`.
+
+**Pre-existing nesting note:** `GamePageLayout` uses `max-w-6xl`; Chess’s island root uses `max-w-7xl`. The outer constraint wins. Extracting Chess’s classes into `GamePlayLayout` preserves this quirk (not a regression).
+
+**Jungle page inconsistency (in scope, small):** `jungle.astro` does **not** import `GamePageLayout`; it inlines the same accent-bar + `max-w-6xl` markup with `bg-jungle`. Visually it has an accent bar; structurally it drifts. When migrating Jungle, switch `jungle.astro` to `<GamePageLayout variant="jungle">` like the other three pages.
 
 ## 4. Shared lifecycle hooks
 
-All new hooks live under `apps/web/src/hooks/` and are re-exported from `hooks/index.ts`.
+All new hooks live under `apps/web/src/hooks/`.
+
+### 4.0 Barrel export consistency
+
+`hooks/index.ts` today re-exports `usePlayHistory` and `usePuzzle` only. `useAIConfigHydration` is imported via **direct path** by all four games (`from '../hooks/useAIConfigHydration'`).
+
+**This tier:**
+
+1. Re-export **all** shared game hooks from `hooks/index.ts`: the three new hooks **and** `useAIConfigHydration` (plus existing `usePlayHistory` / `usePuzzle`).
+2. When touching each `*Game.tsx`, prefer barrel imports for hooks that the barrel exposes (e.g. `from '../hooks'` or `from '../hooks/index'`), so import style does not stay split between barrel and deep paths.
+
+Direct-path imports remain valid TypeScript; the goal is one consistent convention after migration, not a runtime change.
 
 ### 4.1 `useAiMoveGenerationToken`
 
@@ -152,28 +181,48 @@ function useGameDebugOutcomes<TPlayer extends string>(options: {
 - Global debug helper and DEV-only UI stay behind `import.meta.env.DEV`.
 - Preserve existing `__PROCYON_DEBUG_<VARIANT>_TRIGGER_WIN__` globals used by tests/manual debug.
 
+**`onPrepareTriggerWin` is a callback because prep differs per variant today** (do not hardcode uniform prep inside the hook):
+
+| Variant                  | Prep before `triggerDebugWin` (current code)                                                                           |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Chess                    | `setGameMode('ai')` + `setGameStarted(true)` + `setHasGameEnded(false)` + `setShowDebugWinButton(true)`                |
+| Shogi / Xiangqi / Jungle | typically `setGameStarted(true)` + `setShowDebugWinButton(true)` only (no mode force / no `hasGameEnded` where absent) |
+
+Each game supplies its current prep sequence via `onPrepareTriggerWin` (or an equivalent option) so E2E/debug behavior stays variant-identical.
+
+**DEV globals this hook owns vs leaves local:**
+
+| Global pattern                                             | Owner                                                                   |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `__PROCYON_DEBUG_<VARIANT>_TRIGGER_WIN__`                  | `useGameDebugOutcomes`                                                  |
+| `__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__`                | **stays in `ShogiGame`** (promotion-dialog test helper, not an outcome) |
+| `__PROCYON_DEBUG_<VARIANT>_STATE__` (Xiangqi, Shogi today) | **stays in the game component** (state exposure for test inspection)    |
+
+§9.1 “DEV global registration” for this hook means **only** the win-trigger global (and show/hide of the win/loss/draw DEV buttons), not routing every `__PROCYON_DEBUG_*` through the hook.
+
 ### 4.4 Explicitly not extracted
 
 - Mode toggle / start-reset handlers (still call variant `createInitialGameState`)
 - Full AI turn effect / adapter call loop
 - Square-click / drop / promotion handlers
+- Promotion debug trigger and `*_STATE__` debug globals (§4.3)
 
 ### 4.5 Naming note vs Tier 1 sketch
 
-| Tier 1 sketch name | This design                                                       |
-| ------------------ | ----------------------------------------------------------------- |
-| `useGameLifecycle` | Split into the three hooks above (clearer than one mega-hook)     |
-| `GameLayout`       | `GameLayout`                                                      |
-| `BoardGrid`        | `BoardColumn` (board **column** chrome, not a shared square grid) |
+| Tier 1 sketch name | This design                                                               |
+| ------------------ | ------------------------------------------------------------------------- |
+| `useGameLifecycle` | Split into the three hooks above (clearer than one mega-hook)             |
+| `GameLayout`       | `GamePlayLayout` (avoids collision with existing `GamePageLayout` — §3.2) |
+| `BoardGrid`        | `BoardColumn` (board **column** chrome, not a shared square grid)         |
 
 ## 5. Layout components
 
-### 5.1 `GameLayout`
+### 5.1 `GamePlayLayout`
 
-Replaces ad-hoc Chess header + flex row; supersedes `GameScaffold` for game pages.
+Replaces ad-hoc Chess header + flex row inside the game island; supersedes `GameScaffold` for game pages. Does **not** replace `GamePageLayout` (page accent bar — §3.2).
 
 ```ts
-type GameLayoutProps = {
+type GamePlayLayoutProps = {
   title: string;
   subtitle?: string;
   boardColumn: React.ReactNode;
@@ -186,7 +235,7 @@ type GameLayoutProps = {
 Structure:
 
 ```
-<div>  <!-- centered page stack; Chess Nocturne classes -->
+<div>  <!-- Chess island root classes (max-w-7xl etc.); nested under GamePageLayout's max-w-6xl -->
   <header> title + subtitle </header>
   {banner}
   <div class="flex flex-col gap-6 lg:flex-row ...">
@@ -214,7 +263,7 @@ type BoardColumnProps = {
 
 Default stack order: `board → aboveControls → controls → debugTools → belowBoard`.
 
-**Escape hatch (decision B):** games that need a different order pass a custom `boardColumn` node into `GameLayout` instead of using `BoardColumn`.
+**Escape hatch (decision B):** games that need a different order pass a custom `boardColumn` node into `GamePlayLayout` instead of using `BoardColumn`.
 
 ### 5.3 `BoardSidePanel` (existing)
 
@@ -263,9 +312,10 @@ Today `isChessPage` gates desktop rail, mobile AI button, and mobile panel. Afte
 For Xiangqi / Shogi / Jungle:
 
 1. Drop `AISettingsDialog` / `GameScaffold`
-2. Wrap with `GameLayout` + `BoardColumn` (or custom column) + `BoardSidePanel`
+2. Wrap with `GamePlayLayout` + `BoardColumn` (or custom column) + `BoardSidePanel`
 3. AI mode: AI-side select (existing labels) + `AIStatusPanel` (+ instructions where Chess has them)
-4. Prefer `GameLayout` `banner` for hydrate/provider errors
+4. Prefer `GamePlayLayout` `banner` for hydrate/provider errors
+5. Ensure the corresponding `*.astro` page uses `GamePageLayout` (Jungle: replace inlined accent markup — §3.2)
 
 ## 7. Board accent fix
 
@@ -284,7 +334,7 @@ Tailwind already defines per-variant DEFAULT accents; `GameVariant` / `Accent` l
 
 ### 7.2 Approach
 
-Small constant map (e.g. `lib/ui/board-accents.ts` or next to game-variant types):
+Small constant map at **`apps/web/src/lib/board-accents.ts`** (new file next to existing `lib/utils.ts` — avoids inventing a greenfield `lib/ui/` tree and avoids stuffing presentation into `lib/ai/`).
 
 ```ts
 export const CAPTURE_RING: Record<GameVariant, string> = {
@@ -304,13 +354,13 @@ Jungle **player-tint** classes that use `xiangqi` / `shogi` tokens for red vs bl
 
 ## 8. Migration order (Approach 1)
 
-1. Add hooks + `GameLayout` / `BoardColumn`; unit-test hooks.
+1. Add hooks + `GamePlayLayout` / `BoardColumn`; unit-test hooks; extend `hooks/index.ts` barrel (§4.0).
 2. Adopt hooks + layout on **Chess** (behavior-neutral refactor).
 3. Migrate **Xiangqi** → shell + side-panel AI side; remove dialog from that file.
 4. Migrate **Shogi** (hands via `BoardColumn` slots or custom column).
-5. Migrate **Jungle**.
+5. Migrate **Jungle** (island shell + `jungle.astro` → `GamePageLayout`).
 6. Flip AppShell to `isGamePage` for SidebarAIConfig (if not done path-by-path); delete unused files; comment cleanup.
-7. Board accent map + board component updates (can land with or right after layout migration so visual QA is once).
+7. Board accent map (`lib/board-accents.ts`) + board component updates (can land with or right after layout migration so visual QA is once).
 
 Land as one PR if reviewable, or a short stack with the above commit order.
 
@@ -320,7 +370,7 @@ Land as one PR if reviewable, or a short stack with the above commit order.
 
 - `useGameIdentityReset`: fires on logout and user-id change; does not fire on mount or first login.
 - `useAiMoveGenerationToken`: `invalidate` bumps gen; `isStale` true only when requestId set and mismatched.
-- `useGameDebugOutcomes`: win/loss/draw set expected status/player; DEV global registration when applicable.
+- `useGameDebugOutcomes`: win/loss/draw set expected status/player; registers `__PROCYON_DEBUG_<VARIANT>_TRIGGER_WIN__` only (not `_STATE__` / `_TRIGGER_PROMOTION__`); `onPrepareTriggerWin` is invoked before win when provided.
 
 ### 9.2 Existing safety net
 
@@ -341,12 +391,14 @@ Each game: start AI game, switch provider in rail, change AI side in panel, logo
 
 ## 10. Success criteria
 
-1. All four game pages use `GameLayout` + board column chrome + `BoardSidePanel`.
-2. `SidebarAIConfig` on all game routes; no game page mounts `AISettingsDialog`.
-3. Shared hooks used by all four games; no remaining copy-pasted identity-reset / debug-win blocks.
-4. Capture rings use correct variant accents.
-5. `AISettingsDialog`, `GameScaffold`, `GameModeToggle` deleted; comments updated.
-6. Unit + relevant E2E green; no intentional changes to rules, AI adapters, or play-history save semantics beyond where config UI lives.
+1. All four game islands use `GamePlayLayout` + board column chrome + `BoardSidePanel`.
+2. All four `*.astro` game pages use `GamePageLayout` (including Jungle).
+3. `SidebarAIConfig` on all game routes; no game page mounts `AISettingsDialog`.
+4. Shared hooks used by all four games; no remaining copy-pasted identity-reset / debug-win blocks.
+5. Capture rings use correct variant accents.
+6. `AISettingsDialog`, `GameScaffold`, `GameModeToggle` deleted; comments updated.
+7. Hook barrel exports include new hooks + `useAIConfigHydration`; migrated games import consistently.
+8. Unit + relevant E2E green; no intentional changes to rules, AI adapters, or play-history save semantics beyond where config UI lives.
 
 ## 11. Out of scope
 
@@ -359,13 +411,14 @@ Each game: start AI game, switch provider in rail, change AI side in panel, logo
 
 ## 12. Risks
 
-| Risk                                         | Mitigation                                                                                                      |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Auth identity reset omits gen invalidation   | Hook contract requires `onReset` to call `invalidate()`; unit tests; preserve existing comments/intent in Chess |
-| Debug globals break E2E                      | Keep `__PROCYON_DEBUG_<VARIANT>_TRIGGER_WIN__` names and behavior                                               |
-| Duplicate provider UI mid-migration          | Hard cutover rule §6.2                                                                                          |
-| Shogi layout regressions (hands / promotion) | Slots / custom board column; do not force hands into Chess’s exact DOM order                                    |
-| Large PR review cost                         | Stacked commits or PRs per migration step                                                                       |
+| Risk                                           | Mitigation                                                                                                      |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Auth identity reset omits gen invalidation     | Hook contract requires `onReset` to call `invalidate()`; unit tests; preserve existing comments/intent in Chess |
+| Debug globals break E2E                        | Keep `__…_TRIGGER_WIN__` via the shared hook; leave `_STATE__` / `_TRIGGER_PROMOTION__` in game components      |
+| Name collision `GameLayout` / `GamePageLayout` | New island shell is **`GamePlayLayout`**; page wrapper stays `GamePageLayout` (§3.2)                            |
+| Duplicate provider UI mid-migration            | Hard cutover rule §6.2                                                                                          |
+| Shogi layout regressions (hands / promotion)   | Slots / custom board column; do not force hands into Chess’s exact DOM order                                    |
+| Large PR review cost                           | Stacked commits or PRs per migration step                                                                       |
 
 ## 13. File touch map (expected)
 
@@ -374,17 +427,22 @@ Each game: start AI game, switch provider in rail, change AI side in panel, logo
 - `apps/web/src/hooks/useAiMoveGenerationToken.ts` (+ test)
 - `apps/web/src/hooks/useGameIdentityReset.ts` (+ test)
 - `apps/web/src/hooks/useGameDebugOutcomes.ts` (+ test)
-- `apps/web/src/components/game/GameLayout.tsx`
+- `apps/web/src/components/game/GamePlayLayout.tsx`
 - `apps/web/src/components/game/BoardColumn.tsx`
-- `apps/web/src/lib/ui/board-accents.ts` (or equivalent)
+- `apps/web/src/lib/board-accents.ts`
 
 **Modified**
 
-- `apps/web/src/hooks/index.ts`
+- `apps/web/src/hooks/index.ts` (export new hooks + `useAIConfigHydration`)
 - `apps/web/src/components/{Chess,Xiangqi,Shogi,Jungle}Game.tsx`
 - `apps/web/src/components/{Chess,Xiangqi,Shogi,Jungle}Board.tsx` (accents)
 - `apps/web/src/components/AppShell.tsx`
+- `apps/web/src/pages/jungle.astro` (use `GamePageLayout`)
 - E2E layout specs as needed
+
+**Unchanged (layer remains)**
+
+- `apps/web/src/components/GamePageLayout.tsx` — still the page accent wrapper
 
 **Deleted**
 
