@@ -29,18 +29,19 @@
 
 **Created:**
 
-| Path                                                  | Responsibility                                                    |
-| ----------------------------------------------------- | ----------------------------------------------------------------- |
-| `apps/web/src/hooks/useAiMoveGenerationToken.ts`      | Gen ref + `invalidate` + `isStale`                                |
-| `apps/web/src/hooks/useAiMoveGenerationToken.test.ts` | Unit tests                                                        |
-| `apps/web/src/hooks/useGameIdentityReset.ts`          | Auth loss / identity-change → `onReset` (+ optional `invalidate`) |
-| `apps/web/src/hooks/useGameIdentityReset.test.ts`     | Unit tests                                                        |
-| `apps/web/src/hooks/useGameDebugOutcomes.ts`          | Win/loss/draw + Shift+D + `__…_TRIGGER_WIN__`                     |
-| `apps/web/src/hooks/useGameDebugOutcomes.test.ts`     | Unit tests                                                        |
-| `apps/web/src/lib/board-accents.ts`                   | `CAPTURE_RING` + `CAPTURE_SWATCH` maps                            |
-| `apps/web/src/lib/board-accents.test.ts`              | Exhaustive key tests                                              |
-| `apps/web/src/components/game/GamePlayLayout.tsx`     | Island title + banner + two-column row                            |
-| `apps/web/src/components/game/BoardColumn.tsx`        | Board stack chrome                                                |
+| Path                                                   | Responsibility                                                              |
+| ------------------------------------------------------ | --------------------------------------------------------------------------- |
+| `apps/web/src/hooks/useAiMoveGenerationToken.ts`       | Gen ref + `invalidate` + `isStale`                                          |
+| `apps/web/src/hooks/useAiMoveGenerationToken.test.ts`  | Unit tests                                                                  |
+| `apps/web/src/hooks/useGameIdentityReset.ts`           | Auth loss / identity-change → `onReset` (+ optional `invalidate`)           |
+| `apps/web/src/hooks/useGameIdentityReset.test.ts`      | Unit tests                                                                  |
+| `apps/web/src/hooks/useGameDebugOutcomes.ts`           | Win/loss/draw + Shift+D + `__…_TRIGGER_WIN__`                               |
+| `apps/web/src/hooks/useGameDebugOutcomes.test.ts`      | Unit tests                                                                  |
+| `apps/web/src/lib/board-accents.ts`                    | `CAPTURE_RING` + `CAPTURE_SWATCH` maps                                      |
+| `apps/web/src/lib/board-accents.test.ts`               | Exhaustive key tests                                                        |
+| `apps/web/src/components/game/GamePlayLayout.tsx`      | Island title + banner + two-column row                                      |
+| `apps/web/src/components/game/BoardColumn.tsx`         | Board stack chrome                                                          |
+| `apps/web/src/components/game/DebugOutcomeButtons.tsx` | DEV-only win/loss/draw buttons (Shift+D toggled via `useGameDebugOutcomes`) |
 
 **Modified:**
 
@@ -499,8 +500,17 @@ describe('useGameDebugOutcomes', () => {
 
 - [ ] **Step 3: Implement**
 
+> **Implementation drift note:** The shipped version adds an optional
+> `invalidate?: () => void` option and stashes `setOutcome`,
+> `onPrepareTriggerWin`, and `invalidate` in refs so the trigger callbacks
+> and DEV-global registration effect stay stable (effect re-runs only when
+> `debugVariantKey` changes, not on every caller re-render). Each trigger
+> calls `invalidateRef.current?.()` before `setOutcome` to bail any in-flight
+> `makeAIMove` callback whose `setGameState` would overwrite the debug
+> outcome. The code below reflects the shipped implementation.
+
 ```ts
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function useGameDebugOutcomes<TPlayer extends string>(options: {
   aiPlayer: TPlayer;
@@ -510,6 +520,10 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
   winStatus: string;
   drawStatus: string;
   onPrepareTriggerWin?: () => void;
+  /** Invalidate the AI move-generation token so any in-flight makeAIMove
+   * callback bails before its setGameState overwrites the debug outcome.
+   * Optional only so non-AI test harnesses can omit it. */
+  invalidate?: () => void;
 }): {
   triggerDebugWin: () => void;
   triggerDebugLoss: () => void;
@@ -525,25 +539,49 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
     winStatus,
     drawStatus,
     onPrepareTriggerWin,
+    invalidate,
   } = options;
 
   const [showDebugWinButton, setShowDebugWinButton] = useState(false);
 
+  // Callers pass inline `setOutcome` / `onPrepareTriggerWin` closures that
+  // change identity every render. Stash them in refs so the trigger
+  // callbacks (and the DEV global registration effect) stay stable and the
+  // effect re-runs only when `debugVariantKey` actually changes.
+  const setOutcomeRef = useRef(setOutcome);
+  setOutcomeRef.current = setOutcome;
+  const onPrepareRef = useRef(onPrepareTriggerWin);
+  onPrepareRef.current = onPrepareTriggerWin;
+  const invalidateRef = useRef(invalidate);
+  invalidateRef.current = invalidate;
+
   const triggerDebugWin = useCallback(() => {
-    setOutcome({ status: winStatus, currentPlayer: aiPlayer });
-  }, [setOutcome, winStatus, aiPlayer]);
+    invalidateRef.current?.();
+    setOutcomeRef.current({ status: winStatus, currentPlayer: aiPlayer });
+  }, [winStatus, aiPlayer]);
 
   const triggerDebugLoss = useCallback(() => {
-    setOutcome({
+    invalidateRef.current?.();
+    setOutcomeRef.current({
       status: winStatus,
       currentPlayer: getHumanPlayer(aiPlayer),
     });
-  }, [setOutcome, winStatus, getHumanPlayer, aiPlayer]);
+  }, [winStatus, getHumanPlayer, aiPlayer]);
 
   const triggerDebugDraw = useCallback(() => {
     // Status only — do not include currentPlayer key
-    setOutcome({ status: drawStatus });
-  }, [setOutcome, drawStatus]);
+    invalidateRef.current?.();
+    setOutcomeRef.current({ status: drawStatus });
+  }, [drawStatus]);
+
+  // Latest "trigger win" sequence (prepare + show + win) via ref so the
+  // global registration effect below can depend only on `debugVariantKey`.
+  const triggerWinSequenceRef = useRef<() => void>(() => {});
+  triggerWinSequenceRef.current = () => {
+    onPrepareRef.current?.();
+    setShowDebugWinButton(true);
+    triggerDebugWin();
+  };
 
   // DEV global win trigger
   useEffect(() => {
@@ -553,15 +591,11 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
       string,
       (() => void) | undefined
     >;
-    global[key] = () => {
-      onPrepareTriggerWin?.();
-      setShowDebugWinButton(true);
-      triggerDebugWin();
-    };
+    global[key] = () => triggerWinSequenceRef.current();
     return () => {
       delete global[key];
     };
-  }, [debugVariantKey, onPrepareTriggerWin, triggerDebugWin]);
+  }, [debugVariantKey]);
 
   // Shift+D
   useEffect(() => {

@@ -72,7 +72,10 @@ export class ChessAdapter implements GameVariantAdapter<GameState> {
 		const currentPlayer = gameState.currentPlayer;
 		const moveHistory = this.formatMoveHistory(gameState.moveHistory);
 		const visualBoard = this.createVisualBoard(gameState);
-		const validMoves = this.getAllValidMoves(gameState)[0]!;
+		const [validMoves] = this.getAllValidMoves(gameState);
+		if (!validMoves) {
+			throw new Error('getAllValidMoves returned an empty array');
+		}
 		const exampleMove = this.getExampleMoveFromValidMoves(validMoves);
 
 		// Simplified threat analysis for token efficiency
