@@ -11,7 +11,7 @@ import type {
 } from '../jungle/types';
 import { JUNGLE_ROWS, JUNGLE_COLS } from '../jungle/types';
 import { getPossibleMoves } from '../jungle/moves';
-import { getPieceAt } from '../jungle/board';
+import { getPieceAt, getTerrainRow } from '../jungle/board';
 
 export class JungleAdapter implements GameVariantAdapter<JungleGameState> {
 	gameVariant = 'jungle' as const;
@@ -166,7 +166,7 @@ export class JungleAdapter implements GameVariantAdapter<JungleGameState> {
 
 			for (let col = 0; col < 7; col++) {
 				const piece = getPieceAt(gameState.board, { row, col });
-				const terrain = gameState.terrain[row]![col];
+				const terrain = getTerrainRow(gameState.terrain, row)[col];
 
 				if (piece) {
 					prompt += `${this.getPieceSymbol(piece)} `;

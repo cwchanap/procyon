@@ -60,6 +60,24 @@ export interface JungleGameState {
 export const JUNGLE_ROWS = 9;
 export const JUNGLE_COLS = 7;
 
+export function getRow(
+	board: (JunglePiece | null)[][],
+	row: number
+): (JunglePiece | null)[] {
+	const r = board[row];
+	if (!r) throw new Error(`Jungle board row ${row} is missing`);
+	return r;
+}
+
+export function getTerrainRow(
+	terrain: JungleTerrain[][],
+	row: number
+): JungleTerrain[] {
+	const r = terrain[row];
+	if (!r) throw new Error(`Jungle terrain row ${row} is missing`);
+	return r;
+}
+
 // Piece ranks for capture rules
 export const PIECE_RANKS: Record<JunglePieceType, number> = {
 	elephant: 8,
@@ -126,24 +144,24 @@ export function createInitialTerrain(): JungleTerrain[][] {
 	// River tiles (rows 3-5, cols 1-2 and 4-5)
 	for (let row = 3; row <= 5; row++) {
 		for (let col = 1; col <= 2; col++) {
-			terrain[row]![col] = { type: 'water' };
+			getTerrainRow(terrain, row)[col] = { type: 'water' };
 		}
 		for (let col = 4; col <= 5; col++) {
-			terrain[row]![col] = { type: 'water' };
+			getTerrainRow(terrain, row)[col] = { type: 'water' };
 		}
 	}
 
 	// Red dens and traps (bottom)
-	terrain[8]![3] = { type: 'den', owner: 'red' };
-	terrain[8]![2] = { type: 'trap', owner: 'red' };
-	terrain[8]![4] = { type: 'trap', owner: 'red' };
-	terrain[7]![3] = { type: 'trap', owner: 'red' };
+	getTerrainRow(terrain, 8)[3] = { type: 'den', owner: 'red' };
+	getTerrainRow(terrain, 8)[2] = { type: 'trap', owner: 'red' };
+	getTerrainRow(terrain, 8)[4] = { type: 'trap', owner: 'red' };
+	getTerrainRow(terrain, 7)[3] = { type: 'trap', owner: 'red' };
 
 	// Blue dens and traps (top)
-	terrain[0]![3] = { type: 'den', owner: 'blue' };
-	terrain[0]![2] = { type: 'trap', owner: 'blue' };
-	terrain[0]![4] = { type: 'trap', owner: 'blue' };
-	terrain[1]![3] = { type: 'trap', owner: 'blue' };
+	getTerrainRow(terrain, 0)[3] = { type: 'den', owner: 'blue' };
+	getTerrainRow(terrain, 0)[2] = { type: 'trap', owner: 'blue' };
+	getTerrainRow(terrain, 0)[4] = { type: 'trap', owner: 'blue' };
+	getTerrainRow(terrain, 1)[3] = { type: 'trap', owner: 'blue' };
 
 	return terrain;
 }
