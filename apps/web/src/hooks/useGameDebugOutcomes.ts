@@ -8,6 +8,10 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 	winStatus: string;
 	drawStatus: string;
 	onPrepareTriggerWin?: () => void;
+	/** Invalidate the AI move-generation token so any in-flight makeAIMove
+	 * callback bails before its setGameState overwrites the debug outcome.
+	 * Optional only so non-AI test harnesses can omit it. */
+	invalidate?: () => void;
 }): {
 	triggerDebugWin: () => void;
 	triggerDebugLoss: () => void;
@@ -23,6 +27,7 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 		winStatus,
 		drawStatus,
 		onPrepareTriggerWin,
+		invalidate,
 	} = options;
 
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
@@ -35,12 +40,16 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 	setOutcomeRef.current = setOutcome;
 	const onPrepareRef = useRef(onPrepareTriggerWin);
 	onPrepareRef.current = onPrepareTriggerWin;
+	const invalidateRef = useRef(invalidate);
+	invalidateRef.current = invalidate;
 
 	const triggerDebugWin = useCallback(() => {
+		invalidateRef.current?.();
 		setOutcomeRef.current({ status: winStatus, currentPlayer: aiPlayer });
 	}, [winStatus, aiPlayer]);
 
 	const triggerDebugLoss = useCallback(() => {
+		invalidateRef.current?.();
 		setOutcomeRef.current({
 			status: winStatus,
 			currentPlayer: getHumanPlayer(aiPlayer),
@@ -49,6 +58,7 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 
 	const triggerDebugDraw = useCallback(() => {
 		// Status only — do not include currentPlayer key
+		invalidateRef.current?.();
 		setOutcomeRef.current({ status: drawStatus });
 	}, [drawStatus]);
 

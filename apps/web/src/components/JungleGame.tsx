@@ -88,6 +88,11 @@ const JungleGame: React.FC = () => {
 	// resurrect the pre-reset board position.
 	const { genRef, invalidate, isStale } = useAiMoveGenerationToken();
 
+	// On unmount, invalidate the generation token so any in-flight makeAIMove
+	// callback belonging to this instance bails instead of writing to a
+	// stale component.
+	useEffect(() => () => invalidate(), [invalidate]);
+
 	// Helper function to convert move history to debug format
 	const createAIMove = useCallback(
 		(
@@ -446,6 +451,7 @@ const JungleGame: React.FC = () => {
 		debugVariantKey: 'JUNGLE',
 		winStatus: 'checkmate',
 		drawStatus: 'stalemate',
+		invalidate,
 		onPrepareTriggerWin: () => {
 			setGameMode('ai');
 			setGameStarted(true);
@@ -615,7 +621,6 @@ const JungleGame: React.FC = () => {
 			title={title}
 			subtitle={subtitle}
 			banner={errorBanner}
-			sideBySideFrom='xl'
 			boardColumn={
 				<BoardColumn
 					board={
@@ -645,7 +650,6 @@ const JungleGame: React.FC = () => {
 								onStartOrReset={handleStartOrReset}
 								onReset={handleResetGame}
 								onToggleDebug={() => setIsDebugMode(!isDebugMode)}
-								onExport={() => {}}
 							/>
 						) : undefined
 					}

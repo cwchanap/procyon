@@ -86,6 +86,11 @@ const ShogiGame: React.FC = () => {
 	// resurrect the pre-reset board position.
 	const { genRef, invalidate, isStale } = useAiMoveGenerationToken();
 
+	// On unmount, invalidate the generation token so any in-flight makeAIMove
+	// callback belonging to this instance bails instead of writing to a
+	// stale component.
+	useEffect(() => () => invalidate(), [invalidate]);
+
 	// Refs for promotion modal focus management
 	const modalRef = useRef<HTMLDivElement>(null);
 	const previousActiveElementRef = useRef<HTMLElement | null>(null);
@@ -630,6 +635,7 @@ const ShogiGame: React.FC = () => {
 		debugVariantKey: 'SHOGI',
 		winStatus: 'checkmate',
 		drawStatus: 'draw',
+		invalidate,
 		onPrepareTriggerWin: () => {
 			setGameMode('ai');
 			setGameStarted(true);
@@ -911,7 +917,6 @@ const ShogiGame: React.FC = () => {
 									onStartOrReset={handleStartOrReset}
 									onReset={handleResetGame}
 									onToggleDebug={() => setIsDebugMode(!isDebugMode)}
-									onExport={() => {}}
 								/>
 							) : undefined
 						}

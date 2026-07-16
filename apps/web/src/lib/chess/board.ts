@@ -61,8 +61,9 @@ export function setPieceAt(
 	piece: ChessPiece | null
 ): void {
 	if (!isValidPosition(pos)) return;
-	if (board[pos.row]) {
-		board[pos.row]![pos.col] = piece;
+	const row = board[pos.row];
+	if (row) {
+		row[pos.col] = piece;
 	}
 }
 

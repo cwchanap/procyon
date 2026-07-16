@@ -142,4 +142,76 @@ describe('useGameDebugOutcomes', () => {
 		});
 		expect(result.current.showDebugWinButton).toBe(true);
 	});
+
+	test('each trigger calls invalidate before setOutcome so in-flight AI moves bail', () => {
+		const setOutcome = mock(
+			(_p: { status: string; currentPlayer?: ChessColor }) => {}
+		);
+		const invalidate = mock(() => {});
+		const { result } = renderHook(() =>
+			useGameDebugOutcomes<ChessColor>({
+				aiPlayer: 'black',
+				getHumanPlayer: chessHumanPlayer,
+				setOutcome,
+				debugVariantKey: 'CHESS',
+				winStatus,
+				drawStatus,
+				invalidate,
+			})
+		);
+		act(() => {
+			result.current.triggerDebugWin();
+		});
+		expect(invalidate).toHaveBeenCalledTimes(1);
+		expect(setOutcome).toHaveBeenCalledTimes(1);
+		// invalidate must run before setOutcome so the gen token bumps first
+		expect(invalidate.mock.invocationCallOrder[0]!).toBeLessThan(
+			setOutcome.mock.invocationCallOrder[0]!
+		);
+
+		invalidate.mockReset();
+		setOutcome.mockReset();
+		act(() => {
+			result.current.triggerDebugLoss();
+		});
+		expect(invalidate).toHaveBeenCalledTimes(1);
+		expect(setOutcome).toHaveBeenCalledTimes(1);
+		expect(invalidate.mock.invocationCallOrder[0]!).toBeLessThan(
+			setOutcome.mock.invocationCallOrder[0]!
+		);
+
+		invalidate.mockReset();
+		setOutcome.mockReset();
+		act(() => {
+			result.current.triggerDebugDraw();
+		});
+		expect(invalidate).toHaveBeenCalledTimes(1);
+		expect(setOutcome).toHaveBeenCalledTimes(1);
+		expect(invalidate.mock.invocationCallOrder[0]!).toBeLessThan(
+			setOutcome.mock.invocationCallOrder[0]!
+		);
+	});
+
+	test('triggers work without invalidate (non-AI harnesses)', () => {
+		const setOutcome = mock(
+			(_p: { status: string; currentPlayer?: ChessColor }) => {}
+		);
+		const { result } = renderHook(() =>
+			useGameDebugOutcomes<ChessColor>({
+				aiPlayer: 'black',
+				getHumanPlayer: chessHumanPlayer,
+				setOutcome,
+				debugVariantKey: 'CHESS',
+				winStatus,
+				drawStatus,
+			})
+		);
+		act(() => {
+			result.current.triggerDebugWin();
+		});
+		expect(setOutcome).toHaveBeenCalledWith({
+			status: 'checkmate',
+			currentPlayer: 'black',
+		});
+	});
 });
