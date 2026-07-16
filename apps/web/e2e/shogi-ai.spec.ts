@@ -282,5 +282,31 @@ test.describe('Shogi AI Integration', () => {
 		await expect(page.getByText('香').first()).toBeVisible();
 		await expect(page.getByText('後手の持ち駒')).toBeVisible();
 		await expect(page.getByText('先手の持ち駒')).toBeVisible();
+
+		// At 1280px (xl breakpoint) the board column and side panel must be
+		// side-by-side (flex-row), not stacked. Assert via computed
+		// flex-direction and overlapping vertical bounding boxes — the
+		// 1024px test verifies the stacked (flex-col) counterpart.
+		const geometry = await page.evaluate(() => {
+			const aside = document.querySelector('aside');
+			if (!aside) return null;
+			const container = aside.parentElement;
+			if (!container) return null;
+			const boardCol = container.firstElementChild as HTMLElement | null;
+			if (!boardCol) return null;
+			const asideRect = aside.getBoundingClientRect();
+			const boardRect = boardCol.getBoundingClientRect();
+			return {
+				flexDirection: getComputedStyle(container).flexDirection,
+				verticalOverlap:
+					asideRect.top < boardRect.bottom && asideRect.bottom > boardRect.top,
+				boardRight: Math.round(boardRect.right),
+				asideLeft: Math.round(asideRect.left),
+			};
+		});
+		expect(geometry).not.toBeNull();
+		expect(geometry!.flexDirection).toBe('row');
+		expect(geometry!.verticalOverlap).toBe(true);
+		expect(geometry!.asideLeft).toBeGreaterThanOrEqual(geometry!.boardRight);
 	});
 });
