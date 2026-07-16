@@ -319,10 +319,15 @@ const XiangqiGame: React.FC = () => {
 						}
 
 						const finalResult = selectSquare(moveResult, toPos);
+						// selectSquare always returns a fresh spread object, so
+						// reference inequality cannot detect a failed move. An
+						// illegal destination (or re-clicking the origin) clears
+						// selection but leaves the board, history, and turn
+						// untouched - the same shape produced after a legal move.
+						// Compare move history length instead: a valid move appends
+						// exactly one entry; an illegal one appends none.
 						const moveApplied =
-							finalResult !== moveResult &&
-							finalResult.selectedSquare === null &&
-							finalResult.possibleMoves.length === 0;
+							finalResult.moveHistory.length > moveResult.moveHistory.length;
 
 						if (!moveApplied) {
 							throw new Error(

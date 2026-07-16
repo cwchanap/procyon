@@ -46,7 +46,10 @@ const BoardSidePanel: React.FC<BoardSidePanelProps> = ({
 	children,
 }) => {
 	return (
-		<aside className='flex w-full flex-col gap-4 lg:w-72'>
+		<aside
+			data-testid='game-side-panel'
+			className='flex w-full flex-col gap-4 lg:w-72'
+		>
 			<div className='flex gap-2' role='group' aria-label='Game mode'>
 				<ModeToggle
 					onClick={() => onModeChange('tutorial')}

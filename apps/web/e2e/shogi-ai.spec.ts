@@ -288,7 +288,11 @@ test.describe('Shogi AI Integration', () => {
 		// flex-direction and overlapping vertical bounding boxes — the
 		// 1024px test verifies the stacked (flex-col) counterpart.
 		const geometry = await page.evaluate(() => {
-			const aside = document.querySelector('aside');
+			// Scope to the game side panel specifically — AppShell's fixed
+			// desktop rail is also an <aside> and appears earlier in the DOM,
+			// so a bare document.querySelector('aside') would select the rail
+			// instead of the GamePlayLayout panel.
+			const aside = document.querySelector('[data-testid="game-side-panel"]');
 			if (!aside) return null;
 			const container = aside.parentElement;
 			if (!container) return null;
