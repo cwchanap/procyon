@@ -9,6 +9,7 @@ import {
 import {
 	getPieceAt,
 	getTerrainAt,
+	getRow,
 	isValidPosition,
 	positionsEqual,
 	isWaterPosition,
@@ -405,8 +406,8 @@ export function makeMove(
 	const newBoard = board.map(row => [...row]);
 
 	// Move the piece
-	newBoard[to.row]![to.col] = piece;
-	newBoard[from.row]![from.col] = null;
+	getRow(newBoard, to.row)[to.col] = piece;
+	getRow(newBoard, from.row)[from.col] = null;
 
 	return { newBoard, capturedPiece };
 }
@@ -440,7 +441,7 @@ export function hasValidMoves(
 ): boolean {
 	for (let row = 0; row < JUNGLE_ROWS; row++) {
 		for (let col = 0; col < JUNGLE_COLS; col++) {
-			const piece = board[row]![col];
+			const piece = getRow(board, row)[col];
 			if (piece && piece.color === color) {
 				const position = { row, col };
 				const moves = getPossibleMoves(board, terrain, position);
