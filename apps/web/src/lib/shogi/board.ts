@@ -34,26 +34,26 @@ export function createInitialBoard(): (ShogiPiece | null)[][] {
 	];
 
 	for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-		board[0]![col] = { type: goteBackRow[col]!, color: 'gote' };
+		getRow(board, 0)[col] = { type: goteBackRow[col]!, color: 'gote' };
 	}
 
 	// Gote bishop and rook
-	board[1]![1] = { type: 'rook', color: 'gote' };
-	board[1]![7] = { type: 'bishop', color: 'gote' };
+	getRow(board, 1)[1] = { type: 'rook', color: 'gote' };
+	getRow(board, 1)[7] = { type: 'bishop', color: 'gote' };
 
 	// Gote pawns
 	for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-		board[2]![col] = { type: 'pawn', color: 'gote' };
+		getRow(board, 2)[col] = { type: 'pawn', color: 'gote' };
 	}
 
 	// Sente pawns
 	for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-		board[6]![col] = { type: 'pawn', color: 'sente' };
+		getRow(board, 6)[col] = { type: 'pawn', color: 'sente' };
 	}
 
 	// Sente bishop and rook
-	board[7]![1] = { type: 'bishop', color: 'sente' };
-	board[7]![7] = { type: 'rook', color: 'sente' };
+	getRow(board, 7)[1] = { type: 'bishop', color: 'sente' };
+	getRow(board, 7)[7] = { type: 'rook', color: 'sente' };
 
 	// Sente pieces (bottom side, rows 6-8)
 	const senteBackRow: ShogiPieceType[] = [
@@ -69,7 +69,7 @@ export function createInitialBoard(): (ShogiPiece | null)[][] {
 	];
 
 	for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-		board[8]![col] = { type: senteBackRow[col]!, color: 'sente' };
+		getRow(board, 8)[col] = { type: senteBackRow[col]!, color: 'sente' };
 	}
 
 	return board;

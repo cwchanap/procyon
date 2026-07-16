@@ -330,7 +330,7 @@ const ChessGame: React.FC = () => {
 
 		try {
 			const aiResponse = await aiService.makeMove(gameState, gen);
-			if (gen !== genRef.current) return;
+			if (isStale(gen)) return;
 
 			if (aiResponse && aiResponse.move) {
 				if (isDebugMode) {
@@ -399,7 +399,7 @@ const ChessGame: React.FC = () => {
 				setIsAiPaused(true);
 			}
 		} catch (error) {
-			if (gen !== genRef.current) return;
+			if (isStale(gen)) return;
 			// eslint-disable-next-line no-console
 			console.error('AI move failed:', error);
 			const errorMessage =
@@ -414,11 +414,11 @@ const ChessGame: React.FC = () => {
 				]);
 			}
 		} finally {
-			if (gen === genRef.current) {
+			if (!isStale(gen)) {
 				setGameState(prev => setAIThinking(prev, false));
 			}
 		}
-	}, [gameState, aiService, isDebugMode, createAIMove, genRef]);
+	}, [gameState, aiService, isDebugMode, createAIMove, genRef, isStale]);
 
 	// Retry AI move
 	const retryAIMove = useCallback(() => {

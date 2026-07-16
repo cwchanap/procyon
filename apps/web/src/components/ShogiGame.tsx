@@ -316,7 +316,7 @@ const ShogiGame: React.FC = () => {
 				setIsAIThinking(true);
 				try {
 					const aiResponse = await aiService.makeMove(gameState, gen);
-					if (gen !== genRef.current) return;
+					if (isStale(gen)) return;
 					if (aiResponse) {
 						// Parse AI move from algebraic notation
 						if (aiResponse.move.from === '*') {
@@ -426,7 +426,7 @@ const ShogiGame: React.FC = () => {
 				} catch (_error) {
 					// console.error('AI move failed:', error);
 				} finally {
-					if (gen === genRef.current) {
+					if (!isStale(gen)) {
 						setIsAIThinking(false);
 					}
 				}
@@ -446,6 +446,7 @@ const ShogiGame: React.FC = () => {
 		isDebugMode,
 		createAIMove,
 		genRef,
+		isStale,
 	]);
 
 	const handleSquareClick = useCallback(

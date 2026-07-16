@@ -185,7 +185,7 @@ describe('SidebarAIConfig', () => {
 		fireEvent.change(providerSelect, { target: { value: 'openai' } });
 
 		await waitFor(() => {
-			expect(getByText(/couldn't load your saved AI settings/i)).toBeTruthy();
+			expect(getByText(/couldn't load your saved AI config/i)).toBeTruthy();
 		});
 	});
 });

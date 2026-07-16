@@ -288,7 +288,7 @@ const JungleGame: React.FC = () => {
 				setIsAIThinking(true);
 				try {
 					const aiResponse = await aiService.makeMove(gameState, gen);
-					if (gen !== genRef.current) return;
+					if (isStale(gen)) return;
 					if (aiResponse) {
 						// Parse AI move from algebraic notation
 						const fromPos = aiService.adapter.algebraicToPosition(
@@ -308,7 +308,7 @@ const JungleGame: React.FC = () => {
 				} catch (_error) {
 					// console.error('AI move failed:', error);
 				} finally {
-					if (gen === genRef.current) {
+					if (!isStale(gen)) {
 						setIsAIThinking(false);
 					}
 				}
@@ -326,6 +326,7 @@ const JungleGame: React.FC = () => {
 		aiService,
 		isAIThinking,
 		genRef,
+		isStale,
 	]);
 
 	const handleSquareClick = useCallback(

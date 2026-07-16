@@ -17,8 +17,8 @@ export function createInitialBoard(): (ChessPiece | null)[][] {
 
 	// Place pawns
 	for (let col = 0; col < BOARD_SIZE; col++) {
-		board[1]![col] = { type: 'pawn', color: 'black' };
-		board[6]![col] = { type: 'pawn', color: 'white' };
+		getRow(board, 1)[col] = { type: 'pawn', color: 'black' };
+		getRow(board, 6)[col] = { type: 'pawn', color: 'white' };
 	}
 
 	// Place other pieces
@@ -34,8 +34,8 @@ export function createInitialBoard(): (ChessPiece | null)[][] {
 	];
 
 	for (let col = 0; col < BOARD_SIZE; col++) {
-		board[0]![col] = { type: pieceOrder[col]!, color: 'black' };
-		board[7]![col] = { type: pieceOrder[col]!, color: 'white' };
+		getRow(board, 0)[col] = { type: pieceOrder[col]!, color: 'black' };
+		getRow(board, 7)[col] = { type: pieceOrder[col]!, color: 'white' };
 	}
 
 	return board;

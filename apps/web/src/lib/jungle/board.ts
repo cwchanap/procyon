@@ -6,6 +6,15 @@ import type {
 } from './types';
 import { JUNGLE_ROWS, JUNGLE_COLS, PIECE_RANKS } from './types';
 
+export function getRow(
+	board: (JunglePiece | null)[][],
+	row: number
+): (JunglePiece | null)[] {
+	const r = board[row];
+	if (!r) throw new Error(`Jungle board row ${row} is missing`);
+	return r;
+}
+
 /**
  * Create the initial board setup for Jungle chess
  */
@@ -15,36 +24,48 @@ export function createInitialBoard(): (JunglePiece | null)[][] {
 		.map(() => Array(JUNGLE_COLS).fill(null));
 
 	// Red pieces (bottom)
-	board[8]![0] = { type: 'lion', color: 'red', rank: PIECE_RANKS.lion };
-	board[8]![6] = { type: 'tiger', color: 'red', rank: PIECE_RANKS.tiger };
-	board[7]![1] = { type: 'dog', color: 'red', rank: PIECE_RANKS.dog };
-	board[7]![5] = { type: 'cat', color: 'red', rank: PIECE_RANKS.cat };
-	board[6]![0] = {
+	getRow(board, 8)[0] = { type: 'lion', color: 'red', rank: PIECE_RANKS.lion };
+	getRow(board, 8)[6] = {
+		type: 'tiger',
+		color: 'red',
+		rank: PIECE_RANKS.tiger,
+	};
+	getRow(board, 7)[1] = { type: 'dog', color: 'red', rank: PIECE_RANKS.dog };
+	getRow(board, 7)[5] = { type: 'cat', color: 'red', rank: PIECE_RANKS.cat };
+	getRow(board, 6)[0] = {
 		type: 'elephant',
 		color: 'red',
 		rank: PIECE_RANKS.elephant,
 	};
-	board[6]![2] = { type: 'wolf', color: 'red', rank: PIECE_RANKS.wolf };
-	board[6]![4] = { type: 'leopard', color: 'red', rank: PIECE_RANKS.leopard };
-	board[6]![6] = { type: 'rat', color: 'red', rank: PIECE_RANKS.rat };
+	getRow(board, 6)[2] = { type: 'wolf', color: 'red', rank: PIECE_RANKS.wolf };
+	getRow(board, 6)[4] = {
+		type: 'leopard',
+		color: 'red',
+		rank: PIECE_RANKS.leopard,
+	};
+	getRow(board, 6)[6] = { type: 'rat', color: 'red', rank: PIECE_RANKS.rat };
 
 	// Blue pieces (top)
-	board[0]![6] = { type: 'lion', color: 'blue', rank: PIECE_RANKS.lion };
-	board[0]![0] = { type: 'tiger', color: 'blue', rank: PIECE_RANKS.tiger };
-	board[1]![5] = { type: 'dog', color: 'blue', rank: PIECE_RANKS.dog };
-	board[1]![1] = { type: 'cat', color: 'blue', rank: PIECE_RANKS.cat };
-	board[2]![6] = {
+	getRow(board, 0)[6] = { type: 'lion', color: 'blue', rank: PIECE_RANKS.lion };
+	getRow(board, 0)[0] = {
+		type: 'tiger',
+		color: 'blue',
+		rank: PIECE_RANKS.tiger,
+	};
+	getRow(board, 1)[5] = { type: 'dog', color: 'blue', rank: PIECE_RANKS.dog };
+	getRow(board, 1)[1] = { type: 'cat', color: 'blue', rank: PIECE_RANKS.cat };
+	getRow(board, 2)[6] = {
 		type: 'elephant',
 		color: 'blue',
 		rank: PIECE_RANKS.elephant,
 	};
-	board[2]![4] = { type: 'wolf', color: 'blue', rank: PIECE_RANKS.wolf };
-	board[2]![2] = {
+	getRow(board, 2)[4] = { type: 'wolf', color: 'blue', rank: PIECE_RANKS.wolf };
+	getRow(board, 2)[2] = {
 		type: 'leopard',
 		color: 'blue',
 		rank: PIECE_RANKS.leopard,
 	};
-	board[2]![0] = { type: 'rat', color: 'blue', rank: PIECE_RANKS.rat };
+	getRow(board, 2)[0] = { type: 'rat', color: 'blue', rank: PIECE_RANKS.rat };
 
 	return board;
 }

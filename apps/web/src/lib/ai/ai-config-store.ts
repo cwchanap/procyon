@@ -344,7 +344,7 @@ export async function setProvider(
 		// the newer switch's success or display a misleading alert after
 		// the user has already moved on.
 		if (gen !== setProviderGeneration) return null;
-		return "We couldn't load your saved AI settings. Please try again from AI Settings.";
+		return "We couldn't load your saved AI config. Please try again from AI Config.";
 	}
 	// A newer setProvider call started while we were awaiting the list
 	// fetch — drop this result so the older provider doesn't clobber the
@@ -354,7 +354,7 @@ export async function setProvider(
 		c => c.provider === provider && c.hasApiKey
 	);
 	if (!providerConfig?.id) {
-		return 'Add an API key for this provider in AI Settings to reuse it here.';
+		return 'Add an API key for this provider in Profile to reuse it here.';
 	}
 	try {
 		const full = await fetchFullAIConfig(providerConfig.id);

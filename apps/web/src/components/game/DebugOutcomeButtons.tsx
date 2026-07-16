@@ -20,6 +20,7 @@ export default function DebugOutcomeButtons({
 	return (
 		<div className='flex gap-2 justify-center text-xs'>
 			<button
+				type='button'
 				onClick={onWin}
 				className='px-3 py-1 bg-jungle hover:opacity-90 text-ink-900 rounded'
 				title='Debug: Win'
@@ -27,6 +28,7 @@ export default function DebugOutcomeButtons({
 				🏆 Win
 			</button>
 			<button
+				type='button'
 				onClick={onLoss}
 				className='px-3 py-1 bg-destructive hover:opacity-90 text-ivory rounded'
 				title='Debug: Loss'
@@ -34,6 +36,7 @@ export default function DebugOutcomeButtons({
 				💀 Loss
 			</button>
 			<button
+				type='button'
 				onClick={onDraw}
 				className='px-3 py-1 bg-ink-600 hover:bg-ink-700 text-ivory rounded'
 				title='Debug: Draw'
