@@ -4,25 +4,15 @@ import type {
 	JungleTerrain,
 	JungleGameState,
 } from './types';
-import { JUNGLE_ROWS, JUNGLE_COLS, PIECE_RANKS } from './types';
+import {
+	JUNGLE_ROWS,
+	JUNGLE_COLS,
+	PIECE_RANKS,
+	getRow,
+	getTerrainRow,
+} from './types';
 
-export function getRow(
-	board: (JunglePiece | null)[][],
-	row: number
-): (JunglePiece | null)[] {
-	const r = board[row];
-	if (!r) throw new Error(`Jungle board row ${row} is missing`);
-	return r;
-}
-
-export function getTerrainRow(
-	terrain: JungleTerrain[][],
-	row: number
-): JungleTerrain[] {
-	const r = terrain[row];
-	if (!r) throw new Error(`Jungle terrain row ${row} is missing`);
-	return r;
-}
+export { getRow, getTerrainRow };
 
 /**
  * Create the initial board setup for Jungle chess
