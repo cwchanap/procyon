@@ -5,8 +5,9 @@ import {
 	ChessRuleGuardian,
 	JungleRuleGuardian,
 } from './rule-guardian';
-import { createInitialBoard as createChessBoard } from '../chess/board';
+import { createInitialGameState as createChessGameState } from '../chess/game';
 import { createInitialGameState as createJungleState } from '../jungle/game';
+import { createInitialGameState as createShogiGameState } from '../shogi/game';
 import type { AIResponse } from './types';
 import type { GameState } from '../chess/types';
 import type { XiangqiGameState, XiangqiPiece } from '../xiangqi/types';
@@ -19,13 +20,13 @@ describe('ShogiRuleGuardian - uncovered paths', () => {
 	beforeEach(() => {
 		guardian = new ShogiRuleGuardian();
 		gameState = {
+			...createShogiGameState(),
 			board: Array(9)
 				.fill(null)
 				.map(() => Array(9).fill(null)),
-			currentPlayer: 'sente',
 			senteHand: [{ type: 'pawn', color: 'sente' }],
 			goteHand: [],
-		} as unknown as ShogiGameState;
+		};
 	});
 
 	test('should reject drop when pieceType is missing from move', () => {
@@ -244,11 +245,10 @@ describe('ChessRuleGuardian - additional coverage', () => {
 	});
 
 	test('should validate move that captures opponent piece', () => {
-		const board = createChessBoard();
-		const gameState = { board, currentPlayer: 'white' } as GameState;
+		const gameState: GameState = createChessGameState();
 
 		// Place black pawn on d3 (where white can potentially capture with a pawn)
-		board[5]![3] = { type: 'pawn', color: 'black' };
+		gameState.board[5]![3] = { type: 'pawn', color: 'black' };
 
 		const response: AIResponse = {
 			move: { from: 'e2', to: 'd3' }, // Diagonal capture
@@ -260,8 +260,7 @@ describe('ChessRuleGuardian - additional coverage', () => {
 	});
 
 	test('should handle invalid algebraic notation gracefully', () => {
-		const board = createChessBoard();
-		const gameState = { board, currentPlayer: 'white' } as GameState;
+		const gameState: GameState = createChessGameState();
 
 		const response: AIResponse = {
 			// @ts-expect-error - testing invalid move format

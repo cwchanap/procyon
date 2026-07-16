@@ -78,6 +78,8 @@ const XiangqiGame: React.FC = () => {
 	});
 	const [aiService] = useState(() => createXiangqiAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
+	const [isAiPaused, setIsAiPaused] = useState(false);
+	const [aiError, setAiError] = useState<string | null>(null);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -284,12 +286,13 @@ const XiangqiGame: React.FC = () => {
 			!configPending &&
 			gameState.currentPlayer === aiPlayer &&
 			(gameState.status === 'playing' || gameState.status === 'check') &&
-			!isAIThinking
+			!isAIThinking &&
+			!isAiPaused
 		) {
 			const makeAIMove = async () => {
 				const gen = genRef.current;
 				setIsAIThinking(true);
-				setErrorMsg(null);
+				setAiError(null);
 				try {
 					const aiResponse = await aiService.makeMove(gameState, gen);
 					if (isStale(gen)) return;
@@ -328,6 +331,9 @@ const XiangqiGame: React.FC = () => {
 						}
 
 						setGameState(finalResult);
+					} else {
+						setAiError('AI did not return a valid response');
+						setIsAiPaused(true);
 					}
 				} catch (error) {
 					if (isStale(gen)) return;
@@ -337,11 +343,8 @@ const XiangqiGame: React.FC = () => {
 							: 'Unknown AI error occurred';
 					// eslint-disable-next-line no-console
 					console.error('AI move failed:', error);
-					setErrorMsg(
-						`AI move failed. ${
-							message || 'Please try again or change providers.'
-						}`
-					);
+					setAiError(message || 'Please try again or change providers.');
+					setIsAiPaused(true);
 				} finally {
 					if (!isStale(gen)) {
 						setIsAIThinking(false);
@@ -360,9 +363,15 @@ const XiangqiGame: React.FC = () => {
 		aiPlayer,
 		aiService,
 		isAIThinking,
+		isAiPaused,
 		genRef,
 		isStale,
 	]);
+
+	const retryAIMove = useCallback(() => {
+		setAiError(null);
+		setIsAiPaused(false);
+	}, []);
 
 	const algebraicToPosition = useCallback(
 		(algebraic: string): XiangqiPosition => {
@@ -411,12 +420,14 @@ const XiangqiGame: React.FC = () => {
 					}));
 				}
 			} else if (gameMode === 'ai') {
-				// AI mode - handle both human and AI moves
+				if (gameState.currentPlayer === aiPlayer || isAIThinking) {
+					return;
+				}
 				const newGameState = selectSquare(gameState, position);
 				setGameState(newGameState);
 			}
 		},
-		[gameMode, gameState, getCurrentDemo]
+		[gameMode, gameState, getCurrentDemo, aiPlayer, isAIThinking]
 	);
 
 	const handleResetGame = useCallback(() => {
@@ -425,6 +436,8 @@ const XiangqiGame: React.FC = () => {
 		// because the callback's finally-block skips on gen mismatch.
 		invalidate();
 		setIsAIThinking(false);
+		setIsAiPaused(false);
+		setAiError(null);
 		setGameState(resetGame());
 		setGameStarted(false);
 		// Clear AI UI state so a logout or cross-account identity change
@@ -534,6 +547,8 @@ const XiangqiGame: React.FC = () => {
 			setGameMode(newMode);
 			setGameStarted(false);
 			setIsAIThinking(false);
+			setIsAiPaused(false);
+			setAiError(null);
 			setAIDebugMoves([]);
 			setErrorMsg(null);
 
@@ -766,11 +781,11 @@ const XiangqiGame: React.FC = () => {
 								aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
 								hasGameStarted={hasGameStarted}
 								isAIThinking={isAIThinking}
-								isAIPaused={false}
-								aiError={null}
+								isAIPaused={isAiPaused}
+								aiError={aiError}
 								aiDebugMoves={aiDebugMoves}
 								isDebugMode={isDebugMode}
-								onRetry={() => {}}
+								onRetry={retryAIMove}
 							/>
 							<AIGameInstructions
 								variant='xiangqi'

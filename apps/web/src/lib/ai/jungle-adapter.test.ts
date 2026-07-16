@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from 'bun:test';
 import { JungleAdapter } from './jungle-adapter';
 import { createInitialGameState } from '../jungle/game';
-import type { JungleGameState } from '../jungle/types';
+import type { JungleGameState, JunglePiece } from '../jungle/types';
 import type { GamePiece } from './game-variant-types';
 
 describe('JungleAdapter', () => {
@@ -114,61 +114,47 @@ describe('JungleAdapter', () => {
 
 	describe('getPieceSymbol', () => {
 		test('should return correct symbols for red pieces', () => {
-			expect(
-				adapter.getPieceSymbol({
-					type: 'elephant',
-					color: 'red',
-					rank: 8,
-				} as GamePiece)
-			).toBe('象');
-			expect(
-				adapter.getPieceSymbol({
-					type: 'lion',
-					color: 'red',
-					rank: 7,
-				} as GamePiece)
-			).toBe('獅');
-			expect(
-				adapter.getPieceSymbol({
-					type: 'tiger',
-					color: 'red',
-					rank: 6,
-				} as GamePiece)
-			).toBe('虎');
-			expect(
-				adapter.getPieceSymbol({
-					type: 'rat',
-					color: 'red',
-					rank: 1,
-				} as GamePiece)
-			).toBe('鼠');
+			const elephant = {
+				type: 'elephant',
+				color: 'red',
+				rank: 8,
+			} satisfies JunglePiece;
+			const lion = {
+				type: 'lion',
+				color: 'red',
+				rank: 7,
+			} satisfies JunglePiece;
+			const tiger = {
+				type: 'tiger',
+				color: 'red',
+				rank: 6,
+			} satisfies JunglePiece;
+			const rat = { type: 'rat', color: 'red', rank: 1 } satisfies JunglePiece;
+
+			expect(adapter.getPieceSymbol(elephant)).toBe('象');
+			expect(adapter.getPieceSymbol(lion)).toBe('獅');
+			expect(adapter.getPieceSymbol(tiger)).toBe('虎');
+			expect(adapter.getPieceSymbol(rat)).toBe('鼠');
 		});
 
 		test('should return correct symbols for blue pieces', () => {
-			expect(
-				adapter.getPieceSymbol({
-					type: 'elephant',
-					color: 'blue',
-					rank: 8,
-				} as GamePiece)
-			).toBe('象');
-			expect(
-				adapter.getPieceSymbol({
-					type: 'rat',
-					color: 'blue',
-					rank: 1,
-				} as GamePiece)
-			).toBe('鼠');
+			const elephant = {
+				type: 'elephant',
+				color: 'blue',
+				rank: 8,
+			} satisfies JunglePiece;
+			const rat = { type: 'rat', color: 'blue', rank: 1 } satisfies JunglePiece;
+
+			expect(adapter.getPieceSymbol(elephant)).toBe('象');
+			expect(adapter.getPieceSymbol(rat)).toBe('鼠');
 		});
 
 		test('should return ? for unknown piece', () => {
-			expect(
-				adapter.getPieceSymbol({
-					type: 'unknown' as never,
-					color: 'red',
-					rank: 0,
-				} as GamePiece)
-			).toBe('?');
+			const unknown = {
+				type: 'unknown',
+				color: 'red',
+			} satisfies GamePiece;
+			expect(adapter.getPieceSymbol(unknown)).toBe('?');
 		});
 	});
 

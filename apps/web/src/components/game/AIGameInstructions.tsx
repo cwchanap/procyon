@@ -1,6 +1,7 @@
 import React from 'react';
 import type { GameVariant } from '../../lib/ai/game-variant-types';
 import { CAPTURE_SWATCH } from '../../lib/board-accents';
+import { cn } from '../../lib/utils';
 
 interface AIGameInstructionsProps {
 	variant: GameVariant;
@@ -28,7 +29,7 @@ const AIGameInstructions: React.FC<AIGameInstructionsProps> = ({
 				Possible moves
 				<span className='mx-2'>•</span>
 				<span
-					className={`w-3 h-3 ${CAPTURE_SWATCH[variant]} inline-block`}
+					className={cn('w-3 h-3 inline-block', CAPTURE_SWATCH[variant])}
 				></span>
 				Captures
 			</p>

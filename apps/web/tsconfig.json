@@ -6,6 +6,7 @@
       "@/*": ["src/*"]
     },
     "jsx": "preserve",
-    "jsxImportSource": "react"
+    "jsxImportSource": "react",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
   }
 }

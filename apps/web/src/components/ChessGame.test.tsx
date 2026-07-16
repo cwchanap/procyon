@@ -442,13 +442,18 @@ describe('ChessGame — inline "AI plays" select', () => {
 			// rule guardian rejects it → makeMove throws → catch block.
 			// The catch block's `if (isStale(gen)) return` bails BEFORE
 			// console.error / setAiError / setIsAiPaused.
-			resolveLLM('{"move":{"from":"a0","to":"a0"},"thinking":"stale"}');
+			resolveLLM(
+				'{"move":{"from":"a0","to":"a0"},"thinking":"stale","confidence":0.1}'
+			);
 
-			// Let the promise microtask chain drain so the stale callback
+			// Drain the promise microtask chain so the stale callback
 			// settles (fetch .then → response.json → callLLM → makeMove →
 			// catch → gen check).
 			await act(async () => {
-				await new Promise(resolve => setTimeout(resolve, 100));
+				await llmPromise;
+				for (let i = 0; i < 40; i++) {
+					await Promise.resolve();
+				}
 			});
 
 			// No 'AI move failed:' logged — the catch block bailed on

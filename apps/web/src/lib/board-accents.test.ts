@@ -10,5 +10,7 @@ test('CAPTURE_RING has all variants with expected border tokens', () => {
 
 test('CAPTURE_SWATCH has all variants', () => {
 	expect(CAPTURE_SWATCH.chess).toContain('border-chess');
+	expect(CAPTURE_SWATCH.xiangqi).toContain('border-xiangqi');
 	expect(CAPTURE_SWATCH.shogi).toContain('border-shogi');
+	expect(CAPTURE_SWATCH.jungle).toContain('border-jungle');
 });

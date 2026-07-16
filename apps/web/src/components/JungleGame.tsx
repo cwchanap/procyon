@@ -75,6 +75,8 @@ const JungleGame: React.FC = () => {
 	});
 	const [aiService] = useState(() => createJungleAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
+	const [isAiPaused, setIsAiPaused] = useState(false);
+	const [aiError, setAiError] = useState<string | null>(null);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -281,11 +283,13 @@ const JungleGame: React.FC = () => {
 			!configPending &&
 			gameState.currentPlayer === aiPlayer &&
 			(gameState.status === 'playing' || gameState.status === 'check') &&
-			!isAIThinking
+			!isAIThinking &&
+			!isAiPaused
 		) {
 			const makeAIMove = async () => {
 				const gen = genRef.current;
 				setIsAIThinking(true);
+				setAiError(null);
 				try {
 					const aiResponse = await aiService.makeMove(gameState, gen);
 					if (isStale(gen)) return;
@@ -300,13 +304,41 @@ const JungleGame: React.FC = () => {
 
 						// Apply the move using jungle game logic
 						const moveResult = selectSquare(gameState, fromPos);
-						if (moveResult.selectedSquare) {
-							const finalResult = selectSquare(moveResult, toPos);
-							setGameState(finalResult);
+						const hasSelectedPiece = Boolean(moveResult.selectedSquare);
+
+						if (!hasSelectedPiece) {
+							throw new Error(
+								`AI move invalid: no selectable piece at ${aiResponse.move.from}`
+							);
 						}
+
+						const finalResult = selectSquare(moveResult, toPos);
+						const moveApplied =
+							finalResult !== moveResult &&
+							finalResult.selectedSquare === null &&
+							finalResult.possibleMoves.length === 0;
+
+						if (!moveApplied) {
+							throw new Error(
+								`AI move invalid: unable to apply ${aiResponse.move.from} -> ${aiResponse.move.to}`
+							);
+						}
+
+						setGameState(finalResult);
+					} else {
+						setAiError('AI did not return a valid response');
+						setIsAiPaused(true);
 					}
-				} catch (_error) {
-					// console.error('AI move failed:', error);
+				} catch (error) {
+					if (isStale(gen)) return;
+					const message =
+						error instanceof Error
+							? error.message
+							: 'Unknown AI error occurred';
+					// eslint-disable-next-line no-console
+					console.error('AI move failed:', error);
+					setAiError(message || 'Please try again or change providers.');
+					setIsAiPaused(true);
 				} finally {
 					if (!isStale(gen)) {
 						setIsAIThinking(false);
@@ -325,9 +357,15 @@ const JungleGame: React.FC = () => {
 		aiPlayer,
 		aiService,
 		isAIThinking,
+		isAiPaused,
 		genRef,
 		isStale,
 	]);
+
+	const retryAIMove = useCallback(() => {
+		setAiError(null);
+		setIsAiPaused(false);
+	}, []);
 
 	const handleSquareClick = useCallback(
 		(position: JunglePosition) => {
@@ -341,11 +379,17 @@ const JungleGame: React.FC = () => {
 				};
 				setGameState(newGameState);
 			} else {
+				if (
+					(gameMode === 'ai' && gameState.currentPlayer === aiPlayer) ||
+					isAIThinking
+				) {
+					return;
+				}
 				const newGameState = selectSquare(gameState, position);
 				setGameState(newGameState);
 			}
 		},
-		[gameMode, gameState, getCurrentDemo]
+		[gameMode, gameState, getCurrentDemo, aiPlayer, isAIThinking]
 	);
 
 	const handleResetGame = useCallback(() => {
@@ -354,6 +398,8 @@ const JungleGame: React.FC = () => {
 		// because the callback's finally-block skips on gen mismatch.
 		invalidate();
 		setIsAIThinking(false);
+		setIsAiPaused(false);
+		setAiError(null);
 		setGameState(resetGame());
 		setGameStarted(false);
 		// Clear AI UI state so a logout or cross-account identity change
@@ -448,6 +494,8 @@ const JungleGame: React.FC = () => {
 			// selected game state.
 			invalidate();
 			setIsAIThinking(false);
+			setIsAiPaused(false);
+			setAiError(null);
 			setGameMode(newMode);
 			setGameStarted(false);
 			setAIDebugMoves([]);
@@ -638,11 +686,11 @@ const JungleGame: React.FC = () => {
 								aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
 								hasGameStarted={hasGameStarted}
 								isAIThinking={isAIThinking}
-								isAIPaused={false}
-								aiError={null}
+								isAIPaused={isAiPaused}
+								aiError={aiError}
 								aiDebugMoves={aiDebugMoves}
 								isDebugMode={isDebugMode}
-								onRetry={() => {}}
+								onRetry={retryAIMove}
 							/>
 							<AIGameInstructions
 								variant='jungle'
