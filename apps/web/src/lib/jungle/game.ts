@@ -6,7 +6,13 @@ import type {
 	JungleGameStatus,
 	JunglePieceColor,
 } from './types';
-import { createInitialBoard, getPieceAt, copyGameState } from './board';
+import {
+	createInitialBoard,
+	getPieceAt,
+	getRow,
+	getTerrainRow,
+	copyGameState,
+} from './board';
 import {
 	getPossibleMoves,
 	makeMove,
@@ -177,7 +183,9 @@ export function makeGameMove(
 export function getGameStatus(gameState: JungleGameState): JungleGameStatus {
 	// Check if any player has won
 	for (const move of gameState.moveHistory) {
-		const targetTerrain = gameState.terrain[move.to.row]![move.to.col];
+		const targetTerrain = getTerrainRow(gameState.terrain, move.to.row)[
+			move.to.col
+		];
 		if (
 			targetTerrain &&
 			targetTerrain.type === 'den' &&
@@ -227,7 +235,7 @@ export function getCapturablePiece(
 	}
 
 	// Check if piece is in enemy trap
-	const terrain = gameState.terrain[position.row]![position.col];
+	const terrain = getTerrainRow(gameState.terrain, position.row)[position.col];
 	if (terrain && terrain.type === 'trap' && terrain.owner !== piece.color) {
 		return piece; // Pieces in enemy traps can be captured by anyone
 	}
@@ -245,7 +253,7 @@ export function getPiecesByType(
 	const pieces: JunglePiece[] = [];
 	for (let row = 0; row < 9; row++) {
 		for (let col = 0; col < 7; col++) {
-			const piece = gameState.board[row]![col];
+			const piece = getRow(gameState.board, row)[col];
 			if (piece && piece.type === pieceType) {
 				pieces.push(piece);
 			}

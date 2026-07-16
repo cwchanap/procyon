@@ -15,6 +15,15 @@ export function getRow(
 	return r;
 }
 
+export function getTerrainRow(
+	terrain: JungleTerrain[][],
+	row: number
+): JungleTerrain[] {
+	const r = terrain[row];
+	if (!r) throw new Error(`Jungle terrain row ${row} is missing`);
+	return r;
+}
+
 /**
  * Create the initial board setup for Jungle chess
  */
@@ -85,7 +94,7 @@ export function getPieceAt(
 	) {
 		return null;
 	}
-	return board[position.row]![position.col] || null;
+	return getRow(board, position.row)[position.col] || null;
 }
 
 /**
@@ -104,7 +113,7 @@ export function setPieceAt(
 	) {
 		return;
 	}
-	board[position.row]![position.col] = piece;
+	getRow(board, position.row)[position.col] = piece;
 }
 
 /**
@@ -122,7 +131,9 @@ export function getTerrainAt(
 	) {
 		return { type: 'normal' };
 	}
-	return terrain[position.row]![position.col] || { type: 'normal' };
+	return (
+		getTerrainRow(terrain, position.row)[position.col] || { type: 'normal' }
+	);
 }
 
 /**
@@ -157,7 +168,7 @@ export function getPiecesByColor(
 	const pieces: JunglePiece[] = [];
 	for (let row = 0; row < JUNGLE_ROWS; row++) {
 		for (let col = 0; col < JUNGLE_COLS; col++) {
-			const piece = board[row]![col];
+			const piece = getRow(board, row)[col];
 			if (piece && piece.color === color) {
 				pieces.push(piece);
 			}
@@ -175,7 +186,7 @@ export function findPiecePosition(
 ): JunglePosition | null {
 	for (let row = 0; row < JUNGLE_ROWS; row++) {
 		for (let col = 0; col < JUNGLE_COLS; col++) {
-			const boardPiece = board[row]![col];
+			const boardPiece = getRow(board, row)[col];
 			if (
 				boardPiece &&
 				boardPiece.type === piece.type &&
