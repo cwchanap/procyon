@@ -1,4 +1,5 @@
 import type { AIConfig, AIProvider } from './types';
+import { AI_PROVIDERS } from './types';
 import { env } from '../env';
 
 const AI_CONFIG_KEY = 'procyon_ai_config';
@@ -196,13 +197,16 @@ export async function loadAIConfigWithProviders(): Promise<AIConfigLoadResult> {
 		// configured. The list fetch itself succeeded, so the no-active-config
 		// branch is not a fallback; the full-load-failed branch is.
 		const local = readLocalConfig(availableProviders, fullLoadFailed);
-		if (local) return local;
+		if (local) return normalizeProviderToAvailable(local, availableProviders);
 
-		return {
-			config: defaultAIConfig,
-			availableProviders,
-			fromFallback: fullLoadFailed,
-		};
+		return normalizeProviderToAvailable(
+			{
+				config: defaultAIConfig,
+				availableProviders,
+				fromFallback: fullLoadFailed,
+			},
+			availableProviders
+		);
 	} catch (error) {
 		// eslint-disable-next-line no-console
 		console.error('Failed to load AI config:', error);
@@ -215,6 +219,46 @@ export async function loadAIConfigWithProviders(): Promise<AIConfigLoadResult> {
 		config: defaultAIConfig,
 		availableProviders: [],
 		fromFallback: true,
+	};
+}
+
+/**
+ * When the active config is missing (or its /full load failed), the
+ * fall-through returns a config whose `provider` may be a stale localStorage
+ * cache value or `defaultAIConfig.provider` ('gemini') — neither of which is
+ * guaranteed to be in `availableProviders` (the keyed providers from the
+ * list fetch). The sidebar filters its provider select to `availableProviders`,
+ * so a `config.provider` absent from that list binds the select to a value
+ * with no matching option: the browser visually shows the first option but
+ * the store keeps the stale provider, and re-selecting the visually-shown
+ * option doesn't fire `onChange` (DOM selection doesn't change), so
+ * `setProvider` never loads the API key — AI is unavailable until the user
+ * switches to a different provider and back.
+ *
+ * Normalize the provider to the first available one and reset the model to
+ * that provider's default (the stale model belongs to the old provider). The
+ * API key is cleared since it belonged to the old provider; the user must
+ * select the provider in the sidebar to trigger `setProvider`, which loads
+ * the correct key. No-op when `availableProviders` is empty (the sidebar
+ * then shows the full provider list) or when the provider is already
+ * available.
+ */
+function normalizeProviderToAvailable(
+	result: AIConfigLoadResult,
+	availableProviders: AIProvider[]
+): AIConfigLoadResult {
+	if (availableProviders.length === 0) return result;
+	if (availableProviders.includes(result.config.provider)) return result;
+	const provider = availableProviders[0]!;
+	const providerInfo = AI_PROVIDERS[provider];
+	return {
+		...result,
+		config: {
+			...result.config,
+			provider,
+			model: providerInfo.defaultModel || providerInfo.models[0] || '',
+			apiKey: '',
+		},
 	};
 }
 

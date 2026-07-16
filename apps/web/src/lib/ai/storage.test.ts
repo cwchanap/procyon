@@ -320,6 +320,110 @@ describe('AI Storage', () => {
 			expect(result.fromFallback).toBe(false);
 			expect(result.config).toEqual(defaultAIConfig);
 		});
+
+		test('should normalize provider to an available one when no active config and default provider is not keyed', async () => {
+			// User has keyed configs for openai and chutes but none is
+			// active. The fall-through returns defaultAIConfig (provider=
+			// 'gemini') with availableProviders=['openai','chutes']. Without
+			// normalization the sidebar select binds to 'gemini' which is
+			// absent from the filtered options, leaving AI unavailable.
+			// The config.provider must be normalized to the first available
+			// provider and the model reset to that provider's default.
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async () => ({
+				ok: true,
+				json: async () => ({
+					configurations: [
+						{
+							id: 'cfg-1',
+							isActive: false,
+							hasApiKey: true,
+							provider: 'openai',
+						},
+						{
+							id: 'cfg-2',
+							isActive: false,
+							hasApiKey: true,
+							provider: 'chutes',
+						},
+					],
+				}),
+			}));
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(result.availableProviders).toEqual(['openai', 'chutes']);
+			expect(result.config.provider).toBe('openai');
+			expect(result.config.model).toBe('gpt-4o-mini');
+			expect(result.config.apiKey).toBe('');
+			expect(result.fromFallback).toBe(false);
+		});
+
+		test('should normalize provider to an available one when active full load fails and localStorage has stale provider', async () => {
+			// Active config exists but /full fails; localStorage cache has a
+			// stale provider ('gemini') that is not in the keyed providers
+			// list. The fall-through must normalize the provider to the
+			// first available keyed provider.
+			localStorageStore['procyon_ai_config'] = JSON.stringify({
+				provider: 'gemini',
+				apiKey: '',
+				model: 'gemini-2.5-flash-lite',
+				enabled: true,
+			});
+			let callCount = 0;
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async (url: string) => {
+				callCount++;
+				if (callCount === 1) {
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [
+								{
+									id: 'cfg-1',
+									isActive: true,
+									hasApiKey: true,
+									provider: 'openai',
+								},
+							],
+						}),
+					};
+				}
+				expect(url).toContain('/cfg-1/full');
+				return { ok: false, json: async () => ({}) };
+			});
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(callCount).toBe(2);
+			expect(result.fromFallback).toBe(true);
+			expect(result.availableProviders).toEqual(['openai']);
+			expect(result.config.provider).toBe('openai');
+			expect(result.config.model).toBe('gpt-4o-mini');
+		});
+
+		test('should not normalize when availableProviders is empty', async () => {
+			// List fetch fails (catch path) and localStorage has a stale
+			// provider. With no available providers, normalization is a
+			// no-op — the config keeps its provider so the sidebar shows
+			// the full provider list (resolveProviderOptions returns
+			// ALL_PROVIDER_OPTIONS when availableProviders is empty).
+			localStorageStore['procyon_ai_config'] = JSON.stringify({
+				provider: 'openrouter',
+				apiKey: '',
+				model: 'gpt-oss-120b',
+				enabled: true,
+			});
+			// @ts-expect-error -- test-only: replace global fetch with failing mock
+			globalThis.fetch = mock(async () => {
+				throw new Error('Network error');
+			});
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(result.availableProviders).toEqual([]);
+			expect(result.config.provider).toBe('openrouter');
+		});
 	});
 
 	describe('saveAIConfig (browser-side)', () => {
