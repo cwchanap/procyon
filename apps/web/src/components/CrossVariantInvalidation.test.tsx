@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../test/reactSetup';
+import ChessGame from './ChessGame';
 import XiangqiGame from './XiangqiGame';
 import ShogiGame from './ShogiGame';
 import JungleGame from './JungleGame';
@@ -531,3 +532,145 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 		}
 	});
 });
+
+// Mode-switch late-callback coverage (plan §9.1b row "Mode switch (all
+// four)"): the parameterized UI tests above prove mode-switch fires
+// invalidate() and the UI recovers, but the AI-turn setTimeout is cleared
+// before it fires — the stale-gen bail path in makeAIMove is never
+// exercised. Here we hold the LLM fetch in-flight across the mode-switch
+// (Tutorial button → toggleToMode → invalidate), then resolve with an
+// invalid move so the catch-block gen check is reached with a stale gen.
+//
+// Chess/Xiangqi have an explicit `if (isStale(gen)) return` in the catch
+// block, so the assertion (no 'AI move failed:' log, no error banner) is
+// meaningful. Shogi/Jungle swallow catch errors unconditionally (pre-existing
+// asymmetry — see review notes), so for those variants the test proves the
+// in-flight LLM + mode-switch boundary works and no error surfaces, but does
+// not distinguish gen-bail from swallow. The success-path gen bail for all
+// variants is covered by the Xiangqi New Game tests above (same `if (isStale
+// (gen)) return` code).
+
+const LATE_CALLBACK_GAMES: GameCase[] = [
+	{
+		name: 'ChessGame',
+		Component: ChessGame,
+		selectId: 'chess-ai-side',
+		firstPlayerValue: 'white',
+	},
+	{
+		name: 'XiangqiGame',
+		Component: XiangqiGame,
+		selectId: 'xiangqi-ai-side',
+		firstPlayerValue: 'red',
+	},
+	{
+		name: 'ShogiGame',
+		Component: ShogiGame,
+		selectId: 'shogi-ai-side',
+		firstPlayerValue: 'sente',
+	},
+	{
+		name: 'JungleGame',
+		Component: JungleGame,
+		selectId: 'jungle-ai-side',
+		firstPlayerValue: 'red',
+	},
+];
+
+describe.each(LATE_CALLBACK_GAMES)(
+	'$name — mode-switch late callback dropped after invalidate',
+	({ Component, firstPlayerValue }) => {
+		beforeEach(() => {
+			clearInitialAuthUser();
+			resetAIConfigStore();
+		});
+
+		afterEach(() => {
+			clearInitialAuthUser();
+			resetAIConfigStore();
+		});
+
+		test('in-flight makeAIMove bails on stale gen after mode switch (no error)', async () => {
+			const env = setupControllableLLMMock();
+
+			const originalError = console.error;
+			const errorCalls: string[] = [];
+			// eslint-disable-next-line no-console
+			console.error = (...args: unknown[]) => {
+				errorCalls.push(args.join(' '));
+			};
+
+			try {
+				const { getByLabelText, getByRole, queryByRole } = render(
+					<Component />
+				);
+
+				const select = (await waitFor(() =>
+					getByLabelText(/AI plays/i)
+				)) as HTMLSelectElement;
+
+				// The 401 from /auth/session triggers resetAIConfigStore(),
+				// which wipes any config set before render. Wait for that to
+				// settle, THEN enable the AI config so the store update sticks.
+				await act(async () => {
+					await new Promise(resolve => setTimeout(resolve, 150));
+				});
+				act(() => {
+					setConfig({ enabled: true, apiKey: 'fake-key' });
+				});
+
+				// AI plays the first-moving side so the AI-turn effect fires
+				// immediately on Start.
+				fireEvent.change(select, { target: { value: firstPlayerValue } });
+
+				const startButton = getByRole('button', { name: /start/i });
+				fireEvent.click(startButton);
+
+				// Wait for the 1s setTimeout to fire and makeMove to reach the
+				// LLM fetch — makeAIMove is now in-flight, past the effect
+				// cleanup's clearTimeout.
+				await waitFor(() => expect(env.llmFetchCalled).toBe(true), {
+					timeout: 3000,
+				});
+
+				// Mode switch to Tutorial → toggleToMode calls invalidate()
+				// (gen bumps), setGameMode('tutorial'), setGameStarted(false).
+				const tutorialButton = getByRole('button', { name: /^tutorial$/i });
+				fireEvent.click(tutorialButton);
+
+				// Resolve the in-flight LLM fetch with an invalid move. The
+				// rule guardian rejects it → makeMove throws → catch block.
+				// For Chess/Xiangqi the catch block's `if (isStale(gen))
+				// return` bails before console.error / setErrorMsg. For
+				// Shogi/Jungle the catch swallows unconditionally.
+				env.resolveLLM('{"move":{"from":"a0","to":"a0"},"thinking":"stale"}');
+
+				// Let the promise microtask chain drain so the stale callback
+				// settles.
+				await act(async () => {
+					await new Promise(resolve => setTimeout(resolve, 100));
+				});
+
+				// No 'AI move failed:' logged — meaningful for Chess/Xiangqi
+				// (catch bailed on stale gen); vacuously true for Shogi/Jungle
+				// (catch swallows regardless).
+				expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(false);
+
+				// No error banner — meaningful for Xiangqi/Shogi/Jungle
+				// (role='alert' errorBanner); vacuously true for Chess
+				// (AIStatusPanel not rendered in tutorial mode).
+				expect(queryByRole('alert')).toBeNull();
+
+				// Mode-switch succeeded and wasn't corrupted by the stale
+				// callback: the tutorial heading is visible.
+				expect(
+					getByRole('heading', { name: /Logic & Tutorials/i })
+				).toBeTruthy();
+			} finally {
+				env.restore();
+				// eslint-disable-next-line no-console
+				console.error = originalError;
+			}
+		});
+	}
+);

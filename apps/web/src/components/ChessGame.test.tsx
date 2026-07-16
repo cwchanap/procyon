@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
-import { render, fireEvent, waitFor } from '@testing-library/react';
+import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../test/reactSetup';
 import ChessGame from './ChessGame';
@@ -275,13 +275,17 @@ describe('ChessGame — inline "AI plays" select', () => {
 		}
 	});
 
-	// AI move gen stale checks: when AI plays white and the game starts,
+	// AI move gen checks: when AI plays white and the game starts,
 	// makeAIMoveAsync fires after the 1-second delay. With defaultAIConfig
 	// (enabled=false, apiKey=''), makeMove returns null — the try block's
-	// gen check (line 325) and finally block's gen check (lines 409-410)
-	// are covered. To cover the catch block's gen check (line 394), we
-	// mutate defaultAIConfig to enabled=true + apiKey='fake' and mock
-	// fetch to reject for LLM API calls, so makeMove throws.
+	// gen check (ChessGame.tsx ~line 333) and finally block's gen check
+	// (~lines 417-419) are covered. To cover the catch block's gen check
+	// (~line 402), we mutate defaultAIConfig to enabled=true +
+	// apiKey='fake' and mock fetch to reject for LLM API calls, so
+	// makeMove throws. NOTE: this test exercises the gen-MATCHES path
+	// (no invalidate races the callback) — the error IS surfaced. The
+	// stale-gen bail (invalidate while LLM in-flight) is covered by the
+	// "in-flight makeAIMove bails on stale gen" test below.
 	test('AI move catch block handles error when LLM fetch fails', async () => {
 		// Mutate defaultAIConfig so the AI service's makeMove calls callLLM
 		// instead of short-circuiting to null. The service is created with
@@ -342,6 +346,117 @@ describe('ChessGame — inline "AI plays" select', () => {
 				},
 				{ timeout: 3000 }
 			);
+		} finally {
+			defaultAIConfig.enabled = originalEnabled;
+			defaultAIConfig.apiKey = originalApiKey;
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			// eslint-disable-next-line no-console
+			console.error = originalError;
+		}
+	});
+
+	// Mid-flight stale-gen bail: hold the LLM fetch in-flight across a
+	// New Game (resetGame → invalidate), then resolve with an invalid
+	// move. The catch block's `if (isStale(gen)) return` must bail
+	// BEFORE console.error('AI move failed:') / setAiError / setIsAiPaused
+	// — otherwise the stale callback resurrects an error on the reset
+	// board. Mirrors the Xiangqi late-callback tests in
+	// CrossVariantInvalidation.test.tsx but for Chess (which uses
+	// defaultAIConfig mutation + AIStatusPanel instead of setConfig +
+	// errorBanner role='alert').
+	test('in-flight makeAIMove bails on stale gen after New Game (no error surfaced)', async () => {
+		const originalEnabled = defaultAIConfig.enabled;
+		const originalApiKey = defaultAIConfig.apiKey;
+		defaultAIConfig.enabled = true;
+		defaultAIConfig.apiKey = 'fake-key';
+
+		// Controllable LLM fetch — held in-flight so invalidate can race it.
+		let resolveLLM!: (value: string) => void;
+		const llmPromise = new Promise<string>(r => {
+			resolveLLM = r;
+		});
+		let llmFetchCalled = false;
+		const originalFetch = globalThis.fetch;
+
+		(globalThis as unknown as { fetch: unknown }).fetch = mock(
+			(url: string) => {
+				if (url.includes('/auth/session')) {
+					return Promise.resolve({
+						ok: false,
+						status: 401,
+						statusText: 'Unauthorized',
+						json: () => Promise.resolve({}),
+					});
+				}
+				// LLM call (gemini) — hold in-flight so invalidate can race it.
+				llmFetchCalled = true;
+				return llmPromise.then(text => ({
+					ok: true,
+					status: 200,
+					json: () =>
+						Promise.resolve({
+							candidates: [
+								{
+									content: { parts: [{ text }] },
+									finishReason: 'STOP',
+								},
+							],
+						}),
+				}));
+			}
+		) as unknown as typeof fetch;
+
+		const originalError = console.error;
+		const errorCalls: string[] = [];
+		// eslint-disable-next-line no-console
+		console.error = (...args: unknown[]) => {
+			errorCalls.push(args.join(' '));
+		};
+
+		try {
+			const { getByLabelText, getByRole, queryByText } = render(<ChessGame />);
+
+			// AI plays white (first-moving side) so the AI-turn effect
+			// fires immediately on Start.
+			const select = (await waitFor(() =>
+				getByLabelText(/AI plays/i)
+			)) as HTMLSelectElement;
+			fireEvent.change(select, { target: { value: 'white' } });
+
+			const startButton = getByRole('button', { name: /start/i });
+			fireEvent.click(startButton);
+
+			// Wait for the 1s setTimeout to fire and makeMove to reach the
+			// LLM fetch — makeAIMoveAsync is now in-flight, past the
+			// effect cleanup's clearTimeout.
+			await waitFor(() => expect(llmFetchCalled).toBe(true), {
+				timeout: 3000,
+			});
+
+			// New Game → resetGame calls invalidate (gen bumps),
+			// setGameState(createInitialGameState()), setGameStarted(false).
+			const newGameButton = getByRole('button', { name: /new game/i });
+			fireEvent.click(newGameButton);
+
+			// Resolve the in-flight LLM fetch with an invalid move. The
+			// rule guardian rejects it → makeMove throws → catch block.
+			// The catch block's `if (isStale(gen)) return` bails BEFORE
+			// console.error / setAiError / setIsAiPaused.
+			resolveLLM('{"move":{"from":"a0","to":"a0"},"thinking":"stale"}');
+
+			// Let the promise microtask chain drain so the stale callback
+			// settles (fetch .then → response.json → callLLM → makeMove →
+			// catch → gen check).
+			await act(async () => {
+				await new Promise(resolve => setTimeout(resolve, 100));
+			});
+
+			// No 'AI move failed:' logged — the catch block bailed on
+			// stale gen before reaching the console.error line.
+			expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(false);
+
+			// No AI Error panel rendered — setAiError was never called.
+			expect(queryByText(/❌ AI Error/i)).toBeNull();
 		} finally {
 			defaultAIConfig.enabled = originalEnabled;
 			defaultAIConfig.apiKey = originalApiKey;
