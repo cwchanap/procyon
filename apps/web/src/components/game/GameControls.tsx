@@ -12,7 +12,8 @@ interface GameControlsProps {
 	onStartOrReset: () => void;
 	onReset: () => void;
 	onToggleDebug: () => void;
-	onExport: () => void;
+	/** Only required when canExport is true (the export button calls it). */
+	onExport?: () => void;
 }
 
 const GameControls: React.FC<GameControlsProps> = ({
@@ -63,7 +64,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 						🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
 					</button>
 
-					{canExport && (
+					{canExport && onExport && (
 						<button
 							onClick={onExport}
 							className='bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 text-ivory-dim hover:bg-ink-600'
