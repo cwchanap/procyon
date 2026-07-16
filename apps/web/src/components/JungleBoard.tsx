@@ -9,7 +9,8 @@ import {
 	JUNGLE_FILES,
 	JUNGLE_RANKS,
 } from '../lib/jungle/types';
-import { CAPTURE_RING } from '../lib/board-accents';
+import { CAPTURE_RING, CAPTURE_SWATCH } from '../lib/board-accents';
+import { cn } from '../lib/utils';
 
 interface JungleBoardProps {
 	board: (JunglePiece | null)[][];
@@ -245,7 +246,7 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 						<span>Possible Move</span>
 					</div>
 					<div className='flex items-center space-x-2'>
-						<div className='w-4 h-4 border-2 border-jungle rounded'></div>
+						<div className={cn('w-4 h-4', CAPTURE_SWATCH.jungle)}></div>
 						<span>Capture</span>
 					</div>
 				</div>

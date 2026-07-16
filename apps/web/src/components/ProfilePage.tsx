@@ -306,8 +306,11 @@ export function ProfilePage() {
 		setIsEditing(false);
 	};
 
-	const formatDate = (dateString: string) => {
-		return new Date(dateString).toLocaleDateString('en-US', {
+	const formatDate = (value: string | Date | null | undefined) => {
+		if (value == null || value === '') return '—';
+		const date = value instanceof Date ? value : new Date(value);
+		if (Number.isNaN(date.getTime())) return '—';
+		return date.toLocaleDateString('en-US', {
 			year: 'numeric',
 			month: 'long',
 			day: 'numeric',
@@ -335,7 +338,7 @@ export function ProfilePage() {
 						<div className='flex items-center justify-center gap-2 text-ivory-dim'>
 							<span className='text-sm'>Member Since</span>
 							<span className='text-ivory font-mono'>
-								{formatDate(user.createdAt as string)}
+								{formatDate(user.createdAt)}
 							</span>
 						</div>
 					</div>

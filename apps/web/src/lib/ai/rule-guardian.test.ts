@@ -6,8 +6,9 @@ import {
 	JungleRuleGuardian,
 	createRuleGuardian,
 } from './rule-guardian';
-import { createInitialBoard as createChessBoard } from '../chess/board';
-import { createInitialXiangqiBoard } from '../xiangqi/board';
+import { createInitialGameState as createChessGameState } from '../chess/game';
+import { createInitialXiangqiGameState } from '../xiangqi/game';
+import { createInitialGameState as createShogiGameState } from '../shogi/game';
 import { createInitialGameState } from '../jungle/game';
 import type { AIResponse } from './types';
 import type { GameState } from '../chess/types';
@@ -55,27 +56,26 @@ describe('Rule Guardian System', () => {
 
 		beforeEach(() => {
 			guardian = new ChessRuleGuardian();
-			gameState = {
-				board: createChessBoard(),
-				currentPlayer: 'white',
-			} as GameState;
+			gameState = createChessGameState();
 		});
 
 		test('should validate move with correct piece', () => {
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'e2', to: 'e4' },
-				reasoning: 'Opening move',
-			} as unknown as AIResponse;
+				confidence: 0.9,
+				thinking: 'Opening move',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(true);
 		});
 
 		test('should reject move from empty square', () => {
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'e4', to: 'e5' },
-				reasoning: 'Invalid move',
-			} as unknown as AIResponse;
+				confidence: 0.5,
+				thinking: 'Invalid move',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);
@@ -83,10 +83,11 @@ describe('Rule Guardian System', () => {
 		});
 
 		test('should reject move of opponent piece', () => {
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'e7', to: 'e5' },
-				reasoning: 'Moving black piece',
-			} as unknown as AIResponse;
+				confidence: 0.5,
+				thinking: 'Moving black piece',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);
@@ -94,10 +95,11 @@ describe('Rule Guardian System', () => {
 		});
 
 		test('should reject out of bounds moves', () => {
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'e2', to: 'e9' },
-				reasoning: 'Invalid target',
-			} as unknown as AIResponse;
+				confidence: 0.3,
+				thinking: 'Invalid target',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);
@@ -117,10 +119,11 @@ describe('Rule Guardian System', () => {
 		});
 
 		test('should reject invalid notation format', () => {
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'invalid', to: 'e4' },
-				reasoning: 'Bad format',
-			} as unknown as AIResponse;
+				confidence: 0.2,
+				thinking: 'Bad format',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);
@@ -134,17 +137,15 @@ describe('Rule Guardian System', () => {
 
 		beforeEach(() => {
 			guardian = new XiangqiRuleGuardian();
-			gameState = {
-				board: createInitialXiangqiBoard(),
-				currentPlayer: 'red',
-			} as XiangqiGameState;
+			gameState = createInitialXiangqiGameState();
 		});
 
 		test('should validate move with correct piece', () => {
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'a1', to: 'a2' },
-				reasoning: 'Soldier advance',
-			} as unknown as AIResponse;
+				confidence: 0.9,
+				thinking: 'Soldier advance',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(true);
@@ -158,19 +159,21 @@ describe('Rule Guardian System', () => {
 			emptyBoard[9]![4] = { type: 'king', color: 'red' };
 			gameState.board = emptyBoard;
 
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'e1', to: 'e2' },
-				reasoning: 'King move',
-			} as unknown as AIResponse;
+				confidence: 0.8,
+				thinking: 'King move',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(true);
 
 			// Try to move outside palace
-			const badResponse = {
+			const badResponse: AIResponse = {
 				move: { from: 'e1', to: 'a1' },
-				reasoning: 'Invalid king move',
-			} as unknown as AIResponse;
+				confidence: 0.4,
+				thinking: 'Invalid king move',
+			};
 			const badResult = guardian.validateAIMove(gameState, badResponse);
 			expect(badResult.isValid).toBe(false);
 			expect(badResult.reason).toContain('palace');
@@ -183,10 +186,11 @@ describe('Rule Guardian System', () => {
 			emptyBoard[9]![3] = { type: 'advisor', color: 'red' };
 			gameState.board = emptyBoard;
 
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'd1', to: 'e2' },
-				reasoning: 'Advisor diagonal',
-			} as unknown as AIResponse;
+				confidence: 0.8,
+				thinking: 'Advisor diagonal',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(true);
@@ -200,10 +204,11 @@ describe('Rule Guardian System', () => {
 			gameState.board = emptyBoard;
 
 			// Try to cross river
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'c5', to: 'e7' },
-				reasoning: 'Cross river',
-			} as unknown as AIResponse;
+				confidence: 0.3,
+				thinking: 'Cross river',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);
@@ -217,10 +222,11 @@ describe('Rule Guardian System', () => {
 		});
 
 		test('should validate position bounds', () => {
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'a10', to: 'j10' }, // j is out of bounds
-				reasoning: 'Out of bounds',
-			} as unknown as AIResponse;
+				confidence: 0.2,
+				thinking: 'Out of bounds',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);
@@ -235,13 +241,13 @@ describe('Rule Guardian System', () => {
 		beforeEach(() => {
 			guardian = new ShogiRuleGuardian();
 			gameState = {
+				...createShogiGameState(),
 				board: Array(9)
 					.fill(null)
 					.map(() => Array(9).fill(null)),
-				currentPlayer: 'sente',
 				senteHand: [{ type: 'pawn', color: 'sente' }],
 				goteHand: [],
-			} as unknown as ShogiGameState;
+			};
 		});
 
 		test('should validate regular move', () => {
@@ -416,15 +422,14 @@ describe('Rule Guardian System', () => {
 	describe('Error handling', () => {
 		test('should handle malformed move objects gracefully', () => {
 			const guardian = new ChessRuleGuardian();
-			const gameState = {
-				board: createChessBoard(),
-				currentPlayer: 'white',
-			} as GameState;
+			const gameState = createChessGameState();
 
-			const response = {
+			const response: AIResponse = {
+				// @ts-expect-error intentional malformed move field
 				move: { from: null, to: 'e4' },
-				reasoning: 'Bad move',
-			} as unknown as AIResponse;
+				confidence: 0.1,
+				thinking: 'Bad move',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);
@@ -434,14 +439,15 @@ describe('Rule Guardian System', () => {
 		test('should handle missing board data', () => {
 			const guardian = new ChessRuleGuardian();
 			const gameState = {
-				board: [],
-				currentPlayer: 'white',
-			} as unknown as GameState;
+				...createChessGameState(),
+				board: [] as GameState['board'],
+			};
 
-			const response = {
+			const response: AIResponse = {
 				move: { from: 'e2', to: 'e4' },
-				reasoning: 'Move',
-			} as unknown as AIResponse;
+				confidence: 0.5,
+				thinking: 'Move',
+			};
 
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);

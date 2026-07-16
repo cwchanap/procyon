@@ -1,7 +1,7 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, type MutableRefObject } from 'react';
 
 export function useAiMoveGenerationToken(): {
-	genRef: React.MutableRefObject<number>;
+	genRef: MutableRefObject<number>;
 	invalidate(): void;
 	isStale(requestId: number | undefined): boolean;
 } {

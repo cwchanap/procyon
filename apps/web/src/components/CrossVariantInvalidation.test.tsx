@@ -286,6 +286,15 @@ describe.each(GAMES)(
 // move to cover the catch path; the second resolves a VALID move so makeMove
 // returns and the success-path `if (isStale(gen)) return` is exercised.
 
+/** Drain microtasks so React effects and promise chains settle without wall-clock sleeps. */
+async function drainMicrotasks(rounds = 30) {
+	await act(async () => {
+		for (let i = 0; i < rounds; i++) {
+			await Promise.resolve();
+		}
+	});
+}
+
 function setupControllableLLMMock() {
 	const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
 		globalThis,
@@ -301,6 +310,7 @@ function setupControllableLLMMock() {
 		resolveLLM = r;
 	});
 	let llmFetchCalled = false;
+	let sessionSettled = false;
 	const originalFetch = globalThis.fetch;
 
 	(globalThis as unknown as { fetch: unknown }).fetch = ((url: string) => {
@@ -309,6 +319,8 @@ function setupControllableLLMMock() {
 				ok: false,
 				status: 401,
 				json: () => Promise.resolve({}),
+			}).finally(() => {
+				sessionSettled = true;
 			});
 		}
 		// LLM call (gemini) — held in-flight so invalidate can race it.
@@ -330,6 +342,28 @@ function setupControllableLLMMock() {
 			return llmFetchCalled;
 		},
 		resolveLLM,
+		async waitForAuthSettled() {
+			// Allow mount effects to issue the session fetch, then wait for it
+			// if present. Some renders may not hit /auth/session.
+			await drainMicrotasks(20);
+			try {
+				await waitFor(() => expect(sessionSettled).toBe(true), {
+					timeout: 1000,
+				});
+			} catch {
+				// No session fetch issued; continue after microtask drain.
+			}
+			await drainMicrotasks(15);
+		},
+		async resolveLLMAndSettle(text: string) {
+			resolveLLM(text);
+			await act(async () => {
+				await llmPromise;
+				for (let i = 0; i < 40; i++) {
+					await Promise.resolve();
+				}
+			});
+		},
 		restore() {
 			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
 			if (originalLocalStorageDesc) {
@@ -357,47 +391,7 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 	});
 
 	test('in-flight makeAIMove bails on stale gen (no move, no error)', async () => {
-		// setConfig → saveAIConfig touches localStorage, which only exists
-		// on window in the test env — mirror withHydrationEnv's setup.
-		const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
-			globalThis,
-			'localStorage'
-		);
-		Object.defineProperty(globalThis, 'localStorage', {
-			configurable: true,
-			value: window.localStorage,
-		});
-
-		// Controllable LLM response so we can hold makeMove in-flight
-		// across the invalidate boundary.
-		let resolveLLM!: (value: string) => void;
-		const llmPromise = new Promise<string>(r => {
-			resolveLLM = r;
-		});
-		let llmFetchCalled = false;
-		const originalFetch = globalThis.fetch;
-
-		(globalThis as unknown as { fetch: unknown }).fetch = ((url: string) => {
-			if (url.includes('/auth/session')) {
-				return Promise.resolve({
-					ok: false,
-					status: 401,
-					json: () => Promise.resolve({}),
-				});
-			}
-			// LLM call (gemini) — hold in-flight so invalidate can race it.
-			llmFetchCalled = true;
-			return llmPromise.then(text => ({
-				ok: true,
-				status: 200,
-				json: () =>
-					Promise.resolve({
-						candidates: [
-							{ content: { parts: [{ text }] }, finishReason: 'STOP' },
-						],
-					}),
-			}));
-		}) as unknown as typeof fetch;
+		const env = setupControllableLLMMock();
 
 		try {
 			const { getByLabelText, getByRole, queryByRole, queryByText } = render(
@@ -414,9 +408,7 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 			// Wait for that to settle, THEN enable the AI config so the
 			// store update sticks. The service's updateConfig effect picks
 			// up the new config on the next render.
-			await act(async () => {
-				await new Promise(resolve => setTimeout(resolve, 150));
-			});
+			await env.waitForAuthSettled();
 			act(() => {
 				setConfig({ enabled: true, apiKey: 'fake-key' });
 			});
@@ -431,7 +423,7 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 			// Wait for the 1s setTimeout to fire and makeMove to reach the
 			// LLM fetch — makeAIMove is now in-flight, past the effect
 			// cleanup's clearTimeout.
-			await waitFor(() => expect(llmFetchCalled).toBe(true), {
+			await waitFor(() => expect(env.llmFetchCalled).toBe(true), {
 				timeout: 3000,
 			});
 
@@ -443,14 +435,9 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 			// Resolve the in-flight LLM fetch. makeMove returns, but
 			// makeAIMove's `if (gen !== genRef.current) return` bails
 			// before setGameState / setErrorMsg.
-			resolveLLM('{"move":{"from":"a0","to":"a0"},"thinking":"stale"}');
-
-			// Let the promise microtask chain drain so the stale callback
-			// settles (fetch .then → response.json → callLLM → makeMove →
-			// gen check). 100ms is far more than the ~7 microtask hops.
-			await act(async () => {
-				await new Promise(resolve => setTimeout(resolve, 100));
-			});
+			await env.resolveLLMAndSettle(
+				'{"move":{"from":"a0","to":"a0"},"thinking":"stale","confidence":0.1}'
+			);
 
 			// No error banner — the catch-block gen check also bailed.
 			expect(queryByRole('alert')).toBeNull();
@@ -460,16 +447,7 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 			// would have setGameState with a moved board (moveHistory 1).
 			expect(queryByText(/Move History \(\d+\)/i)).toBeNull();
 		} finally {
-			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
-			if (originalLocalStorageDesc) {
-				Object.defineProperty(
-					globalThis,
-					'localStorage',
-					originalLocalStorageDesc
-				);
-			} else {
-				delete (globalThis as Record<string, unknown>).localStorage;
-			}
+			env.restore();
 		}
 	});
 
@@ -488,9 +466,7 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 			// The 401 from /auth/session triggers resetAIConfigStore()
 			// (auth.ts:361-362), which wipes any config set before render.
 			// Wait for that to settle, THEN enable the AI config.
-			await act(async () => {
-				await new Promise(resolve => setTimeout(resolve, 150));
-			});
+			await env.waitForAuthSettled();
 			act(() => {
 				setConfig({ enabled: true, apiKey: 'fake-key' });
 			});
@@ -517,11 +493,9 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 			// makeAIMove then hits the success-path gen bail — the
 			// `if (isStale(gen)) return` before setGameState — proving a
 			// move that would otherwise be applied is dropped on stale gen.
-			env.resolveLLM('{"move":{"from":"a1","to":"a2"},"thinking":"valid"}');
-
-			await act(async () => {
-				await new Promise(resolve => setTimeout(resolve, 100));
-			});
+			await env.resolveLLMAndSettle(
+				'{"move":{"from":"a1","to":"a2"},"thinking":"valid","confidence":0.9}'
+			);
 
 			// No move applied and no error: the success-path bail returned
 			// before setGameState, and the catch path was never entered.
@@ -538,48 +512,54 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 // invalidate() and the UI recovers, but the AI-turn setTimeout is cleared
 // before it fires — the stale-gen bail path in makeAIMove is never
 // exercised. Here we hold the LLM fetch in-flight across the mode-switch
-// (Tutorial button → toggleToMode → invalidate), then resolve with an
-// invalid move so the catch-block gen check is reached with a stale gen.
-//
-// Chess/Xiangqi have an explicit `if (isStale(gen)) return` in the catch
-// block, so the assertion (no 'AI move failed:' log, no error banner) is
-// meaningful. Shogi/Jungle swallow catch errors unconditionally (pre-existing
-// asymmetry — see review notes), so for those variants the test proves the
-// in-flight LLM + mode-switch boundary works and no error surfaces, but does
-// not distinguish gen-bail from swallow. The success-path gen bail for all
-// variants is covered by the Xiangqi New Game tests above (same `if (isStale
-// (gen)) return` code).
+// (Tutorial button → toggleToMode → invalidate), then resolve with a
+// VALID per-variant opening move so the success-path gen bail is exercised.
+// Asserting no board/history mutation would fail if the stale move were
+// applied despite the catch/success path.
 
-const LATE_CALLBACK_GAMES: GameCase[] = [
+type LateCallbackCase = GameCase & {
+	/** Valid opening move JSON body for this variant's rule guardian. */
+	validMoveBody: string;
+};
+
+const LATE_CALLBACK_GAMES: LateCallbackCase[] = [
 	{
 		name: 'ChessGame',
 		Component: ChessGame,
 		selectId: 'chess-ai-side',
 		firstPlayerValue: 'white',
+		validMoveBody:
+			'{"move":{"from":"e2","to":"e4"},"thinking":"valid","confidence":0.9}',
 	},
 	{
 		name: 'XiangqiGame',
 		Component: XiangqiGame,
 		selectId: 'xiangqi-ai-side',
 		firstPlayerValue: 'red',
+		validMoveBody:
+			'{"move":{"from":"a1","to":"a2"},"thinking":"valid","confidence":0.9}',
 	},
 	{
 		name: 'ShogiGame',
 		Component: ShogiGame,
 		selectId: 'shogi-ai-side',
 		firstPlayerValue: 'sente',
+		validMoveBody:
+			'{"move":{"from":"7g","to":"7f"},"thinking":"valid","confidence":0.9}',
 	},
 	{
 		name: 'JungleGame',
 		Component: JungleGame,
 		selectId: 'jungle-ai-side',
 		firstPlayerValue: 'red',
+		validMoveBody:
+			'{"move":{"from":"a1","to":"a2"},"thinking":"valid","confidence":0.9}',
 	},
 ];
 
 describe.each(LATE_CALLBACK_GAMES)(
 	'$name — mode-switch late callback dropped after invalidate',
-	({ Component, firstPlayerValue }) => {
+	({ Component, firstPlayerValue, validMoveBody }) => {
 		beforeEach(() => {
 			clearInitialAuthUser();
 			resetAIConfigStore();
@@ -590,7 +570,7 @@ describe.each(LATE_CALLBACK_GAMES)(
 			resetAIConfigStore();
 		});
 
-		test('in-flight makeAIMove bails on stale gen after mode switch (no error)', async () => {
+		test('in-flight makeAIMove bails on stale gen after mode switch (no board mutation)', async () => {
 			const env = setupControllableLLMMock();
 
 			const originalError = console.error;
@@ -601,7 +581,7 @@ describe.each(LATE_CALLBACK_GAMES)(
 			};
 
 			try {
-				const { getByLabelText, getByRole, queryByRole } = render(
+				const { getByLabelText, getByRole, queryByRole, queryByText } = render(
 					<Component />
 				);
 
@@ -612,9 +592,7 @@ describe.each(LATE_CALLBACK_GAMES)(
 				// The 401 from /auth/session triggers resetAIConfigStore(),
 				// which wipes any config set before render. Wait for that to
 				// settle, THEN enable the AI config so the store update sticks.
-				await act(async () => {
-					await new Promise(resolve => setTimeout(resolve, 150));
-				});
+				await env.waitForAuthSettled();
 				act(() => {
 					setConfig({ enabled: true, apiKey: 'fake-key' });
 				});
@@ -638,28 +616,21 @@ describe.each(LATE_CALLBACK_GAMES)(
 				const tutorialButton = getByRole('button', { name: /^tutorial$/i });
 				fireEvent.click(tutorialButton);
 
-				// Resolve the in-flight LLM fetch with an invalid move. The
-				// rule guardian rejects it → makeMove throws → catch block.
-				// For Chess/Xiangqi the catch block's `if (isStale(gen))
-				// return` bails before console.error / setErrorMsg. For
-				// Shogi/Jungle the catch swallows unconditionally.
-				env.resolveLLM('{"move":{"from":"a0","to":"a0"},"thinking":"stale"}');
+				// Resolve with a valid opening move. If the stale gen bail is
+				// skipped, makeAIMove would apply the move and mutate board/
+				// history out from under the tutorial state.
+				await env.resolveLLMAndSettle(validMoveBody);
 
-				// Let the promise microtask chain drain so the stale callback
-				// settles.
-				await act(async () => {
-					await new Promise(resolve => setTimeout(resolve, 100));
-				});
-
-				// No 'AI move failed:' logged — meaningful for Chess/Xiangqi
-				// (catch bailed on stale gen); vacuously true for Shogi/Jungle
-				// (catch swallows regardless).
+				// No 'AI move failed:' logged — catch path bailed on stale gen
+				// (or was never entered on the success path).
 				expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(false);
 
-				// No error banner — meaningful for Xiangqi/Shogi/Jungle
-				// (role='alert' errorBanner); vacuously true for Chess
-				// (AIStatusPanel not rendered in tutorial mode).
+				// No error banner / AI error panel.
 				expect(queryByRole('alert')).toBeNull();
+				expect(queryByText(/❌ AI Error/i)).toBeNull();
+
+				// No move history from a stale AI apply.
+				expect(queryByText(/Move History \(\d+\)/i)).toBeNull();
 
 				// Mode-switch succeeded and wasn't corrupted by the stale
 				// callback: the tutorial heading is visible.

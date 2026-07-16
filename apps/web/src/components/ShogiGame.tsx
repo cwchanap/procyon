@@ -73,6 +73,8 @@ const ShogiGame: React.FC = () => {
 	});
 	const [aiService] = useState(() => createShogiAI(aiConfig));
 	const [isAIThinking, setIsAIThinking] = useState(false);
+	const [isAiPaused, setIsAiPaused] = useState(false);
+	const [aiError, setAiError] = useState<string | null>(null);
 	const [aiDebugMoves, setAIDebugMoves] = useState<AIMove[]>([]);
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -309,11 +311,13 @@ const ShogiGame: React.FC = () => {
 			gameState.currentPlayer === aiPlayer &&
 			(gameState.status === 'playing' || gameState.status === 'check') &&
 			!isAIThinking &&
+			!isAiPaused &&
 			!gameState.pendingPromotion
 		) {
 			const makeAIMove = async () => {
 				const gen = genRef.current;
 				setIsAIThinking(true);
+				setAiError(null);
 				try {
 					const aiResponse = await aiService.makeMove(gameState, gen);
 					if (isStale(gen)) return;
@@ -325,81 +329,45 @@ const ShogiGame: React.FC = () => {
 							const pieceType = aiResponse.move.pieceType;
 
 							if (!pieceType) {
-								// Log detailed error with aiResponse for debugging
-								console.error(
-									'[Shogi AI] Invalid drop move: missing pieceType',
-									{ aiResponse, move: aiResponse.move }
+								throw new Error(
+									`Invalid drop move: missing pieceType for ${to}`
 								);
+							}
 
-								// Add to debug moves if debug mode is enabled
-								if (isDebugMode) {
-									setAIDebugMoves(prev => [
-										...prev,
-										createAIMove(
-											`Invalid drop (missing pieceType): ${aiResponse.move.to}`,
-											true,
-											undefined,
-											`Missing pieceType in AI response: ${JSON.stringify(
-												aiResponse.move
-											)}`
-										),
-									]);
-								}
-								// Explicit no-op: state remains unchanged, error is logged
+							// Validate pieceType is a valid Shogi drop piece type
+							const validDropPieceTypes = [
+								'pawn',
+								'lance',
+								'knight',
+								'silver',
+								'gold',
+								'bishop',
+								'rook',
+							] as const;
+							type ValidDropPieceType = (typeof validDropPieceTypes)[number];
+
+							if (
+								!validDropPieceTypes.includes(pieceType as ValidDropPieceType)
+							) {
+								throw new Error(
+									`Invalid drop move: invalid pieceType ${pieceType}`
+								);
+							}
+
+							// Apply drop move using makeShogiAIMove
+							const moveResult = makeShogiAIMove(
+								gameState,
+								'*',
+								to,
+								false,
+								pieceType as ValidDropPieceType
+							);
+							if (moveResult) {
+								setGameState(moveResult);
 							} else {
-								// Validate pieceType is a valid Shogi drop piece type
-								const validDropPieceTypes = [
-									'pawn',
-									'lance',
-									'knight',
-									'silver',
-									'gold',
-									'bishop',
-									'rook',
-								] as const;
-								type ValidDropPieceType = (typeof validDropPieceTypes)[number];
-
-								if (
-									!validDropPieceTypes.includes(pieceType as ValidDropPieceType)
-								) {
-									// Log detailed error with aiResponse for debugging
-									console.error(
-										'[Shogi AI] Invalid drop move: invalid pieceType',
-										{ aiResponse, move: aiResponse.move }
-									);
-
-									// Add to debug moves if debug mode is enabled
-									if (isDebugMode) {
-										setAIDebugMoves(prev => [
-											...prev,
-											createAIMove(
-												`Invalid drop (invalid pieceType): ${aiResponse.move.to}`,
-												true,
-												undefined,
-												`Invalid pieceType in AI response: ${JSON.stringify(
-													aiResponse.move
-												)}`
-											),
-										]);
-									}
-								} else {
-									// Apply drop move using makeShogiAIMove
-									const moveResult = makeShogiAIMove(
-										gameState,
-										'*',
-										to,
-										false,
-										pieceType as ValidDropPieceType
-									);
-									if (moveResult) {
-										setGameState(moveResult);
-									} else {
-										// eslint-disable-next-line no-console
-										console.warn(
-											`Failed to apply AI drop move: pieceType=${pieceType}, to=${to}`
-										);
-									}
-								}
+								throw new Error(
+									`Failed to apply AI drop move: pieceType=${pieceType}, to=${to}`
+								);
 							}
 						} else {
 							// Regular move
@@ -416,15 +384,32 @@ const ShogiGame: React.FC = () => {
 							if (moveResult) {
 								setGameState(moveResult);
 							} else {
-								// eslint-disable-next-line no-console
-								console.warn(
+								throw new Error(
 									`Failed to apply AI move: from=${aiResponse.move.from}, to=${aiResponse.move.to}, promote=${promote}`
 								);
 							}
 						}
+					} else {
+						setAiError('AI did not return a valid response');
+						setIsAiPaused(true);
 					}
-				} catch (_error) {
-					// console.error('AI move failed:', error);
+				} catch (error) {
+					if (isStale(gen)) return;
+					const message =
+						error instanceof Error
+							? error.message
+							: 'Unknown AI error occurred';
+					// eslint-disable-next-line no-console
+					console.error('AI move failed:', error);
+					setAiError(message || 'Please try again or change providers.');
+					setIsAiPaused(true);
+
+					if (isDebugMode) {
+						setAIDebugMoves(prev => [
+							...prev,
+							createAIMove('Error', true, undefined, `❌ ${message}`),
+						]);
+					}
 				} finally {
 					if (!isStale(gen)) {
 						setIsAIThinking(false);
@@ -443,11 +428,17 @@ const ShogiGame: React.FC = () => {
 		aiPlayer,
 		aiService,
 		isAIThinking,
+		isAiPaused,
 		isDebugMode,
 		createAIMove,
 		genRef,
 		isStale,
 	]);
+
+	const retryAIMove = useCallback(() => {
+		setAiError(null);
+		setIsAiPaused(false);
+	}, []);
 
 	const handleSquareClick = useCallback(
 		(position: ShogiPosition) => {
@@ -484,22 +475,29 @@ const ShogiGame: React.FC = () => {
 					}));
 				}
 			} else if (gameMode === 'ai') {
-				// AI mode - handle both human and AI moves
+				if (gameState.currentPlayer === aiPlayer || isAIThinking) {
+					return;
+				}
 				const newGameState = selectSquare(gameState, position);
 				setGameState(newGameState);
 			}
 		},
-		[gameMode, gameState, getCurrentDemo]
+		[gameMode, gameState, getCurrentDemo, aiPlayer, isAIThinking]
 	);
 
 	const handleHandPieceClick = useCallback(
 		(piece: ShogiPiece) => {
+			if (gameMode === 'ai') {
+				if (gameState.currentPlayer === aiPlayer || isAIThinking) {
+					return;
+				}
+			}
 			if (piece.color === gameState.currentPlayer) {
 				const newGameState = selectHandPiece(gameState, piece);
 				setGameState(newGameState);
 			}
 		},
-		[gameState]
+		[gameMode, gameState, aiPlayer, isAIThinking]
 	);
 
 	const handlePromotionChoice = useCallback(
@@ -588,6 +586,8 @@ const ShogiGame: React.FC = () => {
 		// because the callback's finally-block skips on gen mismatch.
 		invalidate();
 		setIsAIThinking(false);
+		setIsAiPaused(false);
+		setAiError(null);
 		setGameState(createInitialGameState());
 		setGameStarted(false);
 		// Clear AI UI state so a logout or cross-account identity change
@@ -722,6 +722,8 @@ const ShogiGame: React.FC = () => {
 			setGameMode(newMode);
 			setGameStarted(false);
 			setIsAIThinking(false);
+			setIsAiPaused(false);
+			setAiError(null);
 			setAIDebugMoves([]);
 			setErrorMsg(null);
 
@@ -955,11 +957,11 @@ const ShogiGame: React.FC = () => {
 									aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
 									hasGameStarted={hasGameStarted}
 									isAIThinking={isAIThinking}
-									isAIPaused={false}
-									aiError={null}
+									isAIPaused={isAiPaused}
+									aiError={aiError}
 									aiDebugMoves={aiDebugMoves}
 									isDebugMode={isDebugMode}
-									onRetry={() => {}}
+									onRetry={retryAIMove}
 								/>
 								<AIGameInstructions
 									variant='shogi'
