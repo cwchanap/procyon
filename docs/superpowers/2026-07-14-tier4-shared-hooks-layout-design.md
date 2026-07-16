@@ -180,6 +180,16 @@ function useGameDebugOutcomes<TPlayer extends string>(options: {
   /** Terminal status for forced draw (often 'stalemate') */
   drawStatus: string;
   onPrepareTriggerWin?: () => void;
+  /**
+   * Invalidate the AI move-generation token so any in-flight makeAIMove
+   * callback bails before its setGameState overwrites the debug outcome.
+   * Optional only so non-AI test harnesses can omit it.
+   *
+   * Added during implementation: without this, a stale-gen AI callback
+   * can race the debug outcome and overwrite it. Each trigger calls
+   * invalidate before setOutcome.
+   */
+  invalidate?: () => void;
 }): {
   triggerDebugWin: () => void;
   triggerDebugLoss: () => void;
@@ -208,6 +218,8 @@ Prefer `setOutcome` in the implementation plan unless a strong reason emerges fo
 - Draw uses the variant’s existing terminal status string (`drawStatus`) and **does not** touch `currentPlayer` — no shared status enum.
 - Global debug helper and DEV-only UI stay behind `import.meta.env.DEV`.
 - Preserve existing `__PROCYON_DEBUG_<VARIANT>_TRIGGER_WIN__` globals used by tests/manual debug.
+
+**Implementation note — ref-stashing for stable callbacks:** Callers pass inline `setOutcome` / `onPrepareTriggerWin` / `invalidate` closures that change identity every render. The shipped hook stashes them in refs (`setOutcomeRef`, `onPrepareRef`, `invalidateRef`, `triggerWinSequenceRef`) so the `useCallback` triggers and the DEV-global registration `useEffect` stay stable — the effect re-runs only when `debugVariantKey` changes, not on every caller re-render. Each trigger calls `invalidateRef.current?.()` before `setOutcomeRef.current(...)` to bail in-flight AI callbacks.
 
 **Shift+D ownership (in scope for this hook):**  
 All four games today register a DEV-only `keydown` listener (`Shift+D` → toggle `showDebugWinButton`). That is pure debug-outcome chrome, not variant rules. **`useGameDebugOutcomes` owns the Shift+D listener** (register/cleanup under `import.meta.env.DEV`) so the four copies are deleted. Promotion focus traps and other non-debug key handlers stay local.
@@ -567,6 +579,7 @@ Each game: start AI game, switch provider in rail, change AI side in panel, logo
 - `apps/web/src/hooks/useGameDebugOutcomes.ts` (+ test)
 - `apps/web/src/components/game/GamePlayLayout.tsx`
 - `apps/web/src/components/game/BoardColumn.tsx`
+- `apps/web/src/components/game/DebugOutcomeButtons.tsx`
 - `apps/web/src/lib/board-accents.ts`
 
 **Modified**

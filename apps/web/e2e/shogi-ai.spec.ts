@@ -4,7 +4,7 @@ test.describe('Shogi AI Integration', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto('/shogi');
 		await page.waitForFunction(() => {
-			const global = window as any;
+			const global = window as unknown as Record<string, unknown>;
 			return !!global.__PROCYON_DEBUG_SHOGI_STATE__;
 		});
 	});
@@ -38,8 +38,10 @@ test.describe('Shogi AI Integration', () => {
 	test('should display proper game status in AI mode', async ({ page }) => {
 		await page.getByRole('button', { name: '▶️ Start' }).click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.hasGameStarted === true && state.gameMode === 'ai';
 		});
 		await page.waitForFunction(() =>
@@ -63,8 +65,10 @@ test.describe('Shogi AI Integration', () => {
 		// Switch to Tutorial mode via BoardSidePanel
 		await page.getByRole('button', { name: /^Tutorial$/ }).click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.gameMode === 'tutorial';
 		});
 		await expect(
@@ -75,8 +79,10 @@ test.describe('Shogi AI Integration', () => {
 		// Switch back to AI mode via BoardSidePanel
 		await page.getByRole('button', { name: /Play vs AI/i }).click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.gameMode === 'ai';
 		});
 		await expect(
@@ -105,8 +111,10 @@ test.describe('Shogi AI Integration', () => {
 		// Test starting a new game and showing status
 		await page.getByRole('button', { name: '▶️ Start' }).click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.hasGameStarted === true && state.gameMode === 'ai';
 		});
 		await page.waitForFunction(() =>
@@ -146,8 +154,10 @@ test.describe('Shogi AI Integration', () => {
 	test('should handle piece selection in AI mode', async ({ page }) => {
 		await page.getByRole('button', { name: '▶️ Start' }).click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.hasGameStarted === true && state.gameMode === 'ai';
 		});
 		await page.waitForFunction(() =>
@@ -187,16 +197,21 @@ test.describe('Shogi AI Integration', () => {
 		// Start the game
 		await page.getByRole('button', { name: '▶️ Start' }).click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_SHOGI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.hasGameStarted === true && state.gameMode === 'ai';
 		});
 
 		// Manually trigger promotion dialog for testing
 		await page.evaluate(() => {
-			const global = window as any;
-			if (global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__) {
-				global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__();
+			const global = window as unknown as Record<string, unknown>;
+			const trigger = global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__ as
+				| (() => void)
+				| undefined;
+			if (trigger) {
+				trigger();
 			}
 		});
 
@@ -242,7 +257,7 @@ test.describe('Shogi AI Integration', () => {
 		await page.setViewportSize({ width: 1024, height: 800 });
 		await page.goto('/shogi');
 		await page.waitForFunction(() => {
-			const global = window as any;
+			const global = window as unknown as Record<string, unknown>;
 			return !!global.__PROCYON_DEBUG_SHOGI_STATE__;
 		});
 		const overflow = await page.evaluate(
@@ -266,7 +281,7 @@ test.describe('Shogi AI Integration', () => {
 		await page.setViewportSize({ width: 1280, height: 800 });
 		await page.goto('/shogi');
 		await page.waitForFunction(() => {
-			const global = window as any;
+			const global = window as unknown as Record<string, unknown>;
 			return !!global.__PROCYON_DEBUG_SHOGI_STATE__;
 		});
 		const overflow = await page.evaluate(
