@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { render, fireEvent, waitFor } from '@testing-library/react';
+import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../test/reactSetup';
 import XiangqiGame from './XiangqiGame';
@@ -137,17 +137,19 @@ describe.each(GAMES)(
 					expect(select.disabled).toBe(true);
 				});
 
-				globalThis.dispatchEvent(
-					new CustomEvent(AUTH_CHANGE_EVENT, {
-						detail: {
-							user: {
-								id: 'user-b',
-								email: 'b@test.com',
-								username: 'userB',
+				act(() => {
+					globalThis.dispatchEvent(
+						new CustomEvent(AUTH_CHANGE_EVENT, {
+							detail: {
+								user: {
+									id: 'user-b',
+									email: 'b@test.com',
+									username: 'userB',
+								},
 							},
-						},
-					})
-				);
+						})
+					);
+				});
 
 				await waitFor(() => {
 					expect(select.disabled).toBe(false);
@@ -177,11 +179,13 @@ describe.each(GAMES)(
 					expect(select.disabled).toBe(true);
 				});
 
-				globalThis.dispatchEvent(
-					new CustomEvent(AUTH_CHANGE_EVENT, {
-						detail: { user: null },
-					})
-				);
+				act(() => {
+					globalThis.dispatchEvent(
+						new CustomEvent(AUTH_CHANGE_EVENT, {
+							detail: { user: null },
+						})
+					);
+				});
 
 				await waitFor(() => {
 					expect(select.disabled).toBe(false);
@@ -274,6 +278,72 @@ describe.each(GAMES)(
 // `if (gen !== genRef.current) return` check with a stale gen, then
 // assert no move was applied and no error surfaced. Xiangqi stands in
 // for all variants — the gen-check pattern is shared (useAiMoveGenerationToken).
+//
+// Two bail paths exist in makeAIMove: the catch path (reached when the rule
+// guardian rejects the move) and the success path (reached when makeMove
+// returns a valid move, before setGameState). The first test forces an invalid
+// move to cover the catch path; the second resolves a VALID move so makeMove
+// returns and the success-path `if (isStale(gen)) return` is exercised.
+
+function setupControllableLLMMock() {
+	const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
+		globalThis,
+		'localStorage'
+	);
+	Object.defineProperty(globalThis, 'localStorage', {
+		configurable: true,
+		value: window.localStorage,
+	});
+
+	let resolveLLM!: (value: string) => void;
+	const llmPromise = new Promise<string>(r => {
+		resolveLLM = r;
+	});
+	let llmFetchCalled = false;
+	const originalFetch = globalThis.fetch;
+
+	(globalThis as unknown as { fetch: unknown }).fetch = ((url: string) => {
+		if (url.includes('/auth/session')) {
+			return Promise.resolve({
+				ok: false,
+				status: 401,
+				json: () => Promise.resolve({}),
+			});
+		}
+		// LLM call (gemini) — held in-flight so invalidate can race it.
+		llmFetchCalled = true;
+		return llmPromise.then(text => ({
+			ok: true,
+			status: 200,
+			json: () =>
+				Promise.resolve({
+					candidates: [
+						{ content: { parts: [{ text }] }, finishReason: 'STOP' },
+					],
+				}),
+		}));
+	}) as unknown as typeof fetch;
+
+	return {
+		get llmFetchCalled() {
+			return llmFetchCalled;
+		},
+		resolveLLM,
+		restore() {
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			if (originalLocalStorageDesc) {
+				Object.defineProperty(
+					globalThis,
+					'localStorage',
+					originalLocalStorageDesc
+				);
+			} else {
+				delete (globalThis as Record<string, unknown>).localStorage;
+			}
+		},
+	};
+}
+
 describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 	beforeEach(() => {
 		clearInitialAuthUser();
@@ -343,8 +413,12 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 			// Wait for that to settle, THEN enable the AI config so the
 			// store update sticks. The service's updateConfig effect picks
 			// up the new config on the next render.
-			await new Promise(resolve => setTimeout(resolve, 150));
-			setConfig({ enabled: true, apiKey: 'fake-key' });
+			await act(async () => {
+				await new Promise(resolve => setTimeout(resolve, 150));
+			});
+			act(() => {
+				setConfig({ enabled: true, apiKey: 'fake-key' });
+			});
 
 			// AI plays red (first-moving side) so the AI-turn effect fires
 			// immediately on Start.
@@ -373,7 +447,9 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 			// Let the promise microtask chain drain so the stale callback
 			// settles (fetch .then → response.json → callLLM → makeMove →
 			// gen check). 100ms is far more than the ~7 microtask hops.
-			await new Promise(resolve => setTimeout(resolve, 100));
+			await act(async () => {
+				await new Promise(resolve => setTimeout(resolve, 100));
+			});
 
 			// No error banner — the catch-block gen check also bailed.
 			expect(queryByRole('alert')).toBeNull();
@@ -393,6 +469,65 @@ describe('XiangqiGame — late AI callback dropped after invalidate', () => {
 			} else {
 				delete (globalThis as Record<string, unknown>).localStorage;
 			}
+		}
+	});
+
+	test('in-flight makeAIMove bails on stale gen via success path (valid move)', async () => {
+		const env = setupControllableLLMMock();
+
+		try {
+			const { getByLabelText, getByRole, queryByRole, queryByText } = render(
+				<XiangqiGame />
+			);
+
+			const select = (await waitFor(() =>
+				getByLabelText(/AI plays/i)
+			)) as HTMLSelectElement;
+
+			// The 401 from /auth/session triggers resetAIConfigStore()
+			// (auth.ts:361-362), which wipes any config set before render.
+			// Wait for that to settle, THEN enable the AI config.
+			await act(async () => {
+				await new Promise(resolve => setTimeout(resolve, 150));
+			});
+			act(() => {
+				setConfig({ enabled: true, apiKey: 'fake-key' });
+			});
+
+			// AI plays red (first-moving side) so the AI-turn effect fires
+			// immediately on Start.
+			fireEvent.change(select, { target: { value: 'red' } });
+
+			const startButton = getByRole('button', { name: /start/i });
+			fireEvent.click(startButton);
+
+			// Wait for makeMove to reach the LLM fetch (past the effect
+			// cleanup's clearTimeout).
+			await waitFor(() => expect(env.llmFetchCalled).toBe(true), {
+				timeout: 3000,
+			});
+
+			// New Game → handleResetGame calls invalidate (gen bumps).
+			const newGameButton = getByRole('button', { name: /new game/i });
+			fireEvent.click(newGameButton);
+
+			// Valid opening move (red chariot a1→a2 clears the rule
+			// guardian), so aiService.makeMove RETURNS instead of throwing.
+			// makeAIMove then hits the success-path gen bail — the
+			// `if (isStale(gen)) return` before setGameState — proving a
+			// move that would otherwise be applied is dropped on stale gen.
+			env.resolveLLM('{"move":{"from":"a1","to":"a2"},"thinking":"valid"}');
+
+			await act(async () => {
+				await new Promise(resolve => setTimeout(resolve, 100));
+			});
+
+			// No move applied and no error: the success-path bail returned
+			// before setGameState, and the catch path was never entered.
+			expect(queryByRole('alert')).toBeNull();
+			expect(queryByText(/Move History \(\d+\)/i)).toBeNull();
+		} finally {
+			env.restore();
 		}
 	});
 });

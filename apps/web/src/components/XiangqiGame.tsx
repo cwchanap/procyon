@@ -292,7 +292,7 @@ const XiangqiGame: React.FC = () => {
 				setErrorMsg(null);
 				try {
 					const aiResponse = await aiService.makeMove(gameState, gen);
-					if (gen !== genRef.current) return;
+					if (isStale(gen)) return;
 					if (aiResponse) {
 						const fromMove = aiResponse.move?.from;
 						const toMove = aiResponse.move?.to;
@@ -330,7 +330,7 @@ const XiangqiGame: React.FC = () => {
 						setGameState(finalResult);
 					}
 				} catch (error) {
-					if (gen !== genRef.current) return;
+					if (isStale(gen)) return;
 					const message =
 						error instanceof Error
 							? error.message
@@ -343,7 +343,7 @@ const XiangqiGame: React.FC = () => {
 						}`
 					);
 				} finally {
-					if (gen === genRef.current) {
+					if (!isStale(gen)) {
 						setIsAIThinking(false);
 					}
 				}
@@ -361,6 +361,7 @@ const XiangqiGame: React.FC = () => {
 		aiService,
 		isAIThinking,
 		genRef,
+		isStale,
 	]);
 
 	const algebraicToPosition = useCallback(

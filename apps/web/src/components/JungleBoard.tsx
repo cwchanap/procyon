@@ -240,6 +240,14 @@ const JungleBoard: React.FC<JungleBoardProps> = ({
 						<div className='w-4 h-4 bg-shogi/25 border border-shogi/60'></div>
 						<span>Blue Den</span>
 					</div>
+					<div className='flex items-center space-x-2'>
+						<div className='w-3 h-3 bg-jungle rounded-full opacity-75'></div>
+						<span>Possible Move</span>
+					</div>
+					<div className='flex items-center space-x-2'>
+						<div className='w-4 h-4 border-2 border-jungle rounded'></div>
+						<span>Capture</span>
+					</div>
 				</div>
 			</div>
 		</div>
