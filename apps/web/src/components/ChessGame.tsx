@@ -462,6 +462,11 @@ const ChessGame: React.FC = () => {
 	// Game mode handlers
 	const toggleToMode = useCallback(
 		(newMode: ChessGameMode) => {
+			// Same-mode click (the active toggle is still rendered after a
+			// game starts via BoardSidePanel): skip the unconditional reset
+			// so re-clicking the active mode doesn't wipe the current game
+			// and history.
+			if (newMode === gameMode) return;
 			// Invalidate any in-flight makeAIMoveAsync callback so a stale
 			// AI response from the previous mode cannot overwrite the newly
 			// selected game state. Mirrors Xiangqi/Shogi/Jungle toggles.
@@ -494,7 +499,14 @@ const ChessGame: React.FC = () => {
 				}
 			}
 		},
-		[getCurrentDemo, aiPlayer, aiConfig.enabled, aiConfig.apiKey, invalidate]
+		[
+			getCurrentDemo,
+			aiPlayer,
+			aiConfig.enabled,
+			aiConfig.apiKey,
+			invalidate,
+			gameMode,
+		]
 	);
 
 	const handleSquareClick = useCallback(

@@ -359,6 +359,124 @@ describe('AI Storage', () => {
 			expect(result.fromFallback).toBe(false);
 		});
 
+		test('should auto-fetch full config for the sole keyed provider when no active config exists', async () => {
+			// Exactly one keyed provider, none active. Without auto-fetch the
+			// sidebar renders the sole option as already selected, so
+			// re-clicking it never fires onChange and setProvider never
+			// loads the key. The load must fetch /full for that sole
+			// provider and return enabled=true with the real apiKey.
+			let callCount = 0;
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async (url: string) => {
+				callCount++;
+				if (callCount === 1) {
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [
+								{
+									id: 'cfg-1',
+									isActive: false,
+									hasApiKey: true,
+									provider: 'openai',
+								},
+							],
+						}),
+					};
+				}
+				expect(url).toContain('/cfg-1/full');
+				return {
+					ok: true,
+					json: async () => ({
+						provider: 'openai',
+						apiKey: 'sk-key',
+						modelName: 'gpt-4o',
+						gameVariant: 'chess',
+					}),
+				};
+			});
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(callCount).toBe(2);
+			expect(result.fromFallback).toBe(false);
+			expect(result.availableProviders).toEqual(['openai']);
+			expect(result.config.provider).toBe('openai');
+			expect(result.config.apiKey).toBe('sk-key');
+			expect(result.config.model).toBe('gpt-4o');
+			expect(result.config.enabled).toBe(true);
+		});
+
+		test('should fall through with fromFallback=true when sole provider /full fails and no active config', async () => {
+			// Sole keyed provider, none active, but /full fails. The
+			// auto-fetch catch must set fullLoadFailed so the fall-through
+			// surfaces a retry state instead of treating the empty-key
+			// cache/default as a clean load.
+			let callCount = 0;
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async (url: string) => {
+				callCount++;
+				if (callCount === 1) {
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [
+								{
+									id: 'cfg-1',
+									isActive: false,
+									hasApiKey: true,
+									provider: 'openai',
+								},
+							],
+						}),
+					};
+				}
+				expect(url).toContain('/cfg-1/full');
+				return { ok: false, json: async () => ({}) };
+			});
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(callCount).toBe(2);
+			expect(result.fromFallback).toBe(true);
+			expect(result.availableProviders).toEqual(['openai']);
+			expect(result.config.provider).toBe('openai');
+			expect(result.config.apiKey).toBe('');
+		});
+
+		test('should not auto-fetch when the sole keyed provider is the active config whose /full already failed', async () => {
+			// Active+keyed sole provider whose /full fails: the active
+			// branch already attempted the fetch, so the sole-provider
+			// auto-fetch must NOT retry it (callCount stays at 2, not 3).
+			let callCount = 0;
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async () => {
+				callCount++;
+				if (callCount === 1) {
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [
+								{
+									id: 'cfg-1',
+									isActive: true,
+									hasApiKey: true,
+									provider: 'openai',
+								},
+							],
+						}),
+					};
+				}
+				return { ok: false, json: async () => ({}) };
+			});
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(callCount).toBe(2);
+			expect(result.fromFallback).toBe(true);
+			expect(result.availableProviders).toEqual(['openai']);
+		});
+
 		test('should normalize provider to an available one when active full load fails and localStorage has stale provider', async () => {
 			// Active config exists but /full fails; localStorage cache has a
 			// stale provider ('gemini') that is not in the keyed providers

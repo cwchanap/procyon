@@ -192,6 +192,39 @@ export async function loadAIConfigWithProviders(): Promise<AIConfigLoadResult> {
 			}
 		}
 
+		// No active+keyed config. If exactly one keyed provider exists, fetch
+		// its full config automatically: the sidebar selects the sole option
+		// on render, so re-clicking it doesn't fire `onChange` (DOM selection
+		// doesn't change) and `setProvider` never loads the key — leaving AI
+		// unusable without a Profile detour. Skip when the active branch
+		// already attempted (and failed) this same provider's /full load;
+		// retrying a just-failed fetch won't help and would mask the
+		// fullLoadFailed flag the fall-through relies on.
+		if (!activeConfig?.hasApiKey && availableProviders.length === 1) {
+			const soleProvider = availableProviders[0]!;
+			const soleConfig = configurations.find(
+				c => c.provider === soleProvider && c.hasApiKey && c.id
+			);
+			if (soleConfig?.id) {
+				try {
+					const full = await fetchFullAIConfig(soleConfig.id);
+					return {
+						config: {
+							provider: full.provider,
+							apiKey: full.apiKey,
+							model: full.model,
+							enabled: true,
+							gameVariant: full.gameVariant,
+						},
+						availableProviders,
+						fromFallback: false,
+					};
+				} catch {
+					fullLoadFailed = true;
+				}
+			}
+		}
+
 		// No active config with a key (or the full load failed); fall through
 		// to localStorage but still surface the providers that have keys
 		// configured. The list fetch itself succeeded, so the no-active-config
