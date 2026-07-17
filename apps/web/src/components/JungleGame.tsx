@@ -10,7 +10,7 @@ import {
 	selectSquare,
 	resetGame,
 } from '../lib/jungle/game';
-import { createInitialTerrain } from '../lib/jungle/types';
+import { createInitialTerrain, getRow } from '../lib/jungle/types';
 import { createInitialBoard } from '../lib/jungle/board';
 import { createJungleAI } from '../lib/ai';
 import {
@@ -144,41 +144,41 @@ const JungleGame: React.FC = () => {
 
 			switch (setup) {
 				case 'lion-moves':
-					board[4]![3] = {
+					getRow(board, 4)[3] = {
 						type: 'lion',
 						color: 'red',
 						rank: 7,
 					};
-					board[2]![2] = {
+					getRow(board, 2)[2] = {
 						type: 'rat',
 						color: 'blue',
 						rank: 1,
 					};
-					board[2]![4] = {
+					getRow(board, 2)[4] = {
 						type: 'rat',
 						color: 'blue',
 						rank: 1,
 					};
 					break;
 				case 'river-jumping':
-					board[4]![1] = {
+					getRow(board, 4)[1] = {
 						type: 'tiger',
 						color: 'red',
 						rank: 6,
 					};
-					board[4]![5] = {
+					getRow(board, 4)[5] = {
 						type: 'lion',
 						color: 'red',
 						rank: 7,
 					};
 					break;
 				case 'trap-demonstration':
-					board[4]![3] = {
+					getRow(board, 4)[3] = {
 						type: 'elephant',
 						color: 'red',
 						rank: 8,
 					};
-					board[4]![2] = {
+					getRow(board, 4)[2] = {
 						type: 'wolf',
 						color: 'blue',
 						rank: 3,

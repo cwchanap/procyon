@@ -9,7 +9,7 @@ import {
 	setAIThinking,
 	isAITurn,
 } from '../lib/chess/game';
-import { createInitialBoard, getPieceAt } from '../lib/chess/board';
+import { createInitialBoard, getPieceAt, getRow } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
 import BoardSidePanel, { type Mode } from './game/BoardSidePanel';
 import BoardColumn from './game/BoardColumn';
@@ -183,68 +183,68 @@ const ChessGame: React.FC = () => {
 
 			switch (setup) {
 				case 'knight-moves':
-					board[4]![4] = {
+					getRow(board, 4)[4] = {
 						type: 'knight',
 						color: 'white',
 						hasMoved: false,
 					};
-					board[2]![1] = {
+					getRow(board, 2)[1] = {
 						type: 'pawn',
 						color: 'black',
 						hasMoved: false,
 					};
-					board[6]![3] = {
+					getRow(board, 6)[3] = {
 						type: 'pawn',
 						color: 'black',
 						hasMoved: false,
 					};
 					break;
 				case 'check-demo':
-					board[7]![4] = {
+					getRow(board, 7)[4] = {
 						type: 'king',
 						color: 'white',
 						hasMoved: false,
 					};
-					board[0]![0] = {
+					getRow(board, 0)[0] = {
 						type: 'rook',
 						color: 'black',
 						hasMoved: false,
 					};
-					board[7]![0] = {
+					getRow(board, 7)[0] = {
 						type: 'rook',
 						color: 'white',
 						hasMoved: false,
 					};
 					break;
 				case 'castling':
-					board[7]![4] = {
+					getRow(board, 7)[4] = {
 						type: 'king',
 						color: 'white',
 						hasMoved: false,
 					};
-					board[7]![7] = {
+					getRow(board, 7)[7] = {
 						type: 'rook',
 						color: 'white',
 						hasMoved: false,
 					};
-					board[7]![0] = {
+					getRow(board, 7)[0] = {
 						type: 'rook',
 						color: 'white',
 						hasMoved: false,
 					};
 					break;
 				case 'pawn-promotion':
-					board[1]![3] = {
+					getRow(board, 1)[3] = {
 						type: 'pawn',
 						color: 'white',
 						hasMoved: true,
 					};
-					board[0]![4] = {
+					getRow(board, 0)[4] = {
 						type: 'king',
 						color: 'black',
 						hasMoved: false,
 					};
-					board[7]![4] = {
+					getRow(board, 7)[4] = {
 						type: 'king',
 						color: 'white',
 						hasMoved: false,

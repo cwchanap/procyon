@@ -4,7 +4,7 @@ test.describe('Xiangqi AI Integration', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto('/xiangqi');
 		await page.waitForFunction(() => {
-			const global = window as any;
+			const global = window as unknown as Record<string, unknown>;
 			return !!global.__PROCYON_DEBUG_XIANGQI_STATE__;
 		});
 	});
@@ -26,8 +26,10 @@ test.describe('Xiangqi AI Integration', () => {
 		// Switch to tutorial mode via BoardSidePanel
 		await page.getByRole('button', { name: /^Tutorial$/ }).click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.gameMode === 'tutorial';
 		});
 		await expect(
@@ -38,8 +40,10 @@ test.describe('Xiangqi AI Integration', () => {
 		// Switch back to AI mode via BoardSidePanel
 		await page.getByRole('button', { name: /Play vs AI/i }).click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.gameMode === 'ai';
 		});
 		await expect(
@@ -52,8 +56,10 @@ test.describe('Xiangqi AI Integration', () => {
 	}) => {
 		await page.getByRole('button', { name: /Start|New Game/ }).click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.hasGameStarted === true;
 		});
 		await page.waitForFunction(() =>
@@ -95,8 +101,10 @@ test.describe('Xiangqi AI Integration', () => {
 		});
 		await startOrNewGameButton.click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.hasGameStarted === true;
 		});
 		await page.waitForFunction(() =>
@@ -109,8 +117,10 @@ test.describe('Xiangqi AI Integration', () => {
 		// Reset game to clear selection and return to pre-start overlay state
 		await startOrNewGameButton.click();
 		await page.waitForFunction(() => {
-			const global = window as any;
-			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__;
+			const global = window as unknown as Record<string, unknown>;
+			const state = global.__PROCYON_DEBUG_XIANGQI_STATE__ as
+				| { hasGameStarted: boolean; gameMode: string }
+				| undefined;
 			return state && state.hasGameStarted === false;
 		});
 		await expect(
