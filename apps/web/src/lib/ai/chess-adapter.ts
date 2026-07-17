@@ -378,7 +378,7 @@ Rules:
 
 		for (const move of moves) {
 			const pieceMatch = move.match(/\(([^)]+)\)/);
-			const pieceType = pieceMatch ? pieceMatch[1]! : 'Unknown';
+			const pieceType = pieceMatch?.[1] ?? 'Unknown';
 			const group = groups[pieceType] ?? (groups[pieceType] = []);
 			group.push(move.replace(/\s*\([^)]+\)/, ''));
 		}
@@ -399,10 +399,10 @@ Rules:
 		// Format is like: "♘/♞: b8-a6, b8-c6, ..."
 		const moveMatch = validMovesText.match(/([a-h][1-8])-([a-h][1-8])/);
 		if (moveMatch) {
-			return {
-				from: moveMatch[1]!,
-				to: moveMatch[2]!,
-			};
+			const [, from, to] = moveMatch;
+			if (from && to) {
+				return { from, to };
+			}
 		}
 		// Fallback to generic example
 		return {
@@ -525,9 +525,12 @@ Rules:
 		}
 
 		// Convert back to Position array
-		return Array.from(attackedSquares).map(key => {
-			const [row, col] = key.split(',').map(Number);
-			return { row: row!, col: col! };
-		});
+		return Array.from(attackedSquares)
+			.map(key => key.split(',').map(Number))
+			.filter(
+				(parts): parts is [number, number] =>
+					parts[0] !== undefined && parts[1] !== undefined
+			)
+			.map(([row, col]) => ({ row, col }));
 	}
 }
