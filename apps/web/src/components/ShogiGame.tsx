@@ -727,6 +727,11 @@ const ShogiGame: React.FC = () => {
 
 	const toggleToMode = useCallback(
 		(newMode: ShogiGameMode) => {
+			// Same-mode click (the active toggle is still rendered after a
+			// game starts via BoardSidePanel): skip the unconditional reset
+			// so re-clicking the active mode doesn't wipe the current game
+			// and history.
+			if (newMode === gameMode) return;
 			// Invalidate any in-flight makeAIMove callback so a stale
 			// AI response from the previous mode cannot overwrite the newly
 			// selected game state.
@@ -756,7 +761,7 @@ const ShogiGame: React.FC = () => {
 				setGameState(createInitialGameState());
 			}
 		},
-		[getCurrentDemo, invalidate]
+		[getCurrentDemo, invalidate, gameMode]
 	);
 
 	const handleDemoChange = useCallback(
