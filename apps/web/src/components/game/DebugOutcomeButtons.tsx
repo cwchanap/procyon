@@ -9,7 +9,8 @@ export type DebugOutcomeButtonsProps = {
 /**
  * DEV-only debug buttons that force a game outcome (win/loss/draw).
  * Converged across all variants — toggled via Shift+D (see useGameDebugOutcomes).
- * Callers gate visibility (DEV flag, showDebugWinButton, game started, not over)
+ * Safe-by-default: returns null in production even if a caller forgets to gate.
+ * Callers gate visibility (showDebugWinButton, game started, not over)
  * and pass the trigger handlers from useGameDebugOutcomes.
  */
 export default function DebugOutcomeButtons({
@@ -17,6 +18,7 @@ export default function DebugOutcomeButtons({
 	onLoss,
 	onDraw,
 }: DebugOutcomeButtonsProps) {
+	if (!import.meta.env.DEV) return null;
 	return (
 		<div className='flex gap-2 justify-center text-xs'>
 			<button
