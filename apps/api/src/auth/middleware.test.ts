@@ -61,7 +61,10 @@ describe('authMiddleware', () => {
 			headers: { authorization: `Bearer ${token}` },
 		});
 		expect(res.status).toBe(200);
-		const body = await res.json();
+		const body = (await res.json()) as {
+			userId: string;
+			email: string;
+		};
 		expect(body.userId).toBe('user-uuid-1');
 		expect(body.email).toBe('valid@example.com');
 	});
@@ -77,7 +80,10 @@ describe('authMiddleware', () => {
 			headers: { cookie: `procyon_access_token=${token}` },
 		});
 		expect(res.status).toBe(200);
-		const body = await res.json();
+		const body = (await res.json()) as {
+			userId: string;
+			email: string;
+		};
 		expect(body.userId).toBe('cookie-user-1');
 		expect(body.email).toBe('cookie@example.com');
 	});

@@ -12,6 +12,13 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 	 * callback bails before its setGameState overwrites the debug outcome.
 	 * Optional only so non-AI test harnesses can omit it. */
 	invalidate?: () => void;
+	/** Clear the AI "thinking" indicator. When a debug outcome is forced
+	 * while an AI request is pending, `invalidate` makes the in-flight
+	 * callback stale, so its `finally` block skips clearing the thinking
+	 * state (by design, to avoid clobbering a fresh request). Without this,
+	 * the terminal game keeps showing "AI is thinking..." until reset.
+	 * Optional only so non-AI test harnesses can omit it. */
+	onClearThinking?: () => void;
 }): {
 	triggerDebugWin: () => void;
 	triggerDebugLoss: () => void;
@@ -28,6 +35,7 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 		drawStatus,
 		onPrepareTriggerWin,
 		invalidate,
+		onClearThinking,
 	} = options;
 
 	const [showDebugWinButton, setShowDebugWinButton] = useState(false);
@@ -42,14 +50,18 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 	onPrepareRef.current = onPrepareTriggerWin;
 	const invalidateRef = useRef(invalidate);
 	invalidateRef.current = invalidate;
+	const onClearThinkingRef = useRef(onClearThinking);
+	onClearThinkingRef.current = onClearThinking;
 
 	const triggerDebugWin = useCallback(() => {
 		invalidateRef.current?.();
+		onClearThinkingRef.current?.();
 		setOutcomeRef.current({ status: winStatus, currentPlayer: aiPlayer });
 	}, [winStatus, aiPlayer]);
 
 	const triggerDebugLoss = useCallback(() => {
 		invalidateRef.current?.();
+		onClearThinkingRef.current?.();
 		setOutcomeRef.current({
 			status: winStatus,
 			currentPlayer: getHumanPlayer(aiPlayer),
@@ -59,6 +71,7 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 	const triggerDebugDraw = useCallback(() => {
 		// Status only — do not include currentPlayer key
 		invalidateRef.current?.();
+		onClearThinkingRef.current?.();
 		setOutcomeRef.current({ status: drawStatus });
 	}, [drawStatus]);
 

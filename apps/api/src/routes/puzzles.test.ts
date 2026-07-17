@@ -337,7 +337,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: AUTH_HEADER.Authorization,
+						...AUTH_HEADER,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -367,7 +367,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: AUTH_HEADER.Authorization,
+						...AUTH_HEADER,
 					},
 					body: JSON.stringify({
 						solved: true,
@@ -389,7 +389,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: AUTH_HEADER.Authorization,
+						...AUTH_HEADER,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -416,7 +416,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: AUTH_HEADER.Authorization,
+						...AUTH_HEADER,
 					},
 					body: JSON.stringify({
 						solved: true,
@@ -441,7 +441,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: AUTH_HEADER.Authorization,
+						...AUTH_HEADER,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -466,7 +466,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: AUTH_HEADER.Authorization,
+						...AUTH_HEADER,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -490,7 +490,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: AUTH_HEADER.Authorization,
+						...AUTH_HEADER,
 					},
 					body: JSON.stringify({
 						solved: false,
@@ -515,7 +515,7 @@ describe('puzzle routes - with database', () => {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: AUTH_HEADER.Authorization,
+						...AUTH_HEADER,
 					},
 					body: JSON.stringify({
 						solved: true,

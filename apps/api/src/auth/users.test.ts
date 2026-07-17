@@ -5,6 +5,16 @@ import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { upsertGoogleUser, deriveUsername } from './users';
 
+// Loose signature for the drizzle select chain, used by the Proxy-based
+// race-condition tests below to spread unknown args without per-call
+// tuple casts. The runtime behavior is unchanged.
+type LooseSelectBuilder = {
+	from: (...args: unknown[]) => {
+		where: (...args: unknown[]) => { get: () => Promise<unknown> };
+	};
+};
+type LooseSelect = (...args: unknown[]) => LooseSelectBuilder;
+
 function makeDb() {
 	const sqlite = new Database(':memory:');
 	sqlite.exec(`
@@ -107,7 +117,11 @@ describe('upsertGoogleUser', () => {
 		// the real INSERT will fail with a unique error, triggering the
 		// re-SELECT path which DOES see the row.
 		let selectCount = 0;
-		const originalSelect = db.select.bind(db);
+		// Cast the bound select to a loose rest-param signature so the
+		// proxy can spread unknown args without per-call tuple casts. The
+		// runtime behavior is unchanged; this only relaxes the static arg
+		// types.
+		const originalSelect = db.select.bind(db) as unknown as LooseSelect;
 		const proxiedDb = new Proxy(db, {
 			get(target, prop) {
 				if (prop === 'select') {
@@ -138,7 +152,9 @@ describe('upsertGoogleUser', () => {
 						return originalSelect(...args);
 					};
 				}
-				const value = (target as Record<string, unknown>)[prop as string];
+				const value = (target as unknown as Record<string, unknown>)[
+					prop as string
+				];
 				return typeof value === 'function' ? value.bind(target) : value;
 			},
 		});
@@ -178,7 +194,7 @@ describe('upsertGoogleUser', () => {
 		// The re-SELECT by googleSub finds nothing, the re-SELECT by email
 		// finds User A — but googleSub doesn't match, so it must reject.
 		let selectCount = 0;
-		const originalSelect = db.select.bind(db);
+		const originalSelect = db.select.bind(db) as unknown as LooseSelect;
 		const proxiedDb = new Proxy(db, {
 			get(target, prop) {
 				if (prop === 'select') {
@@ -206,7 +222,9 @@ describe('upsertGoogleUser', () => {
 						return originalSelect(...args);
 					};
 				}
-				const value = (target as Record<string, unknown>)[prop as string];
+				const value = (target as unknown as Record<string, unknown>)[
+					prop as string
+				];
 				return typeof value === 'function' ? value.bind(target) : value;
 			},
 		});

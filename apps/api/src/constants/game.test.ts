@@ -10,10 +10,10 @@ import {
 
 describe('ChessVariantId enum', () => {
 	test('has the correct values', () => {
-		expect(ChessVariantId.Chess).toBe('chess');
-		expect(ChessVariantId.Xiangqi).toBe('xiangqi');
-		expect(ChessVariantId.Shogi).toBe('shogi');
-		expect(ChessVariantId.Jungle).toBe('jungle');
+		expect(ChessVariantId.Chess as string).toBe('chess');
+		expect(ChessVariantId.Xiangqi as string).toBe('xiangqi');
+		expect(ChessVariantId.Shogi as string).toBe('shogi');
+		expect(ChessVariantId.Jungle as string).toBe('jungle');
 	});
 
 	test('has exactly 4 variants', () => {
@@ -23,9 +23,9 @@ describe('ChessVariantId enum', () => {
 
 describe('GameResultStatus enum', () => {
 	test('has the correct values', () => {
-		expect(GameResultStatus.Win).toBe('win');
-		expect(GameResultStatus.Loss).toBe('loss');
-		expect(GameResultStatus.Draw).toBe('draw');
+		expect(GameResultStatus.Win as string).toBe('win');
+		expect(GameResultStatus.Loss as string).toBe('loss');
+		expect(GameResultStatus.Draw as string).toBe('draw');
 	});
 
 	test('has exactly 3 statuses', () => {
@@ -35,8 +35,8 @@ describe('GameResultStatus enum', () => {
 
 describe('OpponentLlmId enum', () => {
 	test('has the correct values', () => {
-		expect(OpponentLlmId.Gpt4o).toBe('gpt-4o');
-		expect(OpponentLlmId.Gemini25Flash).toBe('gemini-2.5-flash');
+		expect(OpponentLlmId.Gpt4o as string).toBe('gpt-4o');
+		expect(OpponentLlmId.Gemini25Flash as string).toBe('gemini-2.5-flash');
 	});
 
 	test('has exactly 2 opponent IDs', () => {

@@ -83,7 +83,9 @@ if (proc && typeof proc.on === 'function') {
 	proc.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-const app = new Hono();
+const app = new Hono<{
+	Variables: { jwtSecret: string; googleClientId: string };
+}>();
 
 // Expose JWT_SECRET and GOOGLE_CLIENT_ID to routes via context
 app.use('*', async (c, next) => {
