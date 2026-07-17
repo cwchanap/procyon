@@ -16,6 +16,7 @@
 - No new third-party dependencies.
 - TypeScript strict; no `any` in new code (narrow casts for variant status unions OK).
 - Do **not** extract AI turn bodies / adapters / rule-guardian (Tier 3) or engine primitives (Tier 2).
+  - **Exception (shipped):** strict indexed access (`noUncheckedIndexedAccess`-style tightening) made `board[row]!` / `terrain[row]!` assertions fail typecheck. `getRow`/`getTerrainRow` helpers were added to the engine `board.ts`/`types.ts` modules (chess, xiangqi, shogi, jungle) to replace those `!` assertions with throw-on-missing guards. This is a behavior-preserving type-safety fix, not Tier 2 extraction; the engine APIs and move generation logic are unchanged. Coordinate with the HPA-154 owner if engine files are shared work. Follow-up: `jungle/types.ts` housing `getRow`/`getTerrainRow` (re-exported from `board.ts`) is a circular-import dodge — consider relocating to a shared `board-helpers.ts` once the import graph allows it.
 - Never ship a non-chess game with **both** `AISettingsDialog` and `SidebarAIConfig` for provider/model.
 - Gen-token `invalidate()` on **identity reset, mode switch, and manual New Game/reset** — never drop these when refactoring.
 - Draw debug outcomes: `setOutcome({ status })` only — **omit** `currentPlayer`.

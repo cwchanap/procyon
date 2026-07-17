@@ -24,6 +24,13 @@ export function useGameIdentityReset(options: {
 			prevUserIdRef.current != null &&
 			prevUserIdRef.current !== currentUserId;
 		if (authLost || identityChanged) {
+			// `invalidate` bumps the AI move-generation token so any in-flight
+			// makeAIMove callback bails. `onReset` (typically `resetGame`) also
+			// calls `invalidate` internally, so the token bumps twice on a
+			// reset. This is intentional and harmless: the token is monotonic
+			// and `isStale` only cares about inequality, so an extra bump just
+			// widens the stale window — it never unschedules a callback that
+			// should run.
 			invalidateRef.current?.();
 			onResetRef.current();
 		}

@@ -439,7 +439,7 @@ Your move:`;
 
 		for (const move of moves) {
 			const pieceMatch = move.match(/\(([^)]+)\)/);
-			const pieceType = pieceMatch ? pieceMatch[1]! : 'Unknown';
+			const pieceType = pieceMatch?.[1] ?? 'Unknown';
 			const group = groups[pieceType] ?? (groups[pieceType] = []);
 			group.push(move.replace(/\s*\([^)]+\)/, ''));
 		}
