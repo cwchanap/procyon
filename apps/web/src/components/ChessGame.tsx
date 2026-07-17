@@ -643,6 +643,7 @@ const ChessGame: React.FC = () => {
 		winStatus: 'checkmate',
 		drawStatus: 'stalemate',
 		invalidate,
+		onClearThinking: () => setGameState(prev => setAIThinking(prev, false)),
 		onPrepareTriggerWin: () => {
 			setGameMode('ai');
 			setGameStarted(true);

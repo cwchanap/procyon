@@ -4,7 +4,8 @@ import * as schema from './schema';
 import { isDevelopment, isTest } from '../env';
 
 // For development - you'll need to bind the D1 database in production
-let db: ReturnType<typeof drizzle<typeof schema>> | undefined;
+type DB = ReturnType<typeof drizzle<typeof schema>>;
+let db: DB | undefined;
 
 interface InitializeDBOptions {
 	localDbPath?: string;
@@ -20,7 +21,7 @@ function shouldUseLocalDB() {
 export function initializeDB(
 	d1?: D1Database,
 	options: InitializeDBOptions = {}
-) {
+): DB {
 	if (!d1 && typeof process !== 'undefined' && shouldUseLocalDB()) {
 		// Use local SQLite for development (Node.js only)
 		// eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -37,10 +38,17 @@ export function initializeDB(
 	} else {
 		throw new Error('No database configuration provided');
 	}
-	return db;
+	// db is assigned in both branches above (the third throws), but TS can't
+	// narrow a module-level mutable across the if/else, so reassign to a
+	// local that is provably non-undefined here.
+	const initialized = db;
+	if (!initialized) {
+		throw new Error('Database initialization failed');
+	}
+	return initialized;
 }
 
-export function getDB() {
+export function getDB(): DB {
 	if (db === undefined) {
 		throw new Error('Database not initialized. Call initializeDB first.');
 	}

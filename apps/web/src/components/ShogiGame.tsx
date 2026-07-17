@@ -636,8 +636,8 @@ const ShogiGame: React.FC = () => {
 		winStatus: 'checkmate',
 		drawStatus: 'draw',
 		invalidate,
+		onClearThinking: () => setIsAIThinking(false),
 		onPrepareTriggerWin: () => {
-			setGameMode('ai');
 			setGameStarted(true);
 		},
 	});

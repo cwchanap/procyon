@@ -20,7 +20,10 @@ type Bindings = {
 	JWT_SECRET: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{
+	Bindings: Bindings;
+	Variables: { jwtSecret: string; googleClientId: string };
+}>();
 
 // Initialize database with D1 binding
 app.use('*', async (c, next) => {

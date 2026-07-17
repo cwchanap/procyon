@@ -452,8 +452,8 @@ const JungleGame: React.FC = () => {
 		winStatus: 'checkmate',
 		drawStatus: 'stalemate',
 		invalidate,
+		onClearThinking: () => setIsAIThinking(false),
 		onPrepareTriggerWin: () => {
-			setGameMode('ai');
 			setGameStarted(true);
 		},
 	});
