@@ -651,6 +651,12 @@ const ShogiGame: React.FC = () => {
 			__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__?: () => void;
 		};
 		global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__ = () => {
+			// Invalidate any in-flight makeAIMove callback so it cannot
+			// overwrite the pendingPromotion state we are about to set.
+			// Clear isAIThinking because the callback's finally-block skips
+			// on gen mismatch, which would leave thinking stuck on.
+			invalidate();
+			setIsAIThinking(false);
 			setGameStarted(true);
 			setGameState(prev => ({
 				...prev,
@@ -664,7 +670,7 @@ const ShogiGame: React.FC = () => {
 		return () => {
 			delete global.__PROCYON_DEBUG_SHOGI_TRIGGER_PROMOTION__;
 		};
-	}, []);
+	}, [invalidate]);
 
 	// Calculate hasGameStarted before using it in callbacks
 	const hasGameStarted = gameStarted || gameState.moveHistory.length > 0;
