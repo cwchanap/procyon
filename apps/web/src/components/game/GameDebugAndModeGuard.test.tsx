@@ -13,6 +13,7 @@ import XiangqiGame from '../XiangqiGame';
 import ShogiGame from '../ShogiGame';
 import JungleGame from '../JungleGame';
 import { resetAIConfigStore } from '../../lib/ai/ai-config-store';
+import { __resetSharedAuthUserForTests } from '../../lib/auth';
 import type { AuthUser } from '../../lib/auth-helpers';
 
 setupReactDom();
@@ -75,12 +76,14 @@ describe.each(GAMES)('$name — same-mode guard', ({ Component, selectId }) => {
 	beforeEach(() => {
 		delete (window as unknown as Record<string, unknown>)
 			.__PROCYON_INITIAL_AUTH_USER__;
+		__resetSharedAuthUserForTests();
 		resetAIConfigStore();
 	});
 
 	afterEach(() => {
 		delete (window as unknown as Record<string, unknown>)
 			.__PROCYON_INITIAL_AUTH_USER__;
+		__resetSharedAuthUserForTests();
 		resetAIConfigStore();
 		cleanup();
 	});
@@ -95,8 +98,14 @@ describe.each(GAMES)('$name — same-mode guard', ({ Component, selectId }) => {
 		expect(select.disabled).toBe(false);
 
 		// Start the game (unauthenticated => aiStarting is false => Start
-		// proceeds and locks the AI-side select via gameActive).
-		fireEvent.click(getByRole('button', { name: /start/i }));
+		// proceeds and locks the AI-side select via gameActive). Wait for
+		// the Start button to be ready before clicking, in case auth/config
+		// initialization transiently renders it as "Loading AI config…"
+		// (which would not match /start/i).
+		const startButton = await waitFor(() =>
+			getByRole('button', { name: /start/i })
+		);
+		fireEvent.click(startButton);
 		await waitFor(() => {
 			expect(select.disabled).toBe(true);
 		});
@@ -128,6 +137,7 @@ describe.each(GAMES)(
 		beforeEach(() => {
 			delete (window as unknown as Record<string, unknown>)
 				.__PROCYON_INITIAL_AUTH_USER__;
+			__resetSharedAuthUserForTests();
 			resetAIConfigStore();
 			env.DEV = true;
 			originalFetch = globalThis.fetch;
@@ -151,6 +161,7 @@ describe.each(GAMES)(
 		afterEach(() => {
 			delete (window as unknown as Record<string, unknown>)
 				.__PROCYON_INITIAL_AUTH_USER__;
+			__resetSharedAuthUserForTests();
 			resetAIConfigStore();
 			env.DEV = originalDev;
 			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
@@ -274,6 +285,7 @@ describe.each(GAMES_WITH_HYDRATE_BANNER)(
 		let originalLocalStorageDesc: PropertyDescriptor | undefined;
 
 		beforeEach(() => {
+			__resetSharedAuthUserForTests();
 			resetAIConfigStore();
 			env.DEV = true;
 			originalFetch = globalThis.fetch;
@@ -332,6 +344,7 @@ describe.each(GAMES_WITH_HYDRATE_BANNER)(
 		afterEach(() => {
 			delete (window as unknown as Record<string, unknown>)
 				.__PROCYON_INITIAL_AUTH_USER__;
+			__resetSharedAuthUserForTests();
 			resetAIConfigStore();
 			env.DEV = originalDev;
 			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;

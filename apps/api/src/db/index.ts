@@ -22,7 +22,14 @@ export function initializeDB(
 	d1?: D1Database,
 	options: InitializeDBOptions = {}
 ): DB {
-	if (!d1 && typeof process !== 'undefined' && shouldUseLocalDB()) {
+	// Assign to a local first so TS can narrow across the if/else (a
+	// module-level mutable can't be narrowed the same way). The else branch
+	// throws, so `initialized` is provably assigned below.
+	let initialized: DB;
+	if (d1) {
+		// Use Cloudflare D1 for production
+		initialized = drizzle(d1, { schema });
+	} else if (typeof process !== 'undefined' && shouldUseLocalDB()) {
 		// Use local SQLite for development (Node.js only)
 		// eslint-disable-next-line @typescript-eslint/no-require-imports
 		const { initializeLocalDB, resetLocalDB } = require('./local');
@@ -31,20 +38,11 @@ export function initializeDB(
 			resetLocalDB();
 		}
 
-		db = initializeLocalDB({ dbPath: options.localDbPath });
-	} else if (d1) {
-		// Use Cloudflare D1 for production
-		db = drizzle(d1, { schema });
+		initialized = initializeLocalDB({ dbPath: options.localDbPath });
 	} else {
 		throw new Error('No database configuration provided');
 	}
-	// db is assigned in both branches above (the third throws), but TS can't
-	// narrow a module-level mutable across the if/else, so reassign to a
-	// local that is provably non-undefined here.
-	const initialized = db;
-	if (!initialized) {
-		throw new Error('Database initialization failed');
-	}
+	db = initialized;
 	return initialized;
 }
 
