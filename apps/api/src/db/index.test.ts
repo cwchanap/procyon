@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { resetLocalDB } from './local';
+import type { D1Database } from '@cloudflare/workers-types';
 
 // Import db/index dynamically in tests so module initialization happens after
 // the test environment is set up and after each reset. This keeps the db
@@ -9,6 +10,20 @@ async function resetAll() {
 	resetLocalDB();
 	const { _resetDBForTest } = await import('./index');
 	_resetDBForTest();
+}
+
+/** Minimal D1Database stub: drizzle-orm/d1 only touches the binding when a
+ * query runs, so initializeDB's `drizzle(d1, { schema })` branch can be
+ * exercised without a real D1 connection. */
+function createMockD1(): D1Database {
+	const stub = () => {
+		throw new Error('D1 query stub not executed during initialization');
+	};
+	return {
+		prepare: stub,
+		batch: stub,
+		exec: stub,
+	} as unknown as D1Database;
 }
 
 describe('db/index - initializeDB and getDB', () => {
@@ -64,5 +79,18 @@ describe('db/index - initializeDB and getDB', () => {
 		});
 		const retrieved = getDB();
 		expect(retrieved).toBe(initialized);
+	});
+
+	test('initializeDB uses the Cloudflare D1 branch when a binding is provided', async () => {
+		// Passing a D1 binding takes the production `drizzle(d1, { schema })`
+		// branch instead of the local SQLite path. The mock binding is never
+		// queried during construction, so a stub-throwing mock is sufficient
+		// to prove the branch is taken.
+		const { initializeDB, getDB } = await import('./index');
+		const mockD1 = createMockD1();
+		const initialized = initializeDB(mockD1);
+		expect(initialized).toBeDefined();
+		// getDB returns the same D1-backed instance.
+		expect(getDB()).toBe(initialized);
 	});
 });
