@@ -192,22 +192,39 @@ export async function loadAIConfigWithProviders(): Promise<AIConfigLoadResult> {
 			}
 		}
 
-		// No active+keyed config. If exactly one keyed provider exists, fetch
-		// its full config automatically: the sidebar selects the sole option
-		// on render, so re-clicking it doesn't fire `onChange` (DOM selection
-		// doesn't change) and `setProvider` never loads the key — leaving AI
-		// unusable without a Profile detour. Skip when the active branch
-		// already attempted (and failed) this same provider's /full load;
-		// retrying a just-failed fetch won't help and would mask the
-		// fullLoadFailed flag the fall-through relies on.
-		if (!activeConfig?.hasApiKey && availableProviders.length === 1) {
-			const soleProvider = availableProviders[0]!;
-			const soleConfig = configurations.find(
-				c => c.provider === soleProvider && c.hasApiKey && c.id
+		// No active+keyed config returned a /full load. Before falling
+		// through to the sanitized localStorage/defaults (which always
+		// carry apiKey=''), attempt to load /full for the provider we're
+		// about to surface. The sidebar select binds to `config.provider`
+		// and only fires `onChange` on an actual selection change — so if
+		// we return a provider that's already displayed as the first
+		// option (multi-provider case) or matches a cached selection
+		// (localStorage provider still keyed), re-clicking it does nothing
+		// and `setProvider` never loads the key, leaving AI unavailable
+		// until the user switches to another provider and back. Skip when
+		// the active branch already ran (activeConfig?.hasApiKey): it
+		// either returned (we wouldn't reach here) or failed and set
+		// fullLoadFailed, in which case the fall-through surfaces
+		// fromFallback=true and the sidebar shows the retry state (not
+		// the selects), so the re-click problem doesn't apply.
+		if (!activeConfig?.hasApiKey && availableProviders.length > 0) {
+			// Prefer the cached provider if it's still keyed; otherwise
+			// default to the first available provider (matches
+			// normalizeProviderToAvailable's choice). readLocalConfig is
+			// cheap (localStorage read) and idempotent, so calling it
+			// again below for the fall-through is safe.
+			const cachedProvider = readLocalConfig(availableProviders, fullLoadFailed)
+				?.config.provider;
+			const candidate: AIProvider =
+				cachedProvider && availableProviders.includes(cachedProvider)
+					? cachedProvider
+					: availableProviders[0]!;
+			const candidateConfig = configurations.find(
+				c => c.provider === candidate && c.hasApiKey && c.id
 			);
-			if (soleConfig?.id) {
+			if (candidateConfig?.id) {
 				try {
-					const full = await fetchFullAIConfig(soleConfig.id);
+					const full = await fetchFullAIConfig(candidateConfig.id);
 					return {
 						config: {
 							provider: full.provider,

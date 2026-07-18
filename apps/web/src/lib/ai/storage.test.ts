@@ -317,42 +317,106 @@ describe('AI Storage', () => {
 			expect(result.config).toEqual(defaultAIConfig);
 		});
 
-		test('should normalize provider to an available one when no active config and default provider is not keyed', async () => {
+		test('should auto-fetch full config for the first keyed provider when no active config and multiple keyed providers exist', async () => {
 			// User has keyed configs for openai and chutes but none is
-			// active. The fall-through returns defaultAIConfig (provider=
-			// 'gemini') with availableProviders=['openai','chutes']. Without
-			// normalization the sidebar select binds to 'gemini' which is
-			// absent from the filtered options, leaving AI unavailable.
-			// The config.provider must be normalized to the first available
-			// provider and the model reset to that provider's default.
+			// active. Without auto-fetch the fall-through normalizes the
+			// provider to availableProviders[0] ('openai') with apiKey='',
+			// and the sidebar select — which binds to config.provider and
+			// only fires onChange on a selection change — already displays
+			// 'openai' as the first option, so re-clicking it does nothing
+			// and setProvider never loads the key. The load must fetch /full
+			// for the first available provider and return enabled=true with
+			// the real apiKey.
+			let callCount = 0;
 			// @ts-expect-error -- test-only: replace global fetch with mock
-			globalThis.fetch = mock(async () => ({
-				ok: true,
-				json: async () => ({
-					configurations: [
-						{
-							id: 'cfg-1',
-							isActive: false,
-							hasApiKey: true,
-							provider: 'openai',
-						},
-						{
-							id: 'cfg-2',
-							isActive: false,
-							hasApiKey: true,
-							provider: 'chutes',
-						},
-					],
-				}),
-			}));
+			globalThis.fetch = mock(async (url: string) => {
+				callCount++;
+				if (callCount === 1) {
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [
+								{
+									id: 'cfg-1',
+									isActive: false,
+									hasApiKey: true,
+									provider: 'openai',
+								},
+								{
+									id: 'cfg-2',
+									isActive: false,
+									hasApiKey: true,
+									provider: 'chutes',
+								},
+							],
+						}),
+					};
+				}
+				expect(url).toContain('/cfg-1/full');
+				return {
+					ok: true,
+					json: async () => ({
+						provider: 'openai',
+						apiKey: 'sk-key',
+						modelName: 'gpt-4o',
+						gameVariant: 'chess',
+					}),
+				};
+			});
 
 			const result = await loadAIConfigWithProviders();
 
+			expect(callCount).toBe(2);
 			expect(result.availableProviders).toEqual(['openai', 'chutes']);
 			expect(result.config.provider).toBe('openai');
-			expect(result.config.model).toBe('gpt-4o-mini');
-			expect(result.config.apiKey).toBe('');
+			expect(result.config.apiKey).toBe('sk-key');
+			expect(result.config.model).toBe('gpt-4o');
+			expect(result.config.enabled).toBe(true);
 			expect(result.fromFallback).toBe(false);
+		});
+
+		test('should fall through to normalize when no active config, multiple keyed providers, and candidate /full fails', async () => {
+			// Multiple keyed providers, none active, and the auto-fetch for
+			// the first provider's /full fails. The fall-through must set
+			// fullLoadFailed so fromFallback=true surfaces (sidebar shows
+			// the retry state, not broken selects), and the provider is
+			// normalized to the first available with apiKey=''.
+			let callCount = 0;
+			// @ts-expect-error -- test-only: replace global fetch with mock
+			globalThis.fetch = mock(async (url: string) => {
+				callCount++;
+				if (callCount === 1) {
+					return {
+						ok: true,
+						json: async () => ({
+							configurations: [
+								{
+									id: 'cfg-1',
+									isActive: false,
+									hasApiKey: true,
+									provider: 'openai',
+								},
+								{
+									id: 'cfg-2',
+									isActive: false,
+									hasApiKey: true,
+									provider: 'chutes',
+								},
+							],
+						}),
+					};
+				}
+				expect(url).toContain('/cfg-1/full');
+				return { ok: false, json: async () => ({}) };
+			});
+
+			const result = await loadAIConfigWithProviders();
+
+			expect(callCount).toBe(2);
+			expect(result.fromFallback).toBe(true);
+			expect(result.availableProviders).toEqual(['openai', 'chutes']);
+			expect(result.config.provider).toBe('openai');
+			expect(result.config.apiKey).toBe('');
 		});
 
 		test('should auto-fetch full config for the sole keyed provider when no active config exists', async () => {
