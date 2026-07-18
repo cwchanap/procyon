@@ -1,11 +1,7 @@
 import { test, expect, describe, beforeEach, afterEach, mock } from 'bun:test';
 
-// Mock the auth module before importing storage (avoids React dependency)
-mock.module('../auth', () => ({
-	getAuthHeaders: mock(() => Promise.resolve({})),
-}));
-
-// Now import storage after the mock is set up
+// Import storage without a module mock. Bun's mock.module is process-global and
+// would leak a partial auth module into unrelated component test files.
 const {
 	defaultAIConfig,
 	saveAIConfig,

@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../../test/reactSetup';
@@ -8,25 +8,51 @@ import {
 	resetAIConfigStore,
 } from '../../lib/ai/ai-config-store';
 import SidebarAIConfig from './SidebarAIConfig';
+import { __resetSharedAuthUserForTests } from '../../lib/auth';
+import type { AuthUser } from '../../lib/auth-helpers';
 
 setupReactDom();
 
-// Mutable auth state so individual tests can flip isAuthenticated to exercise
-// the unauth guard without re-registering the module mock.
-const authState = {
-	isAuthenticated: true,
-	user: { username: 'tester' },
-	loading: false,
+const TEST_USER: AuthUser = {
+	id: 'sidebar-ai-config-test-user',
+	email: 'sidebar-ai-config@example.com',
+	username: 'tester',
 };
 
-mock.module('../../lib/auth', () => ({
-	useAuth: () => authState,
-}));
+let originalFetch: typeof globalThis.fetch;
+let originalLocalStorageDesc: PropertyDescriptor | undefined;
+
+function setInitialAuthUser(user: AuthUser | null): void {
+	(
+		window as unknown as { __PROCYON_INITIAL_AUTH_USER__?: AuthUser | null }
+	).__PROCYON_INITIAL_AUTH_USER__ = user;
+}
+
+function clearInitialAuthUser(): void {
+	delete (
+		window as unknown as { __PROCYON_INITIAL_AUTH_USER__?: AuthUser | null }
+	).__PROCYON_INITIAL_AUTH_USER__;
+}
+
+function installUnauthenticatedSession(): void {
+	(globalThis as unknown as { fetch: unknown }).fetch = (() =>
+		Promise.resolve({
+			ok: false,
+			status: 401,
+			json: () => Promise.resolve({}),
+		})) as unknown as typeof fetch;
+}
 
 describe('SidebarAIConfig', () => {
 	beforeEach(() => {
 		resetAIConfigStore();
-		authState.isAuthenticated = true;
+		__resetSharedAuthUserForTests();
+		setInitialAuthUser(TEST_USER);
+		originalFetch = globalThis.fetch;
+		originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
+			globalThis,
+			'localStorage'
+		);
 
 		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
 			Promise.resolve({
@@ -41,6 +67,7 @@ describe('SidebarAIConfig', () => {
 			configurable: true,
 			value: window.localStorage,
 		});
+		window.localStorage.clear();
 
 		setConfig({
 			provider: 'gemini',
@@ -52,7 +79,19 @@ describe('SidebarAIConfig', () => {
 	});
 
 	afterEach(() => {
-		delete (globalThis as Partial<typeof globalThis>).localStorage;
+		resetAIConfigStore();
+		__resetSharedAuthUserForTests();
+		clearInitialAuthUser();
+		(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+		if (originalLocalStorageDesc) {
+			Object.defineProperty(
+				globalThis,
+				'localStorage',
+				originalLocalStorageDesc
+			);
+		} else {
+			delete (globalThis as Record<string, unknown>).localStorage;
+		}
 	});
 
 	test('renders provider and model selects plus manage-keys link', async () => {
@@ -92,7 +131,7 @@ describe('SidebarAIConfig', () => {
 		// which 401s and sets hydrateError. The sidebar should surface a
 		// sign-in prompt rather than a connection/retry error, since
 		// unauthenticated is the expected state for a public page.
-		authState.isAuthenticated = false;
+		setInitialAuthUser(null);
 		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
 			Promise.reject(new Error('Network error'))) as unknown as typeof fetch;
 
@@ -101,8 +140,10 @@ describe('SidebarAIConfig', () => {
 		const { getByText, queryByText, queryByLabelText } = render(
 			<SidebarAIConfig />
 		);
-		expect(getByText(/Sign in to configure your AI provider/i)).toBeTruthy();
-		expect(getByText(/Sign in →/i)).toBeTruthy();
+		await waitFor(() => {
+			expect(getByText(/Sign in to configure your AI provider/i)).toBeTruthy();
+			expect(getByText(/Sign in →/i)).toBeTruthy();
+		});
 		// The connection-error/retry copy must not appear for unauth users.
 		expect(queryByText(/couldn[\u2019']t load your AI settings/i)).toBeNull();
 		expect(queryByText(/Retry/i)).toBeNull();
@@ -127,11 +168,14 @@ describe('SidebarAIConfig', () => {
 		// so `hydrated` stays false. The sidebar must surface the sign-in
 		// prompt directly rather than rendering provider/model controls that
 		// onProviderChange would reject after the fact.
-		authState.isAuthenticated = false;
+		setInitialAuthUser(null);
+		installUnauthenticatedSession();
 
 		const { getByText, queryByLabelText } = render(<SidebarAIConfig />);
-		expect(getByText(/Sign in to configure your AI provider/i)).toBeTruthy();
-		expect(getByText(/Sign in →/i)).toBeTruthy();
+		await waitFor(() => {
+			expect(getByText(/Sign in to configure your AI provider/i)).toBeTruthy();
+			expect(getByText(/Sign in →/i)).toBeTruthy();
+		});
 		// Provider/model selects must not render for unauth users.
 		expect(queryByLabelText(/AI Provider/i)).toBeNull();
 		expect(queryByLabelText(/AI Model/i)).toBeNull();
