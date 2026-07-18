@@ -320,7 +320,11 @@ const ChessGame: React.FC = () => {
 	];
 
 	const getCurrentDemo = useCallback((): LogicDemo => {
-		return logicDemos.find(demo => demo.id === currentDemo) ?? logicDemos[0]!;
+		const found = logicDemos.find(demo => demo.id === currentDemo);
+		if (found) return found;
+		const fallback = logicDemos[0];
+		if (!fallback) throw new Error('logicDemos must not be empty');
+		return fallback;
 	}, [currentDemo, logicDemos]);
 
 	// AI Move handling

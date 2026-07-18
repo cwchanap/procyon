@@ -24,7 +24,6 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 	triggerDebugLoss: () => void;
 	triggerDebugDraw: () => void;
 	showDebugWinButton: boolean;
-	setShowDebugWinButton: (v: boolean) => void;
 } {
 	const {
 		aiPlayer,
@@ -115,6 +114,5 @@ export function useGameDebugOutcomes<TPlayer extends string>(options: {
 		triggerDebugLoss,
 		triggerDebugDraw,
 		showDebugWinButton,
-		setShowDebugWinButton,
 	};
 }

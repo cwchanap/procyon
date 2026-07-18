@@ -249,9 +249,11 @@ const XiangqiGame: React.FC = () => {
 	];
 
 	const getCurrentDemo = useCallback((): XiangqiDemo => {
-		return (
-			xiangqiDemos.find(demo => demo.id === currentDemo) ?? xiangqiDemos[0]!
-		);
+		const found = xiangqiDemos.find(demo => demo.id === currentDemo);
+		if (found) return found;
+		const fallback = xiangqiDemos[0];
+		if (!fallback) throw new Error('xiangqiDemos must not be empty');
+		return fallback;
 	}, [currentDemo, xiangqiDemos]);
 
 	// AI setup and debug callback
