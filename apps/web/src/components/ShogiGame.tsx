@@ -277,7 +277,11 @@ const ShogiGame: React.FC = () => {
 	];
 
 	const getCurrentDemo = useCallback((): ShogiDemo => {
-		return shogiDemos.find(demo => demo.id === currentDemo) ?? shogiDemos[0]!;
+		const found = shogiDemos.find(demo => demo.id === currentDemo);
+		if (found) return found;
+		const fallback = shogiDemos[0];
+		if (!fallback) throw new Error('shogiDemos must not be empty');
+		return fallback;
 	}, [currentDemo, shogiDemos]);
 
 	// AI setup and debug callback
