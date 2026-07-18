@@ -90,7 +90,16 @@ describe('db/index - initializeDB and getDB', () => {
 		const mockD1 = createMockD1();
 		const initialized = initializeDB(mockD1);
 		expect(initialized).toBeDefined();
+		// `drizzle-orm/d1`'s factory records the client binding on the
+		// returned db as `$client` (see drizzle-orm/d1/driver.js). Asserting
+		// identity here proves the supplied binding reached the
+		// `drizzle(d1, { schema })` call — not just that initialization
+		// succeeded. This avoids a process-wide `mock.module` on
+		// `drizzle-orm/d1`, which would interfere with the other test files
+		// that transitively import `db/index`.
+		expect(initialized.$client).toBe(mockD1);
 		// getDB returns the same D1-backed instance.
 		expect(getDB()).toBe(initialized);
+		expect(getDB().$client).toBe(mockD1);
 	});
 });
