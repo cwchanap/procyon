@@ -530,18 +530,48 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 	setupAIConfigStoreFetchMocks();
 
 	test('hydrate populates availableProviders and clears hydrateError on success', async () => {
-		// @ts-expect-error -- test-only: replace global fetch with list mock
-		globalThis.fetch = mock(async () => ({
-			ok: true,
-			json: async () => ({
-				configurations: [
-					{ id: 'cfg-g', provider: 'gemini', hasApiKey: true, isActive: false },
-					{ id: 'cfg-o', provider: 'openai', hasApiKey: true, isActive: false },
-					// no-key entry should be filtered out of availableProviders
-					{ id: 'cfg-x', provider: 'openrouter', hasApiKey: false },
-				],
-			}),
-		}));
+		// List returns gemini+openai keyed, none active. With the
+		// auto-fetch fix, loadAIConfigWithProviders also fetches /full
+		// for the first available provider (gemini) before returning, so
+		// the mock must handle that second call.
+		let callCount = 0;
+		// @ts-expect-error -- test-only: replace global fetch with mock
+		globalThis.fetch = mock(async (url: string) => {
+			callCount++;
+			if (callCount === 1) {
+				return {
+					ok: true,
+					json: async () => ({
+						configurations: [
+							{
+								id: 'cfg-g',
+								provider: 'gemini',
+								hasApiKey: true,
+								isActive: false,
+							},
+							{
+								id: 'cfg-o',
+								provider: 'openai',
+								hasApiKey: true,
+								isActive: false,
+							},
+							// no-key entry should be filtered out of availableProviders
+							{ id: 'cfg-x', provider: 'openrouter', hasApiKey: false },
+						],
+					}),
+				};
+			}
+			expect(url).toContain('/cfg-g/full');
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gem-key',
+					modelName: 'gemini-2.5-flash-lite',
+					gameVariant: 'chess',
+				}),
+			};
+		});
 
 		await hydrate();
 
@@ -872,7 +902,17 @@ describe('ai-config-store hydration (mocked fetch)', () => {
 				// setProvider's list fetch fails.
 				throw new Error('Network error');
 			}
-			return { ok: true, json: async () => ({}) };
+			// Hydrate's auto-fetch for the first available provider (gemini).
+			expect(url).toContain('/cfg-g/full');
+			return {
+				ok: true,
+				json: async () => ({
+					provider: 'gemini',
+					apiKey: 'gem-key',
+					modelName: 'gemini-2.5-flash-lite',
+					gameVariant: 'chess',
+				}),
+			};
 		});
 
 		const hydratePromise = hydrate();
