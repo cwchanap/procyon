@@ -10,6 +10,7 @@ import {
 	selectSquare,
 	resetGame,
 } from '../lib/jungle/game';
+import { applyJungleAIMove } from '../lib/jungle/ai-move';
 import { createInitialTerrain, getRow } from '../lib/jungle/types';
 import { createInitialBoard } from '../lib/jungle/board';
 import { createJungleAI } from '../lib/ai';
@@ -307,33 +308,18 @@ const JungleGame: React.FC = () => {
 							aiResponse.move.to
 						);
 
-						// Apply the move using jungle game logic
-						const moveResult = selectSquare(gameState, fromPos);
-						const hasSelectedPiece = Boolean(moveResult.selectedSquare);
-
-						if (!hasSelectedPiece) {
-							throw new Error(
-								`AI move invalid: no selectable piece at ${aiResponse.move.from}`
-							);
-						}
-
-						const finalResult = selectSquare(moveResult, toPos);
-						// selectSquare always returns a fresh object (copyGameState),
-						// so reference inequality cannot detect a failed move. An
-						// illegal destination clears selection but leaves the board,
-						// history, and turn untouched - the same shape produced after
-						// a legal move. Compare move history length instead: a valid
-						// move appends exactly one entry; an illegal one appends none.
-						const moveApplied =
-							finalResult.moveHistory.length > moveResult.moveHistory.length;
-
-						if (!moveApplied) {
-							throw new Error(
-								`AI move invalid: unable to apply ${aiResponse.move.from} -> ${aiResponse.move.to}`
-							);
-						}
-
-						setGameState(finalResult);
+						// Apply the move using jungle game logic. The helper
+						// throws on a no-selectable-piece source or an illegal
+						// destination; the catch block surfaces the error.
+						setGameState(
+							applyJungleAIMove(
+								gameState,
+								fromPos,
+								toPos,
+								aiResponse.move.from,
+								aiResponse.move.to
+							)
+						);
 					} else {
 						setAiError('AI did not return a valid response');
 						setIsAiPaused(true);

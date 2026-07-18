@@ -3,12 +3,14 @@ import type { ShogiGameState, ShogiPosition, ShogiPiece } from '../lib/shogi';
 import {
 	createInitialGameState,
 	selectSquare,
-	selectHandPiece,
 	confirmPromotion,
-	makeAIMove as makeShogiAIMove,
 	SHOGI_BOARD_SIZE,
 	getRow,
 } from '../lib/shogi';
+import {
+	applyShogiAIMoveResponse,
+	computeHandPieceClickState,
+} from '../lib/shogi/ai-move';
 import { createShogiAI } from '../lib/ai';
 import { rehydrate as rehydrateAIConfig } from '../lib/ai/ai-config-store';
 import {
@@ -327,73 +329,9 @@ const ShogiGame: React.FC = () => {
 					const aiResponse = await aiService.makeMove(gameState, gen);
 					if (isStale(gen)) return;
 					if (aiResponse) {
-						// Parse AI move from algebraic notation
-						if (aiResponse.move.from === '*') {
-							// Drop move
-							const to = aiResponse.move.to;
-							const pieceType = aiResponse.move.pieceType;
-
-							if (!pieceType) {
-								throw new Error(
-									`Invalid drop move: missing pieceType for ${to}`
-								);
-							}
-
-							// Validate pieceType is a valid Shogi drop piece type
-							const validDropPieceTypes = [
-								'pawn',
-								'lance',
-								'knight',
-								'silver',
-								'gold',
-								'bishop',
-								'rook',
-							] as const;
-							type ValidDropPieceType = (typeof validDropPieceTypes)[number];
-
-							if (
-								!validDropPieceTypes.includes(pieceType as ValidDropPieceType)
-							) {
-								throw new Error(
-									`Invalid drop move: invalid pieceType ${pieceType}`
-								);
-							}
-
-							// Apply drop move using makeShogiAIMove
-							const moveResult = makeShogiAIMove(
-								gameState,
-								'*',
-								to,
-								false,
-								pieceType as ValidDropPieceType
-							);
-							if (moveResult) {
-								setGameState(moveResult);
-							} else {
-								throw new Error(
-									`Failed to apply AI drop move: pieceType=${pieceType}, to=${to}`
-								);
-							}
-						} else {
-							// Regular move
-							const promote = aiResponse.move.promote ?? false;
-
-							// Apply move directly using makeShogiAIMove (bypasses pendingPromotion UI)
-							const moveResult = makeShogiAIMove(
-								gameState,
-								aiResponse.move.from,
-								aiResponse.move.to,
-								promote
-							);
-
-							if (moveResult) {
-								setGameState(moveResult);
-							} else {
-								throw new Error(
-									`Failed to apply AI move: from=${aiResponse.move.from}, to=${aiResponse.move.to}, promote=${promote}`
-								);
-							}
-						}
+						// Apply the AI move (drop or regular). The helper throws on a
+						// malformed/unappliable move; the catch block surfaces it.
+						setGameState(applyShogiAIMoveResponse(gameState, aiResponse));
 					} else {
 						setAiError('AI did not return a valid response');
 						setIsAiPaused(true);
@@ -492,14 +430,15 @@ const ShogiGame: React.FC = () => {
 
 	const handleHandPieceClick = useCallback(
 		(piece: ShogiPiece) => {
-			if (gameMode === 'ai') {
-				if (gameState.currentPlayer === aiPlayer || isAIThinking) {
-					return;
-				}
-			}
-			if (piece.color === gameState.currentPlayer) {
-				const newGameState = selectHandPiece(gameState, piece);
-				setGameState(newGameState);
+			const next = computeHandPieceClickState(
+				gameState,
+				piece,
+				gameMode,
+				aiPlayer,
+				isAIThinking
+			);
+			if (next) {
+				setGameState(next);
 			}
 		},
 		[gameMode, gameState, aiPlayer, isAIThinking]

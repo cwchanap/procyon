@@ -645,3 +645,102 @@ describe.each(LATE_CALLBACK_GAMES)(
 		});
 	}
 );
+
+// ChessGame-only: the debug-callback useEffect registers a callback on the
+// AI service that fires for ai-debug (thinking) and ai-move (result) events
+// during makeMove, each stamped with the request's gen as data.requestId.
+// The callback's first statement is `if (isStale(data?.requestId)) return`
+// so a late callback from a superseded request is dropped instead of
+// appending to the new game's AI Move History. The mode-switch tests above
+// cover the makeAIMove stale-gen bail but run WITHOUT debug mode, so the
+// debug-callback stale bail is never exercised. Here we hold the LLM
+// in-flight across a mode-switch with debug mode ON: the ai-debug (thinking)
+// callback fires before the fetch with the current gen (appended), then the
+// mode-switch invalidates; when the LLM resolves, the ai-move callback fires
+// with the now-stale requestId and bails — so the "AI suggests" entry never
+// appears in AI Move History.
+describe('ChessGame — debug callback stale-requestId bail', () => {
+	beforeEach(() => {
+		clearInitialAuthUser();
+		resetAIConfigStore();
+	});
+
+	afterEach(() => {
+		clearInitialAuthUser();
+		resetAIConfigStore();
+	});
+
+	test('ai-move debug callback is dropped after mode-switch invalidate (no "AI suggests" entry)', async () => {
+		const env = setupControllableLLMMock();
+
+		const originalError = console.error;
+		const errorCalls: string[] = [];
+		// eslint-disable-next-line no-console
+		console.error = (...args: unknown[]) => {
+			errorCalls.push(args.join(' '));
+		};
+
+		try {
+			const { getByLabelText, getByRole, getByText, queryByText } = render(
+				<ChessGame />
+			);
+
+			const select = (await waitFor(() =>
+				getByLabelText(/AI plays/i)
+			)) as HTMLSelectElement;
+
+			await env.waitForAuthSettled();
+			act(() => {
+				setConfig({ enabled: true, apiKey: 'fake-key' });
+			});
+
+			// Toggle debug mode ON so the debug-callback useEffect registers
+			// a callback on the AI service.
+			fireEvent.click(getByRole('button', { name: /Debug Mode/i }));
+
+			// AI plays the first-moving side (white) so the AI-turn effect
+			// fires immediately on Start.
+			fireEvent.change(select, { target: { value: 'white' } });
+			fireEvent.click(getByRole('button', { name: /start/i }));
+
+			// Wait for the 1s setTimeout to fire and makeMove to reach the
+			// LLM fetch. By now the ai-debug (thinking) callback has already
+			// fired with the current gen and appended a thinking entry, so
+			// "AI Move History" is visible.
+			await waitFor(() => expect(env.llmFetchCalled).toBe(true), {
+				timeout: 3000,
+			});
+			await waitFor(
+				() => {
+					expect(getByText(/AI Move History/i)).toBeTruthy();
+				},
+				{ timeout: 3000 }
+			);
+
+			// Mode switch to Tutorial → invalidate() bumps the gen.
+			const tutorialButton = getByRole('button', { name: /^tutorial$/i });
+			fireEvent.click(tutorialButton);
+
+			// Resolve with a valid opening move. The ai-move callback now
+			// fires with the stale requestId and must bail at
+			// `if (isStale(data?.requestId)) return` — so the "AI suggests"
+			// result entry is NOT appended to AI Move History.
+			await env.resolveLLMAndSettle(
+				'{"move":{"from":"e2","to":"e4"},"thinking":"valid","confidence":0.9}'
+			);
+
+			expect(queryByText(/AI suggests/i)).toBeNull();
+
+			// No error surfaced from the dropped callback.
+			expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(false);
+
+			// Mode-switch succeeded and wasn't corrupted by the stale
+			// callback: the tutorial heading is visible.
+			expect(getByRole('heading', { name: /Logic & Tutorials/i })).toBeTruthy();
+		} finally {
+			env.restore();
+			// eslint-disable-next-line no-console
+			console.error = originalError;
+		}
+	});
+});
