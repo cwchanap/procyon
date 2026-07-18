@@ -66,3 +66,18 @@ describe('ChessAdapter - formatMoveHistory (via generatePrompt)', () => {
 		expect(prompt).toContain('e5-d6');
 	});
 });
+
+describe('ChessAdapter - generatePrompt defensive guard', () => {
+	test('throws when getAllValidMoves returns an empty array', () => {
+		const adapter = new ChessAdapter();
+		// getAllValidMoves normally always returns at least one entry (it
+		// substitutes a "No valid moves" string when none exist), so the
+		// `if (!validMoves) throw` guard in generatePrompt is only reachable
+		// if a subclass or stub breaks that invariant. Override the method
+		// to return [] and assert the guard fires.
+		adapter.getAllValidMoves = () => [];
+		expect(() => adapter.generatePrompt(createInitialGameState())).toThrow(
+			'getAllValidMoves returned an empty array'
+		);
+	});
+});

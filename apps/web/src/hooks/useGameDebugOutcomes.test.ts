@@ -11,7 +11,9 @@ function chessHumanPlayer(ai: ChessColor): ChessColor {
 	return ai === 'black' ? 'white' : 'black';
 }
 
-const originalDev = (import.meta.env as { DEV: boolean }).DEV;
+type MutableEnv = { DEV: boolean };
+const env = import.meta.env as unknown as MutableEnv;
+const originalDev = env.DEV;
 
 describe('useGameDebugOutcomes', () => {
 	const winStatus = 'checkmate';
@@ -19,11 +21,11 @@ describe('useGameDebugOutcomes', () => {
 
 	beforeEach(() => {
 		// Ensure DEV so global trigger + Shift+D effects register
-		(import.meta.env as { DEV: boolean }).DEV = true;
+		env.DEV = true;
 	});
 
 	afterEach(() => {
-		(import.meta.env as { DEV: boolean }).DEV = originalDev;
+		env.DEV = originalDev;
 	});
 
 	test('triggerDebugWin calls setOutcome with winStatus and aiPlayer', () => {

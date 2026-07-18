@@ -1391,7 +1391,7 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		const originalDev = import.meta.env.DEV;
 		const originalWarn = console.warn;
 		const warnCalls: string[] = [];
-		import.meta.env.DEV = true;
+		(import.meta.env as unknown as { DEV: boolean }).DEV = true;
 		console.warn = (...args: unknown[]) => {
 			warnCalls.push(args.join(' '));
 		};
