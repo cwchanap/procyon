@@ -72,61 +72,78 @@ type MutableEnv = { DEV: boolean };
 const env = import.meta.env as unknown as MutableEnv;
 const originalDev = env.DEV;
 
-describe.each(GAMES)('$name — same-mode guard', ({ Component, selectId }) => {
-	beforeEach(() => {
-		delete (window as unknown as Record<string, unknown>)
-			.__PROCYON_INITIAL_AUTH_USER__;
-		__resetSharedAuthUserForTests();
-		resetAIConfigStore();
-	});
-
-	afterEach(() => {
-		delete (window as unknown as Record<string, unknown>)
-			.__PROCYON_INITIAL_AUTH_USER__;
-		__resetSharedAuthUserForTests();
-		resetAIConfigStore();
-		cleanup();
-	});
-
-	test('re-clicking the active "Play vs AI" mode does not reset the started game', async () => {
-		const { getByLabelText, getByRole } = render(<Component />);
-		const select = (await waitFor(() =>
-			getByLabelText(/AI plays/i)
-		)) as HTMLSelectElement;
-
-		expect(select.id).toBe(selectId);
-		expect(select.disabled).toBe(false);
-
-		// Start the game (unauthenticated => aiStarting is false => Start
-		// proceeds and locks the AI-side select via gameActive). Wait for
-		// the Start button to be ready before clicking, in case auth/config
-		// initialization transiently renders it as "Loading AI config…"
-		// (which would not match /start/i).
-		const startButton = await waitFor(() =>
-			getByRole('button', { name: /start/i })
-		);
-		fireEvent.click(startButton);
-		await waitFor(() => {
-			expect(select.disabled).toBe(true);
+// IMPORTANT: We intentionally avoid `describe.each(GAMES)(...)` here.
+// Bun 1.3.1 on Linux x64 has a bug where `describe.each` with an array of
+// objects passes a SHIFTED element to the callback (iteration N's callback
+// receives element N+1) while the `$name` title template still uses element
+// N. The result: each suite renders the WRONG game component (ChessGame's
+// suite renders XiangqiGame, etc.), and the per-iteration hooks leak across
+// suites, so the Start button / hydrateError banner never appear and the
+// tests time out. The bug is Linux-specific — the same file passes on macOS
+// with both bun 1.3.1 and 1.3.14 — so it cannot be reproduced locally.
+// Expanding the parametrized suites into plain `describe` blocks inside a
+// `for...of` loop sidesteps the buggy `describe.each` argument-passing
+// codepath entirely. Each loop iteration creates an independent describe
+// scope with its own `const`-bound `Component`/`selectId`/`debugVariantKey`
+// and its own beforeEach/afterEach, so there is no cross-iteration leakage.
+for (const game of GAMES) {
+	const { Component, selectId } = game;
+	describe(`${game.name} — same-mode guard`, () => {
+		beforeEach(() => {
+			delete (window as unknown as Record<string, unknown>)
+				.__PROCYON_INITIAL_AUTH_USER__;
+			__resetSharedAuthUserForTests();
+			resetAIConfigStore();
 		});
 
-		// Re-click the active "Play vs AI" toggle. The same-mode guard must
-		// short-circuit toggleToMode so the game is NOT reset — the AI-side
-		// select stays locked (gameActive remains true).
-		fireEvent.click(getByRole('button', { name: /play vs ai/i }));
+		afterEach(() => {
+			delete (window as unknown as Record<string, unknown>)
+				.__PROCYON_INITIAL_AUTH_USER__;
+			__resetSharedAuthUserForTests();
+			resetAIConfigStore();
+			cleanup();
+		});
 
-		// Allow any pending state updates to flush, then assert the game
-		// is still active (select still disabled). A guard-less toggle would
-		// have set gameStarted=false and re-enabled the select.
-		await waitFor(() => {
-			expect(select.disabled).toBe(true);
+		test('re-clicking the active "Play vs AI" mode does not reset the started game', async () => {
+			const { getByLabelText, getByRole } = render(<Component />);
+			const select = (await waitFor(() =>
+				getByLabelText(/AI plays/i)
+			)) as HTMLSelectElement;
+
+			expect(select.id).toBe(selectId);
+			expect(select.disabled).toBe(false);
+
+			// Start the game (unauthenticated => aiStarting is false => Start
+			// proceeds and locks the AI-side select via gameActive). Wait for
+			// the Start button to be ready before clicking, in case auth/config
+			// initialization transiently renders it as "Loading AI config…"
+			// (which would not match /start/i).
+			const startButton = await waitFor(() =>
+				getByRole('button', { name: /start/i })
+			);
+			fireEvent.click(startButton);
+			await waitFor(() => {
+				expect(select.disabled).toBe(true);
+			});
+
+			// Re-click the active "Play vs AI" toggle. The same-mode guard must
+			// short-circuit toggleToMode so the game is NOT reset — the AI-side
+			// select stays locked (gameActive remains true).
+			fireEvent.click(getByRole('button', { name: /play vs ai/i }));
+
+			// Allow any pending state updates to flush, then assert the game
+			// is still active (select still disabled). A guard-less toggle would
+			// have set gameStarted=false and re-enabled the select.
+			await waitFor(() => {
+				expect(select.disabled).toBe(true);
+			});
 		});
 	});
-});
+}
 
-describe.each(GAMES)(
-	'$name — DEV debug outcome buttons',
-	({ Component, debugVariantKey }) => {
+for (const game of GAMES) {
+	const { Component, debugVariantKey } = game;
+	describe(`${game.name} — DEV debug outcome buttons`, () => {
 		// DEV=true makes usePlayHistory attempt a save on game-over (the
 		// `isAuthenticated || DEV` guard does not short-circuit). Stub fetch +
 		// global localStorage so the save POST resolves cleanly instead of
@@ -268,8 +285,8 @@ describe.each(GAMES)(
 				}
 			});
 		});
-	}
-);
+	});
+}
 
 // Covers the hydrateError banner rendering across variants. When the user
 // is authenticated but the /ai-config fetch fails, useAIConfigHydration
@@ -278,9 +295,9 @@ describe.each(GAMES)(
 // have this banner (it uses a different error UI), so it's excluded.
 const GAMES_WITH_HYDRATE_BANNER = GAMES.filter(g => g.name !== 'ChessGame');
 
-describe.each(GAMES_WITH_HYDRATE_BANNER)(
-	'$name — hydrateError banner',
-	({ Component }) => {
+for (const game of GAMES_WITH_HYDRATE_BANNER) {
+	const { Component } = game;
+	describe(`${game.name} — hydrateError banner`, () => {
 		let originalFetch: typeof globalThis.fetch;
 		let originalLocalStorageDesc: PropertyDescriptor | undefined;
 
@@ -374,5 +391,5 @@ describe.each(GAMES_WITH_HYDRATE_BANNER)(
 			);
 			expect(getByRole('button', { name: /Retry/i })).toBeTruthy();
 		});
-	}
-);
+	});
+}
