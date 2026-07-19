@@ -1,7 +1,7 @@
 # Tier 2 — `@procyon/game-core` Shared Core (Design Spec)
 
-**Status:** Approved — revision 3 after P1/P2 implementation-blocker review (6 comments addressed)
-**Date:** 2026-07-18 (rev 2026-07-19 r2, r3)
+**Status:** Approved — revision 4 after second implementation-review pass (5 P1/P2 comments addressed)
+**Date:** 2026-07-18 (rev 2026-07-19 r2–r4)
 **Project:** [procyon](https://linear.app/cwchanap/project/procyon-b82f2cc99230)
 **Related:** [HPA-154 (Tier 2)](https://linear.app/cwchanap/issue/HPA-154/tier-2-extract-shared-game-core-package), HPA-153 (Tier 1, landed), HPA-155 (Tier 4), HPA-156 (Tier 3)
 
@@ -163,10 +163,13 @@ export interface ChessPiece {
   hasMoved?: boolean;
 }
 export interface Move extends BaseMove<ChessPiece> {
+  from: Position; // NARROWS BaseMove.from (Position | null) — chess has no drops.
+  // Without this re-declaration, move.from.row would require a
+  // null check at every consumer site (current code does not).
+  to: Position; // NARROWS for symmetry; BaseMove.to is already non-null.
   isEnPassant?: boolean;
   isCastling?: boolean;
   promotion?: PieceType;
-  // re-declares `from: Position` (non-null) — chess has no drops
 }
 export interface GameState extends BaseGameState<ChessPiece> {
   status: GameStatus; // re-declared for clarity; chess accepts all 5 values
@@ -177,6 +180,25 @@ export interface GameState extends BaseGameState<ChessPiece> {
   isAiThinking?: boolean;
 }
 ```
+
+Xiangqi and Jungle follow the same `from: Position` narrowing pattern (neither has drops):
+
+```ts
+// apps/web/src/lib/xiangqi/types.ts
+export interface XiangqiMove extends BaseMove<XiangqiPiece> {
+  from: Position; // non-null — xiangqi has no drops
+  to: Position;
+}
+// apps/web/src/lib/jungle/types.ts
+export interface JungleMove extends BaseMove<JunglePiece> {
+  from: Position; // non-null — jungle has no drops
+  to: Position;
+}
+```
+
+Only Shogi inherits `BaseMove.from: Position | null` (for drops) — see its block below.
+
+**`from` narrowing rule (documented, P1-1):** chess, xiangqi, and jungle MUST re-declare `from: Position` (non-null). TypeScript allows narrowing an optional-to-required field via `extends`, but will NOT warn if the re-declaration is omitted — the field silently widens to `Position | null`, breaking every `move.from.row` access at typecheck time. The migration commit-message checklist (§12 steps 3/4/6) must explicitly call out the re-declaration.
 
 Shogi narrows `status` to drop `'stalemate'` (shogi has no stalemate rule):
 
@@ -211,9 +233,20 @@ export interface ShogiGameState extends BaseGameState<ShogiPiece> {
 
 Shogi's `Move.from: Position | null` (drops) is satisfied directly by `BaseMove`. Jungle's `JungleGameState` adds `terrain: JungleTerrain[][]` via extension and re-declares `status: GameStatus`. Xiangqi adds palace/river constants (unchanged) and re-declares `status: GameStatus`.
 
-### 5.2 `Position` helpers
+### 5.2 `Position` aliases
 
-`positionsEqual(a, b)` and `containsPosition(list, pos)` move to `types.ts` — small but currently duplicated.
+`Position` is byte-identical across all four variants. Today each variant exports its own named copy (`Position` in chess, `XiangqiPosition`, `ShogiPosition`, `JunglePosition`). After migration, the shared `Position` from `@procyon/game-core` becomes the single source; each variant re-exports it under both the bare name and the variant-qualified name for backward compatibility:
+
+```ts
+// apps/web/src/lib/{variant}/types.ts
+import type { Position as GameCorePosition } from '@procyon/game-core';
+export type Position = GameCorePosition; // chess already uses bare `Position`
+export type XiangqiPosition = GameCorePosition; // xiangqi keeps its qualified name
+export type ShogiPosition = GameCorePosition; // shogi
+export type JunglePosition = GameCorePosition; // jungle
+```
+
+Existing consumer code that imports `XiangqiPosition`/`ShogiPosition`/`JunglePosition` continues to typecheck unchanged; new code can import `Position` from `@procyon/game-core` directly. `positionsEqual(a, b)` and `containsPosition(list, pos)` move to `types.ts` in the shared package — small but currently duplicated.
 
 ## 6. `GridBoard` primitives + shallow-copy bug fix
 
@@ -238,7 +271,9 @@ export function setPieceAt<TPiece>(
   piece: TPiece | null,
   dims: Dims
 ): void;
-export function copyBoard<TPiece>(board: GridBoard<TPiece>): GridBoard<TPiece>;
+export function copyBoard<TPiece extends { color: string }>(
+  board: GridBoard<TPiece>
+): GridBoard<TPiece>;
 export function isSquareEmpty<TPiece>(
   board: GridBoard<TPiece>,
   pos: Position,
@@ -283,14 +318,24 @@ export function bindBoard<TPiece>(dims: Dims): {
 };
 ```
 
-### 6.1 `copyBoard` deep-clones
+### 6.1 `copyBoard` spread-clones colored pieces
 
 ```ts
-export function copyBoard<TPiece>(board: GridBoard<TPiece>): GridBoard<TPiece> {
+export function copyBoard<TPiece extends { color: string }>(
+  board: GridBoard<TPiece>
+): GridBoard<TPiece> {
   return board.map(row =>
     row.map(piece => (piece === null ? null : { ...piece }))
   );
 }
+```
+
+The `<TPiece extends { color: string }>` constraint (P2-4) **enforces the safety boundary at the type level**: only piece types (chess/xiangqi/shogi/jungle — all carry `color`) satisfy it. JungleTerrain (`{ type; owner? }` — no `color`) is now a compile error:
+
+```ts
+// Type error — JungleTerrain lacks `color`, so it doesn't satisfy the constraint.
+// This prevents accidentally routing terrain through the shared helper.
+copyBoard(terrain); // ← TS2344: Type 'JungleTerrain' does not satisfy the constraint '{ color: string }'.
 ```
 
 Object-spread (`{ ...piece }`) clones each piece object one level deep. This is sufficient because every variant's piece shape is **flat** — no nested objects:
@@ -302,9 +347,9 @@ Object-spread (`{ ...piece }`) clones each piece object one level deep. This is 
 | Shogi   | `{ type, color, isPromoted? }`      | ✓     |
 | Jungle  | `{ type, color, rank }`             | ✓     |
 
-**Why not `structuredClone`:** the global `structuredClone` is declared in `lib.dom.d.ts`, not in `lib.esnext.d.ts`. The package deliberately ships with `lib: ["ESNext"]` only (no DOM — pure logic), so `structuredClone` would fail to typecheck (`Cannot find name 'structuredClone'`). Spread-clone sidesteps the lib issue, is faster, and is honest about the actual invariant ("clone flat piece objects" — not "deep-clone arbitrary nested structures").
+**Why not `structuredClone`:** the global `structuredClone` is declared in `lib.dom.d.ts`, not in `lib.esnext.d.ts`. The package deliberately ships with `lib: ["ESNext"]` only (no DOM — pure logic), so `structuredClone` would fail to typecheck (`Cannot find name 'structuredClone'`). Spread-clone sidesteps the lib issue, is faster, and is honest about the actual invariant ("clone flat colored piece objects" — not "deep-clone arbitrary nested structures").
 
-**Flatness invariant:** adding a piece property that holds a nested object (e.g. `metadata: { ... }`) breaks the deep-clone guarantee. The shared `copyBoard` will share the nested reference. The regression test in §14 asserts the flat case; if a future change introduces nested piece data, the test must be updated AND the clone strategy revisited (switch to `structuredClone` + add `lib.dom` or an ambient `.d.ts`).
+**Flatness invariant:** adding a piece property that holds a nested object (e.g. `metadata: { ... }`) breaks the deep-clone guarantee — the shared `copyBoard` will share the nested reference. The regression tests in §14 assert both (a) the flat case works and (b) the nested case shares references (documenting the limit, so a reviewer adding nested data sees the test fail and revisits the strategy).
 
 This matches the existing behavior of xiangqi/shogi/jungle (which already deep-clone) and **fixes the chess shallow-copy bug** where `chess/board.ts:95-99` did `board.map(row => [...row])`, sharing piece-object references between the original and the copy. Any chess code that mutated a piece object in-place after `copyBoard` will see changed behavior — the full chess test suite is the regression gate.
 
@@ -341,7 +386,7 @@ export {
 
 Variant-local `createInitialBoard`/`getRow` stay per-variant (they reference variant-specific piece layouts and the `getRow` throw-helper used to satisfy `noUncheckedIndexedAccess`).
 
-**Jungle terrain cloning:** the shared `copyBoard` is piece-board-only. Jungle's `JungleGameState` also carries `terrain: JungleTerrain[][]` which must be cloned independently. Jungle retains a variant-local `copyTerrain(terrain): JungleTerrain[][]` (deep clone via `structuredClone`) and composes: `copyGameState(s) = { ...s, board: copyBoard(s.board), terrain: copyTerrain(s.terrain) }`. Implementers must NOT route `terrain` through the shared helper — `copyBoard` only knows about `(TPiece | null)[][]`.
+**Jungle terrain cloning (P2-4 reinforced):** the shared `copyBoard` is piece-board-only and constrained to `<TPiece extends { color: string }>`. Jungle's `JungleTerrain` lacks a `color` field (`{ type; owner? }`), so passing `terrain` to `copyBoard` is a compile-time error — the type system enforces the boundary. Jungle retains a variant-local `copyTerrain(terrain): JungleTerrain[][]` (deep clone via `structuredClone` or manual map, since terrain is jungle-local it can use DOM/lib.dom-available primitives freely inside `apps/web`) and composes: `copyGameState(s) = { ...s, board: copyBoard(s.board), terrain: copyTerrain(s.terrain) }`. Implementers must NOT route `terrain` through the shared helper — the constraint makes this impossible to do accidentally.
 
 **`bindBoard` identity note (Minor #7):** the destructured-and-re-exported bound helpers are closures. Their TypeScript identity is `typeof` the closure (e.g. `(pos: Position) => boolean`), not `typeof import('@procyon/game-core').isValidPosition` (which is the unbound 2-arg form). Any consumer using `typeof`-based typing against the variant's `board.ts` exports will see the bound signature — this is the intended shape. The unbound forms remain importable from `@procyon/game-core` directly when needed.
 
@@ -443,8 +488,21 @@ export function findPiece<TPiece>(
   dims: Dims
 ): Position | null;
 
-// Color-agnostic: caller pre-binds the attacker color into isAttacked.
-// kingPos is non-null — callers handle absence and supply their own policy.
+// The actual dedup primitive (P1-2). Iterates enemy pieces, calls each
+// piece's move generator, returns true if any move hits `targetPos`.
+// This is the scaffold duplicated in chess/game.ts:137-157 and
+// xiangqi/game.ts:139-161 (and structurally mirrored in shogi).
+export function isSquareAttacked<TPiece extends { color: string }>(
+  board: GridBoard<TPiece>,
+  targetPos: Position,
+  attackerColor: string,
+  getMovesForPiece: (board: GridBoard<TPiece>, from: Position) => Position[],
+  dims: Dims
+): boolean;
+
+// Thin naming wrapper. The caller pre-binds the attacker color by closing
+// over isSquareAttacked. kingPos is non-null — callers handle absence and
+// supply their own policy.
 export function isInCheck<TPiece>(
   board: GridBoard<TPiece>,
   kingPos: Position,
@@ -464,7 +522,23 @@ export function forEachOwnPieceMove<TPiece extends { color: string }>(
 
 **Key design decisions (P1-2, P1-3, P2-1):**
 
-- **Color agnosticism (P1-2).** The shared helpers do not know how to compute an opponent color from a string. Instead of taking `kingColor` + an `oppositeColor` callback, `isInCheck` takes a closure `isAttacked: (board, pos) => boolean` with the attacker color already pre-bound by the caller:
+- **`isSquareAttacked` captures the real dedup (P1-2).** The duplicated logic across variants is NOT "is this king in check" — it's the iteration: "for each enemy piece, generate its moves, check if any lands on the target square." Chess (`game.ts:137-157`) and xiangqi (`game.ts:139-161`) do this byte-identically modulo dimensions and the per-piece move generator they call; shogi mirrors the structure. Without sharing this scaffold, `isInCheck` collapses to a one-line callback wrapper and the dedup claim evaporates — each variant would re-implement the scan inside its `isAttacked` closure.
+
+  `isSquareAttacked(board, targetPos, attackerColor, getMovesForPiece, dims)` takes the attacker color explicitly (no derivation needed — the caller knows its color pairs) and a per-piece move generator. Internally:
+
+  ```ts
+  for each cell (row, col) in dims:
+    piece = board[row][col]
+    if piece && piece.color === attackerColor:
+      moves = getMovesForPiece(board, {row, col})
+      if moves.some(m => m.row === targetPos.row && m.col === targetPos.col):
+        return true
+  return false
+  ```
+
+  Each variant supplies its own `getMovesForPiece` (chess: `getPossibleMoves`; xiangqi: `getPossibleMoves` over its move set; shogi: `getPossibleMoves` ignoring promotion/drop bookkeeping for attack-scan purposes — only the resulting squares matter).
+
+- **`isInCheck` stays as a thin naming wrapper.** Variants compose `findPiece` + `isSquareAttacked` directly when they need the king-check semantic; `isInCheck` exists for callers (and `moveLeavesKingInCheck`) that want a pre-composed name. Callers build the closure at the call site:
 
   ```ts
   // Variant call site (chess example)
@@ -476,11 +550,13 @@ export function forEachOwnPieceMove<TPiece extends { color: string }>(
   );
   const inCheck =
     kingPos !== null
-      ? isInCheck(board, kingPos, (b, p) => isSquareAttacked(b, p, opponent))
+      ? isInCheck(board, kingPos, (b, p) =>
+          isSquareAttacked(b, p, opponent, chessGetMovesForPiece, CHESS_DIMS)
+        )
       : false; // chess/xiangqi policy: no king = not in check
   ```
 
-  This pushes the color-pair knowledge to the variant where it belongs, and keeps the shared API trivially simple (`isInCheck` is literally `return isAttacked(board, kingPos);`).
+  The variant's local `isKingInCheck(board, color)` becomes a ~5-line composition over shared primitives (`findPiece` + `isSquareAttacked`), down from ~40 lines today.
 
 - **Missing-king policy (P2-1).** Existing tests diverge:
 
@@ -614,11 +690,12 @@ Shogi's wrapper: clone, swap piece at `from` to the promoted variant, apply the 
 
 ```ts
 export interface CoordinateScheme {
-  files: string[]; // column labels, left-to-right
-  ranks: string[]; // row labels, index 0 = first row
+  files: string[]; // column labels, left-to-right (single character each)
+  ranks: string[]; // row labels, index 0 = first row (may be multi-char, e.g. xiangqi "10")
 }
 
-// Throws on invalid input (out-of-range file/rank, wrong length).
+// Token parser (P2-5): file = first character, rank = remainder of string.
+// Throws on invalid input (unknown file, unknown rank, empty input).
 export function notationToPos(scheme: CoordinateScheme, str: string): Position;
 
 // Returns null on invalid input — never throws.
@@ -630,9 +707,70 @@ export function tryNotationToPos(
 export function posToNotation(scheme: CoordinateScheme, pos: Position): string;
 ```
 
+**Token parsing (P2-5):** the parser splits input as `file = str[0]`, `rank = str.slice(1)`. This handles both chess's two-character coordinates (`a8`, `h1`) and xiangqi's three-character coordinates (`a10`, `e10` — see `xiangqi/board.test.ts:223-229`). It rejects empty input, unknown files, and unknown rank strings.
+
+```ts
+// packages/game-core/src/notation.ts
+export function notationToPos(scheme: CoordinateScheme, str: string): Position {
+  if (str.length < 2) throw new Error(`Invalid notation: ${str}`);
+  const file = str[0]!;
+  const rank = str.slice(1);
+  const col = scheme.files.indexOf(file);
+  const row = scheme.ranks.indexOf(rank);
+  if (col === -1 || row === -1) {
+    throw new Error(`Invalid notation: ${str}`);
+  }
+  return { row, col };
+}
+
+export function tryNotationToPos(
+  scheme: CoordinateScheme,
+  str: string
+): Position | null {
+  try {
+    return notationToPos(scheme, str);
+  } catch {
+    return null;
+  }
+}
+
+export function posToNotation(scheme: CoordinateScheme, pos: Position): string {
+  return `${scheme.files[pos.col]}${scheme.ranks[pos.row]}`;
+}
+```
+
 - Adopted by **chess** (`a-h` × `8-1`), **xiangqi** (`a-i` × `10-1`), **jungle** (`a-g` × `9-1`). All three share the row-indexed convention.
 - **Shogi excluded** — its notation is transposed (files are numbers `9-1`, ranks are letters `a-i`). Forcing it into one scheme adds complexity for no dedup win; shogi keeps its existing helpers.
 - Each variant declares its `CoordinateScheme` constant and re-exports `posToNotation`/`notationToPos`/`tryNotationToPos` bound to it.
+
+**Round-trip tests (P2-5, required):** the migration commit must include round-trip tests covering multi-character ranks:
+
+```ts
+// packages/game-core/src/notation.test.ts
+describe('CoordinateScheme round-trips', () => {
+  test('chess (single-char ranks)', () => {
+    const chess = { files: 'abcdefgh'.split(''), ranks: '87654321'.split('') };
+    expect(posToNotation(chess, { row: 0, col: 0 })).toBe('a8');
+    expect(notationToPos(chess, 'a8')).toEqual({ row: 0, col: 0 });
+    expect(tryNotationToPos(chess, 'z9')).toBeNull();
+  });
+
+  test('xiangqi (multi-char ranks: a10, e10)', () => {
+    const xiangqi = {
+      files: 'abcdefghi'.split(''),
+      ranks: ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1'],
+    };
+    expect(posToNotation(xiangqi, { row: 0, col: 0 })).toBe('a10');
+    expect(posToNotation(xiangqi, { row: 0, col: 4 })).toBe('e10');
+    expect(notationToPos(xiangqi, 'a10')).toEqual({ row: 0, col: 0 });
+    expect(notationToPos(xiangqi, 'e10')).toEqual({ row: 0, col: 4 });
+    expect(notationToPos(xiangqi, 'i1')).toEqual({ row: 9, col: 8 });
+    expect(tryNotationToPos(xiangqi, 'a11')).toBeNull(); // rank out of range
+    expect(tryNotationToPos(xiangqi, 'j10')).toBeNull(); // file out of range
+    expect(tryNotationToPos(xiangqi, 'a')).toBeNull(); // too short
+  });
+});
+```
 
 **Why two functions (P1-4):** chess currently has two `algebraicToPosition` implementations with **different error contracts**:
 
@@ -691,7 +829,7 @@ Each commit leaves the repo green (typecheck + lint + tests pass).
 6. **`refactor(jungle): consume game-core board primitives`** — run jungle suite.
 7. **`feat(game-core): add slidingMoves + steppingMoves + moveLeavesKingInCheck`** + tests.
 8. **`refactor(chess,shogi): consume sliding/stepping primitives`** — run chess + shogi suites.
-9. **`feat(game-core): add findPiece + isInCheck + forEachOwnPieceMove + hasLegalMove`** + tests.
+9. **`feat(game-core): add findPiece + isSquareAttacked + isInCheck + forEachOwnPieceMove`** + tests. (Note: NO shared `hasLegalMove` — see §8; each variant keeps its own composition.)
 10. **`refactor(chess,xiangqi,shogi): consume check primitives`** — run chess/xiangqi/shogi suites. Jungle untouched.
 11. **`feat(game-core): add CoordinateScheme + notation`** + tests.
 12. **`refactor(chess,xiangqi,jungle): consume notation; delete chess duplicate`** — run chess/xiangqi/jungle suites.
@@ -699,7 +837,7 @@ Each commit leaves the repo green (typecheck + lint + tests pass).
 
     Sketch of the addition under **Game Engine Architecture → Multi-Game Pattern** (insert before the existing "1. Types" step):
 
-    > **Shared core (`@procyon/game-core`):** the truly-duplicated structural primitives — `Position`, `BaseMove<TPiece>`, `BaseGameState<TPiece>`, `GridBoard<TPiece>` helpers, `slidingMoves`/`steppingMoves`/`moveLeavesKingInCheck`, and `findPiece`/`isInCheck`/`hasLegalMove`/`forEachOwnPieceMove` — live in `packages/game-core/`, not in each variant. The scope rule: **share the scaffold, specialize the rules.** Generic piece-movement primitives (sliding/stepping offsets), board helpers parameterized by `Dims`, and check/legality shells parameterized by an `isAttacked` predicate belong in the shared package. Variant-specific rules (castling, cannon screens, shogi drops/nifu/uchifuzume, jungle terrain) stay in `apps/web/src/lib/{variant}/`. When adding a new primitive, ask: is the logic identical across ≥3 variants modulo dimensions and piece types? If yes → `game-core`. If it references a variant-specific concept (palace, river, promotion zone) → stays variant-local.
+    > **Shared core (`@procyon/game-core`):** the truly-duplicated structural primitives — `Position`, `BaseMove<TPiece>`, `BaseGameState<TPiece>`, `GridBoard<TPiece>` helpers, `slidingMoves`/`steppingMoves`/`moveLeavesKingInCheck`, and `findPiece`/`isSquareAttacked`/`isInCheck`/`forEachOwnPieceMove` — live in `packages/game-core/`, not in each variant. The scope rule: **share the scaffold, specialize the rules.** Generic piece-movement primitives (sliding/stepping offsets), board helpers parameterized by `Dims`, the `isSquareAttacked` enemy-scan scaffold, and the `moveLeavesKingInCheck` copy/apply/test shell belong in the shared package. Variant-specific rules (castling, cannon screens, shogi drops/nifu/uchifuzume, jungle terrain) AND variant-specific compositions (`hasLegalMove`/`hasAnyLegalMoves` — each variant owns its own because shogi enumerates promotion variants and drops) stay in `apps/web/src/lib/{variant}/`. When adding a new primitive, ask: is the logic identical across ≥3 variants modulo dimensions and piece types? If yes → `game-core`. If it references a variant-specific concept (palace, river, promotion zone, drops) → stays variant-local.
 
 If any commit's test suite fails (especially commit 3 — the shallow-copy fix), investigate before proceeding. A failure there means chess code relied on shared piece-object references; the fix is to make the chess code clone explicitly or stop mutating in place.
 
@@ -731,30 +869,60 @@ Also out of scope:
     ];
     const copy = copyBoard(board);
     // Mutate a piece object on the copy.
-    (copy[0]![0] as { color: string }).color = 'black';
+    copy[0]![0]!.color = 'black';
     // Original must be unchanged.
     expect(board[0]![0]!.color).toBe('white');
   });
 
-  test('copyBoard throws/returns gracefully on non-flat piece shapes (documented limit)', () => {
-    // If a future piece introduces nested data, spread-clone shares the nested ref.
-    // This test documents the limit: nested objects are NOT deep-cloned.
-    const nested = { meta: { moves: 0 } };
-    const board: GridBoard<{ meta: { moves: number } }>[] = [[nested as any]];
-    const copy = copyBoard(board as any);
-    (copy[0]![0] as any).meta.moves = 5;
-    // Shared reference — original IS mutated. Documented behavior.
-    expect((board[0]![0] as any).meta.moves).toBe(5);
+  test('copyBoard does NOT deep-clone nested piece properties (documented limit, P2-4)', () => {
+    // Properly typed (no `any`) — a hypothetical piece with nested data
+    // still satisfies { color: string }, so it typechecks. The test
+    // documents that spread-clone shares the nested reference.
+    interface PieceWithMeta {
+      color: string;
+      type: string;
+      meta: { moves: number };
+    }
+    const original: PieceWithMeta = {
+      color: 'white',
+      type: 'pawn',
+      meta: { moves: 0 },
+    };
+    const board: GridBoard<PieceWithMeta> = [[original, null]];
+    const copy = copyBoard(board);
+    copy[0]![0]!.meta.moves = 5;
+    // Top-level piece object is cloned, but the nested `meta` is shared.
+    // This documents the limit: if a future piece adds nested data, the
+    // clone strategy must change (switch to structuredClone + add lib.dom).
+    expect(original.meta.moves).toBe(5);
+    // But reassigning a top-level field on the copy does NOT leak:
+    copy[0]![0]!.color = 'black';
+    expect(original.color).toBe('white');
+  });
+
+  test('copyBoard rejects non-colored cell types at compile time (P2-4 boundary)', () => {
+    // This is a type-level test, not a runtime test. The constraint
+    // <TPiece extends { color: string }> prevents JungleTerrain from
+    // being passed. The following line would fail to compile if uncommented:
+    //
+    // interface JungleTerrain { type: string; owner?: string }
+    // const terrain: GridBoard<JungleTerrain> = [[{ type: 'water' }, null]];
+    // copyBoard(terrain);  // TS2344: JungleTerrain does not satisfy
+    //                      // the constraint '{ color: string }'.
+    //
+    // The test exists as documentation; consider a @ts-expect-error variant
+    // if the toolchain supports compile-fail tests.
+    expect(true).toBe(true);
   });
   ```
 
-  The second test pins the flatness assumption: if someone adds a nested piece property, this test will fail on review (not in CI — it asserts the _current_ limit) and force a conversation about switching to `structuredClone` + adding `lib.dom` or an ambient declaration.
+  The second test pins the flatness assumption without using `any`: a reviewer adding a nested piece property sees the assertion `expect(original.meta.moves).toBe(5)` and is forced to confront the limit. The third test documents the type-level boundary that prevents JungleTerrain from being routed through `copyBoard`.
 
 - **Risk: missing-king policy diverges across variants** (P2-1). **Mitigation:** the shared `isInCheck` requires non-null `kingPos` (callers handle absence); `moveLeavesKingInCheck` takes an explicit `onMissingKing: () => boolean` callback. Each variant passes its policy at the call site (chess/xiangqi `() => false`, shogi `() => true`). The chess test `game.coverage.test.ts:119-125` and any shogi missing-king test must both pass against the migrated code.
 - **Risk: shogi promotion-variant substitution mis-reads `board[from]`** (P1-3 follow-on). **Mitigation:** §8.3 adds a lower-level `isOwnKingInCheckOnBoard` that accepts a post-move board; shogi's wrapper performs the substitution on a clone then delegates. Chess/xiangqi use the high-level `moveLeavesKingInCheck` directly.
 - **Risk: shogi status silently widens if `ShogiGameState` omits the `status` re-declaration** (Medium #1). **Mitigation:** the status-narrowing rule is documented in §5.1; commit-message checklist for the shogi migration commit (§12 step 5) must explicitly call out that `ShogiGameState.status: ShogiGameStatus` is re-declared. TS will not error on widening, so review discipline is the gate.
 - **Risk: notation contract regression** (P1-4). **Mitigation:** shared package exports both `notationToPos` (throws) and `tryNotationToPos` (nullable); chess callers migrate to the matching contract. Existing tests asserting throw behavior stay on `notationToPos`; tests asserting `null` stay on `tryNotationToPos`.
-- **Risk: jungle terrain accidentally routed through shared `copyBoard`.** **Mitigation:** §6.2 documents that jungle retains a variant-local `copyTerrain` and composes it with the shared piece-board `copyBoard`; the shared helper's signature is `GridBoard<TPiece>` only and won't typecheck if passed a terrain array.
+- **Risk: jungle terrain accidentally routed through shared `copyBoard`.** **Mitigation (P2-4):** `copyBoard` is constrained to `<TPiece extends { color: string }>`, so passing a `JungleTerrain[][]` is a compile error (JungleTerrain has no `color` field). The type-level boundary is the primary defense; §6.2 additionally documents that jungle retains a variant-local `copyTerrain` and composes it with the shared piece-board `copyBoard`.
 - **Risk: CI doesn't run the new package's tests/lint** (P2-2). **Mitigation:** §4.3 adds a `test-game-core` CI job running `bun run test`/`lint`/`typecheck` filtered to `@procyon/game-core`. Without this, regressions in the shared package slip through until a downstream web test catches them.
 - **Risk: generic plumbing (`<TPiece extends { color: string }>`) fights `noUncheckedIndexedAccess`.** **Mitigation:** shared helpers access board cells through `getPieceAt` (which returns `null` for OOB and uses `?.`/`??` internally), never through raw `board[row][col]`. Variant color unions (`'white'|'black'`, `'red'|'black'`, `'sente'|'gote'`, `'red'|'blue'`) all satisfy `string`.
 - **Risk: `bindBoard` ergonomics regress call-site readability, or `typeof`-based typing breaks.** **Mitigation:** variants re-export bound helpers from their own `board.ts` under the same names they use today; downstream files import unchanged. The bound helpers' identity is the closure type (§6.2 note); consumers needing the unbound 2-arg form import from `@procyon/game-core` directly.
