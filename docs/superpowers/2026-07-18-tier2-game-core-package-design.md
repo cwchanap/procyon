@@ -1,7 +1,7 @@
 # Tier 2 — `@procyon/game-core` Shared Core (Design Spec)
 
-**Status:** Approved (pending spec review)
-**Date:** 2026-07-18
+**Status:** Approved — revision 2 after spec review (11 comments addressed)
+**Date:** 2026-07-18 (rev 2026-07-19)
 **Project:** [procyon](https://linear.app/cwchanap/project/procyon-b82f2cc99230)
 **Related:** [HPA-154 (Tier 2)](https://linear.app/cwchanap/issue/HPA-154/tier-2-extract-shared-game-core-package), HPA-153 (Tier 1, landed), HPA-155 (Tier 4), HPA-156 (Tier 3)
 
@@ -30,7 +30,7 @@ Estimated dedup: ~650–750 removable lines (~25% of the ~2,900 engine LOC), per
 
 ## 3. Approach
 
-**Approach A (approved): Source-only workspace package, shallow generics, single PR with bisectable commits.**
+**Approach A: Source-only workspace package, shallow generics, single PR with bisectable commits.**
 
 - Source-only: `packages/game-core/package.json` `exports` points at `./src/index.ts`. No build step. Matches the repo's `allowImportingTsExtensions` + `noEmit` + bundler resolution. Astro and Bun consume the TS source directly.
 - Shallow generics: `Position`, `GridBoard<TPiece>`, `BaseMove<TPiece>` are generic over piece shape. `BaseGameState` is a plain skeleton interface that variants `extends` and re-declare concrete types on. Avoids multi-parameter generic plumbing.
@@ -57,11 +57,10 @@ packages/game-core/
     ├── moves.ts          # slidingMoves, steppingMoves, moveLeavesKingInCheck
     ├── check.ts          # findPiece, isInCheck, forEachOwnPieceMove, hasLegalMove
     ├── notation.ts       # CoordinateScheme, posToNotation, notationToPos
-    └── __tests__/
-        ├── board.test.ts
-        ├── moves.test.ts
-        ├── check.test.ts
-        └── notation.test.ts
+    ├── board.test.ts     # colocated, matches repo convention (chess/board.ts ↔ board.test.ts)
+    ├── moves.test.ts
+    ├── check.test.ts
+    └── notation.test.ts
 ```
 
 ### 4.1 `package.json`
@@ -161,6 +160,7 @@ export interface Move extends BaseMove<ChessPiece> {
   // re-declares `from: Position` (non-null) — chess has no drops
 }
 export interface GameState extends BaseGameState<ChessPiece> {
+  status: GameStatus; // re-declared for clarity; chess accepts all 5 values
   currentPlayer: PieceColor;
   moveHistory: Move[];
   mode: GameMode;
@@ -169,7 +169,38 @@ export interface GameState extends BaseGameState<ChessPiece> {
 }
 ```
 
-Shogi's `Move.from: Position | null` (drops) is satisfied directly by `BaseMove`. Jungle's `JungleGameState` adds `terrain: JungleTerrain[][]` via extension. Xiangqi adds palace/river constants (unchanged).
+Shogi narrows `status` to drop `'stalemate'` (shogi has no stalemate rule):
+
+```ts
+// apps/web/src/lib/shogi/types.ts
+import type { BaseMove, BaseGameState } from '@procyon/game-core';
+
+export type ShogiGameStatus = 'playing' | 'check' | 'checkmate' | 'draw';
+
+export interface ShogiMove extends BaseMove<ShogiPiece> {
+  // from: Position | null inherited — shogi uses null for drops
+  isPromotion?: boolean;
+  isDrop?: boolean;
+}
+export interface ShogiGameState extends BaseGameState<ShogiPiece> {
+  status: ShogiGameStatus; // NARROWS the base GameStatus — without this, shogi
+  // would silently accept 'stalemate' from the base type
+  currentPlayer: ShogiPieceColor;
+  moveHistory: ShogiMove[];
+  senteHand: ShogiPiece[];
+  goteHand: ShogiPiece[];
+  selectedHandPiece: ShogiPiece | null;
+  pendingPromotion?: {
+    piece: ShogiPiece;
+    from: ShogiPosition;
+    to: ShogiPosition;
+  };
+}
+```
+
+**Status narrowing rule (documented):** every variant MUST re-declare `status` on its `GameState` extension. Chess/xiangqi/jungle re-declare as the full `GameStatus`; shogi re-declares as `ShogiGameStatus`. Re-declaring is already the established pattern for `currentPlayer` (which narrows `string` to the variant's color union); status follows the same discipline. Variants that fail to re-declare `status` will silently widen — TS will not error, so reviewers must check for the re-declaration during migration (call out in commit-message checklist).
+
+Shogi's `Move.from: Position | null` (drops) is satisfied directly by `BaseMove`. Jungle's `JungleGameState` adds `terrain: JungleTerrain[][]` via extension and re-declares `status: GameStatus`. Xiangqi adds palace/river constants (unchanged) and re-declares `status: GameStatus`.
 
 ### 5.2 `Position` helpers
 
@@ -217,7 +248,10 @@ export function isSquareOccupiedByAlly<TPiece extends { color: string }>(
   dims: Dims
 ): boolean;
 
-// Dimension-binding helper to keep call sites clean
+// Dimension-binding helper to keep call sites clean.
+// Implementation returns an object literal with arrow-function properties
+// (NOT method shorthand) — matches the declared return type exactly and
+// avoids method-vs-property `this`-binding divergences.
 export function bindBoard<TPiece>(dims: Dims): {
   isValidPosition: (pos: Position) => boolean;
   getPieceAt: (board: GridBoard<TPiece>, pos: Position) => TPiece | null;
@@ -285,6 +319,10 @@ export {
 
 Variant-local `createInitialBoard`/`getRow` stay per-variant (they reference variant-specific piece layouts and the `getRow` throw-helper used to satisfy `noUncheckedIndexedAccess`).
 
+**Jungle terrain cloning:** the shared `copyBoard` is piece-board-only. Jungle's `JungleGameState` also carries `terrain: JungleTerrain[][]` which must be cloned independently. Jungle retains a variant-local `copyTerrain(terrain): JungleTerrain[][]` (deep clone via `structuredClone`) and composes: `copyGameState(s) = { ...s, board: copyBoard(s.board), terrain: copyTerrain(s.terrain) }`. Implementers must NOT route `terrain` through the shared helper — `copyBoard` only knows about `(TPiece | null)[][]`.
+
+**`bindBoard` identity note (Minor #7):** the destructured-and-re-exported bound helpers are closures. Their TypeScript identity is `typeof` the closure (e.g. `(pos: Position) => boolean`), not `typeof import('@procyon/game-core').isValidPosition` (which is the unbound 2-arg form). Any consumer using `typeof`-based typing against the variant's `board.ts` exports will see the bound signature — this is the intended shape. The unbound forms remain importable from `@procyon/game-core` directly when needed.
+
 ## 7. Move-generation primitives
 
 `packages/game-core/src/moves.ts`:
@@ -335,6 +373,32 @@ export function moveLeavesKingInCheck<TPiece>(
 The copy/apply/test snippet duplicated 5× across variants collapses here. Internally: `copyBoard`, apply the move (`to` ← piece at `from`, `from` ← null), `findKing(board, moverColor)`, return `isAttacked(board, kingPos, oppositeColor)`. If `findKing` returns null (shouldn't happen in a legal position), return `true` — moving into a position with no king is treated as in-check.
 
 **Drop exclusion:** shogi drops (`from === null`) are not handled here — the moving piece isn't on the board. Shogi's drop-legality checks (nifu, uchifuzume) stay variant-local per §13. The shared helper is board-moves-only.
+
+**Shogi call-site shape** (`apps/web/src/lib/shogi/moves.ts`) — the board-vs-drop branch point:
+
+```ts
+import { moveLeavesKingInCheck } from '@procyon/game-core';
+
+function leavesKingInCheck(move: ShogiMove, color: ShogiPieceColor): boolean {
+  if (move.isDrop || move.from === null) {
+    // Drop: shared helper can't apply it (piece not on board).
+    // Route to variant-local drop-legality (nifu/uchifuzume + own-king-in-check).
+    return shogiDropLeavesKingInCheck(move, color);
+  }
+  // Board move: delegate to shared helper.
+  return moveLeavesKingInCheck(
+    board,
+    move.from,
+    move.to,
+    color,
+    findShogiKing,
+    isSquareAttacked,
+    SHOGI_DIMS
+  );
+}
+```
+
+The `shogiDropLeavesKingInCheck` variant-local helper builds a temporary board with the dropped piece placed, then reuses the shared `isInCheck` predicate on the modified board. Nifu/uchifuzume are checked separately before reaching this branch (they reject the move candidate earlier in `getLegalMoves`).
 
 ## 8. Check & legal-move algorithms
 
@@ -420,12 +484,14 @@ export function notationToPos(scheme: CoordinateScheme, str: string): Position;
 | `isSquareEmpty`/`isSquareOccupiedBy*` × 4 (inlined in xiangqi/jungle) | ~48                                           |
 | Sliding move loops (chess rook/bishop + shogi rook/bishop)            | ~60                                           |
 | Stepping move loops (chess king/knight + shogi ×5)                    | ~60                                           |
-| `findPiece`/`isInCheck`/`hasLegalMove`/`moveLeavesKingInCheck` × 3    | ~235                                          |
+| `findPiece`/`isInCheck`/`hasLegalMove`/`moveLeavesKingInCheck` × 3    | ~210                                          |
 | Chess duplicate `algebraicToPosition`                                 | ~13                                           |
-| **Total removed**                                                     | **~640**                                      |
+| **Total removed**                                                     | **~615**                                      |
 | Net new logic                                                         | `@procyon/game-core` (~400 lines incl. tests) |
 
-Net repo delta: approximately −250 LOC, plus two bug fixes and a reusable package boundary for Tier 3 (AI adapters) to build on.
+Net repo delta: approximately −215 LOC, plus two bug fixes and a reusable package boundary for Tier 3 (AI adapters) to build on.
+
+**On the line-count estimates (Nit #9):** all counts are **source LOC removed from `apps/web/src/lib/{variant}/`**, not test LOC. The `~210` for check/legal-move primitives across 3 variants breaks down as: `findPiece`+`isInCheck` ~110, `hasLegalMove`/`hasAnyLegalMoves`/`playerHasValidMoves`/`hasValidMoves` consolidation ~75 (3 variants × ~25), `moveLeavesKingInCheck` ~25 — figures sourced from the HPA-154 survey. The new `@procyon/game-core` adds ~400 lines including its own colocated unit tests; the net delta reflects shared-package overhead eating into the raw removal.
 
 ## 12. Migration order (single PR, bisectable commits)
 
@@ -433,7 +499,7 @@ Each commit leaves the repo green (typecheck + lint + tests pass).
 
 1. **`chore(packages): scaffold @procyon/game-core`** — empty package, workspace + web dependency, turbo task wiring, README stub. No behavior change.
 2. **`feat(game-core): add types + GridBoard primitives`** — Position/GameStatus/BaseMove/BaseGameState/Direction/Dims + `board.ts` helpers + tests. No consumers yet.
-3. **`refactor(chess): consume game-core board primitives`** — migrate chess first (smallest variant, carries the shallow-copy bug). Fix the bug here via shared `copyBoard`. Run full chess suite (`game.test.ts`/`board.test.ts`/`moves.test.ts`/`*.coverage.test.ts`/`*.extended.test.ts`).
+3. **`refactor(chess): consume game-core board primitives`** — migrate chess first because it carries the highest-risk change (the shallow-copy bug fix, §10.1). Going first means any failure surfaces immediately and isn't entangled with three other variants' migrations. Chess is NOT the smallest variant — it has the most rule surface (castling, en-passant, promotion) — but blast-radius isolation trumps size here. Fix the bug in this commit via shared `copyBoard`. Run full chess suite (`game.test.ts`/`board.test.ts`/`moves.test.ts`/`*.coverage.test.ts`/`*.extended.test.ts`) plus the new `copyBoard` deep-semantics unit test (§14).
 4. **`refactor(xiangqi): consume game-core board primitives`** — run xiangqi suite.
 5. **`refactor(shogi): consume game-core board primitives`** — run shogi suite.
 6. **`refactor(jungle): consume game-core board primitives`** — run jungle suite.
@@ -444,6 +510,10 @@ Each commit leaves the repo green (typecheck + lint + tests pass).
 11. **`feat(game-core): add CoordinateScheme + notation`** + tests.
 12. **`refactor(chess,xiangqi,jungle): consume notation; delete chess duplicate`** — run chess/xiangqi/jungle suites.
 13. **`docs: note @procyon/game-core in AGENTS.md`** — document the shared package in the repo guide.
+
+    Sketch of the addition under **Game Engine Architecture → Multi-Game Pattern** (insert before the existing "1. Types" step):
+
+    > **Shared core (`@procyon/game-core`):** the truly-duplicated structural primitives — `Position`, `BaseMove<TPiece>`, `BaseGameState<TPiece>`, `GridBoard<TPiece>` helpers, `slidingMoves`/`steppingMoves`/`moveLeavesKingInCheck`, and `findPiece`/`isInCheck`/`hasLegalMove`/`forEachOwnPieceMove` — live in `packages/game-core/`, not in each variant. The scope rule: **share the scaffold, specialize the rules.** Generic piece-movement primitives (sliding/stepping offsets), board helpers parameterized by `Dims`, and check/legality shells parameterized by an `isAttacked` predicate belong in the shared package. Variant-specific rules (castling, cannon screens, shogi drops/nifu/uchifuzume, jungle terrain) stay in `apps/web/src/lib/{variant}/`. When adding a new primitive, ask: is the logic identical across ≥3 variants modulo dimensions and piece types? If yes → `game-core`. If it references a variant-specific concept (palace, river, promotion zone) → stays variant-local.
 
 If any commit's test suite fails (especially commit 3 — the shallow-copy fix), investigate before proceeding. A failure there means chess code relied on shared piece-object references; the fix is to make the chess code clone explicitly or stop mutating in place.
 
@@ -465,8 +535,28 @@ Also out of scope:
 
 ## 14. Risks & verification
 
-- **Risk: shallow-copy fix changes chess behavior** if any code mutated piece objects in-place after `copyBoard`. **Mitigation:** full chess `*.test.ts` + `*.coverage.test.ts` + `*.extended.test.ts` must pass at commit 3; investigate every failure before proceeding.
+- **Risk: shallow-copy fix changes chess behavior** if any code mutated piece objects in-place after `copyBoard`. **Mitigation:** full chess `*.test.ts` + `*.coverage.test.ts` + `*.extended.test.ts` must pass at commit 3; investigate every failure before proceeding. **Plus a dedicated regression test** (Minor #6) that asserts deep-copy semantics directly — the existing suites don't encode this invariant or the bug would already have failed:
+
+  ```ts
+  // packages/game-core/src/board.test.ts
+  test('copyBoard deep-clones piece objects', () => {
+    const board: GridBoard<{ color: string; type: string }> = [
+      [{ color: 'white', type: 'pawn' }, null],
+    ];
+    const copy = copyBoard(board);
+    // Mutate a piece object on the copy.
+    (copy[0]![0] as { color: string }).color = 'black';
+    // Original must be unchanged.
+    expect(board[0]![0]!.color).toBe('white');
+  });
+  ```
+
+  This locks in the fix so a future "performance optimization" can't silently reintroduce the shallow clone.
+
+- **Risk: shogi status silently widens if `ShogiGameState` omits the `status` re-declaration** (Medium #1). **Mitigation:** the status-narrowing rule is documented in §5.1; commit-message checklist for the shogi migration commit (§12 step 5) must explicitly call out that `ShogiGameState.status: ShogiGameStatus` is re-declared. TS will not error on widening, so review discipline is the gate.
+- **Risk: jungle terrain accidentally routed through shared `copyBoard`.** **Mitigation:** §6.2 documents that jungle retains a variant-local `copyTerrain` and composes it with the shared piece-board `copyBoard`; the shared helper's signature is `GridBoard<TPiece>` only and won't typecheck if passed a terrain array.
+- **Risk: shogi drop branch point mis-placed.** **Mitigation:** §7.1 sketches the exact call-site shape in `shogi/moves.ts` (board moves → shared helper; drops → `shogiDropLeavesKingInCheck` local), locking in the branch before implementation.
 - **Risk: generic plumbing (`<TPiece extends { color: string }>`) fights `noUncheckedIndexedAccess`.** **Mitigation:** shared helpers access board cells through `getPieceAt` (which returns `null` for OOB and uses `?.`/`??` internally), never through raw `board[row][col]`. Variant color unions (`'white'|'black'`, `'red'|'black'`, `'sente'|'gote'`, `'red'|'blue'`) all satisfy `string`.
-- **Risk: `bindBoard` ergonomics regress call-site readability.** **Mitigation:** variants re-export bound helpers from their own `board.ts` under the same names they use today; downstream files import unchanged.
+- **Risk: `bindBoard` ergonomics regress call-site readability, or `typeof`-based typing breaks.** **Mitigation:** variants re-export bound helpers from their own `board.ts` under the same names they use today; downstream files import unchanged. The bound helpers' identity is the closure type (§6.2 note); consumers needing the unbound 2-arg form import from `@procyon/game-core` directly.
 - **Verification gate per commit:** `bun test` in `packages/game-core`, `bun test src` in `apps/web`, `bun run typecheck`, `bun run lint`. No commit lands red. E2E suite (`bun run test:e2e`) runs on the final commit.
-- **Estimate:** ~650–750 net LOC removed (per issue), ~+400 in the new package; net ~−250 LOC plus two bug fixes.
+- **Estimate:** ~615 net source LOC removed (per the §11 breakdown), ~+400 in the new package; net ~−215 LOC plus two bug fixes.
