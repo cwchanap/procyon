@@ -1,8 +1,19 @@
-import { bindBoard } from '@procyon/game-core';
+import {
+	bindBoard,
+	type CoordinateScheme,
+	notationToPos as sharedNotationToPos,
+	posToNotation as sharedPosToNotation,
+	tryNotationToPos as sharedTryNotationToPos,
+} from '@procyon/game-core';
 import type { ChessPiece, PieceType, Position } from './types';
 import { BOARD_SIZE } from './types';
 
 export { copyBoard } from '@procyon/game-core';
+
+export const CHESS_SCHEME: CoordinateScheme = {
+	files: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
+	ranks: ['8', '7', '6', '5', '4', '3', '2', '1'],
+};
 
 const bound = bindBoard<ChessPiece>({
 	rows: BOARD_SIZE,
@@ -56,25 +67,13 @@ export function createInitialBoard(): (ChessPiece | null)[][] {
 }
 
 export function positionToAlgebraic(pos: Position): string {
-	const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-	return `${files[pos.col]}${8 - pos.row}`;
+	return sharedPosToNotation(CHESS_SCHEME, pos);
 }
 
 export function algebraicToPosition(algebraic: string): Position {
-	const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-	const file = algebraic[0];
-	const rank = algebraic[1];
+	return sharedNotationToPos(CHESS_SCHEME, algebraic);
+}
 
-	if (!file || !rank) {
-		throw new Error(`Invalid algebraic notation: ${algebraic}`);
-	}
-
-	const col = files.indexOf(file);
-	const row = 8 - parseInt(rank);
-
-	if (col === -1 || isNaN(row)) {
-		throw new Error(`Invalid algebraic notation: ${algebraic}`);
-	}
-
-	return { row, col };
+export function tryAlgebraicToPosition(algebraic: string): Position | null {
+	return sharedTryNotationToPos(CHESS_SCHEME, algebraic);
 }

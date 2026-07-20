@@ -5,9 +5,11 @@ import {
 	selectSquare,
 	setAIThinking,
 	isAITurn,
-	algebraicToPosition,
 } from './game';
-import { setPieceAt } from './board';
+import {
+	setPieceAt,
+	tryAlgebraicToPosition as algebraicToPosition,
+} from './board';
 import type { ChessPiece, GameState } from './types';
 
 describe('Chess Game - selectSquare', () => {

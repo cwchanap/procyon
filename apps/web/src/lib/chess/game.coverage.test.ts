@@ -8,9 +8,12 @@ import {
 	selectSquare,
 	setAIThinking,
 	isAITurn,
-	algebraicToPosition,
 } from './game';
-import { createInitialBoard, setPieceAt } from './board';
+import {
+	createInitialBoard,
+	setPieceAt,
+	tryAlgebraicToPosition as algebraicToPosition,
+} from './board';
 import type { ChessPiece, GameState } from './types';
 
 function emptyState(currentPlayer: 'white' | 'black' = 'white'): GameState {
