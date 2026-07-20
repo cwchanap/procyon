@@ -1,4 +1,5 @@
-import type { XiangqiPiece, XiangqiPosition, XiangqiPieceColor } from './types';
+import { bindBoard } from '@procyon/game-core';
+import type { XiangqiPiece, XiangqiPieceColor, XiangqiPosition } from './types';
 import {
 	XIANGQI_ROWS,
 	XIANGQI_COLS,
@@ -6,6 +7,19 @@ import {
 	PALACE_COLS,
 	RIVER_ROW,
 } from './types';
+
+export { copyBoard } from '@procyon/game-core';
+
+const bound = bindBoard<XiangqiPiece>({
+	rows: XIANGQI_ROWS,
+	cols: XIANGQI_COLS,
+});
+export const isValidPosition = bound.isValidPosition;
+export const getPieceAt = bound.getPieceAt;
+export const setPieceAt = bound.setPieceAt;
+export const isSquareEmpty = bound.isSquareEmpty;
+export const isSquareOccupiedByOpponent = bound.isSquareOccupiedByOpponent;
+export const isSquareOccupiedByAlly = bound.isSquareOccupiedByAlly;
 
 export function getRow(
 	board: (XiangqiPiece | null)[][],
@@ -82,15 +96,6 @@ export function createInitialXiangqiBoard(): (XiangqiPiece | null)[][] {
 	return board;
 }
 
-export function isValidPosition(pos: XiangqiPosition): boolean {
-	return (
-		pos.row >= 0 &&
-		pos.row < XIANGQI_ROWS &&
-		pos.col >= 0 &&
-		pos.col < XIANGQI_COLS
-	);
-}
-
 export function isInPalace(
 	pos: XiangqiPosition,
 	color: XiangqiPieceColor
@@ -115,30 +120,6 @@ export function hasCrossedRiver(
 	color: XiangqiPieceColor
 ): boolean {
 	return !isOnSameSideOfRiver(pos, color);
-}
-
-export function getPieceAt(
-	board: (XiangqiPiece | null)[][],
-	pos: XiangqiPosition
-): XiangqiPiece | null {
-	if (!isValidPosition(pos)) return null;
-	return getRow(board, pos.row)[pos.col] ?? null;
-}
-
-export function setPieceAt(
-	board: (XiangqiPiece | null)[][],
-	pos: XiangqiPosition,
-	piece: XiangqiPiece | null
-): void {
-	if (isValidPosition(pos)) {
-		getRow(board, pos.row)[pos.col] = piece;
-	}
-}
-
-export function copyBoard(
-	board: (XiangqiPiece | null)[][]
-): (XiangqiPiece | null)[][] {
-	return board.map(row => row.map(piece => (piece ? { ...piece } : null)));
 }
 
 export function findKing(

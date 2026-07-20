@@ -1,3 +1,13 @@
+import type {
+	BaseGameState,
+	BaseMove,
+	GameStatus as SharedGameStatus,
+	Position as GameCorePosition,
+} from '@procyon/game-core';
+
+export type XiangqiPosition = GameCorePosition;
+export type XiangqiGameStatus = SharedGameStatus;
+
 export type XiangqiPieceType =
 	| 'king' // 将/帅 (General)
 	| 'advisor' // 士/仕 (Advisor/Guard)
@@ -15,32 +25,15 @@ export interface XiangqiPiece {
 	hasCrossedRiver?: boolean; // For soldiers that have crossed the river
 }
 
-export interface XiangqiPosition {
-	row: number; // 0-9 (10 rows)
-	col: number; // 0-8 (9 columns)
-}
-
-export interface XiangqiMove {
+export interface XiangqiMove extends BaseMove<XiangqiPiece> {
 	from: XiangqiPosition;
 	to: XiangqiPosition;
-	piece: XiangqiPiece;
-	capturedPiece?: XiangqiPiece;
 }
 
-export type XiangqiGameStatus =
-	| 'playing'
-	| 'check'
-	| 'checkmate'
-	| 'stalemate'
-	| 'draw';
-
-export interface XiangqiGameState {
-	board: (XiangqiPiece | null)[][];
-	currentPlayer: XiangqiPieceColor;
+export interface XiangqiGameState extends BaseGameState<XiangqiPiece> {
 	status: XiangqiGameStatus;
+	currentPlayer: XiangqiPieceColor;
 	moveHistory: XiangqiMove[];
-	selectedSquare: XiangqiPosition | null;
-	possibleMoves: XiangqiPosition[];
 }
 
 // Constants for Xiangqi
