@@ -24,6 +24,9 @@ import {
 	canDropAt,
 	getDropPositions,
 } from './moves';
+import { findPiece, isSquareAttacked, type Dims } from '@procyon/game-core';
+
+const SHOGI_DIMS: Dims = { rows: SHOGI_BOARD_SIZE, cols: SHOGI_BOARD_SIZE };
 
 export function createInitialGameState(): ShogiGameState {
 	return {
@@ -364,48 +367,27 @@ export function isKingInCheck(
 	board: (ShogiPiece | null)[][],
 	kingColor: ShogiPieceColor
 ): boolean {
-	// Find the king
-	let kingPosition: ShogiPosition | null = null;
+	const kingPosition = findPiece(
+		board,
+		p => p.type === 'king' && p.color === kingColor,
+		SHOGI_DIMS
+	);
+	if (kingPosition === null) return true; // shogi policy: missing king = in check
 
-	for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
-		for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-			const piece = board[row]?.[col];
-			if (piece?.type === 'king' && piece.color === kingColor) {
-				kingPosition = { row, col };
-				break;
-			}
-		}
-		if (kingPosition) break;
-	}
-
-	if (!kingPosition) {
-		// King not found - treat as losing position (in check / captured)
-		// This handles edge cases gracefully without throwing
-		return true;
-	}
-
-	// Check if any opponent piece can attack the king
 	const opponentColor: ShogiPieceColor =
 		kingColor === 'sente' ? 'gote' : 'sente';
 
-	for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
-		for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-			const piece = board[row]?.[col];
-			if (piece && piece.color === opponentColor) {
-				const moves = getPossibleMoves(board, piece, { row, col });
-				if (
-					moves.some(
-						move =>
-							move.row === kingPosition!.row && move.col === kingPosition!.col
-					)
-				) {
-					return true;
-				}
-			}
-		}
-	}
-
-	return false;
+	return isSquareAttacked(
+		board,
+		kingPosition,
+		opponentColor,
+		(b, from) => {
+			const piece = b[from.row]?.[from.col];
+			if (!piece) return [];
+			return getPossibleMoves(b, piece, from);
+		},
+		SHOGI_DIMS
+	);
 }
 
 export function getGameStatus(
