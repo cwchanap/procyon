@@ -1,3 +1,4 @@
+// Jungle needs a local `copyBoard` binding because `copyGameState` (below) calls it directly; siblings only re-export.
 import { bindBoard, copyBoard } from '@procyon/game-core';
 import type {
 	JunglePiece,
