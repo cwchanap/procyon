@@ -46,6 +46,7 @@
       "dependencies": {
         "@astrojs/react": "^3.6.2",
         "@astrojs/tailwind": "^5.1.1",
+        "@procyon/game-core": "workspace:*",
         "@supabase/ssr": "^0.8.0",
         "@supabase/supabase-js": "^2.86.2",
         "@types/react": "^18.3.5",
@@ -66,6 +67,9 @@
         "happy-dom": "^20.5.3",
         "tailwindcss": "^3.4.10",
       },
+    },
+    "packages/game-core": {
+      "name": "@procyon/game-core",
     },
   },
   "packages": {
@@ -310,6 +314,8 @@
     "@poppinss/dumper": ["@poppinss/dumper@0.6.4", "", { "dependencies": { "@poppinss/colors": "^4.1.5", "@sindresorhus/is": "^7.0.2", "supports-color": "^10.0.0" } }, "sha512-iG0TIdqv8xJ3Lt9O8DrPRxw1MRLjNpoqiSGU03P/wNLP/s0ra0udPJ1J2Tx5M0J3H/cVyEgpbn8xUKRY9j59kQ=="],
 
     "@poppinss/exception": ["@poppinss/exception@1.2.2", "", {}, "sha512-m7bpKCD4QMlFCjA/nKTs23fuvoVFoA83brRKmObCUNmi/9tVu8Ve3w4YQAnJu4q3Tjf5fr685HYIC/IA2zHRSg=="],
+
+    "@procyon/game-core": ["@procyon/game-core@workspace:packages/game-core"],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.0-beta.27", "", {}, "sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA=="],
 
