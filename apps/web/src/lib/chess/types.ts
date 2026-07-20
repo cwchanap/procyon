@@ -1,3 +1,13 @@
+import type {
+	BaseGameState,
+	BaseMove,
+	GameStatus as SharedGameStatus,
+	Position as GameCorePosition,
+} from '@procyon/game-core';
+
+export type Position = GameCorePosition;
+export type GameStatus = SharedGameStatus;
+
 export type PieceType =
 	| 'king'
 	| 'queen'
@@ -13,37 +23,20 @@ export interface ChessPiece {
 	hasMoved?: boolean;
 }
 
-export interface Position {
-	row: number;
-	col: number;
-}
-
-export interface Move {
+export interface Move extends BaseMove<ChessPiece> {
 	from: Position;
 	to: Position;
-	piece: ChessPiece;
-	capturedPiece?: ChessPiece;
 	isEnPassant?: boolean;
 	isCastling?: boolean;
 	promotion?: PieceType;
 }
 
-export type GameStatus =
-	| 'playing'
-	| 'check'
-	| 'checkmate'
-	| 'stalemate'
-	| 'draw';
-
 export type GameMode = 'human-vs-human' | 'human-vs-ai';
 
-export interface GameState {
-	board: (ChessPiece | null)[][];
-	currentPlayer: PieceColor;
+export interface GameState extends BaseGameState<ChessPiece> {
 	status: GameStatus;
+	currentPlayer: PieceColor;
 	moveHistory: Move[];
-	selectedSquare: Position | null;
-	possibleMoves: Position[];
 	mode: GameMode;
 	aiPlayer?: PieceColor;
 	isAiThinking?: boolean;
