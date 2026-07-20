@@ -1,0 +1,13 @@
+{
+  "name": "@procyon/game-core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test src --pass-with-no-tests",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  }
+}
