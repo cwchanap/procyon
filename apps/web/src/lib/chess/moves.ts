@@ -1,10 +1,12 @@
+import { slidingMoves, steppingMoves } from '@procyon/game-core';
 import type { ChessPiece, Position } from './types';
 import {
 	isValidPosition,
 	isSquareEmpty,
 	isSquareOccupiedByOpponent,
-	isSquareOccupiedByAlly,
 } from './board';
+
+const CHESS_DIMS = { rows: 8, cols: 8 } as const;
 
 export function getPossibleMoves(
 	board: (ChessPiece | null)[][],
@@ -77,35 +79,19 @@ function getRookMoves(
 	piece: ChessPiece,
 	from: Position
 ): Position[] {
-	const moves: Position[] = [];
-	const directions = [
-		{ row: 0, col: 1 }, // right
-		{ row: 0, col: -1 }, // left
-		{ row: 1, col: 0 }, // down
-		{ row: -1, col: 0 }, // up
-	];
-
-	for (const dir of directions) {
-		for (let i = 1; i < 8; i++) {
-			const pos = {
-				row: from.row + dir.row * i,
-				col: from.col + dir.col * i,
-			};
-
-			if (!isValidPosition(pos)) break;
-
-			if (isSquareEmpty(board, pos)) {
-				moves.push(pos);
-			} else if (isSquareOccupiedByOpponent(board, pos, piece.color)) {
-				moves.push(pos);
-				break;
-			} else {
-				break;
-			}
-		}
-	}
-
-	return moves;
+	return slidingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: 0, col: 1 },
+			{ row: 0, col: -1 },
+			{ row: 1, col: 0 },
+			{ row: -1, col: 0 },
+		],
+		8,
+		CHESS_DIMS
+	);
 }
 
 function getBishopMoves(
@@ -113,35 +99,19 @@ function getBishopMoves(
 	piece: ChessPiece,
 	from: Position
 ): Position[] {
-	const moves: Position[] = [];
-	const directions = [
-		{ row: 1, col: 1 }, // down-right
-		{ row: 1, col: -1 }, // down-left
-		{ row: -1, col: 1 }, // up-right
-		{ row: -1, col: -1 }, // up-left
-	];
-
-	for (const dir of directions) {
-		for (let i = 1; i < 8; i++) {
-			const pos = {
-				row: from.row + dir.row * i,
-				col: from.col + dir.col * i,
-			};
-
-			if (!isValidPosition(pos)) break;
-
-			if (isSquareEmpty(board, pos)) {
-				moves.push(pos);
-			} else if (isSquareOccupiedByOpponent(board, pos, piece.color)) {
-				moves.push(pos);
-				break;
-			} else {
-				break;
-			}
-		}
-	}
-
-	return moves;
+	return slidingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: 1, col: 1 },
+			{ row: 1, col: -1 },
+			{ row: -1, col: 1 },
+			{ row: -1, col: -1 },
+		],
+		8,
+		CHESS_DIMS
+	);
 }
 
 function getQueenMoves(
@@ -160,30 +130,22 @@ function getKingMoves(
 	piece: ChessPiece,
 	from: Position
 ): Position[] {
-	const moves: Position[] = [];
-	const directions = [
-		{ row: -1, col: -1 },
-		{ row: -1, col: 0 },
-		{ row: -1, col: 1 },
-		{ row: 0, col: -1 },
-		{ row: 0, col: 1 },
-		{ row: 1, col: -1 },
-		{ row: 1, col: 0 },
-		{ row: 1, col: 1 },
-	];
-
-	for (const dir of directions) {
-		const pos = { row: from.row + dir.row, col: from.col + dir.col };
-
-		if (
-			isValidPosition(pos) &&
-			!isSquareOccupiedByAlly(board, pos, piece.color)
-		) {
-			moves.push(pos);
-		}
-	}
-
-	return moves;
+	return steppingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: -1, col: -1 },
+			{ row: -1, col: 0 },
+			{ row: -1, col: 1 },
+			{ row: 0, col: -1 },
+			{ row: 0, col: 1 },
+			{ row: 1, col: -1 },
+			{ row: 1, col: 0 },
+			{ row: 1, col: 1 },
+		],
+		CHESS_DIMS
+	);
 }
 
 function getKnightMoves(
@@ -191,30 +153,22 @@ function getKnightMoves(
 	piece: ChessPiece,
 	from: Position
 ): Position[] {
-	const moves: Position[] = [];
-	const knightMoves = [
-		{ row: -2, col: -1 },
-		{ row: -2, col: 1 },
-		{ row: -1, col: -2 },
-		{ row: -1, col: 2 },
-		{ row: 1, col: -2 },
-		{ row: 1, col: 2 },
-		{ row: 2, col: -1 },
-		{ row: 2, col: 1 },
-	];
-
-	for (const move of knightMoves) {
-		const pos = { row: from.row + move.row, col: from.col + move.col };
-
-		if (
-			isValidPosition(pos) &&
-			!isSquareOccupiedByAlly(board, pos, piece.color)
-		) {
-			moves.push(pos);
-		}
-	}
-
-	return moves;
+	return steppingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: -2, col: -1 },
+			{ row: -2, col: 1 },
+			{ row: -1, col: -2 },
+			{ row: -1, col: 2 },
+			{ row: 1, col: -2 },
+			{ row: 1, col: 2 },
+			{ row: 2, col: -1 },
+			{ row: 2, col: 1 },
+		],
+		CHESS_DIMS
+	);
 }
 
 export function isMoveValid(

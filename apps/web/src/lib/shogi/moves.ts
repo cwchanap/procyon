@@ -1,13 +1,15 @@
+import { slidingMoves, steppingMoves } from '@procyon/game-core';
 import type { ShogiPiece, ShogiPosition } from './types';
 import { SHOGI_BOARD_SIZE } from './types';
 import {
 	isValidPosition,
 	isSquareEmpty,
-	isSquareOccupiedByOpponent,
 	isSquareOccupiedByAlly,
 	getDirection,
 	getPieceAt,
 } from './board';
+
+const SHOGI_DIMS = { rows: SHOGI_BOARD_SIZE, cols: SHOGI_BOARD_SIZE } as const;
 
 export function getPossibleMoves(
 	board: (ShogiPiece | null)[][],
@@ -49,18 +51,14 @@ function getPawnMoves(
 	piece: ShogiPiece,
 	from: ShogiPosition
 ): ShogiPosition[] {
-	const moves: ShogiPosition[] = [];
 	const direction = getDirection(piece.color);
-	const forward = { row: from.row + direction, col: from.col };
-
-	if (
-		isValidPosition(forward) &&
-		!isSquareOccupiedByAlly(board, forward, piece.color)
-	) {
-		moves.push(forward);
-	}
-
-	return moves;
+	return steppingMoves(
+		board,
+		from,
+		piece.color,
+		[{ row: direction, col: 0 }],
+		SHOGI_DIMS
+	);
 }
 
 function getLanceMoves(
@@ -68,26 +66,15 @@ function getLanceMoves(
 	piece: ShogiPiece,
 	from: ShogiPosition
 ): ShogiPosition[] {
-	const moves: ShogiPosition[] = [];
 	const direction = getDirection(piece.color);
-
-	// Lance moves forward until blocked
-	for (let i = 1; i < SHOGI_BOARD_SIZE; i++) {
-		const pos = { row: from.row + direction * i, col: from.col };
-
-		if (!isValidPosition(pos)) break;
-
-		if (isSquareEmpty(board, pos)) {
-			moves.push(pos);
-		} else if (isSquareOccupiedByOpponent(board, pos, piece.color)) {
-			moves.push(pos);
-			break;
-		} else {
-			break;
-		}
-	}
-
-	return moves;
+	return slidingMoves(
+		board,
+		from,
+		piece.color,
+		[{ row: direction, col: 0 }],
+		SHOGI_BOARD_SIZE,
+		SHOGI_DIMS
+	);
 }
 
 function getKnightMoves(
@@ -95,27 +82,18 @@ function getKnightMoves(
 	piece: ShogiPiece,
 	from: ShogiPosition
 ): ShogiPosition[] {
-	const moves: ShogiPosition[] = [];
 	const direction = getDirection(piece.color);
-
 	// Shogi knight only moves forward in an L-shape
-	const knightMoves = [
-		{ row: direction * 2, col: -1 },
-		{ row: direction * 2, col: 1 },
-	];
-
-	for (const move of knightMoves) {
-		const pos = { row: from.row + move.row, col: from.col + move.col };
-
-		if (
-			isValidPosition(pos) &&
-			!isSquareOccupiedByAlly(board, pos, piece.color)
-		) {
-			moves.push(pos);
-		}
-	}
-
-	return moves;
+	return steppingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: direction * 2, col: -1 },
+			{ row: direction * 2, col: 1 },
+		],
+		SHOGI_DIMS
+	);
 }
 
 function getSilverMoves(
@@ -123,30 +101,21 @@ function getSilverMoves(
 	piece: ShogiPiece,
 	from: ShogiPosition
 ): ShogiPosition[] {
-	const moves: ShogiPosition[] = [];
 	const direction = getDirection(piece.color);
-
 	// Silver general moves: forward 3 squares + diagonal back 2 squares
-	const silverMoves = [
-		{ row: direction, col: -1 }, // Forward-left
-		{ row: direction, col: 0 }, // Forward
-		{ row: direction, col: 1 }, // Forward-right
-		{ row: -direction, col: -1 }, // Backward-left diagonal
-		{ row: -direction, col: 1 }, // Backward-right diagonal
-	];
-
-	for (const move of silverMoves) {
-		const pos = { row: from.row + move.row, col: from.col + move.col };
-
-		if (
-			isValidPosition(pos) &&
-			!isSquareOccupiedByAlly(board, pos, piece.color)
-		) {
-			moves.push(pos);
-		}
-	}
-
-	return moves;
+	return steppingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: direction, col: -1 }, // Forward-left
+			{ row: direction, col: 0 }, // Forward
+			{ row: direction, col: 1 }, // Forward-right
+			{ row: -direction, col: -1 }, // Backward-left diagonal
+			{ row: -direction, col: 1 }, // Backward-right diagonal
+		],
+		SHOGI_DIMS
+	);
 }
 
 function getGoldMoves(
@@ -154,31 +123,22 @@ function getGoldMoves(
 	piece: ShogiPiece,
 	from: ShogiPosition
 ): ShogiPosition[] {
-	const moves: ShogiPosition[] = [];
 	const direction = getDirection(piece.color);
-
 	// Gold general moves: 6 directions (not diagonal backward)
-	const goldMoves = [
-		{ row: direction, col: -1 }, // Forward-left
-		{ row: direction, col: 0 }, // Forward
-		{ row: direction, col: 1 }, // Forward-right
-		{ row: 0, col: -1 }, // Left
-		{ row: 0, col: 1 }, // Right
-		{ row: -direction, col: 0 }, // Backward
-	];
-
-	for (const move of goldMoves) {
-		const pos = { row: from.row + move.row, col: from.col + move.col };
-
-		if (
-			isValidPosition(pos) &&
-			!isSquareOccupiedByAlly(board, pos, piece.color)
-		) {
-			moves.push(pos);
-		}
-	}
-
-	return moves;
+	return steppingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: direction, col: -1 }, // Forward-left
+			{ row: direction, col: 0 }, // Forward
+			{ row: direction, col: 1 }, // Forward-right
+			{ row: 0, col: -1 }, // Left
+			{ row: 0, col: 1 }, // Right
+			{ row: -direction, col: 0 }, // Backward
+		],
+		SHOGI_DIMS
+	);
 }
 
 function getBishopMoves(
@@ -186,32 +146,19 @@ function getBishopMoves(
 	piece: ShogiPiece,
 	from: ShogiPosition
 ): ShogiPosition[] {
-	const moves: ShogiPosition[] = [];
-	const directions = [
-		{ row: 1, col: 1 },
-		{ row: 1, col: -1 },
-		{ row: -1, col: 1 },
-		{ row: -1, col: -1 },
-	];
-
-	for (const dir of directions) {
-		for (let i = 1; i < SHOGI_BOARD_SIZE; i++) {
-			const pos = { row: from.row + dir.row * i, col: from.col + dir.col * i };
-
-			if (!isValidPosition(pos)) break;
-
-			if (isSquareEmpty(board, pos)) {
-				moves.push(pos);
-			} else if (isSquareOccupiedByOpponent(board, pos, piece.color)) {
-				moves.push(pos);
-				break;
-			} else {
-				break;
-			}
-		}
-	}
-
-	return moves;
+	return slidingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: 1, col: 1 },
+			{ row: 1, col: -1 },
+			{ row: -1, col: 1 },
+			{ row: -1, col: -1 },
+		],
+		SHOGI_BOARD_SIZE,
+		SHOGI_DIMS
+	);
 }
 
 function getRookMoves(
@@ -219,32 +166,19 @@ function getRookMoves(
 	piece: ShogiPiece,
 	from: ShogiPosition
 ): ShogiPosition[] {
-	const moves: ShogiPosition[] = [];
-	const directions = [
-		{ row: 0, col: 1 },
-		{ row: 0, col: -1 },
-		{ row: 1, col: 0 },
-		{ row: -1, col: 0 },
-	];
-
-	for (const dir of directions) {
-		for (let i = 1; i < SHOGI_BOARD_SIZE; i++) {
-			const pos = { row: from.row + dir.row * i, col: from.col + dir.col * i };
-
-			if (!isValidPosition(pos)) break;
-
-			if (isSquareEmpty(board, pos)) {
-				moves.push(pos);
-			} else if (isSquareOccupiedByOpponent(board, pos, piece.color)) {
-				moves.push(pos);
-				break;
-			} else {
-				break;
-			}
-		}
-	}
-
-	return moves;
+	return slidingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: 0, col: 1 },
+			{ row: 0, col: -1 },
+			{ row: 1, col: 0 },
+			{ row: -1, col: 0 },
+		],
+		SHOGI_BOARD_SIZE,
+		SHOGI_DIMS
+	);
 }
 
 function getHorseMoves(
@@ -312,30 +246,22 @@ function getKingMoves(
 	piece: ShogiPiece,
 	from: ShogiPosition
 ): ShogiPosition[] {
-	const moves: ShogiPosition[] = [];
-	const directions = [
-		{ row: -1, col: -1 },
-		{ row: -1, col: 0 },
-		{ row: -1, col: 1 },
-		{ row: 0, col: -1 },
-		{ row: 0, col: 1 },
-		{ row: 1, col: -1 },
-		{ row: 1, col: 0 },
-		{ row: 1, col: 1 },
-	];
-
-	for (const dir of directions) {
-		const pos = { row: from.row + dir.row, col: from.col + dir.col };
-
-		if (
-			isValidPosition(pos) &&
-			!isSquareOccupiedByAlly(board, pos, piece.color)
-		) {
-			moves.push(pos);
-		}
-	}
-
-	return moves;
+	return steppingMoves(
+		board,
+		from,
+		piece.color,
+		[
+			{ row: -1, col: -1 },
+			{ row: -1, col: 0 },
+			{ row: -1, col: 1 },
+			{ row: 0, col: -1 },
+			{ row: 0, col: 1 },
+			{ row: 1, col: -1 },
+			{ row: 1, col: 0 },
+			{ row: 1, col: 1 },
+		],
+		SHOGI_DIMS
+	);
 }
 
 export function isMoveValid(
