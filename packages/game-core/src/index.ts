@@ -1,3 +1,2 @@
-// Barrel export for @procyon/game-core.
-// Modules added in subsequent tasks.
-export {};
+export * from './types';
+export * from './board';
