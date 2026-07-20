@@ -1,3 +1,4 @@
+import { bindBoard } from '@procyon/game-core';
 import type {
 	ShogiPiece,
 	ShogiPosition,
@@ -5,6 +6,19 @@ import type {
 	ShogiPieceType,
 } from './types';
 import { SHOGI_BOARD_SIZE, SHOGI_FILES, SHOGI_RANKS } from './types';
+
+export { copyBoard } from '@procyon/game-core';
+
+const bound = bindBoard<ShogiPiece>({
+	rows: SHOGI_BOARD_SIZE,
+	cols: SHOGI_BOARD_SIZE,
+});
+export const isValidPosition = bound.isValidPosition;
+export const getPieceAt = bound.getPieceAt;
+export const setPieceAt = bound.setPieceAt;
+export const isSquareEmpty = bound.isSquareEmpty;
+export const isSquareOccupiedByOpponent = bound.isSquareOccupiedByOpponent;
+export const isSquareOccupiedByAlly = bound.isSquareOccupiedByAlly;
 
 export function getRow(
 	board: (ShogiPiece | null)[][],
@@ -73,66 +87,6 @@ export function createInitialBoard(): (ShogiPiece | null)[][] {
 	}
 
 	return board;
-}
-
-export function isValidPosition(pos: ShogiPosition): boolean {
-	return (
-		pos.row >= 0 &&
-		pos.row < SHOGI_BOARD_SIZE &&
-		pos.col >= 0 &&
-		pos.col < SHOGI_BOARD_SIZE
-	);
-}
-
-export function getPieceAt(
-	board: (ShogiPiece | null)[][],
-	pos: ShogiPosition
-): ShogiPiece | null {
-	if (!isValidPosition(pos)) return null;
-	return board[pos.row]?.[pos.col] ?? null;
-}
-
-export function setPieceAt(
-	board: (ShogiPiece | null)[][],
-	pos: ShogiPosition,
-	piece: ShogiPiece | null
-): void {
-	if (!isValidPosition(pos)) return;
-	const row = board[pos.row];
-	if (row) {
-		row[pos.col] = piece;
-	}
-}
-
-export function isSquareEmpty(
-	board: (ShogiPiece | null)[][],
-	pos: ShogiPosition
-): boolean {
-	return getPieceAt(board, pos) === null;
-}
-
-export function isSquareOccupiedByOpponent(
-	board: (ShogiPiece | null)[][],
-	pos: ShogiPosition,
-	color: ShogiPieceColor
-): boolean {
-	const piece = getPieceAt(board, pos);
-	return piece !== null && piece.color !== color;
-}
-
-export function isSquareOccupiedByAlly(
-	board: (ShogiPiece | null)[][],
-	pos: ShogiPosition,
-	color: ShogiPieceColor
-): boolean {
-	const piece = getPieceAt(board, pos);
-	return piece !== null && piece.color === color;
-}
-
-export function copyBoard(
-	board: (ShogiPiece | null)[][]
-): (ShogiPiece | null)[][] {
-	return board.map(row => row.map(piece => (piece ? { ...piece } : null)));
 }
 
 export function positionToAlgebraic(pos: ShogiPosition): string {

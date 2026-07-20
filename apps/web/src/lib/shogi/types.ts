@@ -1,3 +1,11 @@
+import type {
+	BaseGameState,
+	BaseMove,
+	Position as GameCorePosition,
+} from '@procyon/game-core';
+
+export type ShogiPosition = GameCorePosition;
+
 export type ShogiPieceType =
 	| 'king'
 	| 'rook'
@@ -22,29 +30,18 @@ export interface ShogiPiece {
 	isPromoted?: boolean;
 }
 
-export interface ShogiPosition {
-	row: number;
-	col: number;
-}
-
-export interface ShogiMove {
-	from: ShogiPosition | null; // null for drop moves
-	to: ShogiPosition;
-	piece: ShogiPiece;
-	capturedPiece?: ShogiPiece;
+export interface ShogiMove extends BaseMove<ShogiPiece> {
+	// from: ShogiPosition | null inherited from BaseMove (shogi uses null for drops)
 	isPromotion?: boolean;
 	isDrop?: boolean;
 }
 
 export type ShogiGameStatus = 'playing' | 'check' | 'checkmate' | 'draw';
 
-export interface ShogiGameState {
-	board: (ShogiPiece | null)[][];
-	currentPlayer: ShogiPieceColor;
+export interface ShogiGameState extends BaseGameState<ShogiPiece> {
 	status: ShogiGameStatus;
+	currentPlayer: ShogiPieceColor;
 	moveHistory: ShogiMove[];
-	selectedSquare: ShogiPosition | null;
-	possibleMoves: ShogiPosition[];
 	senteHand: ShogiPiece[];
 	goteHand: ShogiPiece[];
 	selectedHandPiece: ShogiPiece | null;
