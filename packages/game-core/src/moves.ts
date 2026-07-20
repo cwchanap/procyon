@@ -95,11 +95,11 @@ function isInBounds(pos: Position, dims: Dims): boolean {
 	);
 }
 
-// moveLeavesKingInCheck applies the move on a mutable clone. The clone uses
-// copyBoard when TPiece satisfies { color: string }; for the rare case where
-// a caller passes a non-colored TPiece (not currently used by any variant),
-// fall back to a shallow row clone. This keeps moveLeavesKingInCheck usable
-// without forcing the color constraint at the signature level.
+// moveLeavesKingInCheck applies the move on a shallow row-clone of the board —
+// sufficient because it only reassigns cells via setCell, never mutates piece
+// objects in place. This avoids forcing `TPiece extends { color: string }` at
+// the signature, keeping moveLeavesKingInCheck and isOwnKingInCheckOnBoard
+// generic over any TPiece.
 function copyBoardAsPossible<TPiece>(
 	board: GridBoard<TPiece>
 ): GridBoard<TPiece> {
