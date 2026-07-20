@@ -1,4 +1,8 @@
-import { bindBoard } from '@procyon/game-core';
+import {
+	bindBoard,
+	type CoordinateScheme,
+	posToNotation as sharedPosToNotation,
+} from '@procyon/game-core';
 import type { XiangqiPiece, XiangqiPieceColor, XiangqiPosition } from './types';
 import {
 	XIANGQI_ROWS,
@@ -9,6 +13,11 @@ import {
 } from './types';
 
 export { copyBoard } from '@procyon/game-core';
+
+export const XIANGQI_SCHEME: CoordinateScheme = {
+	files: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
+	ranks: ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1'],
+};
 
 const bound = bindBoard<XiangqiPiece>({
 	rows: XIANGQI_ROWS,
@@ -138,7 +147,5 @@ export function findKing(
 }
 
 export function getPositionString(pos: XiangqiPosition): string {
-	const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
-	const ranks = ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1'];
-	return (files[pos.col] ?? '') + (ranks[pos.row] ?? '');
+	return sharedPosToNotation(XIANGQI_SCHEME, pos);
 }

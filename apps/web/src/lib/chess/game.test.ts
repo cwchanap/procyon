@@ -1,12 +1,10 @@
 import { test, expect, describe } from 'bun:test';
+import { makeMove, isKingInCheck, getGameStatus, makeAIMove } from './game';
 import {
-	makeMove,
-	isKingInCheck,
-	getGameStatus,
-	makeAIMove,
-	algebraicToPosition,
-} from './game';
-import { createInitialBoard, setPieceAt } from './board';
+	createInitialBoard,
+	setPieceAt,
+	tryAlgebraicToPosition as algebraicToPosition,
+} from './board';
 import type { GameState, ChessPiece } from './types';
 
 describe('Chess Game - Move Validation with Check Handling', () => {

@@ -6,7 +6,13 @@ import type {
 	ChessPiece,
 	GameMode,
 } from './types';
-import { createInitialBoard, getPieceAt, setPieceAt, copyBoard } from './board';
+import {
+	createInitialBoard,
+	getPieceAt,
+	setPieceAt,
+	copyBoard,
+	tryAlgebraicToPosition,
+} from './board';
 import { getPossibleMoves, isMoveValid } from './moves';
 import { findPiece, isSquareAttacked, type Dims } from '@procyon/game-core';
 
@@ -188,8 +194,8 @@ export function makeAIMove(
 	to: string
 ): GameState | null {
 	// Convert algebraic notation to positions
-	const fromPos = algebraicToPosition(from);
-	const toPos = algebraicToPosition(to);
+	const fromPos = tryAlgebraicToPosition(from);
+	const toPos = tryAlgebraicToPosition(to);
 
 	if (!fromPos || !toPos) {
 		return null;
@@ -214,18 +220,4 @@ export function isAITurn(gameState: GameState): boolean {
 		gameState.currentPlayer === gameState.aiPlayer &&
 		(gameState.status === 'playing' || gameState.status === 'check')
 	);
-}
-
-export function algebraicToPosition(algebraic: string): Position | null {
-	if (algebraic.length !== 2) return null;
-
-	const file = algebraic.charAt(0);
-	const rank = algebraic.charAt(1);
-
-	const col = file.charCodeAt(0) - 'a'.charCodeAt(0);
-	const row = 8 - parseInt(rank);
-
-	if (col < 0 || col > 7 || row < 0 || row > 7) return null;
-
-	return { row, col };
 }

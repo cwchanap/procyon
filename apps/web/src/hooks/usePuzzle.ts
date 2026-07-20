@@ -1,8 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '../lib/auth';
 import { env } from '../lib/env';
-import { makeMove, algebraicToPosition } from '../lib/chess/game';
-import { positionToAlgebraic, getPieceAt } from '../lib/chess/board';
+import { makeMove } from '../lib/chess/game';
+import {
+	positionToAlgebraic,
+	getPieceAt,
+	tryAlgebraicToPosition as algebraicToPosition,
+} from '../lib/chess/board';
 import { getPossibleMoves } from '../lib/chess/moves';
 import type {
 	PuzzleData,
