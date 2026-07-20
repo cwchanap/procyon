@@ -1,3 +1,4 @@
+import { bindBoard, copyBoard } from '@procyon/game-core';
 import type {
 	JunglePiece,
 	JunglePosition,
@@ -12,7 +13,16 @@ import {
 	getTerrainRow,
 } from './types';
 
+export { copyBoard };
 export { getRow, getTerrainRow };
+
+const bound = bindBoard<JunglePiece>({
+	rows: JUNGLE_ROWS,
+	cols: JUNGLE_COLS,
+});
+export const isValidPosition = bound.isValidPosition;
+export const getPieceAt = bound.getPieceAt;
+export const setPieceAt = bound.setPieceAt;
 
 /**
  * Create the initial board setup for Jungle chess
@@ -70,43 +80,6 @@ export function createInitialBoard(): (JunglePiece | null)[][] {
 }
 
 /**
- * Get the piece at a specific position
- */
-export function getPieceAt(
-	board: (JunglePiece | null)[][],
-	position: JunglePosition
-): JunglePiece | null {
-	if (
-		position.row < 0 ||
-		position.row >= JUNGLE_ROWS ||
-		position.col < 0 ||
-		position.col >= JUNGLE_COLS
-	) {
-		return null;
-	}
-	return getRow(board, position.row)[position.col] || null;
-}
-
-/**
- * Set a piece at a specific position
- */
-export function setPieceAt(
-	board: (JunglePiece | null)[][],
-	position: JunglePosition,
-	piece: JunglePiece | null
-): void {
-	if (
-		position.row < 0 ||
-		position.row >= JUNGLE_ROWS ||
-		position.col < 0 ||
-		position.col >= JUNGLE_COLS
-	) {
-		return;
-	}
-	getRow(board, position.row)[position.col] = piece;
-}
-
-/**
  * Get the terrain at a specific position
  */
 export function getTerrainAt(
@@ -123,18 +96,6 @@ export function getTerrainAt(
 	}
 	return (
 		getTerrainRow(terrain, position.row)[position.col] || { type: 'normal' }
-	);
-}
-
-/**
- * Check if a position is within the board bounds
- */
-export function isValidPosition(position: JunglePosition): boolean {
-	return (
-		position.row >= 0 &&
-		position.row < JUNGLE_ROWS &&
-		position.col >= 0 &&
-		position.col < JUNGLE_COLS
 	);
 }
 
@@ -187,15 +148,6 @@ export function findPiecePosition(
 		}
 	}
 	return null;
-}
-
-/**
- * Create a deep copy of the board
- */
-export function copyBoard(
-	board: (JunglePiece | null)[][]
-): (JunglePiece | null)[][] {
-	return board.map(row => row.map(piece => (piece ? { ...piece } : null)));
 }
 
 /**

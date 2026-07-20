@@ -1,3 +1,10 @@
+import type {
+	BaseGameState,
+	BaseMove,
+	GameStatus as SharedGameStatus,
+	Position as GameCorePosition,
+} from '@procyon/game-core';
+
 export type JunglePieceType =
 	| 'elephant' // 象 (8) - Strongest
 	| 'lion' // 獅 (7)
@@ -16,24 +23,14 @@ export interface JunglePiece {
 	rank: number; // 1-8, used for capture rules
 }
 
-export interface JunglePosition {
-	row: number; // 0-8 (9 rows)
-	col: number; // 0-6 (7 columns)
-}
+export type JunglePosition = GameCorePosition;
 
-export interface JungleMove {
+export interface JungleMove extends BaseMove<JunglePiece> {
 	from: JunglePosition;
 	to: JunglePosition;
-	piece: JunglePiece;
-	capturedPiece?: JunglePiece;
 }
 
-export type JungleGameStatus =
-	| 'playing'
-	| 'check'
-	| 'checkmate'
-	| 'stalemate'
-	| 'draw';
+export type JungleGameStatus = SharedGameStatus;
 
 export type JungleTerrainType =
 	| 'normal'
@@ -46,14 +43,11 @@ export interface JungleTerrain {
 	owner?: JunglePieceColor; // For traps and dens
 }
 
-export interface JungleGameState {
-	board: (JunglePiece | null)[][];
-	terrain: JungleTerrain[][];
-	currentPlayer: JunglePieceColor;
+export interface JungleGameState extends BaseGameState<JunglePiece> {
 	status: JungleGameStatus;
+	currentPlayer: JunglePieceColor;
 	moveHistory: JungleMove[];
-	selectedSquare: JunglePosition | null;
-	possibleMoves: JunglePosition[];
+	terrain: JungleTerrain[][];
 }
 
 // Constants for Jungle chess
