@@ -155,6 +155,8 @@ bun run db:seed:d1                # Seed puzzles into D1 (production)
 
 Each game variant (Chess, Xiangqi, Shogi, Jungle) follows the same modular structure in `apps/web/src/lib/{game}/`:
 
+**Shared core (`@procyon/game-core`):** the truly-duplicated structural primitives — `Position`, `BaseMove<TPiece>`, `BaseGameState<TPiece>`, `GridBoard<TPiece>` helpers, `slidingMoves`/`steppingMoves`/`moveLeavesKingInCheck`, and `findPiece`/`isSquareAttacked`/`isInCheck`/`forEachOwnPieceMove` — live in `packages/game-core/`, not in each variant. The scope rule: **share the scaffold, specialize the rules.** Generic piece-movement primitives (sliding/stepping offsets), board helpers parameterized by `Dims`, the `isSquareAttacked` enemy-scan scaffold, and the `moveLeavesKingInCheck` copy/apply/test shell belong in the shared package. Variant-specific rules (castling, cannon screens, shogi drops/nifu/uchifuzume, jungle terrain) AND variant-specific compositions (`hasLegalMove`/`hasAnyLegalMoves` — each variant owns its own because shogi enumerates promotion variants and drops) stay in `apps/web/src/lib/{variant}/`. When adding a new primitive, ask: is the logic identical across ≥3 variants modulo dimensions and piece types? If yes → `game-core`. If it references a variant-specific concept (palace, river, promotion zone, drops) → stays variant-local.
+
 1. **Types** (`types.ts`) - Core interfaces and enums (pieces, moves, positions)
 2. **Board** (`board.ts`) - Board representation and piece management
 3. **Moves** (`moves.ts`) - Legal move generation and validation
