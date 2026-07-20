@@ -14,6 +14,9 @@ import {
 	copyBoard,
 } from './board';
 import { isValidMove, getPossibleMoves, makeMove } from './moves';
+import { findPiece, isSquareAttacked, type Dims } from '@procyon/game-core';
+
+const XIANGQI_DIMS: Dims = { rows: XIANGQI_ROWS, cols: XIANGQI_COLS };
 
 export function createInitialXiangqiGameState(): XiangqiGameState {
 	return {
@@ -140,24 +143,23 @@ export function isKingInCheck(
 	board: XiangqiGameState['board'],
 	kingColor: XiangqiPieceColor
 ): boolean {
-	const kingPosition = findKing(board, kingColor);
-	if (!kingPosition) return false;
+	const kingPosition = findPiece(
+		board,
+		p => p.type === 'king' && p.color === kingColor,
+		XIANGQI_DIMS
+	);
+	if (kingPosition === null) return false; // xiangqi policy: missing king = not in check
 
-	const opponentColor = kingColor === 'red' ? 'black' : 'red';
+	const opponentColor: XiangqiPieceColor =
+		kingColor === 'red' ? 'black' : 'red';
 
-	// Check if any opponent piece can attack the king
-	for (let row = 0; row < XIANGQI_ROWS; row++) {
-		for (let col = 0; col < XIANGQI_COLS; col++) {
-			const piece = getRow(board, row)[col];
-			if (piece && piece.color === opponentColor) {
-				const from = { row, col };
-				if (isValidMove(board, from, kingPosition)) {
-					return true;
-				}
-			}
-		}
-	}
-	return false;
+	return isSquareAttacked(
+		board,
+		kingPosition,
+		opponentColor,
+		(b, from) => getPossibleMoves(b, from),
+		XIANGQI_DIMS
+	);
 }
 
 function playerHasValidMoves(

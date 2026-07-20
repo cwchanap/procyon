@@ -8,6 +8,9 @@ import type {
 } from './types';
 import { createInitialBoard, getPieceAt, setPieceAt, copyBoard } from './board';
 import { getPossibleMoves, isMoveValid } from './moves';
+import { findPiece, isSquareAttacked, type Dims } from '@procyon/game-core';
+
+const CHESS_DIMS: Dims = { rows: 8, cols: 8 };
 
 export function createInitialGameState(
 	mode: GameMode = 'human-vs-human',
@@ -118,43 +121,26 @@ export function isKingInCheck(
 	board: (ChessPiece | null)[][],
 	kingColor: PieceColor
 ): boolean {
-	// Find the king
-	let kingPosition: Position | null = null;
+	const kingPosition = findPiece(
+		board,
+		p => p.type === 'king' && p.color === kingColor,
+		CHESS_DIMS
+	);
+	if (kingPosition === null) return false; // chess policy: missing king = not in check
 
-	for (let row = 0; row < 8; row++) {
-		for (let col = 0; col < 8; col++) {
-			const piece = board[row]?.[col];
-			if (piece?.type === 'king' && piece.color === kingColor) {
-				kingPosition = { row, col };
-				break;
-			}
-		}
-		if (kingPosition) break;
-	}
-
-	if (!kingPosition) return false;
-
-	// Check if any opponent piece can attack the king
 	const opponentColor: PieceColor = kingColor === 'white' ? 'black' : 'white';
 
-	for (let row = 0; row < 8; row++) {
-		for (let col = 0; col < 8; col++) {
-			const piece = board[row]?.[col];
-			if (piece && piece.color === opponentColor) {
-				const moves = getPossibleMoves(board, piece, { row, col });
-				if (
-					moves.some(
-						move =>
-							move.row === kingPosition!.row && move.col === kingPosition!.col
-					)
-				) {
-					return true;
-				}
-			}
-		}
-	}
-
-	return false;
+	return isSquareAttacked(
+		board,
+		kingPosition,
+		opponentColor,
+		(b, from) => {
+			const piece = b[from.row]?.[from.col];
+			if (!piece) return [];
+			return getPossibleMoves(b, piece, from);
+		},
+		CHESS_DIMS
+	);
 }
 
 export function getGameStatus(gameState: GameState): GameState['status'] {
