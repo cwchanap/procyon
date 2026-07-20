@@ -1,5 +1,19 @@
-import type { ChessPiece, PieceColor, PieceType, Position } from './types';
+import { bindBoard } from '@procyon/game-core';
+import type { ChessPiece, PieceType, Position } from './types';
 import { BOARD_SIZE } from './types';
+
+export { copyBoard } from '@procyon/game-core';
+
+const bound = bindBoard<ChessPiece>({
+	rows: BOARD_SIZE,
+	cols: BOARD_SIZE,
+});
+export const isValidPosition = bound.isValidPosition;
+export const getPieceAt = bound.getPieceAt;
+export const setPieceAt = bound.setPieceAt;
+export const isSquareEmpty = bound.isSquareEmpty;
+export const isSquareOccupiedByOpponent = bound.isSquareOccupiedByOpponent;
+export const isSquareOccupiedByAlly = bound.isSquareOccupiedByAlly;
 
 export function getRow(
 	board: (ChessPiece | null)[][],
@@ -39,63 +53,6 @@ export function createInitialBoard(): (ChessPiece | null)[][] {
 	}
 
 	return board;
-}
-
-export function isValidPosition(pos: Position): boolean {
-	return (
-		pos.row >= 0 && pos.row < BOARD_SIZE && pos.col >= 0 && pos.col < BOARD_SIZE
-	);
-}
-
-export function getPieceAt(
-	board: (ChessPiece | null)[][],
-	pos: Position
-): ChessPiece | null {
-	if (!isValidPosition(pos)) return null;
-	return board[pos.row]?.[pos.col] ?? null;
-}
-
-export function setPieceAt(
-	board: (ChessPiece | null)[][],
-	pos: Position,
-	piece: ChessPiece | null
-): void {
-	if (!isValidPosition(pos)) return;
-	const row = board[pos.row];
-	if (row) {
-		row[pos.col] = piece;
-	}
-}
-
-export function isSquareEmpty(
-	board: (ChessPiece | null)[][],
-	pos: Position
-): boolean {
-	return getPieceAt(board, pos) === null;
-}
-
-export function isSquareOccupiedByOpponent(
-	board: (ChessPiece | null)[][],
-	pos: Position,
-	color: PieceColor
-): boolean {
-	const piece = getPieceAt(board, pos);
-	return piece !== null && piece.color !== color;
-}
-
-export function isSquareOccupiedByAlly(
-	board: (ChessPiece | null)[][],
-	pos: Position,
-	color: PieceColor
-): boolean {
-	const piece = getPieceAt(board, pos);
-	return piece !== null && piece.color === color;
-}
-
-export function copyBoard(
-	board: (ChessPiece | null)[][]
-): (ChessPiece | null)[][] {
-	return board.map(row => [...row]);
 }
 
 export function positionToAlgebraic(pos: Position): string {
