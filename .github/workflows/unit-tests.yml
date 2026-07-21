@@ -117,7 +117,17 @@ jobs:
         run: bun install
 
       - name: Unit tests (game-core)
-        run: bun run test --filter=@procyon/game-core
+        run: bun run test --filter=@procyon/game-core -- --coverage --coverage-reporter=lcov --coverage-dir=coverage
+
+      - name: Upload coverage to Codecov (game-core)
+        if: ${{ always() && hashFiles('packages/game-core/coverage/lcov.info') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: codecov/codecov-action@v4
+        with:
+          files: packages/game-core/coverage/lcov.info
+          flags: game-core
+          name: game-core-unit-tests
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
       - name: Lint (game-core)
         run: bun run lint --filter=@procyon/game-core
