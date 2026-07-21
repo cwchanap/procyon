@@ -537,6 +537,7 @@ export function forEachOwnPieceMove<TPiece extends { color: string }>(
   ```
 
   Each variant supplies its own `getMovesForPiece` (chess: `getPossibleMoves`; xiangqi: `getPossibleMoves` over its move set; shogi: `getPossibleMoves` ignoring promotion/drop bookkeeping for attack-scan purposes — only the resulting squares matter).
+
 - **`isInCheck` stays as a thin naming wrapper.** Variants compose `findPiece` + `isSquareAttacked` directly when they need the king-check semantic; `isInCheck` exists for callers (and `moveLeavesKingInCheck`) that want a pre-composed name. Callers build the closure at the call site:
 
   ```ts

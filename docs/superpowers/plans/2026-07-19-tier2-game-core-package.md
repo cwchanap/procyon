@@ -1779,7 +1779,7 @@ Similarly, migrate `getKingMoves` (steppingMoves with 8 king offsets) and `getKn
 
 - [ ] **Step 3: Migrate `shogi/moves.ts` rook/bishop and gold/silver/knight/etc.**
 
-Apply the same pattern. Shogi rook/bishop become `slidingMoves` with maxRange = 9; the offset-based pieces (king/gold/silver/knight/pawn/lance) become `steppingMoves` with their respective offset lists. Leave promoted-piece variants and drops unchanged.
+Apply the same pattern. Shogi rook/bishop and lance become `slidingMoves` with maxRange = 9; the lance uses the color-relative forward direction and remains an unbounded, blocker-aware ray. The bounded offset-based pieces (king/gold/silver/knight/pawn) become `steppingMoves` with their respective offset lists. Leave promoted-piece variants and drops unchanged.
 
 - [ ] **Step 4: Run chess + shogi moves tests**
 
@@ -2618,8 +2618,8 @@ Expected: the new paragraph appears under Multi-Game Pattern, before "1. Types".
 - [ ] **Step 4: Run the full repo gate**
 
 ```bash
-bun test --filter=@procyon/game-core
-bun test src
+bun run test --filter=@procyon/game-core
+bun run test --filter=web
 cd apps/web && bun run typecheck && bun run lint
 cd ../.. && bun run typecheck && bun run lint
 ```
