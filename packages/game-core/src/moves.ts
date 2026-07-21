@@ -1,6 +1,7 @@
 import {
 	isSquareEmpty,
 	isSquareOccupiedByOpponent,
+	isValidPosition,
 	type GridBoard,
 } from './board';
 import type { Direction, Dims, Position } from './types';
@@ -20,7 +21,7 @@ export function slidingMoves<TPiece extends { color: string }>(
 				row: from.row + dir.row * i,
 				col: from.col + dir.col * i,
 			};
-			if (!isInBounds(pos, dims)) break;
+			if (!isValidPosition(pos, dims)) break;
 			if (isSquareEmpty(board, pos, dims)) {
 				moves.push(pos);
 			} else if (isSquareOccupiedByOpponent(board, pos, color, dims)) {
@@ -47,7 +48,7 @@ export function steppingMoves<TPiece extends { color: string }>(
 			row: from.row + offset.row,
 			col: from.col + offset.col,
 		};
-		if (!isInBounds(pos, dims)) continue;
+		if (!isValidPosition(pos, dims)) continue;
 		if (isSquareEmpty(board, pos, dims)) {
 			moves.push(pos);
 		} else if (isSquareOccupiedByOpponent(board, pos, color, dims)) {
@@ -87,12 +88,6 @@ export function isOwnKingInCheckOnBoard<TPiece>(
 	const kingPos = findOwnKing(board);
 	if (kingPos === null) return onMissingKing();
 	return isOwnKingAttacked(board, kingPos);
-}
-
-function isInBounds(pos: Position, dims: Dims): boolean {
-	return (
-		pos.row >= 0 && pos.row < dims.rows && pos.col >= 0 && pos.col < dims.cols
-	);
 }
 
 // moveLeavesKingInCheck applies the move on a shallow row-clone of the board —
