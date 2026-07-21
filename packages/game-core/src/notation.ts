@@ -6,6 +6,16 @@ export interface CoordinateScheme {
 }
 
 export function posToNotation(scheme: CoordinateScheme, pos: Position): string {
+	if (
+		!Number.isInteger(pos.row) ||
+		!Number.isInteger(pos.col) ||
+		pos.row < 0 ||
+		pos.row >= scheme.ranks.length ||
+		pos.col < 0 ||
+		pos.col >= scheme.files.length
+	) {
+		throw new Error(`Invalid position: ${pos.row},${pos.col}`);
+	}
 	return `${scheme.files[pos.col]}${scheme.ranks[pos.row]}`;
 }
 
