@@ -1,12 +1,13 @@
 import { slidingMoves, steppingMoves } from '@procyon/game-core';
 import type { ChessPiece, Position } from './types';
+import { BOARD_SIZE } from './types';
 import {
 	isValidPosition,
 	isSquareEmpty,
 	isSquareOccupiedByOpponent,
 } from './board';
 
-const CHESS_DIMS = { rows: 8, cols: 8 } as const;
+const CHESS_DIMS = { rows: BOARD_SIZE, cols: BOARD_SIZE } as const;
 
 export function getPossibleMoves(
 	board: (ChessPiece | null)[][],
