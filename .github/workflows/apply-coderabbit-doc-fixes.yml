@@ -1,0 +1,66 @@
+name: Apply CodeRabbit documentation fixes
+
+on:
+  push:
+    branches:
+      - feat/hpa-154-game-core
+
+permissions:
+  contents: write
+
+jobs:
+  patch-docs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/hpa-154-game-core
+
+      - name: Apply exact documentation substitutions
+        shell: python
+        run: |
+          from pathlib import Path
+
+          plan_path = Path('docs/superpowers/plans/2026-07-19-tier2-game-core-package.md')
+          design_path = Path('docs/superpowers/2026-07-18-tier2-game-core-package-design.md')
+
+          plan = plan_path.read_text()
+          design = design_path.read_text()
+
+          replacements = [
+              (
+                  'Apply the same pattern. Shogi rook/bishop become `slidingMoves` with maxRange = 9; the offset-based pieces (king/gold/silver/knight/pawn/lance) become `steppingMoves` with their respective offset lists. Leave promoted-piece variants and drops unchanged.',
+                  'Apply the same pattern. Shogi rook/bishop and lance become `slidingMoves` with maxRange = 9; the lance uses the color-relative forward direction and remains an unbounded, blocker-aware ray. The bounded offset-based pieces (king/gold/silver/knight/pawn) become `steppingMoves` with their respective offset lists. Leave promoted-piece variants and drops unchanged.',
+              ),
+              (
+                  'bun test --filter=@procyon/game-core\nbun test src\ncd apps/web && bun run typecheck && bun run lint\ncd ../.. && bun run typecheck && bun run lint',
+                  'bun run test --filter=@procyon/game-core\nbun run test --filter=web\ncd apps/web && bun run typecheck && bun run lint\ncd ../.. && bun run typecheck && bun run lint',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = plan.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one plan match, found {count}: {old[:80]}')
+              plan = plan.replace(old, new, 1)
+
+          old_design = "Each variant supplies its own `getMovesForPiece` (chess: `getPossibleMoves`; xiangqi: `getPossibleMoves` over its move set; shogi: `getPossibleMoves` ignoring promotion/drop bookkeeping for attack-scan purposes — only the resulting squares matter).\n- **`isInCheck` stays as a thin naming wrapper.**"
+          new_design = "Each variant supplies its own `getMovesForPiece` (chess: `getPossibleMoves`; xiangqi: `getPossibleMoves` over its move set; shogi: `getPossibleMoves` ignoring promotion/drop bookkeeping for attack-scan purposes — only the resulting squares matter).\n\n- **`isInCheck` stays as a thin naming wrapper.**"
+          count = design.count(old_design)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one design whitespace match, found {count}')
+          design = design.replace(old_design, new_design, 1)
+
+          plan_path.write_text(plan)
+          design_path.write_text(design)
+
+      - name: Commit documentation fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/superpowers/2026-07-18-tier2-game-core-package-design.md docs/superpowers/plans/2026-07-19-tier2-game-core-package.md
+          git diff --cached --quiet && exit 0
+          git commit -m 'docs(game-core): correct migration and verification guidance'
+          git push origin HEAD:feat/hpa-154-game-core
