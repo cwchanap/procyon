@@ -25,6 +25,18 @@ describe('posToNotation', () => {
 		expect(posToNotation(XIANGQI, { row: 9, col: 8 })).toBe('i1');
 		expect(posToNotation(XIANGQI, { row: 5, col: 4 })).toBe('e5');
 	});
+	test('throws on non-integer and out-of-bounds positions', () => {
+		for (const pos of [
+			{ row: -1, col: 0 },
+			{ row: CHESS.ranks.length, col: 0 },
+			{ row: 0, col: -1 },
+			{ row: 0, col: CHESS.files.length },
+			{ row: 0.5, col: 0 },
+			{ row: 0, col: 0.5 },
+		]) {
+			expect(() => posToNotation(CHESS, pos)).toThrow('Invalid position');
+		}
+	});
 });
 
 describe('notationToPos', () => {
