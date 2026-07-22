@@ -1,10 +1,4 @@
 import type {
-	GameVariantAdapter,
-	BaseGameState,
-	GamePosition,
-	GamePiece,
-} from './service';
-import type {
 	JungleGameState,
 	JunglePosition,
 	JunglePieceType,
@@ -12,25 +6,10 @@ import type {
 import { JUNGLE_ROWS, JUNGLE_COLS } from '../jungle/types';
 import { getPossibleMoves } from '../jungle/moves';
 import { getPieceAt, getTerrainRow } from '../jungle/board';
-import { positionToAlgebraic, algebraicToPosition } from './notation-utils';
+import { BaseAdapter } from './base-adapter';
 
-export class JungleAdapter implements GameVariantAdapter<JungleGameState> {
+export class JungleAdapter extends BaseAdapter<JungleGameState> {
 	gameVariant = 'jungle' as const;
-
-	constructor(_debug: boolean = false) {
-		// Debug functionality handled by universal service
-	}
-
-	convertGameState(gameState: JungleGameState): BaseGameState {
-		return {
-			board: gameState.board,
-			currentPlayer: gameState.currentPlayer,
-			status: gameState.status,
-			moveHistory: gameState.moveHistory,
-			selectedSquare: gameState.selectedSquare,
-			possibleMoves: gameState.possibleMoves,
-		};
-	}
 
 	getAllValidMoves(gameState: JungleGameState): string[] {
 		const moves: string[] = [];
@@ -78,49 +57,6 @@ export class JungleAdapter implements GameVariantAdapter<JungleGameState> {
 
 	generatePrompt(gameState: JungleGameState): string {
 		return this.gameStateToPrompt(gameState);
-	}
-
-	/**
-	 * Convert Jungle position to algebraic notation
-	 */
-	positionToAlgebraic(position: GamePosition): string {
-		return positionToAlgebraic('jungle', position);
-	}
-
-	/**
-	 * Convert algebraic notation to Jungle position
-	 */
-	algebraicToPosition(algebraic: string): GamePosition {
-		return algebraicToPosition('jungle', algebraic);
-	}
-
-	/**
-	 * Get piece symbol for display
-	 */
-	getPieceSymbol(piece: GamePiece): string {
-		const symbols: Record<string, Record<string, string>> = {
-			red: {
-				elephant: '象',
-				lion: '獅',
-				tiger: '虎',
-				leopard: '豹',
-				dog: '狗',
-				wolf: '狼',
-				cat: '貓',
-				rat: '鼠',
-			},
-			blue: {
-				elephant: '象',
-				lion: '獅',
-				tiger: '虎',
-				leopard: '豹',
-				dog: '狗',
-				wolf: '狼',
-				cat: '貓',
-				rat: '鼠',
-			},
-		};
-		return symbols[piece.color]?.[piece.type] || '?';
 	}
 
 	/**
