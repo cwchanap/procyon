@@ -10,8 +10,6 @@ import type {
 	XiangqiPiece,
 } from '../xiangqi/types';
 import {
-	XIANGQI_FILES,
-	XIANGQI_RANKS,
 	XIANGQI_SYMBOLS,
 	PALACE_ROWS,
 	PALACE_COLS,
@@ -22,6 +20,7 @@ import { getPossibleMoves } from '../xiangqi/moves';
 import { isKingInCheck } from '../xiangqi/game';
 import { copyBoard, getRow, setPieceAt } from '../xiangqi/board';
 import { GAME_CONFIGS } from './game-variant-types';
+import { positionToAlgebraic, algebraicToPosition } from './notation-utils';
 
 export class XiangqiAdapter implements GameVariantAdapter<XiangqiGameState> {
 	gameVariant = 'xiangqi' as const;
@@ -247,26 +246,11 @@ Your move:`;
 	}
 
 	positionToAlgebraic(position: GamePosition): string {
-		return XIANGQI_FILES[position.col]! + XIANGQI_RANKS[position.row]!;
+		return positionToAlgebraic('xiangqi', position);
 	}
 
 	algebraicToPosition(algebraic: string): GamePosition {
-		const normalized = algebraic?.trim().toLowerCase();
-		const file = normalized?.[0];
-		const rank = normalized?.slice(1);
-
-		if (!file || !rank) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		const col = XIANGQI_FILES.indexOf(file);
-		const row = XIANGQI_RANKS.indexOf(rank);
-
-		if (col === -1 || row === -1) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		return { col, row };
+		return algebraicToPosition('xiangqi', algebraic);
 	}
 
 	private formatMoveHistory(moves: XiangqiMove[]): string {

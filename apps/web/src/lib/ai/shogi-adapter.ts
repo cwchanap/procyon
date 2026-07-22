@@ -10,13 +10,9 @@ import type {
 	ShogiPiece,
 	ShogiMove,
 } from '../shogi';
-import {
-	SHOGI_FILES,
-	SHOGI_RANKS,
-	PIECE_UNICODE,
-	SHOGI_BOARD_SIZE,
-} from '../shogi';
+import { SHOGI_RANKS, PIECE_UNICODE, SHOGI_BOARD_SIZE } from '../shogi';
 import { GAME_CONFIGS } from './game-variant-types';
+import { positionToAlgebraic, algebraicToPosition } from './notation-utils';
 import { getPossibleMoves, canDropAt } from '../shogi/moves';
 import { isKingInCheck } from '../shogi/game';
 import { copyBoard, setPieceAt } from '../shogi/board';
@@ -300,48 +296,11 @@ Your move:`;
 	}
 
 	positionToAlgebraic(position: GamePosition): string {
-		// Validate position bounds
-		if (
-			typeof position.row !== 'number' ||
-			typeof position.col !== 'number' ||
-			!Number.isInteger(position.row) ||
-			!Number.isInteger(position.col) ||
-			position.row < 0 ||
-			position.row >= SHOGI_BOARD_SIZE ||
-			position.col < 0 ||
-			position.col >= SHOGI_BOARD_SIZE
-		) {
-			throw new RangeError(
-				`positionToAlgebraic: Invalid position - row: ${position.row}, col: ${position.col}. Expected integers in range 0-${SHOGI_BOARD_SIZE - 1}.`
-			);
-		}
-		const file = SHOGI_FILES[position.col];
-		const rank = SHOGI_RANKS[position.row];
-		if (!file || !rank) {
-			throw new RangeError(
-				`positionToAlgebraic: Invalid position - file or rank not found for row: ${position.row}, col: ${position.col}.`
-			);
-		}
-		return file + rank;
+		return positionToAlgebraic('shogi', position);
 	}
 
 	algebraicToPosition(algebraic: string): GamePosition {
-		const normalized = algebraic?.trim().toLowerCase();
-		const file = normalized?.[0];
-		const rank = normalized?.[1];
-
-		if (!file || !rank) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		const col = SHOGI_FILES.indexOf(file);
-		const row = SHOGI_RANKS.indexOf(rank);
-
-		if (col === -1 || row === -1) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		return { col, row };
+		return algebraicToPosition('shogi', algebraic);
 	}
 
 	getPieceSymbol(piece: GamePiece): string {

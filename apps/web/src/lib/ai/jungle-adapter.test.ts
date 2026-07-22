@@ -46,12 +46,12 @@ describe('JungleAdapter', () => {
 			expect(adapter.positionToAlgebraic({ row: 4, col: 3 })).toBe('d5');
 		});
 
-		test('should throw RangeError for out-of-bounds positions', () => {
+		test('should throw Error for out-of-bounds positions', () => {
 			expect(() => adapter.positionToAlgebraic({ row: 0, col: 99 })).toThrow(
-				RangeError
+				Error
 			);
 			expect(() => adapter.positionToAlgebraic({ row: 99, col: 0 })).toThrow(
-				RangeError
+				Error
 			);
 		});
 	});

@@ -15,6 +15,61 @@ import type { GameState } from '../chess/types';
 import type { XiangqiGameState } from '../xiangqi/types';
 import type { ShogiGameState } from '../shogi';
 import type { JungleGameState } from '../jungle/types';
+import {
+	positionToAlgebraic,
+	tryAlgebraicToPosition,
+	isValidPosition,
+} from './notation-utils';
+
+describe('notation-utils contract tests', () => {
+	describe('tryAlgebraicToPosition — guardian parsing', () => {
+		test('valid lowercase notation accepted', () => {
+			const pos = tryAlgebraicToPosition('chess', 'e2');
+			expect(isValidPosition('chess', pos)).toBe(true);
+			expect(pos).toEqual({ row: 6, col: 4 });
+		});
+
+		test('uppercase notation accepted (harmonized with adapters)', () => {
+			const pos = tryAlgebraicToPosition('chess', 'E2');
+			expect(isValidPosition('chess', pos)).toBe(true);
+			expect(pos).toEqual({ row: 6, col: 4 });
+		});
+
+		test('trailing garbage rejected (tightened)', () => {
+			const pos = tryAlgebraicToPosition('chess', 'e2junk');
+			expect(isValidPosition('chess', pos)).toBe(false);
+		});
+
+		test('out-of-bounds notation rejected', () => {
+			const pos = tryAlgebraicToPosition('chess', 'z9');
+			expect(isValidPosition('chess', pos)).toBe(false);
+		});
+
+		test('empty string returns sentinel', () => {
+			const pos = tryAlgebraicToPosition('chess', '');
+			expect(pos).toEqual({ row: -1, col: -1 });
+		});
+
+		test('single char returns sentinel', () => {
+			const pos = tryAlgebraicToPosition('chess', 'e');
+			expect(pos).toEqual({ row: -1, col: -1 });
+		});
+	});
+
+	describe('positionToAlgebraic — OOB throws Error', () => {
+		test('chess OOB throws (was undefinedundefined)', () => {
+			expect(() => positionToAlgebraic('chess', { row: 99, col: 99 })).toThrow(
+				Error
+			);
+		});
+
+		test('jungle OOB throws Error (was RangeError)', () => {
+			expect(() => positionToAlgebraic('jungle', { row: 99, col: 99 })).toThrow(
+				Error
+			);
+		});
+	});
+});
 
 describe('Rule Guardian System', () => {
 	describe('createRuleGuardian', () => {

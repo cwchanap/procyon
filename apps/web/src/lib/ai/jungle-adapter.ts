@@ -12,6 +12,7 @@ import type {
 import { JUNGLE_ROWS, JUNGLE_COLS } from '../jungle/types';
 import { getPossibleMoves } from '../jungle/moves';
 import { getPieceAt, getTerrainRow } from '../jungle/board';
+import { positionToAlgebraic, algebraicToPosition } from './notation-utils';
 
 export class JungleAdapter implements GameVariantAdapter<JungleGameState> {
 	gameVariant = 'jungle' as const;
@@ -83,40 +84,14 @@ export class JungleAdapter implements GameVariantAdapter<JungleGameState> {
 	 * Convert Jungle position to algebraic notation
 	 */
 	positionToAlgebraic(position: GamePosition): string {
-		const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-		const ranks = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
-		const file = files[position.col];
-		const rank = ranks[position.row];
-		if (!file || !rank) {
-			throw new RangeError(
-				`Position out of bounds: row=${position.row}, col=${position.col}`
-			);
-		}
-		return `${file}${rank}`;
+		return positionToAlgebraic('jungle', position);
 	}
 
 	/**
 	 * Convert algebraic notation to Jungle position
 	 */
 	algebraicToPosition(algebraic: string): GamePosition {
-		const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-		const ranks = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
-		const normalized = algebraic?.trim().toLowerCase();
-		const file = normalized?.[0];
-		const rank = normalized?.slice(1);
-
-		if (!file || !rank) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		const col = files.indexOf(file);
-		const row = ranks.indexOf(rank);
-
-		if (col === -1 || row === -1) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		return { col, row };
+		return algebraicToPosition('jungle', algebraic);
 	}
 
 	/**

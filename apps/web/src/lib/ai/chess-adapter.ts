@@ -5,11 +5,12 @@ import type {
 	GamePiece,
 } from './service';
 import type { GameState, Position, Move, ChessPiece } from '../chess/types';
-import { RANKS, FILES, BOARD_SIZE } from '../chess/types';
+import { BOARD_SIZE } from '../chess/types';
 import { getPossibleMoves, isMoveValid } from '../chess/moves';
 import { isKingInCheck } from '../chess/game';
 import { copyBoard, getRow, setPieceAt } from '../chess/board';
 import { GAME_CONFIGS } from './game-variant-types';
+import { positionToAlgebraic, algebraicToPosition } from './notation-utils';
 
 export class ChessAdapter implements GameVariantAdapter<GameState> {
 	gameVariant = 'chess' as const;
@@ -196,26 +197,11 @@ Rules:
 	}
 
 	positionToAlgebraic(position: GamePosition): string {
-		return FILES[position.col]! + RANKS[position.row]!;
+		return positionToAlgebraic('chess', position);
 	}
 
 	algebraicToPosition(algebraic: string): GamePosition {
-		const normalized = algebraic?.trim().toLowerCase();
-		const file = normalized?.[0];
-		const rank = normalized?.[1];
-
-		if (!file || !rank) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		const col = FILES.indexOf(file);
-		const row = RANKS.indexOf(rank);
-
-		if (col === -1 || row === -1) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		return { col, row };
+		return algebraicToPosition('chess', algebraic);
 	}
 
 	getPieceSymbol(piece: GamePiece): string {
