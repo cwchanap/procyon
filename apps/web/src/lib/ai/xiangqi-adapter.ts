@@ -1,16 +1,9 @@
 import type {
-	GameVariantAdapter,
-	BaseGameState,
-	GamePosition,
-	GamePiece,
-} from './service';
-import type {
 	XiangqiGameState,
 	XiangqiMove,
 	XiangqiPiece,
 } from '../xiangqi/types';
 import {
-	XIANGQI_SYMBOLS,
 	PALACE_ROWS,
 	PALACE_COLS,
 	XIANGQI_ROWS,
@@ -19,28 +12,11 @@ import {
 import { getPossibleMoves } from '../xiangqi/moves';
 import { isKingInCheck } from '../xiangqi/game';
 import { copyBoard, getRow, setPieceAt } from '../xiangqi/board';
-import { GAME_CONFIGS } from './game-variant-types';
-import { positionToAlgebraic, algebraicToPosition } from './notation-utils';
+import { BaseAdapter } from './base-adapter';
+import type { GamePosition } from './service';
 
-export class XiangqiAdapter implements GameVariantAdapter<XiangqiGameState> {
+export class XiangqiAdapter extends BaseAdapter<XiangqiGameState> {
 	gameVariant = 'xiangqi' as const;
-	private config = GAME_CONFIGS.xiangqi;
-	private debugMode: boolean;
-
-	constructor(debugMode = false) {
-		this.debugMode = debugMode;
-	}
-
-	convertGameState(gameState: XiangqiGameState): BaseGameState {
-		return {
-			board: gameState.board,
-			currentPlayer: gameState.currentPlayer,
-			status: gameState.status,
-			moveHistory: gameState.moveHistory,
-			selectedSquare: gameState.selectedSquare,
-			possibleMoves: gameState.possibleMoves,
-		};
-	}
 
 	getAllValidMoves(gameState: XiangqiGameState): string[] {
 		const { board, currentPlayer } = gameState;
@@ -63,7 +39,7 @@ export class XiangqiAdapter implements GameVariantAdapter<XiangqiGameState> {
 						if (isValidMove) {
 							const from = this.positionToAlgebraic(fromPos);
 							const to = this.positionToAlgebraic(toPos);
-							const pieceSymbol = this.getPieceSymbolForMove(piece);
+							const pieceSymbol = this.getPieceSymbol(piece);
 							validMoves.push(`${from}-${to} (${pieceSymbol})`);
 						}
 					}
@@ -245,14 +221,6 @@ Your move:`;
 		return analysis;
 	}
 
-	positionToAlgebraic(position: GamePosition): string {
-		return positionToAlgebraic('xiangqi', position);
-	}
-
-	algebraicToPosition(algebraic: string): GamePosition {
-		return algebraicToPosition('xiangqi', algebraic);
-	}
-
 	private formatMoveHistory(moves: XiangqiMove[]): string {
 		if (moves.length === 0) return 'Game start';
 
@@ -273,22 +241,6 @@ Your move:`;
 				}
 			})
 			.join(' ');
-	}
-
-	private findPiece(
-		board: (XiangqiPiece | null)[][],
-		type: string,
-		color: string
-	): { row: number; col: number } | null {
-		for (let row = 0; row < XIANGQI_ROWS; row++) {
-			for (let col = 0; col < XIANGQI_COLS; col++) {
-				const piece = getRow(board, row)[col];
-				if (piece && piece.type === type && piece.color === color) {
-					return { row, col };
-				}
-			}
-		}
-		return null;
 	}
 
 	private countMaterial(
@@ -405,35 +357,6 @@ Your move:`;
 		}
 
 		return analysis;
-	}
-
-	getPieceSymbol(piece: GamePiece): string {
-		const color = piece.color as keyof typeof XIANGQI_SYMBOLS;
-		const symbols = XIANGQI_SYMBOLS[color];
-		if (!symbols) return '?';
-		return symbols[piece.type as keyof typeof symbols] || '?';
-	}
-
-	private getPieceSymbolForMove(piece: XiangqiPiece): string {
-		return this.getPieceSymbol(piece);
-	}
-
-	private groupMovesByPiece(moves: string[]): string {
-		const groups: { [key: string]: string[] } = {};
-
-		for (const move of moves) {
-			const pieceMatch = move.match(/\(([^)]+)\)/);
-			const pieceType = pieceMatch?.[1] ?? 'Unknown';
-			const group = groups[pieceType] ?? (groups[pieceType] = []);
-			group.push(move.replace(/\s*\([^)]+\)/, ''));
-		}
-
-		let result = '';
-		for (const [pieceType, movesArray] of Object.entries(groups)) {
-			result += `${pieceType}: ${movesArray.join(', ')}\n`;
-		}
-
-		return result.trim();
 	}
 
 	private wouldMoveBeValid(

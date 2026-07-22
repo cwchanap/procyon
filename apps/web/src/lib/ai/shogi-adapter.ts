@@ -1,41 +1,18 @@
 import type {
-	GameVariantAdapter,
-	BaseGameState,
-	GamePosition,
-	GamePiece,
-} from './service';
-import type {
 	ShogiGameState,
 	ShogiPosition,
 	ShogiPiece,
 	ShogiMove,
 } from '../shogi';
-import { SHOGI_RANKS, PIECE_UNICODE, SHOGI_BOARD_SIZE } from '../shogi';
-import { GAME_CONFIGS } from './game-variant-types';
-import { positionToAlgebraic, algebraicToPosition } from './notation-utils';
+import { SHOGI_RANKS, SHOGI_BOARD_SIZE } from '../shogi';
+import { BaseAdapter } from './base-adapter';
+import type { GamePosition } from './service';
 import { getPossibleMoves, canDropAt } from '../shogi/moves';
 import { isKingInCheck } from '../shogi/game';
 import { copyBoard, setPieceAt } from '../shogi/board';
 
-export class ShogiAdapter implements GameVariantAdapter<ShogiGameState> {
+export class ShogiAdapter extends BaseAdapter<ShogiGameState> {
 	gameVariant = 'shogi' as const;
-	private config = GAME_CONFIGS.shogi;
-	private debugMode: boolean;
-
-	constructor(debugMode = false) {
-		this.debugMode = debugMode;
-	}
-
-	convertGameState(gameState: ShogiGameState): BaseGameState {
-		return {
-			board: gameState.board,
-			currentPlayer: gameState.currentPlayer,
-			status: gameState.status,
-			moveHistory: gameState.moveHistory,
-			selectedSquare: gameState.selectedSquare,
-			possibleMoves: gameState.possibleMoves,
-		};
-	}
 
 	getAllValidMoves(gameState: ShogiGameState): string[] {
 		const { board, currentPlayer, senteHand, goteHand } = gameState;
@@ -295,21 +272,6 @@ Your move:`;
 		return analysis;
 	}
 
-	positionToAlgebraic(position: GamePosition): string {
-		return positionToAlgebraic('shogi', position);
-	}
-
-	algebraicToPosition(algebraic: string): GamePosition {
-		return algebraicToPosition('shogi', algebraic);
-	}
-
-	getPieceSymbol(piece: GamePiece): string {
-		const pieceType = piece.type as keyof typeof PIECE_UNICODE;
-		const unicode = PIECE_UNICODE[pieceType];
-		if (!unicode) return '?';
-		return unicode[piece.color as keyof typeof unicode] || '?';
-	}
-
 	private formatHandPieces(gameState: ShogiGameState): string {
 		const senteHand = gameState.senteHand
 			.map(p => this.getPieceSymbol(p))
@@ -390,22 +352,6 @@ Your move:`;
 				}
 			})
 			.join(' ');
-	}
-
-	private findPiece(
-		board: (ShogiPiece | null)[][],
-		type: string,
-		color: string
-	): { row: number; col: number } | null {
-		for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
-			for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-				const piece = board[row]?.[col];
-				if (piece && piece.type === type && piece.color === color) {
-					return { row, col };
-				}
-			}
-		}
-		return null;
 	}
 
 	private countMaterial(gameState: ShogiGameState, color: string): number {
@@ -509,7 +455,7 @@ Your move:`;
 		return analysis;
 	}
 
-	private groupMovesByPiece(moves: string[]): string {
+	protected override groupMovesByPiece(moves: string[]): string {
 		const groups: { [key: string]: string[] } = {};
 
 		for (const move of moves) {

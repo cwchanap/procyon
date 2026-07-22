@@ -1,36 +1,12 @@
-import type {
-	GameVariantAdapter,
-	BaseGameState,
-	GamePosition,
-	GamePiece,
-} from './service';
 import type { GameState, Position, Move, ChessPiece } from '../chess/types';
 import { BOARD_SIZE } from '../chess/types';
 import { getPossibleMoves, isMoveValid } from '../chess/moves';
 import { isKingInCheck } from '../chess/game';
 import { copyBoard, getRow, setPieceAt } from '../chess/board';
-import { GAME_CONFIGS } from './game-variant-types';
-import { positionToAlgebraic, algebraicToPosition } from './notation-utils';
+import { BaseAdapter } from './base-adapter';
 
-export class ChessAdapter implements GameVariantAdapter<GameState> {
+export class ChessAdapter extends BaseAdapter<GameState> {
 	gameVariant = 'chess' as const;
-	private config = GAME_CONFIGS.chess;
-	private debugMode: boolean;
-
-	constructor(debugMode = false) {
-		this.debugMode = debugMode;
-	}
-
-	convertGameState(gameState: GameState): BaseGameState {
-		return {
-			board: gameState.board,
-			currentPlayer: gameState.currentPlayer,
-			status: gameState.status,
-			moveHistory: gameState.moveHistory,
-			selectedSquare: gameState.selectedSquare,
-			possibleMoves: gameState.possibleMoves,
-		};
-	}
 
 	getAllValidMoves(gameState: GameState): string[] {
 		const { board, currentPlayer } = gameState;
@@ -196,21 +172,6 @@ Rules:
 		return analysis;
 	}
 
-	positionToAlgebraic(position: GamePosition): string {
-		return positionToAlgebraic('chess', position);
-	}
-
-	algebraicToPosition(algebraic: string): GamePosition {
-		return algebraicToPosition('chess', algebraic);
-	}
-
-	getPieceSymbol(piece: GamePiece): string {
-		const symbols = this.config.pieceSymbols;
-		const colorSymbols = symbols[piece.color];
-		if (!colorSymbols) return '?';
-		return colorSymbols[piece.type] || '?';
-	}
-
 	private wouldMoveBeValid(
 		gameState: GameState,
 		from: Position,
@@ -283,22 +244,6 @@ Rules:
 		return '';
 	}
 
-	private findPiece(
-		board: (ChessPiece | null)[][],
-		type: string,
-		color: string
-	): { row: number; col: number } | null {
-		for (let row = 0; row < BOARD_SIZE; row++) {
-			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = getRow(board, row)[col];
-				if (piece && piece.type === type && piece.color === color) {
-					return { row, col };
-				}
-			}
-		}
-		return null;
-	}
-
 	private countMaterial(board: (ChessPiece | null)[][], color: string): number {
 		const values = {
 			pawn: 1,
@@ -357,24 +302,6 @@ Rules:
 			pawn: '♙/♟',
 		};
 		return symbols[piece.type] || piece.type;
-	}
-
-	private groupMovesByPiece(moves: string[]): string {
-		const groups: { [key: string]: string[] } = {};
-
-		for (const move of moves) {
-			const pieceMatch = move.match(/\(([^)]+)\)/);
-			const pieceType = pieceMatch?.[1] ?? 'Unknown';
-			const group = groups[pieceType] ?? (groups[pieceType] = []);
-			group.push(move.replace(/\s*\([^)]+\)/, ''));
-		}
-
-		let result = '';
-		for (const [pieceType, movesArray] of Object.entries(groups)) {
-			result += `${pieceType}: ${movesArray.join(', ')}\n`;
-		}
-
-		return result.trim();
 	}
 
 	private getExampleMoveFromValidMoves(validMovesText: string): {
