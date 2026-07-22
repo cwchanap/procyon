@@ -8,6 +8,7 @@ import type { XiangqiGameState } from '../xiangqi/types';
 import type { ShogiGameState, ShogiPieceType } from '../shogi';
 import type { JungleGameState } from '../jungle/types';
 import type { AIResponse } from './types';
+import { tryAlgebraicToPosition, isValidPosition } from './notation-utils';
 
 // Valid Shogi piece types for drops (base types only, no promoted pieces, king cannot be dropped)
 const VALID_SHOGI_PIECE_TYPES: ShogiPieceType[] = [
@@ -88,24 +89,11 @@ export class ChessRuleGuardian implements RuleGuardian<ChessGameState> {
 	}
 
 	private algebraicToPosition(algebraic: string): GamePosition {
-		const file = algebraic[0];
-		const rank = algebraic[1];
-		const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-		const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
-
-		if (!file || !rank) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		const col = files.indexOf(file);
-		const row = ranks.indexOf(rank);
-
-		// Return position even if invalid - let isValidPosition handle it
-		return { col, row };
+		return tryAlgebraicToPosition('chess', algebraic);
 	}
 
 	private isValidPosition(pos: GamePosition): boolean {
-		return pos.row >= 0 && pos.row < 8 && pos.col >= 0 && pos.col < 8;
+		return isValidPosition('chess', pos);
 	}
 }
 
@@ -180,24 +168,11 @@ export class XiangqiRuleGuardian implements RuleGuardian<XiangqiGameState> {
 	}
 
 	private algebraicToPosition(algebraic: string): GamePosition {
-		const file = algebraic[0];
-		const rank = algebraic.slice(1);
-		const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
-		const ranks = ['10', '9', '8', '7', '6', '5', '4', '3', '2', '1'];
-
-		if (!file || !rank) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		const col = files.indexOf(file);
-		const row = ranks.indexOf(rank);
-
-		// Return position even if invalid - let isValidPosition handle it
-		return { col, row };
+		return tryAlgebraicToPosition('xiangqi', algebraic);
 	}
 
 	private isValidPosition(pos: GamePosition): boolean {
-		return pos.row >= 0 && pos.row < 10 && pos.col >= 0 && pos.col < 9;
+		return isValidPosition('xiangqi', pos);
 	}
 
 	private isInPalace(pos: GamePosition, color: string): boolean {
@@ -333,24 +308,11 @@ export class ShogiRuleGuardian implements RuleGuardian<ShogiGameState> {
 	}
 
 	private algebraicToPosition(algebraic: string): GamePosition {
-		const file = algebraic[0];
-		const rank = algebraic[1];
-		const files = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
-		const ranks = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
-
-		if (!file || !rank) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		const col = files.indexOf(file);
-		const row = ranks.indexOf(rank);
-
-		// Return position even if invalid - let isValidPosition handle it
-		return { col, row };
+		return tryAlgebraicToPosition('shogi', algebraic);
 	}
 
 	private isValidPosition(pos: GamePosition): boolean {
-		return pos.row >= 0 && pos.row < 9 && pos.col >= 0 && pos.col < 9;
+		return isValidPosition('shogi', pos);
 	}
 }
 
@@ -406,24 +368,11 @@ export class JungleRuleGuardian implements RuleGuardian<JungleGameState> {
 	}
 
 	private algebraicToPosition(algebraic: string): GamePosition {
-		const file = algebraic[0];
-		const rank = algebraic[1];
-		const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-		const ranks = ['9', '8', '7', '6', '5', '4', '3', '2', '1'];
-
-		if (!file || !rank) {
-			throw new Error(`Invalid algebraic notation: ${algebraic}`);
-		}
-
-		const col = files.indexOf(file);
-		const row = ranks.indexOf(rank);
-
-		// Return position even if invalid - let isValidPosition handle it
-		return { col, row };
+		return tryAlgebraicToPosition('jungle', algebraic);
 	}
 
 	private isValidPosition(pos: GamePosition): boolean {
-		return pos.row >= 0 && pos.row < 9 && pos.col >= 0 && pos.col < 7;
+		return isValidPosition('jungle', pos);
 	}
 }
 
