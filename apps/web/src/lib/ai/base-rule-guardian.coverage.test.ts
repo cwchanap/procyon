@@ -13,19 +13,7 @@ import type { AIResponse } from './types';
 
 class TestRuleGuardian extends BaseRuleGuardian<GameState> {
 	gameVariant = 'chess' as const;
-
-	exposeGetConfig() {
-		return this.getConfig();
-	}
 }
-
-describe('BaseRuleGuardian - getConfig', () => {
-	test("returns the config for the guardian's game variant", () => {
-		const guardian = new TestRuleGuardian();
-		const config = guardian.exposeGetConfig();
-		expect(config.boardSize).toEqual({ rows: 8, cols: 8 });
-	});
-});
 
 describe('BaseRuleGuardian - parseMove', () => {
 	test('parses a regular (non-drop) move into from/to positions', () => {

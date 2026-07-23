@@ -34,12 +34,6 @@ class TestAdapter extends BaseAdapter<GameState> {
 	exposeFindPiece(board: GameState['board'], type: string, color: string) {
 		return this.findPiece(board, type, color);
 	}
-	exposeForEachPiece(
-		board: GameState['board'],
-		cb: (piece: ChessPiece, row: number, col: number) => void
-	) {
-		return this.forEachPiece(board, cb);
-	}
 	exposeExpandMoveVariants(
 		piece: GamePiece,
 		from: GamePosition,
@@ -76,11 +70,15 @@ class TestAdapter extends BaseAdapter<GameState> {
 		gameState: GameState,
 		cb: (piece: ChessPiece, from: GamePosition, to: GamePosition) => void
 	): void {
-		this.forEachPiece(gameState.board, (piece, row, col) => {
-			if (piece.color === gameState.currentPlayer) {
-				cb(piece, { row, col }, { row: row - 1, col });
+		const { board, currentPlayer } = gameState;
+		for (let row = 0; row < 8; row++) {
+			for (let col = 0; col < 8; col++) {
+				const piece = board[row]?.[col];
+				if (piece && piece.color === currentPlayer) {
+					cb(piece, { row, col }, { row: row - 1, col });
+				}
 			}
-		});
+		}
 	}
 
 	protected override simulateMove(
@@ -260,22 +258,6 @@ describe('BaseAdapter - findPiece', () => {
 		const adapter = new TestAdapter();
 		const board = emptyBoardWithKings();
 		expect(adapter.exposeFindPiece(board, 'queen', 'white')).toBeNull();
-	});
-});
-
-describe('BaseAdapter - forEachPiece', () => {
-	test('invokes the callback for every non-null piece with its coordinates', () => {
-		const adapter = new TestAdapter();
-		const board = emptyBoardWithKings();
-		board[6]![4] = { type: 'pawn', color: 'white' };
-		const visited: { type: string; row: number; col: number }[] = [];
-		adapter.exposeForEachPiece(board, (piece, row, col) => {
-			visited.push({ type: piece.type, row, col });
-		});
-		expect(visited).toContainEqual({ type: 'king', row: 7, col: 4 });
-		expect(visited).toContainEqual({ type: 'king', row: 0, col: 4 });
-		expect(visited).toContainEqual({ type: 'pawn', row: 6, col: 4 });
-		expect(visited).toHaveLength(3);
 	});
 });
 
