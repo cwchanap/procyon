@@ -9,7 +9,7 @@ import {
 	XIANGQI_ROWS,
 	XIANGQI_COLS,
 } from '../xiangqi/types';
-import { getPossibleMoves } from '../xiangqi/moves';
+import { getPossibleMoves, isValidMove } from '../xiangqi/moves';
 import { isKingInCheck } from '../xiangqi/game';
 import { copyBoard, getRow, setPieceAt } from '../xiangqi/board';
 import { BaseAdapter } from './base-adapter';
@@ -17,44 +17,6 @@ import type { GamePosition } from './service';
 
 export class XiangqiAdapter extends BaseAdapter<XiangqiGameState> {
 	gameVariant = 'xiangqi' as const;
-
-	getAllValidMoves(gameState: XiangqiGameState): string[] {
-		const { board, currentPlayer } = gameState;
-		const validMoves: string[] = [];
-
-		for (let row = 0; row < 10; row++) {
-			for (let col = 0; col < 9; col++) {
-				const piece = getRow(board, row)[col];
-				if (piece && piece.color === currentPlayer) {
-					const fromPos = { row, col };
-					const possibleMoves = getPossibleMoves(board, fromPos);
-
-					for (const toPos of possibleMoves) {
-						// Validate move doesn't leave king in check
-						const isValidMove = this.wouldMoveBeValid(
-							gameState,
-							fromPos,
-							toPos
-						);
-						if (isValidMove) {
-							const from = this.positionToAlgebraic(fromPos);
-							const to = this.positionToAlgebraic(toPos);
-							const pieceSymbol = this.getPieceSymbol(piece);
-							validMoves.push(`${from}-${to} (${pieceSymbol})`);
-						}
-					}
-				}
-			}
-		}
-
-		if (validMoves.length === 0) {
-			return ['No valid moves available (checkmate or stalemate)'];
-		}
-
-		const groupedMoves = this.groupMovesByPiece(validMoves);
-
-		return [groupedMoves];
-	}
 
 	generatePrompt(gameState: XiangqiGameState): string {
 		const currentPlayer = gameState.currentPlayer;
@@ -221,6 +183,55 @@ Your move:`;
 		return analysis;
 	}
 
+	// ---------------------------------------------------------------------
+	// BaseAdapter hook overrides
+	// ---------------------------------------------------------------------
+
+	protected override forEachOwnPieceMove(
+		gameState: XiangqiGameState,
+		cb: (piece: XiangqiPiece, from: GamePosition, to: GamePosition) => void
+	): void {
+		const { board, currentPlayer } = gameState;
+		for (let row = 0; row < XIANGQI_ROWS; row++) {
+			for (let col = 0; col < XIANGQI_COLS; col++) {
+				const piece = getRow(board, row)[col];
+				if (piece && piece.color === currentPlayer) {
+					const from = { row, col };
+					for (const to of getPossibleMoves(board, from)) {
+						cb(piece, from, to);
+					}
+				}
+			}
+		}
+	}
+
+	protected override isMoveLegal(
+		gameState: XiangqiGameState,
+		from: GamePosition,
+		to: GamePosition
+	): boolean {
+		return isValidMove(gameState.board, from, to);
+	}
+
+	protected override simulateMove(
+		board: (XiangqiPiece | null)[][],
+		from: GamePosition,
+		to: GamePosition,
+		piece: XiangqiPiece
+	): (XiangqiPiece | null)[][] {
+		const testBoard = copyBoard(board);
+		setPieceAt(testBoard, from, null);
+		setPieceAt(testBoard, to, piece);
+		return testBoard;
+	}
+
+	protected override isOwnKingInCheck(
+		board: (XiangqiPiece | null)[][],
+		color: string
+	): boolean {
+		return isKingInCheck(board, color as XiangqiPiece['color']);
+	}
+
 	private formatMoveHistory(moves: XiangqiMove[]): string {
 		if (moves.length === 0) return 'Game start';
 
@@ -357,30 +368,5 @@ Your move:`;
 		}
 
 		return analysis;
-	}
-
-	private wouldMoveBeValid(
-		gameState: XiangqiGameState,
-		from: GamePosition,
-		to: GamePosition
-	): boolean {
-		const { board, currentPlayer } = gameState;
-		const piece = board[from.row]?.[from.col];
-
-		if (!piece || piece.color !== currentPlayer) {
-			return false;
-		}
-
-		// Create test board to check if move leaves king in check
-		const testBoard = copyBoard(board);
-		setPieceAt(testBoard, from, null);
-		setPieceAt(testBoard, to, piece);
-
-		const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
-		if (wouldBeInCheck) {
-			return false;
-		}
-
-		return true;
 	}
 }
