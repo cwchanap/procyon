@@ -85,6 +85,24 @@ export interface GamePieceMap {
 	jungle: JunglePiece;
 }
 
+// Type helper: the required shape of a variant's `pieceSymbols` table.
+// Maps each color in the variant's color union to a Record keyed by the
+// variant's piece-type union. Used to statically enforce that GAME_CONFIGS
+// declares a symbol for every piece type — adding a new piece type to a
+// variant's `types.ts` without adding it here becomes a compile error.
+export type PieceSymbolsFor<V extends GameVariant> = {
+	[Color in GamePieceMap[V]['color']]: Record<GamePieceMap[V]['type'], string>;
+};
+
+// Per-variant shape for GAME_CONFIGS. Each variant key is typed against its
+// own pieceSymbols table so the `satisfies` check at the declaration site
+// catches missing or extraneous symbol entries.
+export type GameConfigsShape = {
+	[V in GameVariant]: Omit<GameVariantConfig, 'pieceSymbols'> & {
+		pieceSymbols: PieceSymbolsFor<V>;
+	};
+};
+
 // Type-safe move mapping
 export interface GameMoveMap {
 	chess: ChessMove;
@@ -102,7 +120,7 @@ export interface GameVariantConfig {
 	initialPlayer: string;
 }
 
-export const GAME_CONFIGS: Record<GameVariant, GameVariantConfig> = {
+export const GAME_CONFIGS = {
 	chess: {
 		boardSize: { rows: 8, cols: 8 },
 		files: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
@@ -225,4 +243,4 @@ export const GAME_CONFIGS: Record<GameVariant, GameVariantConfig> = {
 		players: ['red', 'blue'],
 		initialPlayer: 'red',
 	},
-};
+} satisfies GameConfigsShape;

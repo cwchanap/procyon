@@ -221,15 +221,14 @@ Rules:
 	}
 
 	private getPieceSymbolForMove(piece: ChessPiece): string {
-		const symbols = {
-			king: '♔/♚',
-			queen: '♕/♛',
-			rook: '♖/♜',
-			bishop: '♗/♝',
-			knight: '♘/♞',
-			pawn: '♙/♟',
-		};
-		return symbols[piece.type] || piece.type;
+		// Build the dual-color "white/black" glyph pair from the shared
+		// GAME_CONFIGS symbol table (via BaseAdapter#getPieceSymbol) rather
+		// than maintaining a parallel inline mapping that could drift if
+		// piece types are added.
+		const white = this.getPieceSymbol({ ...piece, color: 'white' });
+		const black = this.getPieceSymbol({ ...piece, color: 'black' });
+		if (white === '?' || black === '?') return piece.type;
+		return `${white}/${black}`;
 	}
 
 	private getExampleMoveFromValidMoves(validMovesText: string): {

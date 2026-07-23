@@ -128,18 +128,14 @@ export abstract class BaseAdapter<T extends AnyGameState = AnyGameState>
 	// Hook: iterate the current player's pieces and emit each pseudo-legal
 	// (from, to) pair. Subclasses MUST override — move-generation signatures
 	// differ per variant.
-	protected forEachOwnPieceMove(
+	protected abstract forEachOwnPieceMove(
 		gameState: T,
 		cb: (
 			piece: NonNullable<T['board'][number][number]>,
 			from: GamePosition,
 			to: GamePosition
 		) => void
-	): void {
-		void gameState;
-		void cb;
-		throw new Error('forEachOwnPieceMove must be overridden');
-	}
+	): void;
 
 	// Hook: produce one or more notation strings for a single (piece, from, to).
 	// Default uses BaseAdapter#getPieceSymbol. Shogi overrides for promotion
