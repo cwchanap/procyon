@@ -14,77 +14,6 @@ import { copyBoard, setPieceAt } from '../shogi/board';
 export class ShogiAdapter extends BaseAdapter<ShogiGameState> {
 	gameVariant = 'shogi' as const;
 
-	getAllValidMoves(gameState: ShogiGameState): string[] {
-		const { board, currentPlayer, senteHand, goteHand } = gameState;
-		const validMoves: string[] = [];
-		const handPieces = currentPlayer === 'sente' ? senteHand : goteHand;
-
-		// Board moves
-		for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
-			for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-				const piece = board[row]?.[col];
-				if (piece && piece.color === currentPlayer) {
-					const fromPos = { row, col };
-					const possibleMoves = getPossibleMoves(board, piece, fromPos);
-
-					for (const toPos of possibleMoves) {
-						// Validate move doesn't leave king in check
-						const isValidMove = this.wouldMoveBeValid(
-							gameState,
-							fromPos,
-							toPos
-						);
-						if (isValidMove) {
-							const from = this.positionToAlgebraic(fromPos);
-							const to = this.positionToAlgebraic(toPos);
-							const pieceSymbol = this.getPieceSymbol(piece);
-
-							// Check for promotion possibility
-							const canPromote = this.canPiecePromote(piece, fromPos, toPos);
-							if (canPromote) {
-								validMoves.push(`${from}-${to}+ (${pieceSymbol})`); // Promoted move
-								// Also allow non-promoted move if legal
-								if (!this.mustPromote(piece, toPos)) {
-									validMoves.push(`${from}-${to} (${pieceSymbol})`);
-								}
-							} else {
-								validMoves.push(`${from}-${to} (${pieceSymbol})`);
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// Drop moves
-		for (const handPiece of handPieces) {
-			const pieceSymbol = this.getPieceSymbol(handPiece);
-			for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
-				for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
-					const dropPos = { row, col };
-					if (!board[row]?.[col] && canDropAt(board, handPiece, dropPos)) {
-						// Validate drop doesn't leave king in check
-						const testBoard = copyBoard(board);
-						setPieceAt(testBoard, dropPos, handPiece);
-						const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
-						if (!wouldBeInCheck) {
-							const to = this.positionToAlgebraic(dropPos);
-							validMoves.push(`*${to} (${pieceSymbol} drop)`);
-						}
-					}
-				}
-			}
-		}
-
-		if (validMoves.length === 0) {
-			return ['No valid moves available (checkmate or stalemate)'];
-		}
-
-		const groupedMoves = this.groupMovesByPiece(validMoves);
-
-		return [groupedMoves];
-	}
-
 	generatePrompt(gameState: ShogiGameState): string {
 		const currentPlayer = gameState.currentPlayer;
 		const moveHistory = this.formatMoveHistory(gameState.moveHistory);
@@ -270,6 +199,92 @@ Your move:`;
 		}
 
 		return analysis;
+	}
+
+	// ---------------------------------------------------------------------
+	// BaseAdapter hook overrides
+	// ---------------------------------------------------------------------
+
+	protected override forEachOwnPieceMove(
+		gameState: ShogiGameState,
+		cb: (piece: ShogiPiece, from: GamePosition, to: GamePosition) => void
+	): void {
+		const { board, currentPlayer } = gameState;
+		for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
+			for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
+				const piece = board[row]?.[col];
+				if (piece && piece.color === currentPlayer) {
+					const from = { row, col };
+					for (const to of getPossibleMoves(board, piece, from)) {
+						cb(piece, from, to);
+					}
+				}
+			}
+		}
+	}
+
+	protected override expandMoveVariants(
+		piece: ShogiPiece,
+		from: GamePosition,
+		to: GamePosition
+	): string[] {
+		const fromStr = this.positionToAlgebraic(from);
+		const toStr = this.positionToAlgebraic(to);
+		const symbol = this.getPieceSymbol(piece);
+		const canPromote = this.canPiecePromote(piece, from, to);
+		const moves: string[] = [];
+		if (canPromote) {
+			moves.push(`${fromStr}-${toStr}+ (${symbol})`);
+			if (!this.mustPromote(piece, to)) {
+				moves.push(`${fromStr}-${toStr} (${symbol})`);
+			}
+		} else {
+			moves.push(`${fromStr}-${toStr} (${symbol})`);
+		}
+		return moves;
+	}
+
+	protected override getDropMoves(gameState: ShogiGameState): string[] {
+		const { board, currentPlayer, senteHand, goteHand } = gameState;
+		const handPieces = currentPlayer === 'sente' ? senteHand : goteHand;
+		const drops: string[] = [];
+		for (const handPiece of handPieces) {
+			const pieceSymbol = this.getPieceSymbol(handPiece);
+			for (let row = 0; row < SHOGI_BOARD_SIZE; row++) {
+				for (let col = 0; col < SHOGI_BOARD_SIZE; col++) {
+					const dropPos = { row, col };
+					if (!board[row]?.[col] && canDropAt(board, handPiece, dropPos)) {
+						const testBoard = copyBoard(board);
+						setPieceAt(testBoard, dropPos, handPiece);
+						if (!isKingInCheck(testBoard, currentPlayer)) {
+							drops.push(
+								`*${this.positionToAlgebraic(dropPos)} (${pieceSymbol} drop)`
+							);
+						}
+					}
+				}
+			}
+		}
+		return drops;
+	}
+
+	protected override simulateMove(
+		board: (ShogiPiece | null)[][],
+		from: GamePosition,
+		to: GamePosition,
+		piece: ShogiPiece
+	): (ShogiPiece | null)[][] {
+		const testBoard = copyBoard(board);
+		setPieceAt(testBoard, from, null);
+		setPieceAt(testBoard, to, piece);
+		return testBoard;
+	}
+
+	protected override isOwnKingInCheck(
+		board: (ShogiPiece | null)[][],
+		color: string
+	): boolean {
+		return isKingInCheck(board, color as ShogiPiece['color']);
 	}
 
 	private formatHandPieces(gameState: ShogiGameState): string {
@@ -484,30 +499,5 @@ Your move:`;
 		}
 
 		return result.trim();
-	}
-
-	private wouldMoveBeValid(
-		gameState: ShogiGameState,
-		from: GamePosition,
-		to: GamePosition
-	): boolean {
-		const { board, currentPlayer } = gameState;
-		const piece = board[from.row]?.[from.col];
-
-		if (!piece || piece.color !== currentPlayer) {
-			return false;
-		}
-
-		// Create test board to check if move leaves king in check
-		const testBoard = copyBoard(board);
-		setPieceAt(testBoard, from, null);
-		setPieceAt(testBoard, to, piece);
-
-		const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
-		if (wouldBeInCheck) {
-			return false;
-		}
-
-		return true;
 	}
 }

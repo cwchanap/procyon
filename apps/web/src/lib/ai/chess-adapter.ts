@@ -1,49 +1,13 @@
-import type { GameState, Position, Move, ChessPiece } from '../chess/types';
+import type { GameState, Move, Position, ChessPiece } from '../chess/types';
 import { BOARD_SIZE } from '../chess/types';
 import { getPossibleMoves, isMoveValid } from '../chess/moves';
 import { isKingInCheck } from '../chess/game';
 import { copyBoard, getRow, setPieceAt } from '../chess/board';
 import { BaseAdapter } from './base-adapter';
+import type { GamePosition } from './service';
 
 export class ChessAdapter extends BaseAdapter<GameState> {
 	gameVariant = 'chess' as const;
-
-	getAllValidMoves(gameState: GameState): string[] {
-		const { board, currentPlayer } = gameState;
-		const validMoves: string[] = [];
-
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
-				const piece = getRow(board, row)[col];
-				if (piece && piece.color === currentPlayer) {
-					const fromPos = { row, col };
-					const possibleMoves = getPossibleMoves(board, piece, fromPos);
-
-					for (const toPos of possibleMoves) {
-						const isValidMove = this.wouldMoveBeValid(
-							gameState,
-							fromPos,
-							toPos
-						);
-						if (isValidMove) {
-							const from = this.positionToAlgebraic(fromPos);
-							const to = this.positionToAlgebraic(toPos);
-							const pieceSymbol = this.getPieceSymbolForMove(piece);
-							validMoves.push(`${from}-${to} (${pieceSymbol})`);
-						}
-					}
-				}
-			}
-		}
-
-		if (validMoves.length === 0) {
-			return ['No valid moves available (checkmate or stalemate)'];
-		}
-
-		const groupedMoves = this.groupMovesByPiece(validMoves);
-
-		return [groupedMoves];
-	}
 
 	generatePrompt(gameState: GameState): string {
 		const currentPlayer = gameState.currentPlayer;
@@ -114,91 +78,80 @@ Rules:
 	}
 
 	analyzeThreatsSafety(gameState: GameState): string {
-		const { board, currentPlayer } = gameState;
 		let analysis = '';
-
-		const myKing = this.findPiece(board, 'king', currentPlayer);
-		const _enemyKing = this.findPiece(
-			board,
-			'king',
-			currentPlayer === 'white' ? 'black' : 'white'
-		);
-
 		if (gameState.status === 'check') {
 			analysis += `⚠️  Your king is in CHECK! Priority: Get out of check immediately.\n`;
 		}
-
-		const myMaterial = this.countMaterial(board, currentPlayer);
-		const enemyMaterial = this.countMaterial(
-			board,
-			currentPlayer === 'white' ? 'black' : 'white'
-		);
-
-		analysis += `Material balance: You ${myMaterial}, Opponent ${enemyMaterial}\n`;
-
-		if (myMaterial > enemyMaterial) {
-			analysis += `You have material advantage - consider trading pieces\n`;
-		} else if (myMaterial < enemyMaterial) {
-			analysis += `You are behind in material - avoid trades, look for tactics\n`;
-		}
-
-		if (myKing) {
-			const kingSafety = this.evaluateKingSafety(board, myKing, currentPlayer);
-			analysis += `Your king safety: ${kingSafety}\n`;
-		}
-
-		// Check for hanging pieces (pieces that can be captured)
-		const hangingPieces = this.findHangingPieces(board, currentPlayer);
-		if (hangingPieces.length > 0) {
-			analysis += `\n⚠️  CRITICAL THREATS:\n`;
-			for (const threat of hangingPieces) {
-				analysis += `  - Your ${threat.piece} on ${threat.square} can be captured! Defend or move it!\n`;
-			}
-		}
-
-		// Find squares that are under attack by opponent
-		const opponent = currentPlayer === 'white' ? 'black' : 'white';
-		const dangerousSquares = this.findAttackedSquares(board, opponent);
-		if (dangerousSquares.length > 0) {
-			analysis += `\n🚨 DANGER ZONES (squares under attack by opponent):\n`;
-			const squareList = dangerousSquares
-				.slice(0, 20)
-				.map(pos => this.positionToAlgebraic(pos))
-				.join(', ');
-			analysis += `  Attacked squares: ${squareList}\n`;
-			analysis += `  ⚠️  DO NOT move valuable pieces to these squares - they will be captured!\n`;
-		}
-
+		const material = this.getSimpleMaterialBalance(gameState);
+		analysis += `Material balance: ${material}\n`;
 		return analysis;
 	}
 
-	private wouldMoveBeValid(
+	// ---------------------------------------------------------------------
+	// BaseAdapter hook overrides
+	// ---------------------------------------------------------------------
+
+	protected override forEachOwnPieceMove(
 		gameState: GameState,
-		from: Position,
-		to: Position
-	): boolean {
+		cb: (piece: ChessPiece, from: GamePosition, to: GamePosition) => void
+	): void {
 		const { board, currentPlayer } = gameState;
-		const piece = board[from.row]?.[from.col];
-
-		if (!piece || piece.color !== currentPlayer) {
-			return false;
+		for (let row = 0; row < BOARD_SIZE; row++) {
+			for (let col = 0; col < BOARD_SIZE; col++) {
+				const piece = getRow(board, row)[col];
+				if (piece && piece.color === currentPlayer) {
+					const from = { row, col };
+					for (const to of getPossibleMoves(board, piece, from)) {
+						cb(piece, from, to);
+					}
+				}
+			}
 		}
+	}
 
-		if (!isMoveValid(board, from, to, piece)) {
-			return false;
-		}
+	protected override expandMoveVariants(
+		piece: ChessPiece,
+		from: GamePosition,
+		to: GamePosition
+	): string[] {
+		const symbol = this.getPieceSymbolForMove(piece);
+		return [
+			`${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} (${symbol})`,
+		];
+	}
 
+	protected override isMoveLegal(
+		gameState: GameState,
+		from: GamePosition,
+		to: GamePosition
+	): boolean {
+		const piece = gameState.board[from.row]?.[from.col];
+		if (!piece) return false;
+		return isMoveValid(gameState.board, from, to, piece);
+	}
+
+	protected override simulateMove(
+		board: (ChessPiece | null)[][],
+		from: GamePosition,
+		to: GamePosition,
+		piece: ChessPiece
+	): (ChessPiece | null)[][] {
 		const testBoard = copyBoard(board);
 		setPieceAt(testBoard, from, null);
 		setPieceAt(testBoard, to, piece);
-
-		const wouldBeInCheck = isKingInCheck(testBoard, currentPlayer);
-		if (wouldBeInCheck) {
-			return false;
-		}
-
-		return true;
+		return testBoard;
 	}
+
+	protected override isOwnKingInCheck(
+		board: (ChessPiece | null)[][],
+		color: string
+	): boolean {
+		return isKingInCheck(board, color as ChessPiece['color']);
+	}
+
+	// ---------------------------------------------------------------------
+	// Chess-specific helpers (live — used by generatePrompt)
+	// ---------------------------------------------------------------------
 
 	private formatMoveHistory(moves: Move[]): string {
 		if (moves.length === 0) return 'None';
@@ -265,31 +218,6 @@ Rules:
 		}
 
 		return total;
-	}
-
-	private evaluateKingSafety(
-		board: (ChessPiece | null)[][],
-		kingPos: { row: number; col: number },
-		color: string
-	): string {
-		const { row, col } = kingPos;
-
-		if (row >= 2 && row <= 5 && col >= 2 && col <= 5) {
-			return 'UNSAFE - King exposed in center';
-		}
-
-		if (color === 'white' && row === 7 && (col === 2 || col === 6)) {
-			return 'GOOD - King castled';
-		}
-		if (color === 'black' && row === 0 && (col === 2 || col === 6)) {
-			return 'GOOD - King castled';
-		}
-
-		if ((color === 'white' && row === 7) || (color === 'black' && row === 0)) {
-			return 'OK - King on back rank';
-		}
-
-		return 'CAUTION - King position needs attention';
 	}
 
 	private getPieceSymbolForMove(piece: ChessPiece): string {
@@ -413,37 +341,5 @@ Rules:
 			}
 		}
 		return false;
-	}
-
-	private findAttackedSquares(
-		board: (ChessPiece | null)[][],
-		attackerColor: string
-	): Position[] {
-		const attackedSquares = new Set<string>();
-
-		// Find all squares that can be attacked by the given color
-		for (let row = 0; row < BOARD_SIZE; row++) {
-			for (let col = 0; col < BOARD_SIZE; col++) {
-				const piece = getRow(board, row)[col];
-				if (piece && piece.color === attackerColor) {
-					const possibleMoves = getPossibleMoves(board, piece, {
-						row,
-						col,
-					});
-					for (const move of possibleMoves) {
-						attackedSquares.add(`${move.row},${move.col}`);
-					}
-				}
-			}
-		}
-
-		// Convert back to Position array
-		return Array.from(attackedSquares)
-			.map(key => key.split(',').map(Number))
-			.filter(
-				(parts): parts is [number, number] =>
-					parts[0] !== undefined && parts[1] !== undefined
-			)
-			.map(([row, col]) => ({ row, col }));
 	}
 }

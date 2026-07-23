@@ -2,38 +2,16 @@ import type {
 	JungleGameState,
 	JunglePosition,
 	JunglePieceType,
+	JunglePiece,
 } from '../jungle/types';
 import { JUNGLE_ROWS, JUNGLE_COLS } from '../jungle/types';
 import { getPossibleMoves } from '../jungle/moves';
 import { getPieceAt, getTerrainRow } from '../jungle/board';
 import { BaseAdapter } from './base-adapter';
+import type { GamePosition } from './service';
 
 export class JungleAdapter extends BaseAdapter<JungleGameState> {
 	gameVariant = 'jungle' as const;
-
-	getAllValidMoves(gameState: JungleGameState): string[] {
-		const moves: string[] = [];
-		for (let row = 0; row < JUNGLE_ROWS; row++) {
-			for (let col = 0; col < JUNGLE_COLS; col++) {
-				const piece = getPieceAt(gameState.board, { row, col });
-				if (piece && piece.color === gameState.currentPlayer) {
-					const from = { row, col };
-					const possibleMoves = getPossibleMoves(
-						gameState.board,
-						gameState.terrain,
-						from
-					);
-
-					for (const to of possibleMoves) {
-						moves.push(
-							`${this.positionToAlgebraic(from)} ${this.positionToAlgebraic(to)}`
-						);
-					}
-				}
-			}
-		}
-		return moves;
-	}
 
 	createVisualBoard(gameState: JungleGameState): string {
 		let board = '';
@@ -261,5 +239,59 @@ export class JungleAdapter extends BaseAdapter<JungleGameState> {
 		}
 
 		return analysis;
+	}
+
+	// ---------------------------------------------------------------------
+	// BaseAdapter hook overrides
+	// ---------------------------------------------------------------------
+	// Jungle is structurally different from king-based variants: no king to
+	// check, no piece-symbol grouping, terrain-aware move generation. So we
+	// override the template hooks accordingly.
+
+	protected override forEachOwnPieceMove(
+		gameState: JungleGameState,
+		cb: (piece: JunglePiece, from: GamePosition, to: GamePosition) => void
+	): void {
+		for (let row = 0; row < JUNGLE_ROWS; row++) {
+			for (let col = 0; col < JUNGLE_COLS; col++) {
+				const piece = getPieceAt(gameState.board, { row, col });
+				if (piece && piece.color === gameState.currentPlayer) {
+					const from = { row, col };
+					for (const to of getPossibleMoves(
+						gameState.board,
+						gameState.terrain,
+						from
+					)) {
+						cb(piece, from, to);
+					}
+				}
+			}
+		}
+	}
+
+	protected override expandMoveVariants(
+		_piece: JunglePiece,
+		from: GamePosition,
+		to: GamePosition
+	): string[] {
+		// Jungle uses space separator, no piece symbol in parentheses.
+		return [
+			`${this.positionToAlgebraic(from)} ${this.positionToAlgebraic(to)}`,
+		];
+	}
+
+	protected override finalizeMoves(rawMoves: string[]): string[] {
+		// Jungle returns raw array — no grouping, no "no valid moves" wrapper.
+		return rawMoves;
+	}
+
+	protected override wouldMoveBeValid(
+		_gameState: JungleGameState,
+		_from: GamePosition,
+		_to: GamePosition
+	): boolean {
+		// Jungle has no king-check constraint; every result from
+		// getPossibleMoves is already a legal move.
+		return true;
 	}
 }

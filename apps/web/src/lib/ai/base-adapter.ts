@@ -15,10 +15,9 @@ export abstract class BaseAdapter<T extends AnyGameState = AnyGameState>
 	abstract gameVariant: GameVariant;
 	protected debugMode: boolean;
 
-	// Abstract declarations for interface members not yet implemented here.
-	// getAllValidMoves + createVisualBoard become concrete in Task 3.
+	// Abstract declarations for interface members not implemented here.
+	// getAllValidMoves is concrete (template method) below.
 	// generatePrompt + analyzeThreatsSafety stay abstract (variant-specific).
-	abstract getAllValidMoves(gameState: T): string[];
 	abstract generatePrompt(gameState: T): string;
 	abstract createVisualBoard(gameState: T): string;
 	abstract analyzeThreatsSafety(gameState: T): string;
@@ -103,5 +102,116 @@ export abstract class BaseAdapter<T extends AnyGameState = AnyGameState>
 				if (piece) cb(piece, row, col);
 			}
 		}
+	}
+
+	// ---------------------------------------------------------------------
+	// Template method: getAllValidMoves
+	// ---------------------------------------------------------------------
+	// Concrete workflow: enumerate own pieces' moves → expand notation variants
+	// → append drop moves → finalize (group/raw/etc.). Variants customize via
+	// hooks below rather than re-implementing the orchestration.
+
+	getAllValidMoves(gameState: T): string[] {
+		const rawMoves: string[] = [];
+
+		this.forEachOwnPieceMove(gameState, (piece, from, to) => {
+			if (this.wouldMoveBeValid(gameState, from, to)) {
+				rawMoves.push(...this.expandMoveVariants(piece, from, to));
+			}
+		});
+
+		rawMoves.push(...this.getDropMoves(gameState));
+
+		return this.finalizeMoves(rawMoves);
+	}
+
+	// Hook: iterate the current player's pieces and emit each pseudo-legal
+	// (from, to) pair. Subclasses MUST override — move-generation signatures
+	// differ per variant.
+	protected forEachOwnPieceMove(
+		gameState: T,
+		cb: (
+			piece: NonNullable<T['board'][number][number]>,
+			from: GamePosition,
+			to: GamePosition
+		) => void
+	): void {
+		void gameState;
+		void cb;
+		throw new Error('forEachOwnPieceMove must be overridden');
+	}
+
+	// Hook: produce one or more notation strings for a single (piece, from, to).
+	// Default uses BaseAdapter#getPieceSymbol. Shogi overrides for promotion
+	// variants; chess overrides for dual ♙/♟ symbols; jungle uses a different
+	// separator.
+	protected expandMoveVariants(
+		piece: GamePiece,
+		from: GamePosition,
+		to: GamePosition
+	): string[] {
+		const symbol = this.getPieceSymbol(piece);
+		return [
+			`${this.positionToAlgebraic(from)}-${this.positionToAlgebraic(to)} (${symbol})`,
+		];
+	}
+
+	// Hook: enumerate drop moves (default: none). Shogi overrides.
+	protected getDropMoves(_gameState: T): string[] {
+		return [];
+	}
+
+	// Hook: wrap/group the raw move list. Default groups by piece symbol and
+	// substitutes a sentinel when no moves exist. Jungle overrides to return
+	// the raw array unchanged.
+	protected finalizeMoves(rawMoves: string[]): string[] {
+		if (rawMoves.length === 0) {
+			return ['No valid moves available (checkmate or stalemate)'];
+		}
+		return [this.groupMovesByPiece(rawMoves)];
+	}
+
+	// Hook: copy/apply/test shell. Returns true if the move is legal AND does
+	// not leave the mover's own king in check. Jungle overrides entirely
+	// (no king to check).
+	protected wouldMoveBeValid(
+		gameState: T,
+		from: GamePosition,
+		to: GamePosition
+	): boolean {
+		const piece = gameState.board[from.row]?.[from.col];
+		if (!piece || piece.color !== gameState.currentPlayer) return false;
+		if (!this.isMoveLegal(gameState, from, to)) return false;
+
+		const testBoard = this.simulateMove(gameState.board, from, to, piece);
+		if (this.isOwnKingInCheck(testBoard, gameState.currentPlayer)) return false;
+		return true;
+	}
+
+	// Hook: variant-specific legality check (e.g. isMoveValid). Default trusts
+	// forEachOwnPieceMove's source (getPossibleMoves).
+	protected isMoveLegal(
+		_gameState: T,
+		_from: GamePosition,
+		_to: GamePosition
+	): boolean {
+		return true;
+	}
+
+	// Hook: produce a copy of the board with the move applied. Subclasses
+	// MUST override — board representation + copy helpers differ per variant.
+	protected simulateMove(
+		_board: T['board'],
+		_from: GamePosition,
+		_to: GamePosition,
+		_piece: NonNullable<T['board'][number][number]>
+	): T['board'] {
+		throw new Error('simulateMove must be overridden');
+	}
+
+	// Hook: detect whether the mover's own king is in check on the given board.
+	// Subclasses MUST override (king-lookup is variant-specific).
+	protected isOwnKingInCheck(_board: T['board'], _color: string): boolean {
+		throw new Error('isOwnKingInCheck must be overridden');
 	}
 }
