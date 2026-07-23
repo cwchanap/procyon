@@ -1,6 +1,11 @@
 import { test, expect, describe } from 'bun:test';
 import { GAME_CONFIGS } from './game-variant-types';
-import type { GameVariant, GameVariantConfig } from './game-variant-types';
+import type {
+	GameVariant,
+	GameVariantConfig,
+	GameConfigsShape,
+	PieceSymbolsFor,
+} from './game-variant-types';
 
 const VARIANTS: GameVariant[] = ['chess', 'xiangqi', 'shogi', 'jungle'];
 
@@ -270,5 +275,80 @@ describe('GAME_CONFIGS', () => {
 				});
 			});
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Compile-time guard tests: lock in the `satisfies GameConfigsShape` check at
+// the GAME_CONFIGS declaration site (game-variant-types.ts). If the guard is
+// ever weakened or removed, these @ts-expect-error directives become unused
+// and the file fails to typecheck.
+// ---------------------------------------------------------------------------
+
+describe('GAME_CONFIGS - satisfies GameConfigsShape guard', () => {
+	test('rejects a chess pieceSymbols table missing a required piece type', () => {
+		// 'pawn' is a required key of Record<ChessPieceType, string>; omitting
+		// it must fail GameConfigsShape, the same type the
+		// `satisfies GameConfigsShape` guard enforces at the GAME_CONFIGS
+		// declaration site. If the guard is weakened, this directive becomes
+		// unused and the file fails to typecheck.
+		const _malformed: GameConfigsShape = {
+			chess: {
+				...GAME_CONFIGS.chess,
+				pieceSymbols: {
+					// @ts-expect-error - missing 'pawn' fails Record<ChessPieceType, string>
+					white: {
+						king: '♔',
+						queen: '♕',
+						rook: '♖',
+						bishop: '♗',
+						knight: '♘',
+					},
+					black: GAME_CONFIGS.chess.pieceSymbols.black,
+				},
+			},
+			xiangqi: GAME_CONFIGS.xiangqi,
+			shogi: GAME_CONFIGS.shogi,
+			jungle: GAME_CONFIGS.jungle,
+		};
+		void _malformed;
+	});
+
+	test('rejects a chess pieceSymbols table with an extraneous piece type', () => {
+		// 'dragon' is not a ChessPieceType; an excess key must fail
+		// GameConfigsShape via the excess-property check on the literal.
+		const _malformed: GameConfigsShape = {
+			chess: {
+				...GAME_CONFIGS.chess,
+				pieceSymbols: {
+					white: {
+						...GAME_CONFIGS.chess.pieceSymbols.white,
+						// @ts-expect-error - 'dragon' is not a ChessPieceType (excess property)
+						dragon: '🐲',
+					},
+					black: GAME_CONFIGS.chess.pieceSymbols.black,
+				},
+			},
+			xiangqi: GAME_CONFIGS.xiangqi,
+			shogi: GAME_CONFIGS.shogi,
+			jungle: GAME_CONFIGS.jungle,
+		};
+		void _malformed;
+	});
+
+	test('PieceSymbolsFor rejects a color table with a non-string value', () => {
+		// Record<ChessPieceType, string> requires string values; a number
+		// must fail PieceSymbolsFor<'chess'>['white'], the per-color table
+		// shape that GameConfigsShape requires.
+		const _badWhite: PieceSymbolsFor<'chess'>['white'] = {
+			king: '♔',
+			queen: '♕',
+			rook: '♖',
+			bishop: '♗',
+			knight: '♘',
+			// @ts-expect-error - number is not assignable to string
+			pawn: 1,
+		};
+		void _badWhite;
 	});
 });

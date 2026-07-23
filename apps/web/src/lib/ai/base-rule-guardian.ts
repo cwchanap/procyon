@@ -5,7 +5,6 @@ import type {
 } from './game-variant-types';
 import type { AIResponse } from './types';
 import { tryAlgebraicToPosition, isValidPosition } from './notation-utils';
-import { GAME_CONFIGS } from './game-variant-types';
 
 export interface MoveValidationResult {
 	isValid: boolean;
@@ -27,10 +26,6 @@ export abstract class BaseRuleGuardian<T extends AnyGameState = AnyGameState>
 	implements RuleGuardian<T>
 {
 	abstract gameVariant: GameVariant;
-
-	protected getConfig() {
-		return GAME_CONFIGS[this.gameVariant];
-	}
 
 	parseMove(move: { from: string; to: string }): {
 		fromPos: GamePosition;

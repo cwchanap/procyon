@@ -133,36 +133,89 @@ describe('ChessAdapter', () => {
 
 	describe('getPieceSymbol', () => {
 		test('should return correct symbols for white pieces', () => {
-			expect(adapter.getPieceSymbol({ type: 'king', color: 'white' })).toBe('♔');
-			expect(adapter.getPieceSymbol({ type: 'queen', color: 'white' })).toBe('♕');
-			expect(adapter.getPieceSymbol({ type: 'rook', color: 'white' })).toBe('♖');
-			expect(adapter.getPieceSymbol({ type: 'bishop', color: 'white' })).toBe('♗');
-			expect(adapter.getPieceSymbol({ type: 'knight', color: 'white' })).toBe('♘');
-			expect(adapter.getPieceSymbol({ type: 'pawn', color: 'white' })).toBe('♙');
+			expect(adapter.getPieceSymbol({ type: 'king', color: 'white' })).toBe(
+				'♔'
+			);
+			expect(adapter.getPieceSymbol({ type: 'queen', color: 'white' })).toBe(
+				'♕'
+			);
+			expect(adapter.getPieceSymbol({ type: 'rook', color: 'white' })).toBe(
+				'♖'
+			);
+			expect(adapter.getPieceSymbol({ type: 'bishop', color: 'white' })).toBe(
+				'♗'
+			);
+			expect(adapter.getPieceSymbol({ type: 'knight', color: 'white' })).toBe(
+				'♘'
+			);
+			expect(adapter.getPieceSymbol({ type: 'pawn', color: 'white' })).toBe(
+				'♙'
+			);
 		});
 
 		test('should return correct symbols for black pieces', () => {
-			expect(adapter.getPieceSymbol({ type: 'king', color: 'black' })).toBe('♚');
-			expect(adapter.getPieceSymbol({ type: 'queen', color: 'black' })).toBe('♛');
-			expect(adapter.getPieceSymbol({ type: 'rook', color: 'black' })).toBe('♜');
-			expect(adapter.getPieceSymbol({ type: 'bishop', color: 'black' })).toBe('♝');
-			expect(adapter.getPieceSymbol({ type: 'knight', color: 'black' })).toBe('♞');
-			expect(adapter.getPieceSymbol({ type: 'pawn', color: 'black' })).toBe('♟');
+			expect(adapter.getPieceSymbol({ type: 'king', color: 'black' })).toBe(
+				'♚'
+			);
+			expect(adapter.getPieceSymbol({ type: 'queen', color: 'black' })).toBe(
+				'♛'
+			);
+			expect(adapter.getPieceSymbol({ type: 'rook', color: 'black' })).toBe(
+				'♜'
+			);
+			expect(adapter.getPieceSymbol({ type: 'bishop', color: 'black' })).toBe(
+				'♝'
+			);
+			expect(adapter.getPieceSymbol({ type: 'knight', color: 'black' })).toBe(
+				'♞'
+			);
+			expect(adapter.getPieceSymbol({ type: 'pawn', color: 'black' })).toBe(
+				'♟'
+			);
 		});
 	});
 
 	describe('analyzeThreatsSafety', () => {
-		test('should indicate check status', () => {
+		test('emits the full check-warning sentence when status is "check"', () => {
 			gameState.status = 'check';
 			const analysis = adapter.analyzeThreatsSafety(gameState);
 
-			expect(analysis).toContain('CHECK');
+			expect(analysis).toContain(
+				'Your king is in CHECK! Priority: Get out of check immediately.'
+			);
 		});
 
-		test('should include material balance', () => {
+		test('does not emit a check warning when status is "playing"', () => {
 			const analysis = adapter.analyzeThreatsSafety(gameState);
 
-			expect(analysis).toContain('Material');
+			expect(analysis).not.toContain('CHECK');
+			expect(analysis).not.toContain('Priority');
+		});
+
+		test('reports "Material balance: Equal" for the starting position', () => {
+			const analysis = adapter.analyzeThreatsSafety(gameState);
+
+			expect(analysis).toContain('Material balance: Equal');
+		});
+
+		test('reports a positive material balance when the opponent loses a queen', () => {
+			// Remove black's queen (d8) so white is +9 in material.
+			const board = gameState.board;
+			board[0]![3] = null;
+			const analysis = adapter.analyzeThreatsSafety(gameState);
+
+			expect(analysis).toContain('Material balance: +9');
+		});
+
+		test('check warning precedes the material line', () => {
+			gameState.status = 'check';
+			const analysis = adapter.analyzeThreatsSafety(gameState);
+			const checkIdx = analysis.indexOf('CHECK');
+			const materialIdx = analysis.indexOf('Material balance');
+
+			expect(checkIdx).toBeGreaterThan(-1);
+			expect(materialIdx).toBeGreaterThan(-1);
+			expect(checkIdx).toBeLessThan(materialIdx);
 		});
 	});
 

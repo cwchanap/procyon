@@ -4,8 +4,11 @@ import {
 	tryNotationToPos,
 } from '@procyon/game-core';
 import { GAME_CONFIGS } from './game-variant-types';
-import type { GameVariant, GameVariantConfig } from './game-variant-types';
-import type { GamePosition } from './service';
+import type {
+	GameVariant,
+	GameVariantConfig,
+	GamePosition,
+} from './game-variant-types';
 
 export function configFor(variant: GameVariant): GameVariantConfig {
 	return GAME_CONFIGS[variant];

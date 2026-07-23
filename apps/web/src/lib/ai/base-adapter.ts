@@ -87,23 +87,6 @@ export abstract class BaseAdapter<T extends AnyGameState = AnyGameState>
 		return null;
 	}
 
-	protected forEachPiece(
-		board: T['board'],
-		cb: (
-			piece: NonNullable<T['board'][number][number]>,
-			row: number,
-			col: number
-		) => void
-	): void {
-		const { rows, cols } = this.getConfig().boardSize;
-		for (let row = 0; row < rows; row++) {
-			for (let col = 0; col < cols; col++) {
-				const piece = board[row]?.[col];
-				if (piece) cb(piece, row, col);
-			}
-		}
-	}
-
 	// ---------------------------------------------------------------------
 	// Template method: getAllValidMoves
 	// ---------------------------------------------------------------------
