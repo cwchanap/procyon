@@ -287,6 +287,7 @@ export class JungleAdapter extends BaseAdapter<JungleGameState> {
 
 	protected override wouldMoveBeValid(
 		_gameState: JungleGameState,
+		_piece: JunglePiece,
 		_from: GamePosition,
 		_to: GamePosition
 	): boolean {

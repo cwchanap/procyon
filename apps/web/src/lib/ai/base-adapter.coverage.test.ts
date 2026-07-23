@@ -58,7 +58,9 @@ class TestAdapter extends BaseAdapter<GameState> {
 		from: GamePosition,
 		to: GamePosition
 	) {
-		return this.wouldMoveBeValid(gameState, from, to);
+		const piece = gameState.board[from.row]?.[from.col];
+		if (!piece) return false;
+		return this.wouldMoveBeValid(gameState, piece, from, to);
 	}
 	exposeIsMoveLegal(
 		gameState: GameState,

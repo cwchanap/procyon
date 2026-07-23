@@ -115,7 +115,7 @@ export abstract class BaseAdapter<T extends AnyGameState = AnyGameState>
 		const rawMoves: string[] = [];
 
 		this.forEachOwnPieceMove(gameState, (piece, from, to) => {
-			if (this.wouldMoveBeValid(gameState, from, to)) {
+			if (this.wouldMoveBeValid(gameState, piece, from, to)) {
 				rawMoves.push(...this.expandMoveVariants(piece, from, to));
 			}
 		});
@@ -169,14 +169,15 @@ export abstract class BaseAdapter<T extends AnyGameState = AnyGameState>
 
 	// Hook: copy/apply/test shell. Returns true if the move is legal AND does
 	// not leave the mover's own king in check. Jungle overrides entirely
-	// (no king to check).
+	// (no king to check). The caller (forEachOwnPieceMove) supplies the piece,
+	// avoiding a redundant board lookup per move.
 	protected wouldMoveBeValid(
 		gameState: T,
+		piece: NonNullable<T['board'][number][number]>,
 		from: GamePosition,
 		to: GamePosition
 	): boolean {
-		const piece = gameState.board[from.row]?.[from.col];
-		if (!piece || piece.color !== gameState.currentPlayer) return false;
+		if (piece.color !== gameState.currentPlayer) return false;
 		if (!this.isMoveLegal(gameState, from, to)) return false;
 
 		const testBoard = this.simulateMove(gameState.board, from, to, piece);
