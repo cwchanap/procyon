@@ -1,16 +1,21 @@
+import { BaseRuleGuardian } from './base-rule-guardian';
+import type { RuleGuardian, MoveValidationResult } from './base-rule-guardian';
 import type {
 	GameVariant,
-	GamePosition,
 	AnyGameState,
+	GamePosition,
 } from './game-variant-types';
+import type { AIResponse } from './types';
+import type { ShogiPieceType } from '../shogi';
+import { isValidPosition } from './notation-utils';
 import type { GameState as ChessGameState } from '../chess/types';
 import type { XiangqiGameState } from '../xiangqi/types';
-import type { ShogiGameState, ShogiPieceType } from '../shogi';
+import type { ShogiGameState } from '../shogi';
 import type { JungleGameState } from '../jungle/types';
-import type { AIResponse } from './types';
-import { tryAlgebraicToPosition, isValidPosition } from './notation-utils';
 
-// Valid Shogi piece types for drops (base types only, no promoted pieces, king cannot be dropped)
+// Re-export types so existing importers (service.ts, tests) don't break:
+export type { RuleGuardian, MoveValidationResult } from './base-rule-guardian';
+
 const VALID_SHOGI_PIECE_TYPES: ShogiPieceType[] = [
 	'rook',
 	'bishop',
@@ -21,158 +26,32 @@ const VALID_SHOGI_PIECE_TYPES: ShogiPieceType[] = [
 	'pawn',
 ];
 
-export interface MoveValidationResult {
-	isValid: boolean;
-	reason?: string;
-	suggestedAlternative?: { from: string; to: string };
-}
-
-export interface RuleGuardian<T extends AnyGameState = AnyGameState> {
-	gameVariant: GameVariant;
-	validateAIMove(gameState: T, aiResponse: AIResponse): MoveValidationResult;
-	parseMove(algebraicMove: { from: string; to: string }): {
-		fromPos: GamePosition;
-		toPos: GamePosition;
-		isDrop?: boolean;
-	};
-}
-
-export class ChessRuleGuardian implements RuleGuardian<ChessGameState> {
+export class ChessRuleGuardian extends BaseRuleGuardian<ChessGameState> {
 	gameVariant = 'chess' as const;
-
-	validateAIMove(
-		gameState: ChessGameState,
-		aiResponse: AIResponse
-	): MoveValidationResult {
-		try {
-			const { fromPos, toPos } = this.parseMove(aiResponse.move);
-
-			// Check bounds
-			if (!this.isValidPosition(fromPos) || !this.isValidPosition(toPos)) {
-				return {
-					isValid: false,
-					reason: 'Move coordinates out of bounds',
-				};
-			}
-
-			// Check if piece exists at from position
-			const piece = gameState.board[fromPos.row]?.[fromPos.col];
-			if (!piece) {
-				return {
-					isValid: false,
-					reason: `No piece at ${aiResponse.move.from}`,
-				};
-			}
-
-			// Check if it's the right player's piece
-			if (piece.color !== gameState.currentPlayer) {
-				return {
-					isValid: false,
-					reason: `Not your piece at ${aiResponse.move.from}`,
-				};
-			}
-
-			return { isValid: true };
-		} catch (error) {
-			return { isValid: false, reason: `Invalid move format: ${error}` };
-		}
-	}
-
-	parseMove(move: { from: string; to: string }): {
-		fromPos: GamePosition;
-		toPos: GamePosition;
-	} {
-		return {
-			fromPos: this.algebraicToPosition(move.from),
-			toPos: this.algebraicToPosition(move.to),
-		};
-	}
-
-	private algebraicToPosition(algebraic: string): GamePosition {
-		return tryAlgebraicToPosition('chess', algebraic);
-	}
-
-	private isValidPosition(pos: GamePosition): boolean {
-		return isValidPosition('chess', pos);
-	}
 }
 
-export class XiangqiRuleGuardian implements RuleGuardian<XiangqiGameState> {
+export class XiangqiRuleGuardian extends BaseRuleGuardian<XiangqiGameState> {
 	gameVariant = 'xiangqi' as const;
 
-	validateAIMove(
-		gameState: XiangqiGameState,
-		aiResponse: AIResponse
+	protected override validateVariantRules(
+		_gameState: XiangqiGameState,
+		piece: NonNullable<XiangqiGameState['board'][number][number]>,
+		parsed: { fromPos: GamePosition; toPos: GamePosition },
+		_aiResponse: AIResponse
 	): MoveValidationResult {
-		try {
-			const { fromPos, toPos } = this.parseMove(aiResponse.move);
-
-			// Check bounds
-			if (!this.isValidPosition(fromPos) || !this.isValidPosition(toPos)) {
-				return {
-					isValid: false,
-					reason: 'Move coordinates out of bounds for xiangqi board',
-				};
-			}
-
-			// Check if piece exists at from position
-			const piece = gameState.board[fromPos.row]?.[fromPos.col];
-			if (!piece) {
-				return {
-					isValid: false,
-					reason: `No piece at ${aiResponse.move.from}`,
-				};
-			}
-
-			// Check if it's the right player's piece
-			if (piece.color !== gameState.currentPlayer) {
-				return {
-					isValid: false,
-					reason: `Not your piece at ${aiResponse.move.from}`,
-				};
-			}
-
-			// Xiangqi-specific rules
-			if (piece.type === 'king' || piece.type === 'advisor') {
-				if (!this.isInPalace(toPos, piece.color)) {
-					return {
-						isValid: false,
-						reason: `${piece.type} must stay in palace`,
-					};
-				}
-			}
-
-			if (piece.type === 'elephant') {
-				if (!this.isOnCorrectSide(toPos, piece.color)) {
-					return {
-						isValid: false,
-						reason: 'Elephant cannot cross river',
-					};
-				}
-			}
-
-			return { isValid: true };
-		} catch (error) {
-			return { isValid: false, reason: `Invalid move format: ${error}` };
+		if (
+			(piece.type === 'king' || piece.type === 'advisor') &&
+			!this.isInPalace(parsed.toPos, piece.color)
+		) {
+			return { isValid: false, reason: `${piece.type} must stay in palace` };
 		}
-	}
-
-	parseMove(move: { from: string; to: string }): {
-		fromPos: GamePosition;
-		toPos: GamePosition;
-	} {
-		return {
-			fromPos: this.algebraicToPosition(move.from),
-			toPos: this.algebraicToPosition(move.to),
-		};
-	}
-
-	private algebraicToPosition(algebraic: string): GamePosition {
-		return tryAlgebraicToPosition('xiangqi', algebraic);
-	}
-
-	private isValidPosition(pos: GamePosition): boolean {
-		return isValidPosition('xiangqi', pos);
+		if (
+			piece.type === 'elephant' &&
+			!this.isOnCorrectSide(parsed.toPos, piece.color)
+		) {
+			return { isValid: false, reason: 'Elephant cannot cross river' };
+		}
+		return { isValid: true };
 	}
 
 	private isInPalace(pos: GamePosition, color: string): boolean {
@@ -186,194 +65,57 @@ export class XiangqiRuleGuardian implements RuleGuardian<XiangqiGameState> {
 	}
 }
 
-export class ShogiRuleGuardian implements RuleGuardian<ShogiGameState> {
+export class ShogiRuleGuardian extends BaseRuleGuardian<ShogiGameState> {
 	gameVariant = 'shogi' as const;
 
-	validateAIMove(
+	protected override validateDrop(
 		gameState: ShogiGameState,
-		aiResponse: AIResponse
+		aiResponse: AIResponse,
+		toPos: GamePosition
 	): MoveValidationResult {
-		try {
-			const { fromPos, toPos, isDrop } = this.parseMove(aiResponse.move);
-
-			if (isDrop) {
-				// Drop move validation
-				if (!this.isValidPosition(toPos)) {
-					return {
-						isValid: false,
-						reason: 'Drop coordinates out of bounds',
-					};
-				}
-
-				// Check if square is empty
-				if (gameState.board[toPos.row]?.[toPos.col]) {
-					return {
-						isValid: false,
-						reason: 'Cannot drop on occupied square',
-					};
-				}
-
-				// Check if pieceType is provided and valid
-				if (!aiResponse.move.pieceType) {
-					return {
-						isValid: false,
-						reason: 'Drop moves must include pieceType (e.g., "pawn", "lance")',
-					};
-				}
-
-				// Validate pieceType
-				if (
-					!VALID_SHOGI_PIECE_TYPES.includes(
-						aiResponse.move.pieceType as ShogiPieceType
-					)
-				) {
-					return {
-						isValid: false,
-						reason: `Invalid pieceType for drop: ${aiResponse.move.pieceType}. Must be one of: ${VALID_SHOGI_PIECE_TYPES.join(', ')}`,
-					};
-				}
-
-				// Check if the player has this piece in hand
-				const hand =
-					gameState.currentPlayer === 'sente'
-						? gameState.senteHand
-						: gameState.goteHand;
-				const pieceInHand = hand.find(
-					p =>
-						p.type === aiResponse.move.pieceType &&
-						p.color === gameState.currentPlayer
-				);
-
-				if (!pieceInHand) {
-					return {
-						isValid: false,
-						reason: `You don't have a ${aiResponse.move.pieceType} in your hand`,
-					};
-				}
-
-				return { isValid: true };
-			} else {
-				// Regular move validation
-				if (!this.isValidPosition(fromPos) || !this.isValidPosition(toPos)) {
-					return {
-						isValid: false,
-						reason: 'Move coordinates out of bounds for shogi board',
-					};
-				}
-
-				// Check if piece exists at from position
-				const piece = gameState.board[fromPos.row]?.[fromPos.col];
-				if (!piece) {
-					return {
-						isValid: false,
-						reason: `No piece at ${aiResponse.move.from}`,
-					};
-				}
-
-				// Check if it's the right player's piece
-				if (piece.color !== gameState.currentPlayer) {
-					return {
-						isValid: false,
-						reason: `Not your piece at ${aiResponse.move.from}`,
-					};
-				}
-
-				return { isValid: true };
-			}
-		} catch (error) {
-			return { isValid: false, reason: `Invalid move format: ${error}` };
+		if (!isValidPosition('shogi', toPos)) {
+			return { isValid: false, reason: 'Drop coordinates out of bounds' };
 		}
-	}
-
-	parseMove(move: { from: string; to: string }): {
-		fromPos: GamePosition;
-		toPos: GamePosition;
-		isDrop?: boolean;
-	} {
-		const isDrop = move.from === '*';
-
-		if (isDrop) {
+		if (gameState.board[toPos.row]?.[toPos.col]) {
+			return { isValid: false, reason: 'Cannot drop on occupied square' };
+		}
+		if (!aiResponse.move.pieceType) {
 			return {
-				fromPos: { row: -1, col: -1 }, // Invalid position for drops
-				toPos: this.algebraicToPosition(move.to),
-				isDrop: true,
-			};
-		} else {
-			return {
-				fromPos: this.algebraicToPosition(move.from),
-				toPos: this.algebraicToPosition(move.to),
-				isDrop: false,
+				isValid: false,
+				reason: 'Drop moves must include pieceType (e.g., "pawn", "lance")',
 			};
 		}
-	}
-
-	private algebraicToPosition(algebraic: string): GamePosition {
-		return tryAlgebraicToPosition('shogi', algebraic);
-	}
-
-	private isValidPosition(pos: GamePosition): boolean {
-		return isValidPosition('shogi', pos);
+		if (
+			!VALID_SHOGI_PIECE_TYPES.includes(
+				aiResponse.move.pieceType as ShogiPieceType
+			)
+		) {
+			return {
+				isValid: false,
+				reason: `Invalid pieceType for drop: ${aiResponse.move.pieceType}. Must be one of: ${VALID_SHOGI_PIECE_TYPES.join(', ')}`,
+			};
+		}
+		const hand =
+			gameState.currentPlayer === 'sente'
+				? gameState.senteHand
+				: gameState.goteHand;
+		const pieceInHand = hand.find(
+			p =>
+				p.type === aiResponse.move.pieceType &&
+				p.color === gameState.currentPlayer
+		);
+		if (!pieceInHand) {
+			return {
+				isValid: false,
+				reason: `You don't have a ${aiResponse.move.pieceType} in your hand`,
+			};
+		}
+		return { isValid: true };
 	}
 }
 
-export class JungleRuleGuardian implements RuleGuardian<JungleGameState> {
+export class JungleRuleGuardian extends BaseRuleGuardian<JungleGameState> {
 	gameVariant = 'jungle' as const;
-
-	validateAIMove(
-		gameState: JungleGameState,
-		aiResponse: AIResponse
-	): MoveValidationResult {
-		try {
-			const { fromPos, toPos } = this.parseMove(aiResponse.move);
-
-			// Check bounds for Jungle chess (9x7 board)
-			if (!this.isValidPosition(fromPos) || !this.isValidPosition(toPos)) {
-				return {
-					isValid: false,
-					reason: 'Move coordinates out of bounds for jungle board',
-				};
-			}
-
-			// Check if piece exists at from position
-			const piece = gameState.board[fromPos.row]?.[fromPos.col];
-			if (!piece) {
-				return {
-					isValid: false,
-					reason: `No piece at ${aiResponse.move.from}`,
-				};
-			}
-
-			// Check if it's the right player's piece
-			if (piece.color !== gameState.currentPlayer) {
-				return {
-					isValid: false,
-					reason: `Not your piece at ${aiResponse.move.from}`,
-				};
-			}
-
-			return { isValid: true };
-		} catch (error) {
-			return { isValid: false, reason: `Invalid move format: ${error}` };
-		}
-	}
-
-	parseMove(move: { from: string; to: string }): {
-		fromPos: GamePosition;
-		toPos: GamePosition;
-	} {
-		return {
-			fromPos: this.algebraicToPosition(move.from),
-			toPos: this.algebraicToPosition(move.to),
-		};
-	}
-
-	private algebraicToPosition(algebraic: string): GamePosition {
-		return tryAlgebraicToPosition('jungle', algebraic);
-	}
-
-	private isValidPosition(pos: GamePosition): boolean {
-		return isValidPosition('jungle', pos);
-	}
 }
 
 export function createRuleGuardian<T extends AnyGameState>(
