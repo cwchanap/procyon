@@ -230,7 +230,7 @@ describe('GAME_CONFIGS', () => {
 	describe('all configs structural validation', () => {
 		for (const variant of VARIANTS) {
 			describe(`${variant}`, () => {
-				const cfg = GAME_CONFIGS[variant];
+				const cfg: GameVariantConfig = GAME_CONFIGS[variant];
 
 				test('boardSize has positive rows and cols', () => {
 					expect(cfg.boardSize.rows).toBeGreaterThan(0);
