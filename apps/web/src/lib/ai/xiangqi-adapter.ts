@@ -9,7 +9,7 @@ import {
 	XIANGQI_ROWS,
 	XIANGQI_COLS,
 } from '../xiangqi/types';
-import { getPossibleMoves, isValidMove } from '../xiangqi/moves';
+import { getPossibleMoves } from '../xiangqi/moves';
 import { isKingInCheck } from '../xiangqi/game';
 import { copyBoard, getRow, setPieceAt } from '../xiangqi/board';
 import { BaseAdapter } from './base-adapter';
@@ -203,14 +203,6 @@ Your move:`;
 				}
 			}
 		}
-	}
-
-	protected override isMoveLegal(
-		gameState: XiangqiGameState,
-		from: GamePosition,
-		to: GamePosition
-	): boolean {
-		return isValidMove(gameState.board, from, to);
 	}
 
 	protected override simulateMove(
