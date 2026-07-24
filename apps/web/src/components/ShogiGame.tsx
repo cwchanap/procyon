@@ -631,6 +631,15 @@ const ShogiGame: React.FC = () => {
 				currentPlayer: ShogiGameState['currentPlayer'];
 				status: ShogiGameState['status'];
 				pendingPromotion: ShogiGameState['pendingPromotion'];
+				lastMove: {
+					from: ShogiPosition | null;
+					to: ShogiPosition;
+					piece: ShogiPiece;
+				} | null;
+				pieceAt: (
+					row: number,
+					col: number
+				) => { type: ShogiPiece['type']; color: ShogiPiece['color'] } | null;
 			};
 		};
 		global.__PROCYON_DEBUG_SHOGI_STATE__ = {
@@ -640,6 +649,14 @@ const ShogiGame: React.FC = () => {
 			currentPlayer: gameState.currentPlayer,
 			status: gameState.status,
 			pendingPromotion: gameState.pendingPromotion,
+			lastMove:
+				gameState.moveHistory.length > 0
+					? gameState.moveHistory[gameState.moveHistory.length - 1]!
+					: null,
+			pieceAt: (row, col) => {
+				const piece = gameState.board[row]?.[col];
+				return piece ? { type: piece.type, color: piece.color } : null;
+			},
 		};
 	}, [
 		gameMode,
@@ -648,6 +665,8 @@ const ShogiGame: React.FC = () => {
 		gameState.currentPlayer,
 		gameState.status,
 		gameState.pendingPromotion,
+		gameState.moveHistory,
+		gameState.board,
 	]);
 
 	const isGameOver =

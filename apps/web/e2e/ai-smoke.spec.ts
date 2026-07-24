@@ -162,15 +162,48 @@ test.describe('Mocked-AI smoke test (shogi)', () => {
 			{ timeout: 20000 }
 		);
 
-		// Verify the move was applied: current player is now gote (human).
-		const state = await page.evaluate(() => {
+		// Verify the mocked move actually reached the board: 7g empty, 7f
+		// has the sente pawn, and the move history records 7g → 7f.
+		// Asserting only currentPlayer/status would pass for any
+		// turn-flipping action, so we check the board snapshot and last
+		// move explicitly.
+		//
+		// Shogi coordinates: SHOGI_FILES = ['9','8','7',...,'1']
+		// (col 2 = '7'), SHOGI_RANKS = ['a'..'i'] (row 6 = 'g', row 5 = 'f').
+		// The mocked move 7g → 7f is {row:6,col:2} → {row:5,col:2}.
+		const applied = await page.evaluate(() => {
 			const global = window as unknown as Record<string, unknown>;
-			return global.__PROCYON_DEBUG_SHOGI_STATE__ as {
+			const state = global.__PROCYON_DEBUG_SHOGI_STATE__ as {
 				currentPlayer: string;
 				status: string;
+				lastMove: {
+					from: { row: number; col: number } | null;
+					to: { row: number; col: number };
+					piece: { type: string; color: string };
+				} | null;
+				pieceAt: (
+					row: number,
+					col: number
+				) => { type: string; color: string } | null;
+			};
+			return {
+				currentPlayer: state.currentPlayer,
+				status: state.status,
+				lastMove: state.lastMove,
+				sevenG: state.pieceAt(6, 2),
+				sevenF: state.pieceAt(5, 2),
 			};
 		});
-		expect(state.currentPlayer).toBe('gote');
-		expect(state.status).toBe('playing');
+		expect(applied.currentPlayer).toBe('gote');
+		expect(applied.status).toBe('playing');
+		// 7g (row 6, col 2) is now empty — the pawn moved away.
+		expect(applied.sevenG).toBeNull();
+		// 7f (row 5, col 2) now holds the sente pawn.
+		expect(applied.sevenF).toEqual({ type: 'pawn', color: 'sente' });
+		// Move history records 7g → 7f with the sente pawn.
+		expect(applied.lastMove).not.toBeNull();
+		expect(applied.lastMove?.from).toEqual({ row: 6, col: 2 });
+		expect(applied.lastMove?.to).toEqual({ row: 5, col: 2 });
+		expect(applied.lastMove?.piece).toEqual({ type: 'pawn', color: 'sente' });
 	});
 });
