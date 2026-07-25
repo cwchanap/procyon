@@ -3,9 +3,11 @@ import {
 	ChessVariantId,
 	GameResultStatus,
 	OpponentLlmId,
+	OpponentEngineId,
 	ALL_CHESS_VARIANT_IDS,
 	ALL_GAME_RESULT_STATUSES,
 	ALL_OPPONENT_LLM_IDS,
+	ALL_OPPONENT_ENGINE_IDS,
 } from './game';
 
 describe('ChessVariantId enum', () => {
@@ -82,6 +84,28 @@ describe('ALL_OPPONENT_LLM_IDS', () => {
 	test('has the same length as OpponentLlmId enum', () => {
 		expect(ALL_OPPONENT_LLM_IDS).toHaveLength(
 			Object.values(OpponentLlmId).length
+		);
+	});
+});
+
+describe('OpponentEngineId enum', () => {
+	test('has the correct values', () => {
+		expect(OpponentEngineId.Stockfish as string).toBe('stockfish');
+	});
+
+	test('has exactly 1 engine ID', () => {
+		expect(Object.values(OpponentEngineId)).toHaveLength(1);
+	});
+});
+
+describe('ALL_OPPONENT_ENGINE_IDS', () => {
+	test('contains all opponent engine ID strings', () => {
+		expect(ALL_OPPONENT_ENGINE_IDS).toContain(OpponentEngineId.Stockfish);
+	});
+
+	test('has the same length as OpponentEngineId enum', () => {
+		expect(ALL_OPPONENT_ENGINE_IDS).toHaveLength(
+			Object.values(OpponentEngineId).length
 		);
 	});
 });

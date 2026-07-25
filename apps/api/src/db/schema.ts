@@ -10,6 +10,7 @@ import {
 	ChessVariantId,
 	GameResultStatus,
 	OpponentLlmId,
+	OpponentEngineId,
 } from '../constants/game';
 
 // Application-owned user identity (replaces Supabase Auth).
@@ -67,6 +68,9 @@ export const playHistory = sqliteTable(
 		status: text('status').$type<GameResultStatus>().notNull(),
 		opponentUserId: text('opponent_user_id').$type<string | null>(),
 		opponentLlmId: text('opponent_llm_id').$type<OpponentLlmId | null>(),
+		opponentEngineId: text(
+			'opponent_engine_id'
+		).$type<OpponentEngineId | null>(),
 	},
 	table => ({
 		userIdIdx: index('play_history_user_id_idx').on(table.userId),
