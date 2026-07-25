@@ -8,7 +8,7 @@
 
 Introduce the contract and guardrails that make on-device engine games (the
 local-rival mode from umbrella issue [HPA-159](https://linear.app/cwchanap/issue/HPA-159/feature-add-a-local-non-llm-chess-rival))
-provably **unrated**, on both client and server, while leaving the existing
+**unrated on the official HTTP path**, on both client and server, while leaving the existing
 rated language-model path byte-for-byte unchanged.
 
 The change adds a third opponent type — `opponentEngineId` — to `play_history`,
@@ -47,6 +47,17 @@ columns on the same additive pattern.
 - A trusted server-hosted engine, rated offline play, detection of undisclosed
   engine use, engine-to-rating calibration — explicitly out of scope per HPA-165.
 - A deliberate `opponentType`/`opponentId` schema refactor — see "Alternatives".
+
+**Completion boundary (read before closing HPA-165).** HPA-165's own acceptance
+criteria require a pre-game "Unrated" label and that the in-game result screen
+show no rating delta for engine games. Both belong to the local-rival game-mode
+UI owned by HPA-159, which does not exist yet. This slice delivers the contract
+and server guardrails that make those requirements _satisfiable_, plus the
+`PlayHistoryPage` badge — but **HPA-165 must remain open (or be reopened) until
+HPA-159 implements the pre-game label and result-screen rendering against this
+contract.** Only the history-entry side of the "no rating delta" criterion is met
+in this slice; the result-screen side is deferred (see the split in the
+acceptance-criteria mapping).
 
 ## Goals
 
@@ -91,7 +102,8 @@ input" acceptance criterion is satisfied structurally — the route's "exactly o
 opponent" `superRefine` rejects `opponentEngineId + opponentLlmId` as `400`, and
 there is no separate channel through which a client can request a rating update.
 This is the simplest contract that makes accidental rating of an engine game
-impossible.
+via the HTTP API impossible. The guarantee is scoped to the HTTP path — see
+"Boundary of the unrated guarantee" under Server enforcement.
 
 ### Opponent representation — additive column (Approach 1)
 
@@ -228,6 +240,20 @@ acceptance criteria do not depend on it.
 No change to ELO math, `getOrCreateRatingInTransaction`, `getAiOpponentRating`,
 or any rated code path.
 
+**Boundary of the unrated guarantee.** The guarantee "engine games cannot be
+rated" holds for the **HTTP path** (`POST /play-history`), where the route
+branches on opponent kind and never calls `updatePlayerRating` for engines. The
+rating service itself is deliberately **not** engine-aware:
+`updatePlayerRating` takes a `playHistoryId` and an LLM/user id independently and
+does not re-read the stored `play_history` row to confirm its opponent type. So a
+future **in-process** caller that passed an engine game's `playHistoryId`
+together with an LLM id could rate it. This is accepted, not accidental: the
+route is the only caller today and it branches correctly, and an earlier review
+round explicitly rejected adding engine-awareness to the service as YAGNI. If a
+second rating caller is ever introduced, hardening the service then (e.g.
+reading the `play_history` row and asserting `opponentEngineId` is null before
+rating) is a **precondition for that new caller**, not a gap in this slice.
+
 ### Client contract
 
 **`usePlayHistory`** (`apps/web/src/hooks/usePlayHistory.ts`)
@@ -334,9 +360,14 @@ HPA-159 implements the rendering against this contract.
 **API route tests** — new `play-history` engine cases (unit, alongside
 `play-history.test.ts` / `play-history.pvp-security.test.ts`):
 
-- Engine `POST` → `201`; stored row has `opponentEngineId` set and
-  `opponentLlmId`/`opponentUserId` null; **no** `playerRatings` change; **no**
-  `ratingHistory` row; response `ratingUpdate: null`.
+- Engine `POST`, **table-driven over `win` / `loss` / `draw`** (the AC names all
+  three outcomes, not one): seed a `player_ratings` row with a known rating,
+  submit each outcome for an engine opponent, then assert per outcome — `201`;
+  stored row has `opponentEngineId` set and `opponentLlmId`/`opponentUserId`
+  null; the seeded `player_ratings` row is **byte-for-byte unchanged** (rating,
+  gamesPlayed, wins, losses, draws, peakRating all unmodified); **no**
+  `rating_history` row exists for that `playHistoryId`; response `ratingUpdate`
+  is `null`.
 - `opponentEngineId + opponentLlmId` → `400` (structural rejection).
 - `opponentEngineId + opponentUserId` → rejected (validation order: the
   superRefine `400` fires on the contradictory pair; the existing `opponentUserId`
@@ -377,7 +408,7 @@ integration is covered by the route tests above.
 
 | HPA-165 criterion                                                   | How met                                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Win/loss/draw vs on-device rival leaves rating unchanged            | Engine branch skips `updatePlayerRating` entirely                                                                                                                                                                                                                                        |
+| Win/loss/draw vs on-device rival leaves rating unchanged            | Engine branch skips `updatePlayerRating` entirely; proven table-driven over win/loss/draw                                                                                                                                                                                                |
 | No rating delta or `rating_history` entry for an engine game        | No `ratingHistory` insert on the engine path                                                                                                                                                                                                                                             |
 | No rating delta on result screen or history entry                   | `ratingUpdate: null` response + "Unrated" badge on `PlayHistoryPage`; result-screen contract documented for HPA-159. **Split:** history-entry side is met in this issue; result-screen side is **deferred to HPA-159** and must not be marked verified until HPA-159 ships the result UI |
 | Stored record identifiable as on-device, unrated engine game        | `opponentEngineId` non-null, other opponent fields null                                                                                                                                                                                                                                  |
