@@ -171,7 +171,7 @@ from the local-rival screen. Update the three existing importers —
   - **engine** → insert the `play_history` row with `opponentEngineId` set and
     `opponentLlmId`/`opponentUserId` null. **Do not call `updatePlayerRating`.**
     Return `201` with `ratingUpdate: null`.
-  - **LLM** → existing rated transaction, unchanged.
+  - **LLM** → existing rated transaction, unchanged. Set `opponentEngineId: null` explicitly on the insert for symmetry with the existing hardcoded `opponentUserId: null` (Drizzle would default it, but follow the established shape).
 - Logging: the handler currently always runs `console.log('Rating updated',
 result.ratingUpdate)`. On the engine path this would print `… null` and mislead
   ops into thinking a rating fired. Log e.g. `"Play history saved (unrated)"` for
@@ -202,14 +202,17 @@ typed on the validated request body (the rating service takes `UpdateRatingParam
 not the HTTP body, so this helper belongs in the route, not the service):
 
 ```ts
-function getOpponentKind(body): 'engine' | 'rated';
+function getOpponentKind(body): 'engine' | 'llm';
 ```
 
-Two arms only: the `superRefine` already guarantees exactly one opponent is
-present, and `opponentUserId` direct submission is `403`'d before this branch, so
-the only live cases are `opponentEngineId` (`'engine'`) and `opponentLlmId`
-(`'rated'`). The route branches: `'engine'` → unrated insert path; `'rated'` →
-the existing `updatePlayerRating` transaction, unchanged.
+Returns opponent **kind**, not ratedness (keep the two axes separate so the model
+stays coherent if a second unrated kind appears later). Two arms only: the
+`superRefine` already guarantees exactly one opponent is present, and
+`opponentUserId` direct submission is `403`'d before this branch, so the only
+live cases are `opponentEngineId` (`'engine'`) and `opponentLlmId` (`'llm'`).
+The route applies the derivation `rated ⇔ kind !== 'engine'` at the branch:
+`'engine'` → unrated insert path; `'llm'` → the existing `updatePlayerRating`
+transaction, unchanged.
 
 **Rating service** (`apps/api/src/services/rating-service.ts`) — **no signature
 change.** `updatePlayerRating` already throws when neither `opponentLlmId` nor
@@ -257,6 +260,18 @@ or any rated code path.
   progress (`gameMode === 'ai'`)": for HPA-165 the hook must not assume LLM-only;
   `enabled` means "a saveable game for this component is in progress," set by the
   caller for both AI and engine modes.
+- **Two body-level `aiConfig` fixes the union does not cover.** (a) The snapshot
+  LLM branch calls `resolveOpponentLlmId(aiConfig.provider, aiConfig.model)`
+  (usePlayHistory.ts:191); under `aiConfig?` this is a compile error. The engine
+  branch never reaches it, but on the LLM branch guard explicitly: if
+  `!aiConfig`, emit a dev-mode `console.error` and bail (mirror the existing
+  failure logging) — **not** a silent `return`, which would reproduce the
+  `aiPlayer` trap for LLM callers. (b) The hook destructures its options in the
+  signature (usePlayHistory.ts:85-96), which severs the union correlation:
+  inside the body TS sees `aiConfig` and `opponentDescriptor` as independent
+  optionals, so `opponentDescriptor?.kind === 'engine'` does **not** narrow
+  `aiConfig`. The union therefore buys **call-site** safety only; the body
+  treats them as independent optionals and guards explicitly as in (a).
 - **`aiPlayer` is mandatory for engine games too (do not pass null).** The hook
   guards `if (!aiPlayer) return;` (usePlayHistory.ts:145) and derives the result
   from it (`result = winnerColor === aiPlayer ? 'loss' : 'win'`, line 189), so an
@@ -328,11 +343,21 @@ HPA-159 implements the rendering against this contract.
   `403` path is documented to remain for the lone-`opponentUserId` case).
 - LLM regression: an LLM `POST` still updates `playerRatings`, creates one
   `ratingHistory` row, and returns a non-null `ratingUpdate`.
+- `GET /play-history`: an engine row comes back with `opponentEngineId` set and
+  `ratingChange`/`newRating` = `null`. This closes the only untested link in the
+  chain — the `selectDistinct` column actually round-trips through the API; the
+  "record is identifiable" AC and the `PlayHistoryPage` badge both depend on it.
 
 **(No rating-service test is added.)** The service signature is unchanged and the
 route never calls it for engine games; the existing "must have llm|user" guard
 already covers malformed calls, and the engine-unrated behavior is proven at the
 route level above.
+
+**Constants test:** extend `apps/api/src/constants/game.test.ts`'s per-`ALL_*`
+convention (a "contains all…" test + a "has the same length as the enum" test for
+each constant) with an `ALL_OPPONENT_ENGINE_IDS` block, mirroring the existing
+`ALL_OPPONENT_LLM_IDS` block. The new constant has no production consumer today
+— same as `ALL_OPPONENT_LLM_IDS` — which is consistent, not a smell.
 
 **Web unit tests:**
 
@@ -350,14 +375,14 @@ integration is covered by the route tests above.
 
 ## Acceptance-criteria mapping
 
-| HPA-165 criterion                                                   | How met                                                                                                             |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Win/loss/draw vs on-device rival leaves rating unchanged            | Engine branch skips `updatePlayerRating` entirely                                                                   |
-| No rating delta or `rating_history` entry for an engine game        | No `ratingHistory` insert on the engine path                                                                        |
-| No rating delta on result screen or history entry                   | `ratingUpdate: null` response + "Unrated" badge on `PlayHistoryPage`; result-screen contract documented for HPA-159 |
-| Stored record identifiable as on-device, unrated engine game        | `opponentEngineId` non-null, other opponent fields null                                                             |
-| Engine + rated combination rejected/ignored without changing rating | `superRefine` `400` on contradictory opponents; no `rated` channel exists                                           |
-| Eligible LLM results continue to update ratings                     | LLM path unchanged + regression test                                                                                |
+| HPA-165 criterion                                                   | How met                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Win/loss/draw vs on-device rival leaves rating unchanged            | Engine branch skips `updatePlayerRating` entirely                                                                                                                                                                                                                                        |
+| No rating delta or `rating_history` entry for an engine game        | No `ratingHistory` insert on the engine path                                                                                                                                                                                                                                             |
+| No rating delta on result screen or history entry                   | `ratingUpdate: null` response + "Unrated" badge on `PlayHistoryPage`; result-screen contract documented for HPA-159. **Split:** history-entry side is met in this issue; result-screen side is **deferred to HPA-159** and must not be marked verified until HPA-159 ships the result UI |
+| Stored record identifiable as on-device, unrated engine game        | `opponentEngineId` non-null, other opponent fields null                                                                                                                                                                                                                                  |
+| Engine + rated combination rejected/ignored without changing rating | `superRefine` `400` on contradictory opponents; no `rated` channel exists                                                                                                                                                                                                                |
+| Eligible LLM results continue to update ratings                     | LLM path unchanged + regression test                                                                                                                                                                                                                                                     |
 
 ## Security boundary (per HPA-165)
 
@@ -366,10 +391,11 @@ opponent type. Detecting undisclosed engine assistance or general cheating is
 **out of scope** for client-run local play; the API enforces only that an
 honestly-classified engine game cannot be rated. The reverse — submitting a
 _lost_ LLM game as an engine game to dodge the rating loss — is newly
-expressible, but it grants no new capability: it is equivalent to simply not
-POSTing the result, which a modified client can already do today. Either way the
-worst case is "this game doesn't affect rating," the same outcome the client
-could already force by skipping the save.
+expressible, but it grants no new capability **with respect to rating**: it is equivalent to
+simply not POSTing the result, which a modified client can already do today. (It
+is not literally equivalent — the mislabeled game still creates a `play_history`
+row that counts toward the Total/Wins/Losses/Win-Rate cards, per the summary-card
+decision above — but rating is unaffected either way.)
 
 ## Alternatives considered
 
