@@ -67,6 +67,10 @@ columns on the same additive pattern.
 - Changing ELO math, the `playerRatings`/`ratingHistory` table shapes, or any
   rated code path.
 - Building the in-game result screen or pre-game "Unrated" entry label (HPA-159).
+- Validating `opponentEngineId × chessId` combinations at the API. The schema
+  permits `stockfish` with any variant; HPA-159 is chess-only and the client
+  controls when an engine id is sent, so per-variant engine validation is
+  deferred (noted, not a blocker).
 
 ## Decisions
 
@@ -120,7 +124,9 @@ at the column level. No other table changes.
 D1 migration. Pure-additive nullable column: no backfill, no data movement, no
 downtime. Existing rows get `opponent_engine_id = null` automatically.
 
-**Web mirror** — generalize `apps/web/src/lib/ai/opponent-llm.ts` to carry:
+**Web mirror** — rename `apps/web/src/lib/ai/opponent-llm.ts` → `opponent.ts`
+(adding engine types to a file named `opponent-llm.ts` makes the name a lie) and
+carry:
 
 ```ts
 export type OpponentEngineId = 'stockfish';
@@ -129,8 +135,12 @@ export type OpponentDescriptor =
   | { kind: 'engine'; id: OpponentEngineId };
 ```
 
-`resolveOpponentLlmId` stays for LLM callers; a new `resolveOpponentDescriptor`
-helper builds the union from the active configuration/mode.
+`resolveOpponentLlmId` stays for LLM callers. HPA-165 deliberately ships **no**
+"from configuration/mode" resolver — there is no local-rival mode yet. The hook
+accepts an optional `OpponentDescriptor`; when omitted, the LLM default path runs
+unchanged. HPA-159 will pass a thin `{ kind: 'engine', id: 'stockfish' }` literal
+from the local-rival screen. Update the existing
+`import … from '../lib/ai/opponent-llm'` call sites to the new path.
 
 ### API contract
 
@@ -142,11 +152,19 @@ helper builds the union from the active configuration/mode.
   both `opponentEngineId` and `opponentLlmId` (or `opponentUserId`) is therefore
   a `400` — this is the structural "reject contradictory rated-engine input"
   guard. (The existing `opponentUserId` direct-submission `403` is unchanged.)
-- Handler branch on opponent kind:
+  Update the existing validation messages, which currently name only
+  `opponentUserId`/`opponentLlmId` ("Provide either opponentUserId or
+  opponentLlmId" / "Specify only one opponent type"), to mention
+  `opponentEngineId`.
+- Handler branch on opponent kind (see `getOpponentKind` under Server enforcement):
   - **engine** → insert the `play_history` row with `opponentEngineId` set and
     `opponentLlmId`/`opponentUserId` null. **Do not call `updatePlayerRating`.**
     Return `201` with `ratingUpdate: null`.
   - **LLM** → existing rated transaction, unchanged.
+- Logging: the handler currently always runs `console.log('Rating updated',
+result.ratingUpdate)`. On the engine path this would print `… null` and mislead
+  ops into thinking a rating fired. Log e.g. `"Play history saved (unrated)"` for
+  engine games; keep the existing log for the LLM path.
 
 **`POST` response shape** becomes:
 
@@ -168,24 +186,37 @@ is needed — only the added select column and the typed response field.
 
 ### Server enforcement
 
-**`apps/api/src/services/rating-service.ts`**
+**Route layer** (`apps/api/src/routes/play-history.ts`) — add a small pure helper
+typed on the validated request body (the rating service takes `UpdateRatingParams`,
+not the HTTP body, so this helper belongs in the route, not the service):
 
-- Add a small pure helper:
-  ```ts
-  function getOpponentKind(body): 'llm' | 'engine' | 'user' | 'none';
-  ```
-  centralizing the rule **rated ⇔ kind === 'llm'** (PvP `'user'` is handled by
-  its own server-validated path and remains unreachable from `POST /play-history`
-  direct submission). The route branches on this helper so only `'llm'` reaches
-  `updatePlayerRating`.
-- **Defense-in-depth:** `UpdateRatingParams` gains an optional `opponentEngineId`
-  field. If it is set, `updatePlayerRating` throws **before touching any table**.
-  The route never passes it for engine games; this guard exists so a future
-  caller cannot accidentally rate an engine game. (The thrown error is caught by
-  the route's existing transaction handler and surfaces as a `500`; because the
-  guard fires before any write, no partial state is committed.)
-- No change to ELO math, `getOrCreateRatingInTransaction`, `getAiOpponentRating`,
-  or any rated code path.
+```ts
+function getOpponentKind(body): 'llm' | 'engine' | 'user' | 'none';
+```
+
+It centralizes the rule **rated ⇔ kind === 'llm'** (PvP `'user'` is handled by
+its own server-validated path and remains unreachable from `POST /play-history`
+direct submission). The route branches on this helper so only `'llm'` reaches
+`updatePlayerRating`.
+
+**Rating service** (`apps/api/src/services/rating-service.ts`) — `updatePlayerRating`
+already throws when neither `opponentLlmId` nor `opponentUserId` is provided, so
+an engine-only call is already rejected by the existing guard. This design keeps
+an **explicit invariant assertion**: `UpdateRatingParams` gains an optional
+`opponentEngineId`, and if it is set the function throws **before touching any
+table**. Motivation: this issue's whole purpose is "engine ⇒ unrated," so
+asserting that invariant at the rating boundary — independent of route
+correctness — is warranted even though the route never passes it for engines.
+The misuse case it catches is a future in-process caller that supplies an engine
+id alongside an LLM/user id (the HTTP path rejects that at `400` via
+`superRefine`). Because the guard fires before any write, the route's
+transaction rolls back cleanly with no partial state. If the team prefers strict
+YAGNI, dropping the field is acceptable — the existing "must have llm|user" guard
+plus the route branch already cover the HTTP path; the call is left to the
+implementer's judgment.
+
+No change to ELO math, `getOrCreateRatingInTransaction`, `getAiOpponentRating`,
+or any rated code path.
 
 ### Client contract
 
@@ -195,20 +226,46 @@ is needed — only the added select column and the typed response field.
   `UsePlayHistoryOptions`. Existing LLM callers are unchanged — when no
   descriptor is supplied the hook continues to resolve the LLM id from
   `aiConfig` exactly as today.
-- When `descriptor.kind === 'engine'`, the snapshot/POST path:
-  - sends `opponentEngineId` in the body and **omits** `opponentLlmId`;
-  - treats the game as unrated (expects `ratingUpdate: null`, performs no rating
-    read-back).
-- The 401-retry, account-switch, generation-token, and "no retry on 5xx"
-  guarantees are unchanged — they are orthogonal to opponent kind.
+- `aiConfig: AIConfig` is currently required, but an engine game (HPA-159) has no
+  LLM config. Make `aiConfig` **optional when `opponentDescriptor?.kind ===
+'engine'`** (type-narrow so the LLM-resolution path still requires it) — no
+  dummy configs. Also rewrite the `enabled` option doc, which today says "True
+  only while an AI game is in progress (`gameMode === 'ai'`)": for HPA-165 the
+  hook must not assume LLM-only; `enabled` means "a saveable game for this
+  component is in progress," set by the caller for both AI and engine modes.
+- **Snapshot discriminant (important — do not bolt engine onto
+  `opponentLlmId`).** Today `saveSnapshotRef` is LLM-hardcoded to
+  `{ result, opponentLlmId: string, gameVariant, userId }` and the POST body
+  always sends `opponentLlmId`. The snapshot becomes a discriminated union:
+  ```ts
+  type SaveSnapshot = { result; gameVariant; userId } & (
+    | { kind: 'llm'; opponentLlmId: string }
+    | { kind: 'engine'; opponentEngineId: OpponentEngineId }
+  );
+  ```
+  First-attempt resolution: if `opponentDescriptor?.kind === 'engine'`, snapshot
+  `{ kind: 'engine', opponentEngineId: descriptor.id }`; otherwise snapshot
+  `{ kind: 'llm', opponentLlmId: resolveOpponentLlmId(aiConfig…) }` as today. The
+  POST body is built from the snapshot discriminant — engine sends
+  `opponentEngineId` and **omits** `opponentLlmId`; LLM is unchanged. 401 retries
+  reuse the frozen snapshot, preserving the existing guarantee that a provider/
+  mode change after game-over cannot corrupt the record.
+- The account-switch, generation-token, and "no retry on 5xx" guarantees are
+  unchanged — they are orthogonal to opponent kind.
 
-**`PlayHistoryPage`** (`apps/web/src/components/PlayHistoryPage.tsx`)
+**`PlayHistoryPage`** (`apps/web/src/components/PlayHistoryPage.tsx`) — note the
+actual current rendering, which is **not** "shows nothing" for missing ratings:
 
-- Extend the row type with `opponentEngineId?: OpponentEngineId | null`.
-- When `opponentEngineId` is set, render an **"Unrated"** badge and an
-  **"On-device rival"** opponent label in place of the rating delta. (The delta
-  rendering for null `ratingChange` already shows nothing; this adds the explicit
-  label so the row is unambiguous.)
+- Extend the `ServerPlayHistory` row type with
+  `opponentEngineId?: OpponentEngineId | null`, matching the added `GET` field.
+- **Opponent column:** `formatOpponent` currently falls through to
+  `'Unknown opponent'` when both opponent fields are null — exactly the case an
+  engine row would hit. Add an `opponentEngineId` branch returning
+  **"On-device rival"** ahead of the fallthrough.
+- **Rating column:** today a null `ratingChange` renders an em dash `—` (not
+  "nothing"). Replace that `—` with an **"Unrated"** badge **only when
+  `opponentEngineId` is set**; legacy pre-rating rows (null `ratingChange`, no
+  engine id) keep the `—` so their appearance is unchanged.
 - LLM rows render exactly as today.
 
 **Result-screen contract (documented for HPA-159, not built here):** engine
@@ -238,10 +295,14 @@ HPA-159 implements the rendering against this contract.
 
 **Web unit tests:**
 
-- `usePlayHistory` with an engine descriptor sends a body containing
-  `opponentEngineId` and no `opponentLlmId`, and expects no rating.
-- `PlayHistoryPage` renders the "Unrated" badge for an engine row and the delta
-  for an LLM row.
+- `usePlayHistory` with an engine descriptor: snapshot is
+  `{ kind: 'engine', opponentEngineId }`; POST body contains `opponentEngineId`
+  and no `opponentLlmId`; expects no rating. Add a 401-retry case proving the
+  engine path is reused from the frozen snapshot (mirrors the existing LLM 401
+  test).
+- `PlayHistoryPage`: engine row renders "On-device rival" + "Unrated" badge; LLM
+  row renders the delta; a legacy null-`ratingChange`-without-engine row still
+  renders `—`.
 
 **E2E:** deferred to HPA-159 (requires the local-rival game mode). API-level
 integration is covered by the route tests above.
