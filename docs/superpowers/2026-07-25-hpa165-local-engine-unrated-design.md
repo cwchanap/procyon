@@ -42,7 +42,8 @@ columns on the same additive pattern.
 - The local-rival game-mode UI, Stockfish integration, difficulty/side selection
   — HPA-159 (umbrella).
 - Richer opponent metadata (`difficulty`, `engine_version`) in history/export,
-  visual distinction of engine vs LLM rows beyond the "Unrated" badge — HPA-164.
+  and visual distinction of engine vs LLM rows beyond the "Unrated" badge and the
+  "On-device rival" opponent label added in this issue — HPA-164.
 - A trusted server-hosted engine, rated offline play, detection of undisclosed
   engine use, engine-to-rating calibration — explicitly out of scope per HPA-165.
 - A deliberate `opponentType`/`opponentId` schema refactor — see "Alternatives".
@@ -76,10 +77,11 @@ columns on the same additive pattern.
 
 ### Scope boundary
 
-HPA-165 delivers **contract + guardrails only**. No new game-mode UI is built;
-HPA-159's local-rival screen will consume this contract. Build/test is done
-against the existing game components wired to send the new opponent type and
-against `usePlayHistory`'s engine path.
+HPA-165 delivers **contract + guardrails only**. No new game-mode UI is built and
+no existing game component is modified — HPA-159's local-rival screen will
+consume this contract later. The engine path is exercised purely through
+`usePlayHistory` unit tests; the four game components are untouched in this
+issue.
 
 ### Rated model — implicit, derived from opponent kind
 
@@ -118,11 +120,19 @@ opponentEngineId: text('opponent_engine_id').$type<OpponentEngineId | null>(),
 
 The "exactly one opponent" invariant (currently over `opponentUserId` /
 `opponentLlmId`) becomes a three-way invariant enforced in route validation, not
-at the column level. No other table changes.
+at the column level. It is deliberately **not** a DB-level `CHECK` constraint:
+SQLite cannot add one without a full table rebuild (the `0006_enhanced_constraints`
+pattern), which would forfeit the pure-additive, no-data-movement property that
+justifies Approach 1 — and `play_history` has exactly one writer
+(`play-history.ts`), so route-level enforcement is sufficient. No other table
+changes.
 
-**Migration** — generated via `bun run db:generate` (SQLite dev) and the matching
-D1 migration. Pure-additive nullable column: no backfill, no data movement, no
-downtime. Existing rows get `opponent_engine_id = null` automatically.
+**Migration** — a single generated file in `apps/api/drizzle/` (next number,
+`0010_*`), since `wrangler.toml` sets `migrations_dir = "drizzle"` and the same
+directory feeds both `bun run db:migrate` (SQLite dev) and
+`bun run cf:d1:migrations:apply` (D1). Pure-additive nullable column: no backfill,
+no data movement, no downtime. Existing rows get `opponent_engine_id = null`
+automatically. Do **not** hand-write a second D1-specific file.
 
 **Web mirror** — rename `apps/web/src/lib/ai/opponent-llm.ts` → `opponent.ts`
 (adding engine types to a file named `opponent-llm.ts` makes the name a lie) and
@@ -139,8 +149,9 @@ export type OpponentDescriptor =
 "from configuration/mode" resolver — there is no local-rival mode yet. The hook
 accepts an optional `OpponentDescriptor`; when omitted, the LLM default path runs
 unchanged. HPA-159 will pass a thin `{ kind: 'engine', id: 'stockfish' }` literal
-from the local-rival screen. Update the existing
-`import … from '../lib/ai/opponent-llm'` call sites to the new path.
+from the local-rival screen. Update the three existing importers —
+`usePlayHistory.ts`, `usePlayHistory.test.ts`, and `opponent-llm.test.ts` — to
+`../lib/ai/opponent`, and rename `opponent-llm.test.ts` → `opponent.test.ts`.
 
 ### API contract
 
@@ -191,29 +202,25 @@ typed on the validated request body (the rating service takes `UpdateRatingParam
 not the HTTP body, so this helper belongs in the route, not the service):
 
 ```ts
-function getOpponentKind(body): 'llm' | 'engine' | 'user' | 'none';
+function getOpponentKind(body): 'engine' | 'rated';
 ```
 
-It centralizes the rule **rated ⇔ kind === 'llm'** (PvP `'user'` is handled by
-its own server-validated path and remains unreachable from `POST /play-history`
-direct submission). The route branches on this helper so only `'llm'` reaches
-`updatePlayerRating`.
+Two arms only: the `superRefine` already guarantees exactly one opponent is
+present, and `opponentUserId` direct submission is `403`'d before this branch, so
+the only live cases are `opponentEngineId` (`'engine'`) and `opponentLlmId`
+(`'rated'`). The route branches: `'engine'` → unrated insert path; `'rated'` →
+the existing `updatePlayerRating` transaction, unchanged.
 
-**Rating service** (`apps/api/src/services/rating-service.ts`) — `updatePlayerRating`
-already throws when neither `opponentLlmId` nor `opponentUserId` is provided, so
-an engine-only call is already rejected by the existing guard. This design keeps
-an **explicit invariant assertion**: `UpdateRatingParams` gains an optional
-`opponentEngineId`, and if it is set the function throws **before touching any
-table**. Motivation: this issue's whole purpose is "engine ⇒ unrated," so
-asserting that invariant at the rating boundary — independent of route
-correctness — is warranted even though the route never passes it for engines.
-The misuse case it catches is a future in-process caller that supplies an engine
-id alongside an LLM/user id (the HTTP path rejects that at `400` via
-`superRefine`). Because the guard fires before any write, the route's
-transaction rolls back cleanly with no partial state. If the team prefers strict
-YAGNI, dropping the field is acceptable — the existing "must have llm|user" guard
-plus the route branch already cover the HTTP path; the call is left to the
-implementer's judgment.
+**Rating service** (`apps/api/src/services/rating-service.ts`) — **no signature
+change.** `updatePlayerRating` already throws when neither `opponentLlmId` nor
+`opponentUserId` is provided, and the route never calls it for engine games, so
+an engine game cannot reach the rating code. A dedicated `opponentEngineId`
+field on `UpdateRatingParams` was considered and **dropped**: its only purpose
+would be to be rejected, the route never passes it, and the existing
+"must have llm|user" guard plus the route branch already close the HTTP path.
+The hypothetical misuse case (a future in-process caller passing an engine id
+alongside an llm id) is not worth a parameter that exists only to throw. The
+acceptance criteria do not depend on it.
 
 No change to ELO math, `getOrCreateRatingInTransaction`, `getAiOpponentRating`,
 or any rated code path.
@@ -227,12 +234,39 @@ or any rated code path.
   descriptor is supplied the hook continues to resolve the LLM id from
   `aiConfig` exactly as today.
 - `aiConfig: AIConfig` is currently required, but an engine game (HPA-159) has no
-  LLM config. Make `aiConfig` **optional when `opponentDescriptor?.kind ===
-'engine'`** (type-narrow so the LLM-resolution path still requires it) — no
-  dummy configs. Also rewrite the `enabled` option doc, which today says "True
-  only while an AI game is in progress (`gameMode === 'ai'`)": for HPA-165 the
-  hook must not assume LLM-only; `enabled` means "a saveable game for this
-  component is in progress," set by the caller for both AI and engine modes.
+  LLM config. Make the options a discriminated union so engine callers need no
+  dummy config and the LLM path still type-requires one:
+  ```ts
+  type UsePlayHistoryOptions = Base &
+    (
+      | {
+          opponentDescriptor?: { kind: 'llm'; id: OpponentLlmId };
+          aiConfig: AIConfig;
+        }
+      | {
+          opponentDescriptor: { kind: 'engine'; id: OpponentEngineId };
+          aiConfig?: AIConfig;
+        }
+    );
+  ```
+  The existing `useCallback` dep array reads `aiConfig.provider` / `aiConfig.model`
+  unconditionally (usePlayHistory.ts:311-312); with `aiConfig` optional that
+  becomes both a TS error and a render-time `TypeError`. Use optional chaining
+  (`aiConfig?.provider`, `aiConfig?.model`) in the deps. Also rewrite the
+  `enabled` option doc, which today says "True only while an AI game is in
+  progress (`gameMode === 'ai'`)": for HPA-165 the hook must not assume LLM-only;
+  `enabled` means "a saveable game for this component is in progress," set by the
+  caller for both AI and engine modes.
+- **`aiPlayer` is mandatory for engine games too (do not pass null).** The hook
+  guards `if (!aiPlayer) return;` (usePlayHistory.ts:145) and derives the result
+  from it (`result = winnerColor === aiPlayer ? 'loss' : 'win'`, line 189), so an
+  engine caller that passes `aiPlayer: null` gets **no save, no error, no log**.
+  Semantically `aiPlayer` is "the non-human player's color," which holds for both
+  LLM and engine — engine callers pass the engine's color here. The name is a
+  known misnomer for engine games (like `opponent-llm.ts` was), but it has ~60
+  references across the four game components and `useGameDebugOutcomes`, so
+  renaming it (e.g. to `opponentPlayer`) is deferred to a separate cleanup ticket
+  rather than folded into this guardrails slice.
 - **Snapshot discriminant (important — do not bolt engine onto
   `opponentLlmId`).** Today `saveSnapshotRef` is LLM-hardcoded to
   `{ result, opponentLlmId: string, gameVariant, userId }` and the POST body
@@ -267,6 +301,12 @@ actual current rendering, which is **not** "shows nothing" for missing ratings:
   `opponentEngineId` is set**; legacy pre-rating rows (null `ratingChange`, no
   engine id) keep the `—` so their appearance is unchanged.
 - LLM rows render exactly as today.
+- **Summary cards** (PlayHistoryPage.tsx:159-182: Total / Wins / Losses / Win
+  Rate, computed over every row): engine games **are** counted there. Those are
+  game-volume stats, not rating stats, so including engine games does not imply a
+  rating change — consistent with HPA-165's rule that only _rating_ fields are
+  suppressed for engine games. (If product later wants engine games excluded
+  from headline stats, that is a separate HPA-164 decision.)
 
 **Result-screen contract (documented for HPA-159, not built here):** engine
 games return `ratingUpdate: null` and `playHistory.opponentEngineId`; the
@@ -289,9 +329,10 @@ HPA-159 implements the rendering against this contract.
 - LLM regression: an LLM `POST` still updates `playerRatings`, creates one
   `ratingHistory` row, and returns a non-null `ratingUpdate`.
 
-**rating-service test:**
-
-- `updatePlayerRating` called with `opponentEngineId` set throws before any write.
+**(No rating-service test is added.)** The service signature is unchanged and the
+route never calls it for engine games; the existing "must have llm|user" guard
+already covers malformed calls, and the engine-unrated behavior is proven at the
+route level above.
 
 **Web unit tests:**
 
@@ -323,7 +364,12 @@ integration is covered by the route tests above.
 A modified client can conceal engine use by submitting a game as another
 opponent type. Detecting undisclosed engine assistance or general cheating is
 **out of scope** for client-run local play; the API enforces only that an
-honestly-classified engine game cannot be rated.
+honestly-classified engine game cannot be rated. The reverse — submitting a
+_lost_ LLM game as an engine game to dodge the rating loss — is newly
+expressible, but it grants no new capability: it is equivalent to simply not
+POSTing the result, which a modified client can already do today. Either way the
+worst case is "this game doesn't affect rating," the same outcome the client
+could already force by skipping the save.
 
 ## Alternatives considered
 
@@ -333,6 +379,10 @@ honestly-classified engine game cannot be rated.
   existing row and rewriting all queries/joins/types/tests (ratings service,
   play-history GET, frontend types, tests). High blast radius for a guardrails
   slice; better as a deliberate standalone refactor. Rejected for this issue.
+  Note: HPA-164 will add `difficulty` and `engine_version`, both meaningful only
+  when `opponent_engine_id` is set — four sparse engine-only columns — which
+  makes this generalized refactor strictly more expensive over time; it should
+  be tracked as a follow-up ticket rather than left as prose here.
 - **Sentinel in `opponentLlmId`.** Store `'stockfish'` in the LLM column.
   Rejected: breaks `OpponentLlmId` typing, mislabels engine games as LLM
   (directly violates HPA-164's "no engine record mislabeled as GPT/Gemini"), and
