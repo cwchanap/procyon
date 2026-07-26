@@ -488,6 +488,20 @@ describe('play-history routes - engine (unrated) games', () => {
 				);
 			expect(before).toBeDefined();
 
+			// Regression guard: the rated LLM game in step 1 must produce a
+			// rating_history row, so the engine game's "no new rating_history"
+			// check below is meaningful (the LLM row exists, the engine row does not).
+			const [llmHistory] = await db
+				.select()
+				.from(ratingHistory)
+				.where(
+					and(
+						eq(ratingHistory.userId, TEST_USER_ID),
+						eq(ratingHistory.variantId, ChessVariantId.Chess)
+					)
+				);
+			expect(llmHistory).toBeDefined();
+
 			// 2. Submit the engine game.
 			const res = await playHistoryRoutes.request(
 				`${BASE_URL}/`,
@@ -507,6 +521,7 @@ describe('play-history routes - engine (unrated) games', () => {
 			const body = (await res.json()) as {
 				playHistory: {
 					id: number;
+					opponentUserId: string | number | null;
 					opponentEngineId: string | null;
 					opponentLlmId: string | null;
 				};
@@ -515,6 +530,7 @@ describe('play-history routes - engine (unrated) games', () => {
 			expect(body.ratingUpdate).toBeNull();
 			expect(body.playHistory.opponentEngineId).toBe('stockfish');
 			expect(body.playHistory.opponentLlmId).toBeNull();
+			expect(body.playHistory.opponentUserId).toBeNull();
 
 			// 3. Rating row is byte-for-byte unchanged.
 			const [after] = await db
@@ -573,7 +589,7 @@ describe('play-history routes - engine (unrated) games', () => {
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentEngineId: 'stockfish',
-					opponentUserId: 'some-uuid-here',
+					opponentUserId: '00000000-0000-4000-8000-000000000002',
 				}),
 			},
 			CF_ENV
