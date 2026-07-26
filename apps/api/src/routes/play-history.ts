@@ -9,8 +9,22 @@ import {
 	ChessVariantId,
 	GameResultStatus,
 	OpponentLlmId,
+	OpponentEngineId,
 } from '../constants/game';
 import { updatePlayerRating } from '../services/rating-service';
+
+/**
+ * Classify the opponent of a validated POST body. The superRefine guarantees
+ * exactly one opponent is present, and opponentUserId direct submission is
+ * 403'd before this is reached, so only 'engine' and 'llm' are live arms.
+ */
+function getOpponentKind(body: {
+	opponentUserId?: string | number | null;
+	opponentLlmId?: OpponentLlmId | null;
+	opponentEngineId?: OpponentEngineId | null;
+}): 'engine' | 'llm' {
+	return body.opponentEngineId ? 'engine' : 'llm';
+}
 
 const app = new Hono();
 
@@ -27,25 +41,35 @@ const createPlayHistorySchema = z
 		// Accept both UUID strings and legacy numeric IDs for backward compatibility
 		opponentUserId: z.union([z.string(), z.number()]).optional(),
 		opponentLlmId: z.nativeEnum(OpponentLlmId).optional(),
+		opponentEngineId: z.nativeEnum(OpponentEngineId).optional(),
 	})
 	.superRefine((data, ctx) => {
 		const hasUserOpponent =
 			typeof data.opponentUserId === 'string' ||
 			typeof data.opponentUserId === 'number';
 		const hasLlmOpponent = typeof data.opponentLlmId === 'string';
+		const hasEngineOpponent = typeof data.opponentEngineId === 'string';
 
-		if (!hasUserOpponent && !hasLlmOpponent) {
+		const opponentCount = [
+			hasUserOpponent,
+			hasLlmOpponent,
+			hasEngineOpponent,
+		].filter(Boolean).length;
+
+		if (opponentCount === 0) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
-				message: 'Provide either opponentUserId or opponentLlmId',
+				message:
+					'Provide exactly one of opponentUserId, opponentLlmId, or opponentEngineId',
 				path: ['opponentUserId'],
 			});
 		}
 
-		if (hasUserOpponent && hasLlmOpponent) {
+		if (opponentCount > 1) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
-				message: 'Specify only one opponent type',
+				message:
+					'Specify exactly one opponent type (opponentUserId, opponentLlmId, or opponentEngineId)',
 				path: ['opponentUserId'],
 			});
 		}
@@ -80,6 +104,7 @@ app.get('/', authMiddleware, async c => {
 				status: playHistory.status,
 				opponentUserId: playHistory.opponentUserId,
 				opponentLlmId: playHistory.opponentLlmId,
+				opponentEngineId: playHistory.opponentEngineId,
 				ratingChange: ratingHistory.ratingChange,
 				newRating: ratingHistory.newRating,
 			})
@@ -120,10 +145,10 @@ app.post(
 				);
 			}
 
+			const kind = getOpponentKind(body);
 			const db = getDB();
 
-			// Perform all database operations in a single transaction
-			// This prevents partial updates and ensures data consistency
+			// Perform all database operations in a single transaction.
 			const result = await db.transaction(async tx => {
 				let savedRecord: PlayHistory | null = null;
 				let ratingUpdate: {
@@ -132,7 +157,8 @@ app.post(
 					ratingChange: number;
 				} | null = null;
 
-				// PvAI match - create single play history record
+				// Single play-history record. opponentEngineId is set explicitly
+				// (null for LLM games) to mirror the existing opponentUserId: null.
 				const newPlayHistory: typeof playHistory.$inferInsert = {
 					userId: user.userId,
 					chessId: body.chessId,
@@ -140,6 +166,7 @@ app.post(
 					date: new Date(body.date).toISOString(),
 					opponentUserId: null,
 					opponentLlmId: body.opponentLlmId ?? null,
+					opponentEngineId: body.opponentEngineId ?? null,
 				};
 
 				const [record] = await tx
@@ -151,30 +178,38 @@ app.post(
 					throw new Error('Failed to create play history record');
 				}
 
-				// Update single-player rating using transaction
-				const ratingResult = await updatePlayerRating(
-					{
-						userId: user.userId,
-						variantId: body.chessId,
-						playHistoryId: record.id,
-						gameResult: body.status,
-						opponentLlmId: body.opponentLlmId ?? null,
-						opponentUserId: null,
-					},
-					tx
-				);
-
 				savedRecord = record as PlayHistory;
-				ratingUpdate = {
-					oldRating: ratingResult.oldRating,
-					newRating: ratingResult.newRating,
-					ratingChange: ratingResult.ratingChange,
-				};
+
+				// Engine games are unrated: never touch the rating service.
+				// Only the LLM path updates rating (rated ⇔ kind !== 'engine').
+				if (kind === 'llm') {
+					const ratingResult = await updatePlayerRating(
+						{
+							userId: user.userId,
+							variantId: body.chessId,
+							playHistoryId: record.id,
+							gameResult: body.status,
+							opponentLlmId: body.opponentLlmId ?? null,
+							opponentUserId: null,
+						},
+						tx
+					);
+					ratingUpdate = {
+						oldRating: ratingResult.oldRating,
+						newRating: ratingResult.newRating,
+						ratingChange: ratingResult.ratingChange,
+					};
+				}
 
 				return { savedRecord, ratingUpdate };
 			});
 
-			console.log('Rating updated', result.ratingUpdate);
+			if (result.ratingUpdate) {
+				console.log('Rating updated', result.ratingUpdate);
+			} else {
+				console.log('Play history saved (unrated engine game)');
+			}
+
 			return c.json(
 				{
 					message: 'Play history saved',

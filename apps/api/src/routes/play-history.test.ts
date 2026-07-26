@@ -7,7 +7,9 @@ import {
 	beforeEach,
 	afterEach,
 } from 'bun:test';
-import { initializeDB } from '../db';
+import { initializeDB, getDB } from '../db';
+import { playerRatings, ratingHistory } from '../db/schema';
+import { and, eq } from 'drizzle-orm';
 import playHistoryRoutes from './play-history';
 import { signAppJwt } from '../auth/jwt';
 
@@ -430,5 +432,166 @@ describe('play-history routes - GET and POST success', () => {
 		expect(body.playHistory).toHaveLength(1);
 		expect(body.playHistory[0]?.chessId).toBe('shogi');
 		expect(body.playHistory[0]?.status).toBe('draw');
+	});
+});
+
+describe('play-history routes - engine (unrated) games', () => {
+	let restore: FetchMockRestore = () => {};
+	let originalUrl: string | undefined;
+	let originalAnonKey: string | undefined;
+
+	beforeEach(() => {
+		originalUrl = process.env.SUPABASE_URL;
+		originalAnonKey = process.env.SUPABASE_ANON_KEY;
+		process.env.SUPABASE_URL = SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+		restore = mockSupabaseFetch();
+		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
+	});
+
+	afterEach(() => {
+		restore();
+		process.env.SUPABASE_URL = originalUrl;
+		process.env.SUPABASE_ANON_KEY = originalAnonKey;
+	});
+
+	test.each(['win', 'loss', 'draw'] as const)(
+		'POST / engine game (%s) leaves rating unchanged with no rating_history',
+		async status => {
+			const db = getDB();
+
+			// 1. Establish a known rating via one rated LLM game.
+			await playHistoryRoutes.request(
+				`${BASE_URL}/`,
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+					body: JSON.stringify({
+						chessId: 'chess',
+						status: 'win',
+						date: new Date().toISOString(),
+						opponentLlmId: 'gemini-2.5-flash',
+					}),
+				},
+				CF_ENV
+			);
+
+			const [before] = await db
+				.select()
+				.from(playerRatings)
+				.where(
+					and(
+						eq(playerRatings.userId, TEST_USER_ID),
+						eq(playerRatings.variantId, 'chess')
+					)
+				);
+			expect(before).toBeDefined();
+
+			// 2. Submit the engine game.
+			const res = await playHistoryRoutes.request(
+				`${BASE_URL}/`,
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+					body: JSON.stringify({
+						chessId: 'chess',
+						status,
+						date: new Date().toISOString(),
+						opponentEngineId: 'stockfish',
+					}),
+				},
+				CF_ENV
+			);
+			expect(res.status).toBe(201);
+			const body = (await res.json()) as {
+				playHistory: {
+					id: number;
+					opponentEngineId: string | null;
+					opponentLlmId: string | null;
+				};
+				ratingUpdate: { ratingChange: number } | null;
+			};
+			expect(body.ratingUpdate).toBeNull();
+			expect(body.playHistory.opponentEngineId).toBe('stockfish');
+			expect(body.playHistory.opponentLlmId).toBeNull();
+
+			// 3. Rating row is byte-for-byte unchanged.
+			const [after] = await db
+				.select()
+				.from(playerRatings)
+				.where(
+					and(
+						eq(playerRatings.userId, TEST_USER_ID),
+						eq(playerRatings.variantId, 'chess')
+					)
+				);
+			expect(after).toEqual(before);
+
+			// 4. No rating_history row for the engine game.
+			const engineHistory = await db
+				.select()
+				.from(ratingHistory)
+				.where(
+					and(
+						eq(ratingHistory.userId, TEST_USER_ID),
+						eq(ratingHistory.playHistoryId, body.playHistory.id)
+					)
+				);
+			expect(engineHistory).toHaveLength(0);
+		}
+	);
+
+	test('POST / rejects engine + llm combination with 400', async () => {
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentEngineId: 'stockfish',
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
+		expect(res.status).toBe(400);
+	});
+
+	test('GET / returns engine row with opponentEngineId and null ratingChange', async () => {
+		await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentEngineId: 'stockfish',
+				}),
+			},
+			CF_ENV
+		);
+
+		const getRes = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{ headers: AUTH_HEADER },
+			CF_ENV
+		);
+		expect(getRes.status).toBe(200);
+		const body = (await getRes.json()) as {
+			playHistory: Array<{
+				opponentEngineId: string | null;
+				ratingChange: number | null;
+				newRating: number | null;
+			}>;
+		};
+		expect(body.playHistory).toHaveLength(1);
+		expect(body.playHistory[0]?.opponentEngineId).toBe('stockfish');
+		expect(body.playHistory[0]?.ratingChange).toBeNull();
+		expect(body.playHistory[0]?.newRating).toBeNull();
 	});
 });
