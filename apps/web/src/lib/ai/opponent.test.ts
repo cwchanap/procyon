@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test';
-import { resolveOpponentLlmId } from './opponent-llm';
+import { resolveOpponentLlmId, type OpponentDescriptor } from './opponent';
 
 describe('resolveOpponentLlmId', () => {
 	test('gpt-4o family maps to gpt-4o', () => {
@@ -31,5 +31,13 @@ describe('resolveOpponentLlmId', () => {
 		expect(resolveOpponentLlmId('unknown', 'unknown-model')).toBe(
 			'gemini-2.5-flash'
 		);
+	});
+});
+
+describe('OpponentDescriptor', () => {
+	test('engine descriptor carries the stockfish id', () => {
+		const d: OpponentDescriptor = { kind: 'engine', id: 'stockfish' };
+		expect(d.kind).toBe('engine');
+		expect(d.id).toBe('stockfish');
 	});
 });

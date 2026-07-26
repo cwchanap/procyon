@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { env } from '../lib/env';
-import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
+import { resolveOpponentLlmId } from '../lib/ai/opponent';
 import type { AIConfig } from '../lib/ai/types';
 import type { GameVariant, GameStatus } from '../lib/ai/game-variant-types';
 
