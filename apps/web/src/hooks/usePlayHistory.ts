@@ -1,17 +1,28 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { env } from '../lib/env';
-import { resolveOpponentLlmId } from '../lib/ai/opponent';
+import {
+	resolveOpponentLlmId,
+	type OpponentLlmId,
+	type OpponentEngineId,
+} from '../lib/ai/opponent';
 import type { AIConfig } from '../lib/ai/types';
 import type { GameVariant, GameStatus } from '../lib/ai/game-variant-types';
 
-export interface UsePlayHistoryOptions {
+type UsePlayHistoryBaseOptions = {
 	gameVariant: GameVariant;
 	gameStatus: GameStatus;
+	/**
+	 * The non-human player's color (LLM or engine). Mandatory — the hook guards
+	 * `if (!aiPlayer) return`, so an engine caller passing null silently gets
+	 * no save. (The name is historical; engine games pass the engine's color.)
+	 */
 	aiPlayer: string | null | undefined;
-	aiConfig: AIConfig;
 	moveCount: number;
 	getWinnerColor: () => string;
-	/** True only while an AI game is in progress (gameMode === 'ai' && gameStarted). */
+	/**
+	 * True only while a saveable game is in progress. Set by the caller for both
+	 * AI and engine modes — this hook must not assume LLM-only.
+	 */
 	enabled: boolean;
 	/**
 	 * Authenticated state from the caller's `useAuth()` snapshot. Passed from
@@ -35,7 +46,28 @@ export interface UsePlayHistoryOptions {
 	userId: string | null | undefined;
 	/** When set, bumps window.__PROCYON_DEBUG_<KEY>_SAVE_COUNT__ before the fetch. */
 	debugVariantKey?: string;
-}
+};
+
+/**
+ * LLM games pass `aiConfig` (and may omit `opponentDescriptor`). Engine games
+ * pass `opponentDescriptor: { kind: 'engine', ... }` and omit `aiConfig`.
+ *
+ * NOTE: this union guarantees call-site safety only. The hook destructures its
+ * options in the signature, which severs the correlation — inside the body TS
+ * sees `aiConfig` and `opponentDescriptor` as independent optionals, so the LLM
+ * branch guards `!aiConfig` explicitly (see savePlayHistory).
+ */
+export type UsePlayHistoryOptions = UsePlayHistoryBaseOptions &
+	(
+		| {
+				opponentDescriptor?: { kind: 'llm'; id: OpponentLlmId };
+				aiConfig: AIConfig;
+		  }
+		| {
+				opponentDescriptor: { kind: 'engine'; id: OpponentEngineId };
+				aiConfig?: AIConfig;
+		  }
+	);
 
 function isGameOverStatus(status: GameStatus): boolean {
 	return status === 'checkmate' || status === 'stalemate' || status === 'draw';
@@ -87,6 +119,7 @@ export function usePlayHistory({
 	gameStatus,
 	aiPlayer,
 	aiConfig,
+	opponentDescriptor,
 	moveCount,
 	getWinnerColor,
 	enabled,
@@ -107,12 +140,17 @@ export function usePlayHistory({
 	// to aiPlayer, provider, or model after game-over don't corrupt the
 	// record (e.g. recording the opposite win/loss or a different
 	// opponentLlmId). Cleared in the reset effect when a new game starts.
-	const saveSnapshotRef = useRef<{
-		result: 'win' | 'loss' | 'draw';
-		opponentLlmId: string;
-		gameVariant: GameVariant;
-		userId: string | null | undefined;
-	} | null>(null);
+	const saveSnapshotRef = useRef<
+		| ({
+				result: 'win' | 'loss' | 'draw';
+				gameVariant: GameVariant;
+				userId: string | null | undefined;
+		  } & (
+				| { kind: 'llm'; opponentLlmId: string }
+				| { kind: 'engine'; opponentEngineId: OpponentEngineId }
+		  ))
+		| null
+	>(null);
 	// The userId from the previous effect run. Used by the save effect to
 	// detect an auth identity change (A→B) that happened between when the
 	// game became terminal and when the save first fires (or between a 401
@@ -175,12 +213,19 @@ export function usePlayHistory({
 			return;
 		}
 		let result: 'win' | 'loss' | 'draw';
-		let opponentLlmId: string;
 		let snapshotGameVariant: GameVariant;
+		let snapshotKind: 'llm' | 'engine';
+		let snapshotOpponentLlmId: string | undefined;
+		let snapshotOpponentEngineId: OpponentEngineId | undefined;
 		if (saveSnapshotRef.current) {
 			result = saveSnapshotRef.current.result;
-			opponentLlmId = saveSnapshotRef.current.opponentLlmId;
 			snapshotGameVariant = saveSnapshotRef.current.gameVariant;
+			snapshotKind = saveSnapshotRef.current.kind;
+			if (saveSnapshotRef.current.kind === 'llm') {
+				snapshotOpponentLlmId = saveSnapshotRef.current.opponentLlmId;
+			} else {
+				snapshotOpponentEngineId = saveSnapshotRef.current.opponentEngineId;
+			}
 		} else {
 			if (gameStatus === 'draw' || gameStatus === 'stalemate') {
 				result = 'draw';
@@ -188,14 +233,44 @@ export function usePlayHistory({
 				const winnerColor = getWinnerColor();
 				result = winnerColor === aiPlayer ? 'loss' : 'win';
 			}
-			opponentLlmId = resolveOpponentLlmId(aiConfig.provider, aiConfig.model);
 			snapshotGameVariant = gameVariant;
-			saveSnapshotRef.current = {
-				result,
-				opponentLlmId,
-				gameVariant,
-				userId,
-			};
+			if (opponentDescriptor?.kind === 'engine') {
+				snapshotKind = 'engine';
+				snapshotOpponentEngineId = opponentDescriptor.id;
+				saveSnapshotRef.current = {
+					result,
+					gameVariant,
+					userId,
+					kind: 'engine',
+					opponentEngineId: opponentDescriptor.id,
+				};
+			} else {
+				// LLM path requires aiConfig. The options union guarantees it at
+				// the call site, but the destructured signature severs that
+				// correlation, so guard explicitly — bail loudly, never silently
+				// (a silent return would reproduce the aiPlayer trap for LLM
+				// callers).
+				if (!aiConfig) {
+					if (import.meta.env.DEV) {
+						// eslint-disable-next-line no-console
+						console.error(
+							'[usePlayHistory] LLM save attempted without aiConfig; skipping.'
+						);
+					}
+					savedRef.current = true;
+					return;
+				}
+				const llmId = resolveOpponentLlmId(aiConfig.provider, aiConfig.model);
+				snapshotKind = 'llm';
+				snapshotOpponentLlmId = llmId;
+				saveSnapshotRef.current = {
+					result,
+					gameVariant,
+					userId,
+					kind: 'llm',
+					opponentLlmId: llmId,
+				};
+			}
 		}
 
 		savedRef.current = true;
@@ -216,7 +291,9 @@ export function usePlayHistory({
 					chessId: snapshotGameVariant,
 					status: result,
 					date: new Date().toISOString(),
-					opponentLlmId,
+					...(snapshotKind === 'llm'
+						? { opponentLlmId: snapshotOpponentLlmId }
+						: { opponentEngineId: snapshotOpponentEngineId }),
 				}),
 			});
 			if (!response.ok) {
@@ -308,11 +385,12 @@ export function usePlayHistory({
 		userId,
 		aiPlayer,
 		gameStatus,
-		aiConfig.provider,
-		aiConfig.model,
+		aiConfig?.provider,
+		aiConfig?.model,
 		gameVariant,
 		getWinnerColor,
 		debugVariantKey,
+		opponentDescriptor?.kind,
 	]);
 
 	useEffect(() => {

@@ -1757,3 +1757,72 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 		expect(fetchCallCount).toBe(2);
 	});
 });
+
+describe('usePlayHistory — engine (unrated) path', () => {
+	let originalFetch: typeof globalThis.fetch;
+	let capturedBody: Record<string, unknown> | undefined;
+	let unmountHook: (() => void) | undefined;
+
+	beforeEach(() => {
+		originalFetch = globalThis.fetch;
+		capturedBody = undefined;
+		globalThis.fetch = mock((url: string, init?: RequestInit) => {
+			if (url.includes('/play-history') && init?.body) {
+				capturedBody = JSON.parse(init.body as string) as Record<
+					string,
+					unknown
+				>;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+	});
+
+	afterEach(() => {
+		unmountHook?.();
+		globalThis.fetch = originalFetch;
+	});
+
+	test('engine descriptor sends opponentEngineId and omits opponentLlmId', () => {
+		const { unmount } = renderHook(() =>
+			usePlayHistory({
+				gameVariant: 'chess',
+				gameStatus: 'checkmate',
+				aiPlayer: 'black', // engine's color; mandatory
+				aiConfig: undefined,
+				opponentDescriptor: { kind: 'engine', id: 'stockfish' },
+				moveCount: 12,
+				getWinnerColor: stableGetWinnerColor,
+				enabled: true,
+				isAuthenticated: true,
+				userId: 'user-a',
+			})
+		);
+		unmountHook = unmount;
+
+		expect(capturedBody).toBeDefined();
+		expect(capturedBody).toHaveProperty('opponentEngineId', 'stockfish');
+		expect(capturedBody).not.toHaveProperty('opponentLlmId');
+		expect(capturedBody).toHaveProperty('chessId', 'chess');
+	});
+
+	test('LLM path (no descriptor) is unchanged — still sends opponentLlmId', () => {
+		const { unmount } = renderHook(() =>
+			usePlayHistory(
+				makeProps({
+					gameStatus: 'checkmate',
+					moveCount: 8,
+				})
+			)
+		);
+		unmountHook = unmount;
+
+		expect(capturedBody).toBeDefined();
+		expect(capturedBody).toHaveProperty('opponentLlmId');
+		expect(capturedBody).not.toHaveProperty('opponentEngineId');
+	});
+});
