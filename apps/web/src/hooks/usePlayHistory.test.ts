@@ -1760,11 +1760,18 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 
 describe('usePlayHistory — engine (unrated) path', () => {
 	let originalFetch: typeof globalThis.fetch;
+	// Captured in beforeEach so afterEach can restore setTimeout/clearTimeout
+	// unconditionally — even when a test's assertions fail before its inline
+	// restoration runs, leaving the mock in place for subsequent tests.
+	let originalSetTimeout: typeof globalThis.setTimeout;
+	let originalClearTimeout: typeof globalThis.clearTimeout;
 	let capturedBody: Record<string, unknown> | undefined;
 	let unmountHook: (() => void) | undefined;
 
 	beforeEach(() => {
 		originalFetch = globalThis.fetch;
+		originalSetTimeout = globalThis.setTimeout;
+		originalClearTimeout = globalThis.clearTimeout;
 		capturedBody = undefined;
 		globalThis.fetch = mock((url: string, init?: RequestInit) => {
 			if (url.includes('/play-history') && init?.body) {
@@ -1785,6 +1792,8 @@ describe('usePlayHistory — engine (unrated) path', () => {
 	afterEach(() => {
 		unmountHook?.();
 		globalThis.fetch = originalFetch;
+		globalThis.setTimeout = originalSetTimeout;
+		globalThis.clearTimeout = originalClearTimeout;
 	});
 
 	test('engine descriptor sends opponentEngineId and omits opponentLlmId', () => {
@@ -1824,5 +1833,83 @@ describe('usePlayHistory — engine (unrated) path', () => {
 		expect(capturedBody).toBeDefined();
 		expect(capturedBody).toHaveProperty('opponentLlmId');
 		expect(capturedBody).not.toHaveProperty('opponentEngineId');
+	});
+
+	// [P2] When the terminal save gets a 401 (e.g. session cookie expired
+	// as the game ended), the retry must reuse the frozen engine snapshot
+	// rather than re-deriving the opponent. The retried POST body must
+	// carry opponentEngineId (from the snapshot) and NOT opponentLlmId.
+	test('engine 401-retry reuses frozen snapshot (opponentEngineId, not opponentLlmId)', async () => {
+		// First /play-history POST returns 401; subsequent calls return 200.
+		let fetchCallIdx = 0;
+		globalThis.fetch = mock((url: string, init?: RequestInit) => {
+			if (url.includes('/play-history') && init?.body) {
+				capturedBody = JSON.parse(init.body as string) as Record<
+					string,
+					unknown
+				>;
+			}
+			fetchCallIdx++;
+			if (fetchCallIdx === 1) {
+				return Promise.resolve({
+					ok: false,
+					status: 401,
+					statusText: 'Unauthorized',
+					json: () => Promise.resolve({}),
+				}) as unknown as Response;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			}) as unknown as Response;
+		}) as unknown as typeof fetch;
+
+		// Capture the 401 retry timer callback so we can fire it without
+		// waiting RETRY_401_DELAY_MS (5s).
+		let retryCallback: (() => void) | null = null;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay && delay >= 1000) {
+				retryCallback = fn;
+				return 0 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof globalThis.setTimeout;
+
+		const { unmount } = renderHook(() =>
+			usePlayHistory({
+				gameVariant: 'chess',
+				gameStatus: 'checkmate',
+				aiPlayer: 'black', // engine's color; mandatory
+				aiConfig: undefined,
+				opponentDescriptor: { kind: 'engine', id: 'stockfish' },
+				moveCount: 12,
+				getWinnerColor: stableGetWinnerColor,
+				enabled: true,
+				isAuthenticated: true,
+				userId: 'user-a',
+			})
+		);
+		unmountHook = unmount;
+
+		// First save attempt fires — gets 401, schedules a delayed retry.
+		await act(async () => {
+			await new Promise(r => setTimeout(r, 0));
+		});
+		expect(retryCallback).not.toBeNull();
+
+		// Fire the delayed retry (simulating RETRY_401_DELAY_MS elapsing).
+		await act(async () => {
+			retryCallback!();
+			await new Promise(r => setTimeout(r, 0));
+		});
+
+		// The retried POST body reuses the frozen engine snapshot — it
+		// carries opponentEngineId and NOT opponentLlmId (proving the
+		// snapshot was reused, not re-derived through the LLM path).
+		expect(capturedBody).toBeDefined();
+		expect(capturedBody).toHaveProperty('opponentEngineId', 'stockfish');
+		expect(capturedBody).not.toHaveProperty('opponentLlmId');
 	});
 });

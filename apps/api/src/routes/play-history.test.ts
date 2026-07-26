@@ -9,6 +9,7 @@ import {
 } from 'bun:test';
 import { initializeDB, getDB } from '../db';
 import { playerRatings, ratingHistory } from '../db/schema';
+import { ChessVariantId } from '../constants/game';
 import { and, eq } from 'drizzle-orm';
 import playHistoryRoutes from './play-history';
 import { signAppJwt } from '../auth/jwt';
@@ -482,7 +483,7 @@ describe('play-history routes - engine (unrated) games', () => {
 				.where(
 					and(
 						eq(playerRatings.userId, TEST_USER_ID),
-						eq(playerRatings.variantId, 'chess')
+						eq(playerRatings.variantId, ChessVariantId.Chess)
 					)
 				);
 			expect(before).toBeDefined();
@@ -522,10 +523,11 @@ describe('play-history routes - engine (unrated) games', () => {
 				.where(
 					and(
 						eq(playerRatings.userId, TEST_USER_ID),
-						eq(playerRatings.variantId, 'chess')
+						eq(playerRatings.variantId, ChessVariantId.Chess)
 					)
 				);
-			expect(after).toEqual(before);
+			expect(after).toBeDefined();
+			expect(after).toEqual(before!);
 
 			// 4. No rating_history row for the engine game.
 			const engineHistory = await db
@@ -553,6 +555,25 @@ describe('play-history routes - engine (unrated) games', () => {
 					date: new Date().toISOString(),
 					opponentEngineId: 'stockfish',
 					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
+		expect(res.status).toBe(400);
+	});
+
+	test('POST / rejects engine + user combination with 400', async () => {
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					chessId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentEngineId: 'stockfish',
+					opponentUserId: 'some-uuid-here',
 				}),
 			},
 			CF_ENV
