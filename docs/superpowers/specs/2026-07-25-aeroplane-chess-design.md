@@ -2,28 +2,28 @@
 
 **Date:** 2026-07-25  
 **Repository:** `cwchanap/procyon`  
-**Status:** Approved design  
+**Status:** Approved and self-reviewed  
 **Target:** First complete Aeroplane Chess release
 
 ## 1. Summary
 
-Add a faithful but approachable Aeroplane Chess game to Procyon. A match has one human player and three local heuristic AI opponents. It supports traditional movement, launches, colour jumps, flight shortcuts, captures, home lanes, and four-plane victory, while also offering optional relaxed rules and a shorter two-plane victory mode.
+Add a faithful but approachable Aeroplane Chess mode to Procyon. Each match has one human player and three local heuristic AI opponents. The game supports launches, colour-square jumps, long flight shortcuts, captures, home lanes, optional stacking and blockades, and both four-plane and quick two-plane victories.
 
-The game must feel cheerful and low-pressure. Gameplay decisions are local and instant; an LLM is never required. When the player has configured an AI provider, optional LLM-generated reactions may add personality without affecting rules, move choice, match recovery, or turn timing.
+The experience should be cheerful and low-pressure. Gameplay is always local and instant; no API key or LLM is required. When the player has configured an AI provider, optional LLM reactions may add personality, but they never select moves, validate rules, delay a completed action, or affect match recovery.
 
-Aeroplane Chess is implemented as a dedicated path-based engine. It reuses Procyon's shared page shell, design system, authentication, provider configuration, and play-history UI where appropriate, but it does not enter the chess-oriented board, move, or AI-adapter abstractions.
+Aeroplane Chess uses a dedicated path-based engine. It reuses Procyon's shared shell, design system, authentication, provider configuration, and play-history presentation where appropriate, but it does not enter the chess-oriented board, piece, move, or LLM-adapter abstractions.
 
 ## 2. Goals
 
-- Provide a faithful Aeroplane Chess ruleset for one human and three AI opponents.
-- Keep each human turn simple: roll, then choose a plane only when more than one legal move exists.
-- Support both authentic and relaxed match presets.
-- Make all gameplay deterministic from recorded actions and seeded random state.
+- Provide a complete one-human, three-AI Aeroplane Chess match.
+- Require a human choice only when more than one legal plane can move.
+- Offer authentic and relaxed rules without overwhelming setup.
+- Make dice, AI tie-breaking, saves, and debug replays deterministic from seeds and actions.
 - Recover an interrupted local match after reload or browser restart.
-- Integrate completed signed-in matches into play history without changing ratings.
+- Record signed-in match results without changing competitive ratings.
 - Give the three AI opponents distinct, readable personalities.
-- Present a colourful board inside Procyon's existing darker interface.
-- Keep gameplay functional when no AI provider or API key is configured.
+- Use a colourful board within Procyon's existing dark interface.
+- Remain fully playable without an AI provider.
 
 ## 3. Non-goals
 
@@ -32,60 +32,39 @@ The first release does not include:
 - Online multiplayer.
 - Local hot-seat multiplayer.
 - Ranked Aeroplane Chess or ELO changes.
-- Spectating.
-- Server-authoritative turn storage.
+- Spectating or server-authoritative turn storage.
 - Cosmetics, currencies, unlocks, achievements, or progression.
-- Custom board layouts or a board editor.
-- Multiple Aeroplane Chess rule traditions beyond the defined options.
+- Custom or multiple board layouts.
 - A generic Ludo, Pachisi, or race-board framework.
 - An LLM that selects moves or validates rules.
 - A three-consecutive-six penalty.
 
-A reusable race-game framework should be extracted only after a second race game demonstrates stable shared concepts.
+A generic race-game framework should be extracted only after a second game demonstrates stable shared concepts.
 
 ## 4. Architectural direction
 
 ### 4.1 Dedicated engine
 
-Create a game-specific engine under:
+Create:
 
 ```text
 apps/web/src/lib/aeroplane/
+  types.ts          Domain types and match configuration
+  topology.ts       Logical paths, jumps, shortcuts, and render anchors
+  rules.ts          Legal move generation and movement resolution
+  game.ts           Turn transitions and victory checks
+  dice.ts           Fair and Relaxed seeded dice policies
+  ai.ts             Personality scoring and move selection
+  persistence.ts    Save versioning, validation, and restoration
+  replay.ts         Action-log replay and deterministic diagnostics
+  *.test.ts         Unit and scenario tests
 ```
 
-Recommended modules:
+The engine operates only on logical positions. SVG or CSS coordinates are render data and must never determine legal movement.
 
-```text
-types.ts          Domain types and configuration
-topology.ts       Logical board paths, jumps, shortcuts, and render anchors
-rules.ts          Legal move generation and movement resolution
-game.ts           Turn transitions and victory checks
-dice.ts           Fair and Relaxed seeded dice policies
-ai.ts             Personality scoring and move selection
-persistence.ts    Save versioning, validation, and restoration
-replay.ts         Action-log replay and deterministic diagnostics
-*.test.ts         Unit and scenario tests
-```
+### 4.2 Identity types
 
-The engine operates on logical path positions, never pixels or React components. `topology.ts` maps logical positions to board anchors used by the renderer.
-
-### 4.2 Why the existing strategy-game model is not reused
-
-Procyon's current strategy variants use rectangular boards, coordinate-to-coordinate moves, two-player-style state, and LLM move adapters. Aeroplane Chess instead needs:
-
-- Four players.
-- Dice actions.
-- Hangars and launch pads.
-- A shared circular track plus colour-specific home lanes.
-- Multiple planes on one location.
-- Automatic chained movement effects.
-- Local personality AI rather than LLM move generation.
-
-Forcing these concepts into the current generic game state would broaden every existing variant and create avoidable regression risk.
-
-### 4.3 Shared identity types
-
-Separate navigation and history identity from chess-like engine identity:
+Separate navigation and history identity from chess-like strategy-engine identity:
 
 ```ts
 export type StrategyGameVariant =
@@ -95,13 +74,12 @@ export type StrategyGameVariant =
   | 'jungle';
 
 export type GameId = StrategyGameVariant | 'aeroplane';
-
 export type GameAccent = GameId | 'brass';
 ```
 
-AI move services, generic piece maps, and strategy board configuration use `StrategyGameVariant`. Navigation, game cards, theme accents, and play history use `GameId`.
+AI move services, strategy state maps, piece unions, and rectangular board configuration use `StrategyGameVariant`. Navigation, game cards, accents, and play history use `GameId`.
 
-During migration, the existing `GameVariant` export may remain as a deprecated alias of `StrategyGameVariant` to keep the change incremental. New code must use the more specific type.
+The current `GameVariant` export may temporarily remain as a deprecated alias of `StrategyGameVariant` to keep migration incremental.
 
 ## 5. Match configuration
 
@@ -119,71 +97,70 @@ interface AeroplaneMatchConfig {
 
 ### 5.1 Rule presets
 
-**Classic**
+**Classic rules**
 
-- A plane launches from its hangar only on a roll of 6.
+- A plane launches from its hangar only on 6.
 - Rolling 6 grants another turn unless the match has ended.
 - A plane must roll the exact remaining distance to finish.
-- A move that would overshoot the finish is illegal.
+- A move that overshoots the finish is illegal.
 
-**Relaxed**
+**Relaxed rules**
 
-- A plane launches on a roll of 5 or 6.
+- A plane launches on 5 or 6.
 - Rolling 6 grants another turn unless the match has ended.
 - A plane that overshoots the finish bounces backward through its home lane by the excess distance.
 - A finished plane never leaves the finished state.
 
 ### 5.2 Victory modes
 
-- `all-four`: the first player to finish all four planes wins.
-- `first-two`: the first player to finish any two planes wins.
+- `all-four`: first player to finish all four planes.
+- `first-two`: first player to finish any two planes.
 
 ### 5.3 Advanced rules
 
-- Stacking and blockades are independent options.
-- Enabling blockades implicitly enables stacking because a blockade requires a stack.
-- Disabling stacking also disables blockades in normalized configuration.
+- Stacking and blockades are optional.
+- Enabling blockades automatically enables stacking.
+- Disabling stacking automatically disables blockades.
+- The default experience remains streamlined: jumps, flights, and captures are active, while stacking and blockades are off.
 
 ### 5.4 Setup presets
 
-**Classic Match**
+**Classic Match — default**
 
 - Classic rules.
 - All-four victory.
 - Fair Dice.
-- Stacking enabled.
-- Blockades enabled.
+- Stacking off.
+- Blockades off.
 
 **Quick & Chill**
 
 - Relaxed rules.
 - First-two victory.
 - Relaxed Dice.
-- Stacking enabled.
-- Blockades disabled.
+- Stacking off.
+- Blockades off.
 
-The setup panel allows individual options to be changed after choosing a preset.
+The setup panel permits individual options to be changed after selecting a preset.
 
 ## 6. Board topology
 
-### 6.1 Logical board
-
-The board definition contains:
+The standard board definition contains:
 
 - Four colours: red, yellow, blue, and green.
-- Four hangars, each containing four planes.
+- Four hangars with four planes each.
 - One private launch pad per colour.
 - A 52-node shared track.
-- A colour-specific entry point onto the shared track.
-- A colour-specific exit from the shared track.
-- A six-node home lane per colour, ending at the finish.
-- Matching-colour jump edges.
-- One long flight shortcut per colour.
-- Safe or private positions where opponents cannot land, when present in the selected standard layout.
+- A colour-specific entry and exit on that track.
+- A six-node private home lane per colour, ending at finish.
+- Explicit matching-colour jump edges.
+- One explicit long flight shortcut per colour.
 
-The board definition must explicitly list each colour's complete movement path and shortcut edges. Rules must not derive movement from SVG geometry.
+Only the owning colour can enter its launch pad or home lane. Shared-track squares are capturable unless protected by an enabled blockade.
 
-### 6.2 Plane locations
+`topology.ts` must explicitly list each colour's complete route and every jump or flight edge. Rules must not infer topology from board artwork.
+
+### 6.1 Plane locations
 
 ```ts
 type PlaneLocation =
@@ -192,11 +169,7 @@ type PlaneLocation =
   | { zone: 'shared-track'; index: number }
   | { zone: 'home-lane'; index: number }
   | { zone: 'finished' };
-```
 
-Each plane has a stable ID, owner colour, and location:
-
-```ts
 interface AeroplanePlane {
   id: string;
   ownerId: string;
@@ -205,7 +178,7 @@ interface AeroplanePlane {
 }
 ```
 
-A launch moves a plane from `hangar` to its private `launch-pad`. A later move advances it from the launch pad to the first position on its colour's path.
+A successful launch moves a plane from its hangar to its private launch pad. A later roll advances it from the launch pad onto the first node of its colour route and then continues by the rolled distance defined by the topology.
 
 ## 7. Authoritative game state
 
@@ -229,27 +202,24 @@ interface AeroplaneGameState {
 }
 ```
 
-Legal moves are derived from the state and pending roll; they are not trusted when loading a save. Animation state is owned by the React controller rather than the engine. This ensures an animation error cannot corrupt authoritative gameplay.
+Legal moves are derived from state and `pendingRoll`; persisted legal-move arrays are never trusted. Animation state belongs to the React controller, not the engine, so an animation failure cannot corrupt gameplay.
 
-### 7.1 Player order and match start
+### 7.1 Player order and counters
 
-The fixed clockwise order is:
+Clockwise colour order is:
 
 ```ts
 ['red', 'yellow', 'blue', 'green']
 ```
 
-The human may choose any colour. The three personalities are assigned in clockwise order among the remaining colours:
+Starting with the colour immediately clockwise from the human, assign Cautious, Aggressive, then Unpredictable to the remaining colours.
 
-1. Cautious.
-2. Aggressive.
-3. Unpredictable.
+The starting player is selected uniformly from all four players using the gameplay RNG. No separate roll-off is shown.
 
-The starting player is selected uniformly using the gameplay RNG. There is no separate roll-off sequence.
+- `turnNumber` increments whenever a player enters `awaiting-roll`, including an extra turn after 6.
+- `roundNumber` increments after four player-advancing turns. Extra turns do not advance the round counter.
 
 ## 8. Actions and turn flow
-
-Supported engine actions:
 
 ```ts
 type AeroplaneAction =
@@ -260,74 +230,72 @@ type AeroplaneAction =
 
 Turn flow:
 
-1. The current player rolls.
-2. The engine stores the roll and generates legal moves.
-3. If no legal move exists, the move phase ends automatically.
-4. If exactly one legal move exists, the controller applies it automatically.
-5. If multiple moves exist, the human selects a legal plane or the AI evaluates the choices.
-6. The engine resolves the complete movement chain and emits events.
-7. Victory is checked.
-8. If the roll was 6 and the match has not ended, the same player receives another turn.
-9. Otherwise, the current player advances clockwise.
+1. Current player rolls.
+2. Engine stores the roll and derives legal moves.
+3. No legal moves: emit a skipped-turn event and end the move phase automatically.
+4. One legal move: the controller applies it automatically.
+5. Multiple legal moves: the human selects a plane or the AI evaluates the options.
+6. Engine resolves the complete movement chain atomically and emits events.
+7. Engine checks victory.
+8. A roll of 6 grants the same player another turn when the match remains active.
+9. Otherwise control advances clockwise.
 
-A roll of 6 grants the extra turn even when no legal plane can move. No penalty applies for consecutive sixes.
+A 6 grants an extra turn even when it produced no legal move. Consecutive sixes have no penalty.
 
-## 9. Move generation and resolution
+## 9. Legal movement and resolution
 
 ### 9.1 Legal move generation
 
-For each plane owned by the current player, the engine determines whether the pending roll can:
+For every plane owned by the current player, determine whether the pending roll can:
 
-- Launch it from the hangar.
-- Move it from the launch pad onto its path.
-- Advance it around the shared track.
+- Launch it.
+- Leave its launch pad.
+- Advance around the shared track.
 - Enter or advance through its home lane.
-- Finish it under the active exact-roll or bounce-back rule.
+- Finish under exact-roll or bounce-back rules.
 
-A move is excluded when:
+A move is illegal when:
 
-- It violates the current phase or player turn.
-- Its ordinary path crosses an enemy blockade.
-- Its final chained path crosses or lands on an enemy blockade.
-- Stacking is disabled and it would end on a friendly occupied shared-track position.
+- The phase or player is wrong.
+- The plane is finished.
 - Classic finishing would overshoot.
-- The plane is already finished.
+- Its base route or any automatic jump or flight crosses or lands on an enemy blockade.
+- Stacking is off and its final shared-track destination contains a friendly plane.
 
 ### 9.2 Resolution order
 
-A legal move resolves in this exact order:
+Resolve a legal move in this exact order:
 
-1. Move or launch the selected plane.
-2. Apply a matching-colour square jump when the landing location defines one.
-3. Apply the long flight shortcut when the resulting landing location defines one.
-4. Resolve captures at the final shared-track location.
-5. Form or update a friendly stack.
-6. Enter or advance through the home lane when the path reaches the colour exit.
-7. Mark a plane finished when it reaches the terminal home position.
-8. Check the configured victory condition.
-9. Emit an extra-turn event when the roll was 6 and the game remains active.
+1. Apply the base movement along the owning colour's complete logical route. This step may enter the home lane, bounce within it, or finish.
+2. When the base endpoint is a shared-track matching-colour jump square, apply that jump.
+3. When the resulting shared-track endpoint is the colour's flight entrance, apply the long flight shortcut.
+4. At the final shared-track endpoint, resolve enemy captures.
+5. At the final shared-track endpoint, form or update any friendly stack or blockade.
+6. Check whether a plane finished during base movement.
+7. Check the configured victory condition.
+8. Emit an extra-turn event when the roll was 6 and the match remains active.
 
-Jumps and flights are automatic. A player does not confirm each link in a chained move.
+Jumps and flights are automatic and never occur inside a private home lane.
 
 ### 9.3 Captures
 
-- Landing on an enemy-occupied capturable shared-track location returns all enemy planes at that location to their hangars.
-- Private launch pads and home lanes cannot be captured by opponents.
-- If stacking is enabled but blockades are disabled, an entire enemy stack can be captured.
-- If blockades are enabled, an enemy stack of two or more planes is a blockade and cannot be crossed, landed on, or captured.
+- Landing on a capturable enemy-occupied shared-track square returns every enemy plane there to its hangar.
+- Launch pads and home lanes cannot be captured.
+- With stacking on and blockades off, an entire enemy stack can be captured.
+- With blockades on, an enemy stack of two or more planes is a blockade and cannot be crossed, landed on, or captured.
 
 ### 9.4 Stacking and blockades
 
-- With stacking enabled, friendly planes may share a shared-track location.
-- A player may move one plane out of a stack; stacks do not move as one unit.
-- With stacking disabled, a move ending on a friendly occupied shared-track location is illegal.
-- A blockade is two or more friendly planes on one shared-track location.
-- A blockade blocks ordinary movement, matching-colour jumps, and flight shortcuts whose traversed path or destination intersects it.
-- The owning player may break a blockade by moving any constituent plane.
+- With stacking on, friendly planes may share a shared-track square.
+- Planes in a stack still move individually.
+- With stacking off, ending on a friendly occupied shared-track square is illegal.
+- A blockade is two or more friendly planes on one shared-track square.
+- A blockade blocks ordinary movement, jumps, and flights whose traversed route or destination intersects it.
+- The owner may break a blockade by moving any constituent plane.
 
 ## 10. Engine events
 
-Every successful action returns a new immutable state and structured events:
+A successful action returns a new immutable state plus structured events:
 
 ```ts
 type AeroplaneEvent =
@@ -357,53 +325,47 @@ type AeroplaneEvent =
   | { type: 'match-won'; playerId: string };
 ```
 
-The UI uses these events for animations, sound, status text, local reactions, optional LLM chatter, and the event feed. UI code must not recalculate captures or chained movement.
+The UI consumes these events for animation, sound, status messages, local dialogue, optional LLM chatter, and the event feed. UI code must not recalculate movement or captures.
 
 ## 11. Dice and deterministic randomness
 
-### 11.1 RNG streams
+Use separate seeded streams:
 
-Use independent seeded streams:
+- `gameplayRngState`: starting-player selection and dice.
+- `aiRngState`: personality variance and tie-breaking.
+- Cosmetic timing consumes neither gameplay stream.
 
-- `gameplayRngState`: dice and starting-player selection.
-- `aiRngState`: AI tie-breaking and Unpredictable personality variance.
-- Cosmetic animation timing does not consume either gameplay stream.
+Production seeds use browser cryptographic randomness where available. Tests and debug fixtures supply fixed seeds.
 
-Production match seeds use cryptographically strong browser randomness where available. Tests and debug fixtures supply fixed seeds.
+### 11.1 Fair Dice
 
-### 11.2 Fair Dice
+Consume exactly one gameplay RNG sample per roll and map uniformly to 1 through 6.
 
-Fair Dice consumes exactly one gameplay RNG sample per roll and maps it uniformly to 1 through 6. Every roll is independent apart from the deterministic seeded sequence.
+### 11.2 Relaxed Dice
 
-### 11.3 Relaxed Dice
+Relaxed Dice provides bounded, reproducible protection:
 
-Relaxed Dice uses transparent, bounded protection rather than changing plane choices:
-
-- Track consecutive turns in which a player had no legal move after rolling.
-- Track how many complete rounds a player has remained last by progress score.
-- Protection activates when either:
-  - the player has had three consecutive no-move turns; or
-  - the player has remained last for three complete rounds.
-- When protection is active, generate two seeded candidate rolls.
-- Prefer a candidate that creates at least one legal move; if both or neither do, keep the first candidate.
-- Consume both samples whenever protection is active so replay remains stable.
+- Track consecutive player turns that ended with no legal move.
+- Track complete rounds that a player remained last by progress score.
+- Protection activates after three consecutive no-move turns or three complete rounds in last place.
+- When active, generate two seeded candidate rolls.
+- Prefer a candidate that creates at least one legal move; if both or neither do, use the first.
+- Consume both samples whenever protection is active.
 - Reset the no-move counter after a legal move.
 - Reset the trailing-round counter when the player is no longer last.
 
 Progress score is deterministic:
 
-- Finished plane: full path length plus home-lane length.
-- Active plane: completed logical path distance.
-- Launch-pad plane: zero.
+- Finished plane: full route length.
+- Active shared-track or home-lane plane: one plus completed route distance.
+- Launch-pad plane: one.
 - Hangar plane: zero.
 
-Relaxed Dice does not inspect future RNG values, choose a plane, force a capture, or guarantee a launch or victory.
+Relaxed Dice does not inspect future samples, select a plane, force a capture, or guarantee a launch or victory.
 
 ## 12. AI opponents
 
-### 12.1 Local heuristic selection
-
-The AI receives only the current public game state, pending roll, and legal moves. For each legal move it derives:
+The local AI receives only public state, pending roll, and legal moves. For each move it derives features such as:
 
 ```ts
 interface AeroplaneMoveFeatures {
@@ -414,48 +376,26 @@ interface AeroplaneMoveFeatures {
   takesFlightShortcut: boolean;
   entersHomeLane: boolean;
   advancesDistance: number;
-  exposesToCapture: boolean;
-  leavesSafePosition: boolean;
+  captureRiskAfterMove: number;
   breaksOwnBlockade: boolean;
   createsStack: boolean;
   createsBlockade: boolean;
 }
 ```
 
-Each personality applies explicit weights, then uses the AI RNG only to break close scores or add bounded personality variance.
+**Cautious** strongly values finishing, home-lane entry, low capture risk, stacks, and blockades. It captures when the resulting position is reasonably safe.
 
-### 12.2 Personalities
+**Aggressive** strongly values captures, jumps, flights, and immediate advancement. It accepts greater capture risk, but still chooses a guaranteed finish over a minor capture.
 
-**Cautious**
+**Unpredictable** uses balanced weights plus the largest bounded seeded variance. It may favour a fresh launch, risky capture, or shortcut when scores are close, but it never selects an illegal move or passes a legal turn.
 
-- Strongly values finishing and entering the home lane.
-- Prefers safe locations, stacks, and blockades.
-- Penalizes exposing an advanced plane.
-- Takes captures when the resulting position is reasonably safe.
-
-**Aggressive**
-
-- Strongly values captures, jumps, and flight shortcuts.
-- Accepts greater exposure for immediate tactical gain.
-- Breaks defensive stacks more readily.
-- Still prioritizes a guaranteed finish over a minor capture.
-
-**Unpredictable**
-
-- Uses balanced base weights.
-- Adds the largest bounded seeded variance.
-- May favour a new launch, risky capture, or shortcut when scores are close.
-- Never selects an illegal move or deliberately passes a legal turn.
-
-### 12.3 Timing
-
-AI decisions are calculated immediately. The UI waits 500 to 900 milliseconds before presenting the selected move so turns remain readable. This delay is skippable and is not part of game state.
+AI decisions are computed immediately. The UI waits 500–900 ms before presenting the choice so turns remain readable. The delay is skippable and not persisted.
 
 ## 13. Optional opponent chatter
 
-Gameplay never depends on an LLM.
+Gameplay never depends on an LLM. Provide personality-specific local lines for notable events.
 
-Provide personality-specific local lines for notable events. When chatter is enabled and a provider is configured, an `AeroplaneChatterService` may request a single short reaction after:
+When chatter is enabled and a provider is configured, an isolated `AeroplaneChatterService` may request one short reaction after:
 
 - Capturing or being captured.
 - Taking a flight shortcut.
@@ -464,19 +404,18 @@ Provide personality-specific local lines for notable events. When chatter is ena
 
 Requirements:
 
-- Apply the gameplay action before requesting dialogue.
-- Do not send the complete hidden RNG state or provider secrets in prompts.
+- Complete gameplay before requesting dialogue.
 - Limit output to one sentence.
 - Rate-limit to one generated line per opponent every two complete rounds.
-- Fall back to local lines on timeout, malformed output, provider failure, or missing configuration.
-- Do not add Aeroplane Chess to the LLM move-adapter factory.
-- Persist only whether chatter is enabled, not generated lines, unless they are already represented in the local event feed.
+- Fall back to a local line on timeout, malformed output, provider failure, or missing configuration.
+- Never add Aeroplane Chess to the LLM move-adapter factory.
+- Never include provider secrets or RNG state in prompts.
 
-Chatter defaults to off for a new user and may be enabled from setup or match settings.
+Chatter defaults off for a new player and can be enabled in setup or match settings.
 
-## 14. React components and page flow
+## 14. UI and Procyon integration
 
-Recommended files:
+### 14.1 Files
 
 ```text
 apps/web/src/pages/aeroplane.astro
@@ -490,28 +429,28 @@ apps/web/src/components/aeroplane/AeroplaneEventFeed.tsx
 apps/web/src/components/aeroplane/AeroplaneMatchResult.tsx
 ```
 
-### 14.1 Game selector
+### 14.2 Game selector
 
-Add an Aeroplane Chess card with a colourful board preview and route `/aeroplane`.
+Add an Aeroplane Chess card with a colourful four-player preview and route `/aeroplane`.
 
-Replace title-based routing in `ChessGameSelector` with data-driven routes:
+Replace title-based routing with data-driven card definitions:
 
 ```ts
 interface GameCardDefinition {
   title: string;
   description: string;
-  accent: GameAccent;
+  gameId: GameId;
   href: string;
 }
 ```
 
-The card component receives `href` or an explicit navigation callback. Display title changes must not affect routing.
+Add a `GameBoardPreview` dispatcher: strategy IDs continue to use `ChessBoardPreview`; `aeroplane` uses an Aeroplane-specific preview. Display-title changes must not affect routing.
 
-### 14.2 Setup flow
+### 14.3 Setup
 
-Before a new match, show:
+Show:
 
-- Classic Match and Quick & Chill preset buttons.
+- Classic Match and Quick & Chill presets.
 - Rule preset.
 - Victory mode.
 - Dice mode.
@@ -520,102 +459,88 @@ Before a new match, show:
 - Human colour.
 - Opponent chatter.
 
-If a recoverable save exists, show Resume Match and Start New Match. Starting a new match requires a lightweight confirmation because it replaces the active save.
+When a valid active save exists, offer Resume Match and Start New Match. Starting a new match asks for lightweight confirmation because it replaces the active save.
 
-### 14.3 Match layout
+### 14.4 Match layout
 
 Desktop:
 
 - Large square board in the primary area.
-- Four player panels around or beside it.
-- Current turn and dice control below the board.
-- Compact event feed.
+- Four compact player panels around or beside it.
+- Dice and current-turn controls below the board.
+- Compact recent-event feed.
 
 Mobile:
 
 - Board fills available width.
-- Current player and dice remain directly below it.
-- Other players appear in a horizontally scrollable status strip.
+- Current player and dice stay directly below it.
+- Other players use a horizontally scrollable status strip.
 - Event feed is collapsible.
 
-The board uses bright red, yellow, green, and blue gameplay elements within Procyon's dark shared shell.
+The board uses bright red, yellow, green, and blue gameplay elements inside Procyon's dark shell.
 
-### 14.4 Human interaction
+### 14.5 Interaction
 
-- The Roll Dice button is enabled only during the human `awaiting-roll` phase.
-- No legal moves: show a brief message and advance automatically.
-- One legal move: highlight it briefly and apply automatically.
+- Roll is enabled only for the human during `awaiting-roll`.
+- No legal moves: show a short message and advance automatically.
+- One legal move: highlight briefly and apply automatically.
 - Multiple legal moves: pulse only legal planes.
-- Hover, focus, or first tap previews the complete resolved path.
-- Selecting a legal plane applies the move without a separate confirmation.
-- Input remains disabled while event animations are playing.
-- Skip Animations completes the current event queue and renders the already-produced engine state exactly once.
+- Hover, focus, or first tap previews the full resolved route.
+- Selecting a legal plane applies it immediately without confirmation.
+- Disable input while event animations play.
+- Skip Animations drains the event queue and renders the already-produced final engine state exactly once.
+- Legal planes have keyboard focus, visible focus styling, and accessible destination/effect labels.
 
-All interactions must be keyboard accessible. Legal planes expose clear focus styling and accessible labels describing their destination or effect.
+### 14.6 Animation boundaries
 
-## 15. Animation and sound boundaries
+Animation consumes engine events and never mutates rules:
 
-Animation consumes the engine's event list and never mutates rules.
+- Step movement for ordinary travel.
+- Short hop for colour jumps.
+- Curved path for long flights.
+- Return-to-hangar animation for captures.
+- Small celebration for a finished plane.
+- Dismissible celebration for victory.
 
-- Ordinary movement animates individual logical steps.
-- Jumps use a short hop.
-- Long flights use a curved flight path.
-- Captured planes return to the hangar with a brief reverse-flight animation.
-- Finished planes receive a small celebration.
-- Match victory receives a larger but dismissible celebration.
+Sound is optional and cannot block event completion.
 
-Sound is optional, respects the existing user preference system when present, and can fail without blocking event completion.
+## 15. Local persistence and replay
 
-## 16. Local persistence and replay
+Save after each completed action resolution, including a roll that leaves the game in `awaiting-move`.
 
-### 16.1 Save policy
-
-Save after each completed action resolution and before handing control to the next player. Store under a versioned key such as:
+Use a versioned key:
 
 ```text
 procyon:aeroplane:active-match:v1
 ```
 
-Persist:
+Persist authoritative game state, match configuration, both RNG states, balance counters, turn history, schema version, and save timestamp.
 
-- Authoritative game state.
-- Match configuration.
-- Both RNG states.
-- Relaxed Dice balance counters.
-- Turn history.
-- Save schema version and timestamp.
+Do not persist derived legal moves, animation state, pending LLM requests, or provider keys.
 
-Do not persist:
+Restore flow:
 
-- Derived legal moves.
-- React animation state.
-- Pending LLM requests.
-- Provider keys.
+- Parse with a runtime schema.
+- Reject unknown versions.
+- Verify player, plane, phase, and topology invariants.
+- Recompute legal moves.
+- Resume without replaying completed animations.
+- Preserve a corrupt payload in a session diagnostic key and offer a clean restart.
 
-### 16.2 Restore policy
+Turn history records action, roll, chosen plane, emitted events, and resulting state checksum. Given the initial seeds and action history, a debug replay must reproduce the same checksums.
 
-- Parse and validate the saved payload with a runtime schema.
-- Reject an unknown schema version.
-- Recompute legal moves from authoritative state.
-- Verify player, plane, and topology invariants.
-- Resume at the saved engine phase without replaying completed animations.
-- On corruption, preserve the invalid payload in a diagnostic backup key for the current session and offer a clean restart.
+Abandoning or finishing clears the active-match key. If a signed-in history submission fails, store its payload separately under a versioned pending-history key until retry succeeds or the player dismisses it.
 
-### 16.3 Replay diagnostics
+## 16. Play history and ratings
 
-Turn history records the action, roll, selected plane, emitted events, and resulting state checksum. Given the initial seed and action history, a debug replay must reproduce the same checksums. This supports deterministic bug reports without storing every full intermediate state.
+The existing endpoint accepts user or LLM opponents and updates ratings for AI matches. Aeroplane Chess needs an unrated local-AI path.
 
-## 17. Play-history and rating integration
+### 16.1 Game and opponent identity
 
-The current play-history API models opponents as either a user or an LLM and updates a rating for every accepted AI match. Aeroplane Chess requires a third, unrated local-AI path.
-
-### 17.1 Identity split
-
-- Extend play-history game identity to `GameId`, including `aeroplane`.
-- Keep rating tables and rating services restricted to `StrategyGameVariant`.
-- Define a server-owned `RATED_GAME_IDS` set containing only Chess, Xiangqi, Shogi, and Jungle.
-
-### 17.2 Local opponent type
+- Use `GameId` for play-history game identity, including `aeroplane`.
+- Keep rating tables and services restricted to `StrategyGameVariant`.
+- Define a server-owned rated set containing only Chess, Xiangqi, Shogi, and Jungle.
+- Keep the existing request field `chessId` and physical `chess_id` database column for compatibility in this feature; normalize their value internally to `GameId`. A broad API or column rename is separate work.
 
 Add:
 
@@ -625,28 +550,28 @@ export enum LocalOpponentId {
 }
 ```
 
-Add nullable `opponentLocalId` to `play_history`. The create schema requires exactly one of:
+Add nullable `opponentLocalId` to `play_history`. The route requires exactly one of:
 
 - `opponentUserId`.
 - `opponentLlmId`.
 - `opponentLocalId`.
 
-Aeroplane submissions use `opponentLocalId: 'aeroplane-trio-v1'`.
+Aeroplane results submit `opponentLocalId: 'aeroplane-trio-v1'`.
 
-### 17.3 Unrated path
+### 16.2 Unrated server path
 
-When `gameId` is not in `RATED_GAME_IDS`:
+When the normalized game ID is not in the server-owned rated set:
 
 - Insert the play-history record.
 - Do not call `updatePlayerRating`.
 - Return `ratingUpdate: null`.
-- Do not create `player_ratings` or `rating_history` rows.
+- Create no `player_ratings` or `rating_history` rows.
 
-The server, not the client, decides whether a game is rated.
+The server, never the client, decides whether a game is rated.
 
-### 17.4 Match details
+### 16.3 Match details
 
-Add a nullable JSON-encoded details column to play history. Validate game-specific details at the route boundary.
+Add a nullable JSON-encoded details column and validate game-specific details at the route boundary:
 
 ```ts
 interface AeroplaneHistoryDetails {
@@ -661,13 +586,9 @@ interface AeroplaneHistoryDetails {
 }
 ```
 
-The existing physical `chess_id` column may remain for migration compatibility, but TypeScript and API naming should use `gameId` for new code. A broad database-column rename is not required for this feature.
+History failure never changes the local result or active UI state.
 
-History submission failure never changes or discards the local match result.
-
-## 18. Error handling
-
-Normal invalid actions return typed failures:
+## 17. Error handling
 
 ```ts
 type AeroplaneActionFailureReason =
@@ -683,132 +604,98 @@ type AeroplaneActionResult =
   | { ok: false; reason: AeroplaneActionFailureReason };
 ```
 
-Reliability requirements:
+Requirements:
 
-- Ignore stale double-clicks while an action is being consumed.
-- Disable rolling and plane selection outside the correct phase.
-- Never partially apply a movement chain.
+- Ignore stale double-clicks while an action is consumed.
+- Disable roll and selection outside their phases.
+- Never partially apply a chained move.
 - Validate engine invariants in development and tests.
-- Treat animation, sound, chatter, local save, and history submission as side effects around a completed engine transition.
-- If local saving fails, keep the live match and show a non-blocking warning.
-- If optional chatter fails, use a local line or omit the reaction.
-- If history submission fails, provide a retry action without replaying the match.
+- Treat animation, sound, chatter, saving, and history submission as side effects around a completed engine transition.
+- Saving failure keeps the live match and shows a non-blocking warning.
+- Chatter failure uses a local line or no reaction.
+- History failure offers retry without replaying the match.
 
-## 19. Testing strategy
+## 18. Testing strategy
 
-### 19.1 Topology tests
+### 18.1 Topology and engine
 
-- Every colour path reaches its own home lane and finish.
-- Shared-track paths have the expected length and rotation.
-- Jump and flight edges reference valid nodes.
-- Render anchors exist for every logical location.
-- No private home-lane node is reachable by another colour.
-
-### 19.2 Rule-engine tests
-
-- Classic and Relaxed launch rolls.
-- Extra turns after 6, including no-legal-move turns.
+- Every colour route reaches only its own home lane and finish.
+- Shared-track rotation, jumps, flights, and render anchors are complete.
+- Classic and Relaxed launching.
+- Extra turns after 6, including no-move turns.
 - Exact finish and bounce-back finish.
 - Shared-track wraparound and home-lane entry.
-- Matching-colour jumps.
-- Long flight shortcuts.
+- Jumps and long flights.
 - Single and multi-plane captures.
-- Friendly collision with stacking disabled.
-- Stack creation and splitting.
-- Blockade crossing, landing, jumping, and flight restrictions.
-- Quick and Classic victory conditions.
-- No legal move auto-advance.
-- Chained event order.
-- Immutable state transitions.
+- Friendly collision with stacking off.
+- Stack creation, splitting, and blockade restrictions.
+- Quick and all-four victories.
+- Chained event order and immutable transitions.
 
-### 19.3 Dice tests
+### 18.2 Dice and AI
 
-- Fair Dice distribution mapping from seeded values.
-- Same seed produces the same sequence.
-- Relaxed protection activation and reset.
-- Relaxed candidate selection prefers a legal-move result.
-- Relaxed mode consumes the specified number of RNG samples.
+- Same seed produces the same Fair Dice sequence.
+- Relaxed protection activation, sample consumption, candidate selection, and reset.
 - Restore continues the exact next roll.
-
-### 19.4 AI tests
-
 - Cautious prefers a safe finish over an unsafe capture.
-- Aggressive prefers a meaningful capture over modest advancement.
-- Aggressive still chooses a guaranteed finish over a low-value capture.
-- Unpredictable varies across seeds but is stable for the same seed.
-- Every personality selects only legal moves.
-- Personalities work under all stacking and blockade combinations.
+- Aggressive prefers a meaningful capture but not over guaranteed finishing.
+- Unpredictable varies across seeds and is stable for the same seed.
+- Every personality selects only legal moves under all advanced-rule combinations.
 
-### 19.5 Persistence tests
+### 18.3 Persistence and React
 
-- Save and restore preserve authoritative state.
-- Legal moves are reconstructed rather than trusted.
-- Corrupt, incomplete, and unknown-version saves fail safely.
-- State checksums reproduce through replay.
-- Finished and abandoned matches clear the active recovery save.
-
-### 19.6 React tests
-
-- Setup presets populate correct options.
-- Blockades enable stacking and stacking-off disables blockades.
-- Resume and new-match flows.
-- Roll button phase gating.
+- Save/restore preserves authoritative state and recomputes legal moves.
+- Corrupt and unknown-version saves fail safely.
+- Replay reproduces state checksums.
+- Presets populate the correct options.
+- Blockades imply stacking.
+- Resume/new-match flows.
 - Zero, one, and multiple legal move behaviour.
-- Keyboard selection of legal planes.
-- Skip Animations applies final state once.
-- AI delay can be skipped.
-- Chatter absence does not affect a turn.
+- Keyboard selection.
+- Skip Animations applies the final state once.
+- Chatter absence never affects a turn.
 
-### 19.7 API tests
+### 18.4 API and end-to-end
 
-- `aeroplane` is accepted as a play-history game ID.
+- `aeroplane` is accepted in play history.
 - Exactly one opponent type is required.
-- Local AI history creates a record with `ratingUpdate: null`.
-- Local AI history creates no rating rows.
-- Strategy LLM matches continue to update ratings.
-- Aeroplane details validation rejects malformed statistics.
-
-### 19.8 End-to-end tests
-
-Use fixed debug seeds and fixtures to cover:
-
+- Local-AI history returns `ratingUpdate: null` and creates no rating rows.
+- Existing strategy LLM matches continue to update ratings.
+- Aeroplane detail validation rejects malformed statistics.
 - Start Quick & Chill as each human colour.
-- Complete a human turn and all three AI turns.
-- Launch, jump, take a flight shortcut, and capture.
-- Create and break a blockade.
-- Reload and resume a match.
+- Complete human and all three AI turns.
+- Launch, jump, fly, capture, stack, and block using fixed fixtures.
+- Reload and resume.
 - Complete a deterministic two-plane victory.
-- Submit exactly one unrated play-history record.
-- Play successfully with no provider configuration.
+- Submit exactly one unrated history record.
+- Complete a match with no provider configuration.
 
-## 20. Implementation boundaries
+## 19. Implementation order
 
-The implementation should proceed in dependency order:
+1. Split game identity types and define topology.
+2. Implement pure rules, state transitions, dice, and deterministic tests.
+3. Implement personality AI.
+4. Implement setup, board renderer, and match controller.
+5. Add animations and local recovery.
+6. Add the selector card, preview, and `/aeroplane` route.
+7. Add local-opponent play history and the unrated API path.
+8. Add local lines and optional LLM chatter.
+9. Complete component, API, and end-to-end coverage.
 
-1. Identity-type split and board topology.
-2. Pure engine, dice, and deterministic tests.
-3. Personality AI.
-4. Board renderer and setup flow.
-5. Match controller, animations, and recovery.
-6. Game selector and route integration.
-7. Local-AI play-history path and unrated API behaviour.
-8. Optional local and LLM chatter.
-9. Component and end-to-end coverage.
+Do not refactor unrelated strategy engines. Change shared code only where Aeroplane Chess needs a genuinely general navigation, accent, shell, preview, or history concept.
 
-Do not refactor unrelated strategy-game engines. Shared components should change only where Aeroplane Chess needs a general navigation, accent, shell, or history concept.
-
-## 21. Acceptance criteria
+## 20. Acceptance criteria
 
 The feature is complete when:
 
-- A visitor can start a one-human, three-AI match without signing in or configuring an LLM.
-- Classic Match and Quick & Chill presets behave as defined.
-- All launches, normal movement, jumps, flights, captures, stacks, blockades, home-lane movement, and victory conditions are enforced by pure engine code.
+- A visitor can play one human against three AI opponents without signing in or configuring an LLM.
+- Classic Match is the default and both presets behave exactly as specified.
+- Launches, movement, jumps, flights, captures, optional stacks/blockades, home lanes, and both victories are enforced by pure engine code.
 - Human turns require no choice when zero or one legal move exists.
-- Cautious, Aggressive, and Unpredictable opponents make legal, visibly different choices.
-- A reloaded page can resume the exact match and continue the same deterministic RNG sequence.
-- The board is usable on desktop and mobile and supports keyboard interaction.
-- Signed-in completed matches appear in play history as local-AI Aeroplane games.
+- Cautious, Aggressive, and Unpredictable make legal and visibly different decisions.
+- Reloading resumes the exact match and RNG sequence.
+- Desktop, mobile, pointer, touch, and keyboard interactions are usable.
+- Signed-in results appear as local-AI Aeroplane games.
 - Aeroplane matches never create or modify rating records.
-- Provider or chatter failures cannot delay, invalidate, or lose a move.
-- Unit, component, API, and end-to-end tests cover the critical paths described above.
+- Provider, chatter, animation, sound, save, or history failures cannot invalidate or lose an applied move.
+- Unit, component, API, and end-to-end tests cover the critical paths above.
