@@ -2,7 +2,7 @@ import { test, expect, describe, beforeEach, afterEach, mock } from 'bun:test';
 import { renderHook, act } from '@testing-library/react';
 import type { GameVariant } from '../lib/ai/game-variant-types';
 import type { AIConfig } from '../lib/ai/types';
-import { resolveOpponentLlmId } from '../lib/ai/opponent-llm';
+import { resolveOpponentLlmId } from '../lib/ai/opponent';
 import { setupReactDom } from '../test/reactSetup';
 import { usePlayHistory } from './usePlayHistory';
 

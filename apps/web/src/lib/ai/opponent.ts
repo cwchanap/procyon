@@ -1,5 +1,15 @@
 export type OpponentLlmId = 'gpt-4o' | 'gemini-2.5-flash';
 
+export type OpponentEngineId = 'stockfish';
+
+/**
+ * The opponent a game was played against. The hook and history layer branch on
+ * `kind`; only LLM games are rated.
+ */
+export type OpponentDescriptor =
+	| { kind: 'llm'; id: OpponentLlmId }
+	| { kind: 'engine'; id: OpponentEngineId };
+
 /**
  * Bucket the active AI provider/model into one of the two tracked opponent
  * identifiers used by play-history / ratings. Any non-gpt-4o model (gemini,
