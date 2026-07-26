@@ -12,6 +12,7 @@ type ServerPlayHistory = {
 	status: 'win' | 'loss' | 'draw';
 	opponentUserId: string | null;
 	opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' | null;
+	opponentEngineId: 'stockfish' | null;
 	// Rating fields (populated after rating system was added)
 	// Can be null when rating history doesn't exist (e.g., older games)
 	ratingChange: number | null | undefined;
@@ -62,6 +63,10 @@ function formatOpponent(entry: ServerPlayHistory): string {
 			// Legacy numeric ID format
 			return `Human opponent #${entry.opponentUserId}`;
 		}
+	}
+
+	if (entry.opponentEngineId) {
+		return 'On-device rival';
 	}
 
 	if (entry.opponentLlmId) {
@@ -368,6 +373,10 @@ export default function PlayHistoryPage() {
 																</span>
 															)}
 														</div>
+													) : entry.opponentEngineId ? (
+														<span className='inline-flex items-center rounded-full border border-line bg-ink-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ivory-dim'>
+															Unrated
+														</span>
 													) : (
 														<span className='text-ivory-dim text-xs font-mono'>
 															—
