@@ -118,6 +118,82 @@ describe('authoritative puzzle chess state', () => {
 		).toBe('bishop');
 	});
 
+	test('player promotion move surfaces the dialog instead of auto-applying', async () => {
+		const puzzle = makePuzzle({
+			playerColor: 'white',
+			initialBoard: boardFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1'),
+			solution: [{ from: 'a7', to: 'a8', promotion: 'queen' }],
+		});
+		const { result } = renderHook(() => usePuzzle());
+		act(() => result.current.startPuzzle(puzzle));
+
+		// Select the pawn on a7 (row 1, col 0)
+		act(() => result.current.handleSquareClick({ row: 1, col: 0 }));
+		// Click a8 (row 0, col 0) — should trigger promotion dialog, NOT auto-apply
+		act(() => result.current.handleSquareClick({ row: 0, col: 0 }));
+
+		expect(result.current.state.gameState?.pendingPromotion).not.toBeNull();
+		expect(result.current.state.gameState?.pendingPromotion?.choices).toEqual([
+			'queen',
+			'rook',
+			'bishop',
+			'knight',
+		]);
+		// The pawn should still be on a7 — the move was NOT applied yet
+		expect(result.current.state.gameState?.board[1]?.[0]?.type).toBe('pawn');
+		expect(result.current.state.gameState?.board[0]?.[0]).toBeNull();
+
+		// Confirm queen promotion — matches the scripted solution
+		act(() => result.current.confirmPromotion('queen'));
+		expect(result.current.state.gameState?.pendingPromotion).toBeNull();
+		expect(result.current.state.gameState?.board[0]?.[0]?.type).toBe('queen');
+		expect(result.current.state.phase).toBe('solved');
+	});
+
+	test('player choosing the wrong promotion piece counts as a wrong move', async () => {
+		const puzzle = makePuzzle({
+			playerColor: 'white',
+			initialBoard: boardFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1'),
+			solution: [{ from: 'a7', to: 'a8', promotion: 'queen' }],
+		});
+		const { result } = renderHook(() => usePuzzle());
+		act(() => result.current.startPuzzle(puzzle));
+		act(() => result.current.handleSquareClick({ row: 1, col: 0 }));
+		act(() => result.current.handleSquareClick({ row: 0, col: 0 }));
+
+		expect(result.current.state.gameState?.pendingPromotion).not.toBeNull();
+
+		// Choose rook — differs from the scripted queen promotion
+		act(() => result.current.confirmPromotion('rook'));
+
+		expect(result.current.state.gameState?.pendingPromotion).toBeNull();
+		expect(result.current.state.failedAttempts).toBe(1);
+		expect(result.current.state.phase).toBe('playing');
+		// The pawn should still be on a7 — the wrong move was not applied
+		expect(result.current.state.gameState?.board[1]?.[0]?.type).toBe('pawn');
+	});
+
+	test('cancelling the promotion dialog clears pending state without applying', async () => {
+		const puzzle = makePuzzle({
+			playerColor: 'white',
+			initialBoard: boardFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1'),
+			solution: [{ from: 'a7', to: 'a8', promotion: 'queen' }],
+		});
+		const { result } = renderHook(() => usePuzzle());
+		act(() => result.current.startPuzzle(puzzle));
+		act(() => result.current.handleSquareClick({ row: 1, col: 0 }));
+		act(() => result.current.handleSquareClick({ row: 0, col: 0 }));
+
+		expect(result.current.state.gameState?.pendingPromotion).not.toBeNull();
+
+		act(() => result.current.cancelPromotion());
+
+		expect(result.current.state.gameState?.pendingPromotion).toBeNull();
+		expect(result.current.state.failedAttempts).toBe(0);
+		expect(result.current.state.phase).toBe('playing');
+		expect(result.current.state.gameState?.board[1]?.[0]?.type).toBe('pawn');
+	});
+
 	test('fails closed when API puzzle data omits a king', async () => {
 		const puzzle = makePuzzle({
 			initialBoard: Array.from({ length: 8 }, () => Array<null>(8).fill(null)),

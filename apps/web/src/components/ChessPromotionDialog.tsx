@@ -14,15 +14,21 @@ export default function ChessPromotionDialog({
 	onChoose,
 	onCancel,
 }: ChessPromotionDialogProps) {
-	const firstChoiceRef = useRef<HTMLButtonElement>(null);
-	const cancelRef = useRef<HTMLButtonElement>(null);
+	// Refs for every focusable button in tab order: choices first, then cancel.
+	// Only the first and last act as wrap boundaries; middle buttons use the
+	// browser's native Tab navigation so every choice is keyboard-reachable.
+	const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 	const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+
+	const setButtonRef = (index: number) => (el: HTMLButtonElement | null) => {
+		buttonRefs.current[index] = el;
+	};
 
 	useEffect(() => {
 		const activeElement = document.activeElement;
 		previouslyFocusedElementRef.current =
 			activeElement instanceof HTMLElement ? activeElement : null;
-		firstChoiceRef.current?.focus();
+		buttonRefs.current[0]?.focus();
 
 		return () => {
 			const previouslyFocusedElement = previouslyFocusedElementRef.current;
@@ -42,15 +48,25 @@ export default function ChessPromotionDialog({
 				return;
 			}
 			if (event.key !== 'Tab') return;
-			const first = firstChoiceRef.current;
-			const cancel = cancelRef.current;
-			if (!first || !cancel) return;
+			const buttons = buttonRefs.current.filter(
+				(b): b is HTMLButtonElement => b !== null
+			);
+			if (buttons.length === 0) return;
 			event.preventDefault();
-			if (document.activeElement === first) {
-				cancel.focus();
-			} else {
-				first.focus();
+			const currentIndex = buttons.findIndex(
+				btn => btn === document.activeElement
+			);
+			// If focus is outside the dialog buttons, land on the first (Tab)
+			// or last (Shift+Tab) button.
+			if (currentIndex === -1) {
+				const fallback = buttons[event.shiftKey ? buttons.length - 1 : 0];
+				if (fallback) fallback.focus();
+				return;
 			}
+			const direction = event.shiftKey ? -1 : 1;
+			const nextIndex =
+				(currentIndex + direction + buttons.length) % buttons.length;
+			buttons[nextIndex]?.focus();
 		};
 		document.addEventListener('keydown', onKeyDown);
 		return () => document.removeEventListener('keydown', onKeyDown);
@@ -76,7 +92,7 @@ export default function ChessPromotionDialog({
 						<button
 							key={choice}
 							type='button'
-							ref={index === 0 ? firstChoiceRef : undefined}
+							ref={setButtonRef(index)}
 							aria-label={`Promote to ${choice}`}
 							onClick={() => onChoose(choice)}
 							className='rounded-lg border border-line bg-ink-600 px-4 py-3 text-3xl text-ivory shadow-lg transition-colors hover:border-brass hover:bg-ink-700'
@@ -87,7 +103,7 @@ export default function ChessPromotionDialog({
 				</div>
 				<button
 					type='button'
-					ref={cancelRef}
+					ref={setButtonRef(choices.length)}
 					onClick={onCancel}
 					className='mt-4 w-full rounded-lg border border-line bg-ink-600 px-4 py-2 text-ivory hover:bg-ink-700'
 				>
