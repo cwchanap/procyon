@@ -216,7 +216,7 @@ describe('isSquareAttacked', () => {
 	test('detects bishop diagonal attacks', () => {
 		const board = emptyBoard();
 		board[7]![0] = { type: 'bishop', color: 'white' }; // a1
-		expect(isSquareAttacked(board, 4, 3, 'white')).toBe(true); // e5 on a1-e5 diagonal
+		expect(isSquareAttacked(board, 4, 3, 'white')).toBe(true); // d4 on a1-h8 diagonal
 		expect(isSquareAttacked(board, 3, 3, 'white')).toBe(false); // d5 not on diagonal
 	});
 

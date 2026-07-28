@@ -1,13 +1,14 @@
 /**
  * Seed script for chess puzzles.
  * Run with: bun run db:seed
- * Idempotent — uses onConflictDoNothing() keyed on slug.
+ * Idempotent — uses onConflictDoUpdate() keyed on slug.
  *
  * Board coordinate system (matches createInitialBoard in chess/board.ts):
  *   row 0 = rank 8 (black back rank), row 7 = rank 1 (white back rank)
  *   col 0 = a-file, col 7 = h-file
  *   e.g. a1 = {row:7,col:0}, h8 = {row:0,col:7}, e4 = {row:4,col:4}
  */
+import { sql } from 'drizzle-orm';
 import { initializeLocalDB } from '../db/local';
 import { puzzles } from '../db/schema';
 
@@ -496,11 +497,22 @@ async function seed() {
 	const result = await db
 		.insert(puzzles)
 		.values(puzzleValues)
-		.onConflictDoNothing()
+		.onConflictDoUpdate({
+			target: puzzles.slug,
+			set: {
+				title: sql`excluded.title`,
+				description: sql`excluded.description`,
+				difficulty: sql`excluded.difficulty`,
+				playerColor: sql`excluded.player_color`,
+				initialBoard: sql`excluded.initial_board`,
+				solution: sql`excluded.solution`,
+				hint: sql`excluded.hint`,
+			},
+		})
 		.returning();
 
 	console.log(
-		`Done. Seeded ${result.length} new puzzles (${PUZZLE_DATA.length} total).`
+		`Done. Upserted ${result.length} puzzles (${PUZZLE_DATA.length} total).`
 	);
 	process.exit(0);
 }

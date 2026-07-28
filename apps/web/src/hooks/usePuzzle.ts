@@ -114,10 +114,6 @@ function tryCreatePuzzleState(puzzle: PuzzleData): GameState | null {
 export function usePuzzle() {
 	const { isAuthenticated, user } = useAuth();
 	const savedRef = useRef<Set<string>>(new Set());
-	// Stores the expected solution move while a player promotion dialog is
-	// open, so confirmPromotion can compare the user's choice against the
-	// scripted promotion piece.
-	const pendingPromotionExpectedRef = useRef<PuzzleMove | null>(null);
 
 	// Reset dedupe cache when auth or user changes to avoid blocking requests for new session
 	useEffect(() => {
@@ -292,7 +288,6 @@ export function usePuzzle() {
 			// auto-apply the scripted promotion piece.
 			const probe = attemptMove(gameState, { from, to });
 			if (probe.kind === 'promotion-required') {
-				pendingPromotionExpectedRef.current = expected;
 				return {
 					...prev,
 					gameState: {
@@ -333,8 +328,7 @@ export function usePuzzle() {
 			const puzzle = prev.puzzle;
 			if (!gameState || !puzzle || !gameState.pendingPromotion) return prev;
 
-			const expected = pendingPromotionExpectedRef.current;
-			pendingPromotionExpectedRef.current = null;
+			const expected = puzzle.solution[prev.solutionStep];
 
 			// If the user's promotion choice differs from the scripted
 			// solution, treat it as a wrong move.
@@ -375,7 +369,6 @@ export function usePuzzle() {
 	}, []);
 
 	const cancelPromotion = useCallback(() => {
-		pendingPromotionExpectedRef.current = null;
 		setState(prev => {
 			if (!prev.gameState) return prev;
 			return { ...prev, gameState: clearGameSelection(prev.gameState) };

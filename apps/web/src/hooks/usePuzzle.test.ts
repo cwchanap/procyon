@@ -118,7 +118,7 @@ describe('authoritative puzzle chess state', () => {
 		).toBe('bishop');
 	});
 
-	test('player promotion move surfaces the dialog instead of auto-applying', async () => {
+	test('player promotion move surfaces the dialog instead of auto-applying', () => {
 		const puzzle = makePuzzle({
 			playerColor: 'white',
 			initialBoard: boardFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1'),
@@ -132,6 +132,7 @@ describe('authoritative puzzle chess state', () => {
 		// Click a8 (row 0, col 0) — should trigger promotion dialog, NOT auto-apply
 		act(() => result.current.handleSquareClick({ row: 0, col: 0 }));
 
+		expect(result.current.state.gameState).not.toBeNull();
 		expect(result.current.state.gameState?.pendingPromotion).not.toBeNull();
 		expect(result.current.state.gameState?.pendingPromotion?.choices).toEqual([
 			'queen',
@@ -150,7 +151,7 @@ describe('authoritative puzzle chess state', () => {
 		expect(result.current.state.phase).toBe('solved');
 	});
 
-	test('player choosing the wrong promotion piece counts as a wrong move', async () => {
+	test('player choosing the wrong promotion piece counts as a wrong move', () => {
 		const puzzle = makePuzzle({
 			playerColor: 'white',
 			initialBoard: boardFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1'),
@@ -161,6 +162,7 @@ describe('authoritative puzzle chess state', () => {
 		act(() => result.current.handleSquareClick({ row: 1, col: 0 }));
 		act(() => result.current.handleSquareClick({ row: 0, col: 0 }));
 
+		expect(result.current.state.gameState).not.toBeNull();
 		expect(result.current.state.gameState?.pendingPromotion).not.toBeNull();
 
 		// Choose rook — differs from the scripted queen promotion
@@ -173,7 +175,7 @@ describe('authoritative puzzle chess state', () => {
 		expect(result.current.state.gameState?.board[1]?.[0]?.type).toBe('pawn');
 	});
 
-	test('cancelling the promotion dialog clears pending state without applying', async () => {
+	test('cancelling the promotion dialog clears pending state without applying', () => {
 		const puzzle = makePuzzle({
 			playerColor: 'white',
 			initialBoard: boardFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1'),
@@ -184,6 +186,7 @@ describe('authoritative puzzle chess state', () => {
 		act(() => result.current.handleSquareClick({ row: 1, col: 0 }));
 		act(() => result.current.handleSquareClick({ row: 0, col: 0 }));
 
+		expect(result.current.state.gameState).not.toBeNull();
 		expect(result.current.state.gameState?.pendingPromotion).not.toBeNull();
 
 		act(() => result.current.cancelPromotion());
