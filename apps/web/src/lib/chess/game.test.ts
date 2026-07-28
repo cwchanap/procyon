@@ -16,6 +16,7 @@ describe('chess game orchestration', () => {
 		const selected = selectSquare(state, { row: 6, col: 4 });
 		// Pinned along the e-file by the black rook against the white king;
 		// only e-file advances (and the e8 capture) are legal.
+		expect(selected.possibleMoves).toHaveLength(6);
 		expect(selected.possibleMoves).toEqual(
 			expect.arrayContaining([
 				{ row: 5, col: 4 },
