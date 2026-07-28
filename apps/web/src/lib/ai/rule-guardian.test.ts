@@ -7,6 +7,7 @@ import {
 	createRuleGuardian,
 } from './rule-guardian';
 import { createInitialGameState as createChessGameState } from '../chess/game';
+import { createGameStateFromFen } from '../chess/rules';
 import { createInitialXiangqiGameState } from '../xiangqi/game';
 import { createInitialGameState as createShogiGameState } from '../shogi/game';
 import { createInitialGameState } from '../jungle/game';
@@ -183,6 +184,31 @@ describe('Rule Guardian System', () => {
 			const result = guardian.validateAIMove(gameState, response);
 			expect(result.isValid).toBe(false);
 			expect(result.reason).toContain('out of bounds');
+		});
+
+		test('guardian rejects missing promotion and accepts underpromotion', () => {
+			const promotionState = createGameStateFromFen(
+				'7k/P7/8/8/8/8/8/7K w - - 0 1'
+			);
+			expect(
+				guardian.validateAIMove(promotionState, {
+					move: { from: 'a7', to: 'a8' },
+					confidence: 90,
+				})
+			).toMatchObject({ isValid: false });
+			expect(
+				guardian.validateAIMove(promotionState, {
+					move: { from: 'a7', to: 'a8', promotion: 'knight' },
+					confidence: 90,
+				})
+			).toEqual({ isValid: true });
+
+			expect(
+				guardian.validateAIMove(createChessGameState(), {
+					move: { from: 'e2', to: 'e4', promotion: 'queen' },
+					confidence: 90,
+				})
+			).toMatchObject({ isValid: false });
 		});
 	});
 

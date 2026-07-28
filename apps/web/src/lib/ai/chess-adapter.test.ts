@@ -93,6 +93,31 @@ describe('ChessAdapter', () => {
 
 			expect(adapter.getAllValidMoves(state)[0]).not.toContain('c1-h6');
 		});
+
+		test('lists all legal promotion variants and explains the required field', () => {
+			const state = createGameStateFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1');
+			const moves = adapter.getAllValidMoves(state).join('\n');
+			const prompt = adapter.generatePrompt(state);
+
+			expect(moves).toContain('a7-a8=Q');
+			expect(moves).toContain('a7-a8=R');
+			expect(moves).toContain('a7-a8=B');
+			expect(moves).toContain('a7-a8=N');
+			expect(prompt).toContain(
+				'promotion is required when the move ends on rank 8 or rank 1'
+			);
+			expect(prompt).toContain('omit promotion for every other move');
+			expect(prompt).toMatch(/"promotion": "(queen|rook|bishop|knight)"/);
+
+			const normalPrompt = adapter.generatePrompt(createInitialGameState());
+			expect(normalPrompt).not.toContain('"promotion":');
+		});
+
+		test('does not offer a pseudo-legal move by a pinned piece', () => {
+			const state = createGameStateFromFen('4r2k/8/8/8/8/8/4R3/4K3 w - - 0 1');
+
+			expect(adapter.getAllValidMoves(state).join('\n')).not.toContain('e2-d2');
+		});
 	});
 
 	describe('generatePrompt', () => {

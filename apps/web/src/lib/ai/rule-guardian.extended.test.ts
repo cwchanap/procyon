@@ -6,6 +6,7 @@ import {
 	JungleRuleGuardian,
 } from './rule-guardian';
 import { createInitialGameState as createChessGameState } from '../chess/game';
+import { createGameStateFromFen } from '../chess/rules';
 import { createInitialGameState as createJungleState } from '../jungle/game';
 import { createInitialGameState as createShogiGameState } from '../shogi/game';
 import type { AIResponse } from './types';
@@ -245,10 +246,9 @@ describe('ChessRuleGuardian - additional coverage', () => {
 	});
 
 	test('should validate move that captures opponent piece', () => {
-		const gameState: GameState = createChessGameState();
-
-		// Place black pawn on d3 (where white can potentially capture with a pawn)
-		gameState.board[5]![3] = { type: 'pawn', color: 'black' };
+		const gameState: GameState = createGameStateFromFen(
+			'4k3/8/8/8/8/3p4/4P3/4K3 w - - 0 1'
+		);
 
 		const response: AIResponse = {
 			move: { from: 'e2', to: 'd3' }, // Diagonal capture
