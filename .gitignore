@@ -41,6 +41,7 @@ client_secret_*.apps.googleusercontent.com.json
 
 .turbo
 .playwright-mcp
+.worktrees/
 test-results/
 playwright-report/
 playwright/.cache/
