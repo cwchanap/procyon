@@ -13,14 +13,14 @@ import { puzzles } from '../db/schema';
 
 type PieceType = 'pawn' | 'knight' | 'bishop' | 'rook' | 'queen' | 'king';
 type Color = 'white' | 'black';
-type P = { type: PieceType; color: Color; hasMoved?: boolean } | null;
+type P = { type: PieceType; color: Color } | null;
 const _ = null;
 
 function w(type: PieceType): P {
-	return { type, color: 'white', hasMoved: true };
+	return { type, color: 'white' };
 }
 function b(type: PieceType): P {
-	return { type, color: 'black', hasMoved: true };
+	return { type, color: 'black' };
 }
 
 // Shorthand piece constructors
