@@ -275,6 +275,72 @@ describe('ChessGame — inline "AI plays" select', () => {
 		}
 	});
 
+	test('completes an underpromotion from the tutorial only after a choice', async () => {
+		const view = render(<ChessGame />);
+		fireEvent.click(view.getByRole('button', { name: 'Tutorial' }));
+		fireEvent.click(view.getByRole('button', { name: 'Pawn Promotion' }));
+		fireEvent.click(view.getByRole('button', { name: 'Square 1-3' }));
+		fireEvent.click(view.getByRole('button', { name: 'Square 0-3' }));
+
+		expect(
+			view.getByRole('dialog', { name: 'Choose promotion piece' })
+		).toBeTruthy();
+		expect(view.getByRole('button', { name: 'Square 0-3' }).textContent).toBe(
+			''
+		);
+
+		fireEvent.click(view.getByRole('button', { name: 'Promote to knight' }));
+		await waitFor(() => {
+			expect(view.queryByRole('dialog')).toBeNull();
+			expect(
+				view.getByRole('button', { name: 'Square 0-3' }).textContent
+			).toContain('♘');
+		});
+	});
+
+	test('cancels promotion without moving the pawn or retaining selection', () => {
+		const view = render(<ChessGame />);
+		fireEvent.click(view.getByRole('button', { name: 'Tutorial' }));
+		fireEvent.click(view.getByRole('button', { name: 'Pawn Promotion' }));
+		fireEvent.click(view.getByRole('button', { name: 'Square 1-3' }));
+		fireEvent.click(view.getByRole('button', { name: 'Square 0-3' }));
+
+		fireEvent.click(view.getByRole('button', { name: 'Cancel' }));
+
+		expect(view.queryByRole('dialog')).toBeNull();
+		expect(
+			view.getByRole('button', { name: 'Square 1-3' }).textContent
+		).toContain('♙');
+		expect(view.getByRole('button', { name: 'Square 0-3' }).textContent).toBe(
+			''
+		);
+		expect(
+			view.getByRole('button', { name: 'Square 1-3' }).className
+		).not.toContain('ring-brass');
+		expect(
+			view.getByRole('button', { name: 'Square 0-3' }).hasAttribute('disabled')
+		).toBe(false);
+	});
+
+	test('switches own-piece selection and clears it after an illegal empty click', () => {
+		const view = render(<ChessGame />);
+		fireEvent.click(view.getByRole('button', { name: 'Tutorial' }));
+
+		const e2 = view.getByRole('button', { name: 'Square 6-4' });
+		const d2 = view.getByRole('button', { name: 'Square 6-3' });
+		const d5 = view.getByRole('button', { name: 'Square 3-3' });
+
+		fireEvent.click(e2);
+		expect(e2.className).toContain('ring-brass');
+
+		fireEvent.click(d2);
+		expect(e2.className).not.toContain('ring-brass');
+		expect(d2.className).toContain('ring-brass');
+
+		fireEvent.click(d5);
+		expect(d2.className).not.toContain('ring-brass');
+	});
+
 	// AI move gen checks: when AI plays white and the game starts,
 	// makeAIMoveAsync fires after the 1-second delay. With defaultAIConfig
 	// (enabled=false, apiKey=''), makeMove returns null — the try block's

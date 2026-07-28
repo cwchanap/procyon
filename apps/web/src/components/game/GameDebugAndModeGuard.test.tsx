@@ -279,6 +279,34 @@ describe('ChessGame — DEV debug outcome buttons', () => {
 	test('global trigger function calls onPrepareTriggerWin -> game starts + win', async () => {
 		await assertGlobalDebugTrigger(ChessGame, 'CHESS');
 	});
+
+	test('forced win locks chess without changing the rendered position', async () => {
+		const view = render(<ChessGame />);
+		const start = await waitFor(() =>
+			view.getByRole('button', { name: /start/i })
+		);
+		fireEvent.click(start);
+
+		const KE = (window as unknown as { KeyboardEvent: typeof KeyboardEvent })
+			.KeyboardEvent;
+		act(() => {
+			window.dispatchEvent(new KE('keydown', { key: 'd', shiftKey: true }));
+		});
+
+		const board = view.getByTestId('chess-board');
+		const renderedPosition = board.textContent;
+		fireEvent.click(await waitFor(() => view.getByTitle('Debug: Win')));
+
+		await waitFor(() => {
+			expect(view.getByRole('button', { name: /Play Again/i })).toBeTruthy();
+		});
+		expect(board.textContent).toBe(renderedPosition);
+		expect(
+			view
+				.getAllByRole('button', { name: /^Square / })
+				.every(square => (square as HTMLButtonElement).disabled)
+		).toBe(true);
+	});
 });
 
 describe('XiangqiGame — DEV debug outcome buttons', () => {
