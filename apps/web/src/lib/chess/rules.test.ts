@@ -257,6 +257,24 @@ describe('chess rules move application', () => {
 			kind: 'rejected',
 		});
 
+		const destinationAttacked = createGameStateFromFen(
+			'4k1r1/8/8/8/8/8/8/4K2R w K - 0 1'
+		);
+		expect(
+			isSquareAttackedBy(destinationAttacked, { row: 7, col: 4 }, 'black')
+		).toBe(false);
+		expect(
+			isSquareAttackedBy(destinationAttacked, { row: 7, col: 5 }, 'black')
+		).toBe(false);
+		expect(
+			isSquareAttackedBy(destinationAttacked, { row: 7, col: 6 }, 'black')
+		).toBe(true);
+		expect(
+			getLegalMoves(destinationAttacked, { row: 7, col: 4 }).some(
+				move => move.isCastling && move.to.row === 7 && move.to.col === 6
+			)
+		).toBe(false);
+
 		const rightsLost = createGameStateFromFen(
 			'4k3/8/8/8/8/8/8/R3K2R w - - 0 1'
 		);

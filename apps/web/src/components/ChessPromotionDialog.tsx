@@ -15,9 +15,26 @@ export default function ChessPromotionDialog({
 	onCancel,
 }: ChessPromotionDialogProps) {
 	const firstChoiceRef = useRef<HTMLButtonElement>(null);
+	const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
 
 	useEffect(() => {
+		const activeElement = document.activeElement;
+		previouslyFocusedElementRef.current =
+			activeElement instanceof HTMLElement ? activeElement : null;
 		firstChoiceRef.current?.focus();
+
+		return () => {
+			const previouslyFocusedElement = previouslyFocusedElementRef.current;
+			if (
+				previouslyFocusedElement?.isConnected &&
+				!previouslyFocusedElement.matches('[disabled], [inert], [inert] *')
+			) {
+				previouslyFocusedElement.focus();
+			}
+		};
+	}, []);
+
+	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key === 'Escape') onCancel();
 		};
