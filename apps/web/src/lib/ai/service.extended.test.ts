@@ -3,7 +3,7 @@ import { UniversalAIService } from './service';
 import { ChessAdapter } from './chess-adapter';
 import type { AIConfig } from './types';
 import type { GameState } from '../chess/types';
-import { createInitialBoard } from '../chess/board';
+import { createInitialGameState } from '../chess/game';
 
 // Save original globals so each test can restore them after mutating
 const originalFetch = globalThis.fetch;
@@ -19,15 +19,7 @@ afterEach(() => {
 });
 
 function makeGameState(): GameState {
-	return {
-		board: createInitialBoard(),
-		currentPlayer: 'white',
-		status: 'playing',
-		moveHistory: [],
-		selectedSquare: null,
-		possibleMoves: [],
-		mode: 'human-vs-ai',
-	};
+	return createInitialGameState('human-vs-ai');
 }
 
 function makeConfig(overrides: Partial<AIConfig> = {}): AIConfig {

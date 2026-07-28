@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '../lib/auth';
 import { env } from '../lib/env';
 import { makeMove } from '../lib/chess/game';
+import { createGameStateFromBoard } from '../lib/chess/rules';
 import {
 	positionToAlgebraic,
 	getPieceAt,
@@ -76,15 +77,7 @@ function makePuzzleGameState(
 	board: (ChessPiece | null)[][],
 	currentPlayer: PieceColor
 ): GameState {
-	return {
-		board,
-		currentPlayer,
-		status: 'playing' as const,
-		moveHistory: [],
-		selectedSquare: null,
-		possibleMoves: [],
-		mode: 'human-vs-human' as const,
-	};
+	return createGameStateFromBoard(board, currentPlayer);
 }
 
 function wrongMoveState(prev: PuzzleState): PuzzleState {

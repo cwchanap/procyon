@@ -3,7 +3,7 @@ import { UniversalAIService } from './service';
 import { ChessAdapter } from './chess-adapter';
 import type { AIConfig } from './types';
 import type { GameState } from '../chess/types';
-import { createInitialBoard } from '../chess/board';
+import { createInitialGameState } from '../chess/game';
 
 describe('UniversalAIService', () => {
 	let service: UniversalAIService<GameState>;
@@ -20,15 +20,7 @@ describe('UniversalAIService', () => {
 			enabled: false, // Disabled for unit tests
 		};
 		service = new UniversalAIService(config, adapter);
-		gameState = {
-			board: createInitialBoard(),
-			currentPlayer: 'white',
-			status: 'playing',
-			moveHistory: [],
-			selectedSquare: null,
-			possibleMoves: [],
-			mode: 'human-vs-ai',
-		};
+		gameState = createInitialGameState('human-vs-ai');
 	});
 
 	describe('constructor', () => {
@@ -122,15 +114,7 @@ describe('UniversalAIService.parseAIResponse (via integration)', () => {
 
 	test('response format should match adapter expectations', () => {
 		const adapter = new ChessAdapter();
-		const gameState: GameState = {
-			board: createInitialBoard(),
-			currentPlayer: 'white',
-			status: 'playing',
-			moveHistory: [],
-			selectedSquare: null,
-			possibleMoves: [],
-			mode: 'human-vs-ai',
-		};
+		const gameState = createInitialGameState('human-vs-ai');
 
 		const prompt = adapter.generatePrompt(gameState);
 
