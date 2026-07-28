@@ -234,8 +234,16 @@ Expected exported operations are:
   square for board indicators.
 - `attemptMove(gameState, request)` — validates and applies one exact move or
   reports why it cannot be completed.
-- `replayGame(gameState)` — reconstructs and validates the current engine state.
 - `createGameStateFromFen(...)` and `createGameStateFromBoard(...)`.
+
+Reconstructing and validating the current engine state from `initialFen` plus
+`moveHistory` is a private `replayEngine(gameState)` helper inside `rules.ts`,
+not an exported operation. `attemptMove` surfaces replay failures as a
+structured `state-inconsistent` rejection; the read-only query paths
+(`getLegalMoves`, `getLegalDestinations`, `queryAttacks`, and the
+`isSquareAttackedBy`/`getAttackers` helpers that delegate to it) catch the
+same failures and return an empty result so inconsistent state can never
+escape these query paths as an exception.
 
 Existing functions in `game.ts` remain the Procyon-facing orchestration layer and
 delegate to this façade. `moves.ts` may retain low-level movement helpers for

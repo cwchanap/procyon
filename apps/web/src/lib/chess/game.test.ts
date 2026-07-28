@@ -14,7 +14,21 @@ describe('chess game orchestration', () => {
 	test('selection exposes only legal destinations for a pinned rook', () => {
 		const state = createGameStateFromFen('4r2k/8/8/8/8/8/4R3/4K3 w - - 0 1');
 		const selected = selectSquare(state, { row: 6, col: 4 });
+		// Pinned along the e-file by the black rook against the white king;
+		// only e-file advances (and the e8 capture) are legal.
+		expect(selected.possibleMoves).toEqual(
+			expect.arrayContaining([
+				{ row: 5, col: 4 },
+				{ row: 4, col: 4 },
+				{ row: 3, col: 4 },
+				{ row: 2, col: 4 },
+				{ row: 1, col: 4 },
+				{ row: 0, col: 4 },
+			])
+		);
+		// Sideways movement would expose the king to the e8 rook.
 		expect(selected.possibleMoves).not.toContainEqual({ row: 6, col: 3 });
+		expect(selected.possibleMoves).not.toContainEqual({ row: 6, col: 5 });
 	});
 
 	test('selection switches to another own piece and clears on an empty square', () => {

@@ -370,7 +370,12 @@ export function getLegalMoves(
 	state: GameState,
 	from?: Position
 ): LegalChessMove[] {
-	const engine = replayEngine(state);
+	let engine: Chess;
+	try {
+		engine = replayEngine(state);
+	} catch {
+		return [];
+	}
 	const moves = from
 		? engine.moves({
 				square: positionToSquare(from) as Square,
@@ -395,7 +400,16 @@ export function queryAttacks(
 	state: GameState,
 	queries: readonly AttackQuery[]
 ): AttackResult[] {
-	const engine = replayEngine(state);
+	let engine: Chess;
+	try {
+		engine = replayEngine(state);
+	} catch {
+		return queries.map(query => ({
+			...query,
+			attacked: false,
+			attackers: [],
+		}));
+	}
 	return queries.map(query => {
 		const square = positionToSquare(query.square) as Square;
 		const attacker = TO_ENGINE_COLOR[query.attacker];
