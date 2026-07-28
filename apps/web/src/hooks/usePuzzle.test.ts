@@ -1,5 +1,49 @@
-import { test, expect, describe, beforeEach, afterAll } from 'bun:test';
-import { readLocalPuzzleProgress, MAX_FAILED_ATTEMPTS } from './usePuzzle';
+import {
+	test,
+	expect,
+	describe,
+	beforeAll,
+	beforeEach,
+	afterAll,
+} from 'bun:test';
+import { act, renderHook } from '@testing-library/react';
+import type { PuzzleData } from '../lib/puzzle/types';
+import { createGameStateFromFen } from '../lib/chess/rules';
+import { setupReactDom } from '../test/reactSetup';
+import {
+	applyPuzzleMove,
+	readLocalPuzzleProgress,
+	MAX_FAILED_ATTEMPTS,
+	usePuzzle,
+} from './usePuzzle';
+
+setupReactDom();
+
+beforeAll(() => {
+	window.__PROCYON_INITIAL_AUTH_USER__ = null;
+});
+
+function boardFromFen(fen: string): PuzzleData['initialBoard'] {
+	return createGameStateFromFen(fen).board;
+}
+
+function makePuzzle(overrides: Partial<PuzzleData> = {}): PuzzleData {
+	return {
+		id: 1,
+		slug: 'test-puzzle',
+		title: 'Test puzzle',
+		description: 'Test the authoritative chess state.',
+		difficulty: 'beginner',
+		playerColor: 'white',
+		initialBoard: boardFromFen('7k/8/8/8/8/8/R7/7K w - - 0 1'),
+		solution: [{ from: 'a2', to: 'a8' }],
+		hint: {
+			pieceSquare: { row: 6, col: 0 },
+			targetSquare: { row: 0, col: 0 },
+		},
+		...overrides,
+	};
+}
 
 // --- localStorage stub ---
 const store: Record<string, string> = {};
@@ -22,15 +66,75 @@ const localStorageMock = {
 };
 
 const originalLocalStorage = globalThis.localStorage;
+const originalFetch = globalThis.fetch;
 globalThis.localStorage = localStorageMock;
 
 afterAll(() => {
 	globalThis.localStorage = originalLocalStorage;
+	globalThis.fetch = originalFetch;
 });
 
 describe('MAX_FAILED_ATTEMPTS constant', () => {
 	test('is exported and equals 3', () => {
 		expect(MAX_FAILED_ATTEMPTS).toBe(3);
+	});
+});
+
+describe('authoritative puzzle chess state', () => {
+	beforeEach(() => {
+		globalThis.fetch = (async () =>
+			new Response(null, { status: 401 })) as unknown as typeof fetch;
+	});
+
+	test('keeps one game state across player and opponent solution moves', async () => {
+		const puzzle = makePuzzle({
+			playerColor: 'white',
+			initialBoard: boardFromFen('7k/8/8/8/8/8/R7/7K w - - 0 1'),
+			solution: [
+				{ from: 'a2', to: 'a8' },
+				{ from: 'h8', to: 'h7' },
+			],
+		});
+		const { result } = renderHook(() => usePuzzle());
+		act(() => result.current.startPuzzle(puzzle));
+		act(() => result.current.handleSquareClick({ row: 6, col: 0 }));
+		act(() => result.current.handleSquareClick({ row: 0, col: 0 }));
+		await act(async () => {
+			await new Promise(resolve => setTimeout(resolve, 700));
+		});
+
+		expect(result.current.state.phase).toBe('solved');
+		expect(result.current.state.gameState?.moveHistory).toHaveLength(2);
+		expect(result.current.state.gameState?.board[0]?.[0]?.type).toBe('rook');
+		expect(result.current.state.gameState?.board[1]?.[7]?.type).toBe('king');
+	});
+
+	test('rejects a scripted promotion that omits the piece', () => {
+		const state = createGameStateFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1');
+		expect(applyPuzzleMove(state, { from: 'a7', to: 'a8' })).toBeNull();
+		expect(
+			applyPuzzleMove(state, {
+				from: 'a7',
+				to: 'a8',
+				promotion: 'bishop',
+			})?.board[0]?.[0]?.type
+		).toBe('bishop');
+	});
+
+	test('fails closed when API puzzle data omits a king', async () => {
+		const puzzle = makePuzzle({
+			initialBoard: Array.from({ length: 8 }, () => Array<null>(8).fill(null)),
+		});
+		const { result } = renderHook(() => usePuzzle());
+		await act(async () => {
+			await new Promise(resolve => setTimeout(resolve, 0));
+		});
+
+		act(() => result.current.startPuzzle(puzzle));
+
+		expect(result.current.state.phase).toBe('failed');
+		expect(result.current.state.gameState).toBeNull();
+		expect(result.current.state.showSolution).toBe(true);
 	});
 });
 

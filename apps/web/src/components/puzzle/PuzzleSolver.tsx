@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import ChessBoard from '../ChessBoard';
 import type { PuzzleData } from '../../lib/puzzle/types';
+import type { ChessPiece, GameState } from '../../lib/chess/types';
 import { usePuzzle, MAX_FAILED_ATTEMPTS } from '../../hooks/usePuzzle';
 import { cn } from '../../lib/utils';
 import { cva } from 'class-variance-authority';
@@ -11,6 +12,10 @@ interface PuzzleSolverProps {
 	onBack: () => void;
 	onNextPuzzle?: () => void;
 }
+
+const EMPTY_CHESS_BOARD: GameState['board'] = Array.from({ length: 8 }, () =>
+	Array<ChessPiece | null>(8).fill(null)
+);
 
 const statusBanner = cva(
 	'w-full text-center py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-300',
@@ -75,15 +80,11 @@ export default function PuzzleSolver({
 		startPuzzle(puzzle);
 	}, [puzzle.id, startPuzzle]);
 
-	const {
-		phase,
-		board,
-		selectedSquare,
-		possibleMoves,
-		failedAttempts,
-		showSolution,
-		showHint,
-	} = state;
+	const { phase, failedAttempts, showSolution, showHint } = state;
+	const gameState = state.gameState;
+	const board = gameState?.board ?? EMPTY_CHESS_BOARD;
+	const selectedSquare = gameState?.selectedSquare ?? null;
+	const possibleMoves = gameState?.possibleMoves ?? [];
 
 	const isInteractive = phase === 'playing';
 

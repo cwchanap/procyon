@@ -1,25 +1,19 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '../lib/auth';
 import { env } from '../lib/env';
-import { makeMove } from '../lib/chess/game';
-import { createGameStateFromBoard } from '../lib/chess/rules';
+import { selectSquare } from '../lib/chess/game';
+import { attemptMove, createGameStateFromBoard } from '../lib/chess/rules';
 import {
 	positionToAlgebraic,
-	getPieceAt,
 	tryAlgebraicToPosition as algebraicToPosition,
 } from '../lib/chess/board';
-import { getPossibleMoves } from '../lib/chess/moves';
 import type {
 	PuzzleData,
+	PuzzleMove,
 	PuzzleState,
 	LocalPuzzleProgress,
 } from '../lib/puzzle/types';
-import type {
-	Position,
-	ChessPiece,
-	PieceColor,
-	GameState,
-} from '../lib/chess/types';
+import type { GameState, Position } from '../lib/chess/types';
 
 const LOCAL_STORAGE_KEY_PREFIX = 'procyon_puzzle_progress';
 export const MAX_FAILED_ATTEMPTS = 3;
@@ -73,23 +67,43 @@ function writeLocalProgress(
 	}
 }
 
-function makePuzzleGameState(
-	board: (ChessPiece | null)[][],
-	currentPlayer: PieceColor
-): GameState {
-	return createGameStateFromBoard(board, currentPlayer);
+export function applyPuzzleMove(
+	gameState: GameState,
+	move: PuzzleMove
+): GameState | null {
+	const result = attemptMove(gameState, {
+		from: move.from,
+		to: move.to,
+		...(move.promotion !== undefined ? { promotion: move.promotion } : {}),
+	});
+	return result.kind === 'applied' ? result.state : null;
+}
+
+function clearGameSelection(gameState: GameState): GameState {
+	return {
+		...gameState,
+		selectedSquare: null,
+		possibleMoves: [],
+		pendingPromotion: null,
+	};
 }
 
 function wrongMoveState(prev: PuzzleState): PuzzleState {
-	const newFailed = prev.failedAttempts + 1;
+	const failedAttempts = prev.failedAttempts + 1;
 	return {
 		...prev,
-		failedAttempts: newFailed,
-		showSolution: newFailed >= MAX_FAILED_ATTEMPTS,
-		phase: newFailed >= MAX_FAILED_ATTEMPTS ? 'failed' : 'playing',
-		selectedSquare: null,
-		possibleMoves: [],
+		failedAttempts,
+		showSolution: failedAttempts >= MAX_FAILED_ATTEMPTS,
+		phase: failedAttempts >= MAX_FAILED_ATTEMPTS ? 'failed' : 'playing',
 	};
+}
+
+function tryCreatePuzzleState(puzzle: PuzzleData): GameState | null {
+	try {
+		return createGameStateFromBoard(puzzle.initialBoard, puzzle.playerColor);
+	} catch {
+		return null;
+	}
 }
 
 export function usePuzzle() {
@@ -104,15 +118,11 @@ export function usePuzzle() {
 	const [state, setState] = useState<PuzzleState>({
 		phase: 'idle',
 		puzzle: null,
-		board: Array(8)
-			.fill(null)
-			.map(() => Array(8).fill(null)),
+		gameState: null,
 		solutionStep: 0,
 		failedAttempts: 0,
 		showHint: false,
 		showSolution: false,
-		selectedSquare: null,
-		possibleMoves: [],
 	});
 
 	const saveProgress = useCallback(
@@ -182,34 +192,30 @@ export function usePuzzle() {
 	);
 
 	const startPuzzle = useCallback((puzzle: PuzzleData) => {
-		// Deep copy board so mutations don't affect the original
-		const board = puzzle.initialBoard.map(row => [...row]);
+		const gameState = tryCreatePuzzleState(puzzle);
 		setState({
-			phase: 'playing',
+			phase: gameState ? 'playing' : 'failed',
 			puzzle,
-			board,
+			gameState,
 			solutionStep: 0,
 			failedAttempts: 0,
 			showHint: false,
-			showSolution: false,
-			selectedSquare: null,
-			possibleMoves: [],
+			showSolution: !gameState,
 		});
 	}, []);
 
 	const tryAgain = useCallback(() => {
 		setState(prev => {
 			if (!prev.puzzle) return prev;
+			const gameState = tryCreatePuzzleState(prev.puzzle);
 			return {
 				...prev,
-				phase: 'playing',
-				board: prev.puzzle.initialBoard.map(row => [...row]),
+				phase: gameState ? 'playing' : 'failed',
+				gameState,
 				solutionStep: 0,
 				failedAttempts: 0,
 				showHint: false,
-				showSolution: false,
-				selectedSquare: null,
-				possibleMoves: [],
+				showSolution: !gameState,
 			};
 		});
 	}, []);
@@ -218,64 +224,27 @@ export function usePuzzle() {
 		setState(prev => ({ ...prev, showHint: true }));
 	}, []);
 
-	// Apply the opponent's scripted move from the solution array
 	const applyOpponentMove = useCallback(
-		(puzzle: PuzzleData, board: typeof state.board, step: number) => {
-			const opponentMove = puzzle.solution[step];
-			if (!opponentMove) {
-				console.error('[usePuzzle] applyOpponentMove: no move at step', {
-					step,
-					puzzleId: puzzle.id,
-				});
-				setState(prev => ({ ...prev, phase: 'failed', showSolution: true }));
-				return;
-			}
-
-			const fromPos = algebraicToPosition(opponentMove.from);
-			const toPos = algebraicToPosition(opponentMove.to);
-			if (!fromPos || !toPos) {
-				console.error(
-					'[usePuzzle] applyOpponentMove: invalid algebraic notation',
-					{ step, move: opponentMove, puzzleId: puzzle.id }
-				);
-				setState(prev => ({ ...prev, phase: 'failed', showSolution: true }));
-				return;
-			}
-
-			const piece = getPieceAt(board, fromPos);
-			if (!piece) {
-				console.error(
-					'[usePuzzle] applyOpponentMove: no piece at from position',
-					{ step, fromPos, puzzleId: puzzle.id }
-				);
-				setState(prev => ({ ...prev, phase: 'failed', showSolution: true }));
-				return;
-			}
-
-			const next = makeMove(
-				makePuzzleGameState(board, piece.color),
-				fromPos,
-				toPos
-			);
-			if (!next) {
-				console.error(
-					'[usePuzzle] applyOpponentMove: illegal move rejected by engine',
-					{ step, move: opponentMove, puzzleId: puzzle.id }
-				);
-				setState(prev => ({ ...prev, phase: 'failed', showSolution: true }));
+		(puzzle: PuzzleData, gameState: GameState, step: number) => {
+			const scripted = puzzle.solution[step];
+			const next = scripted ? applyPuzzleMove(gameState, scripted) : null;
+			if (!next || next.pendingPromotion) {
+				setState(prev => ({
+					...prev,
+					phase: 'failed',
+					showSolution: true,
+					gameState: clearGameSelection(gameState),
+				}));
 				return;
 			}
 
 			setState(prev => {
 				const nextStep = prev.solutionStep + 1;
-				const solved = nextStep >= puzzle.solution.length;
 				return {
 					...prev,
-					phase: solved ? 'solved' : 'playing',
-					board: next.board,
+					phase: nextStep >= puzzle.solution.length ? 'solved' : 'playing',
+					gameState: next,
 					solutionStep: nextStep,
-					selectedSquare: null,
-					possibleMoves: [],
 				};
 			});
 		},
@@ -284,121 +253,73 @@ export function usePuzzle() {
 
 	const handleSquareClick = useCallback((position: Position) => {
 		setState(prev => {
-			if (prev.phase !== 'playing' || !prev.puzzle) return prev;
+			const gameState = prev.gameState;
+			const puzzle = prev.puzzle;
+			if (prev.phase !== 'playing' || !puzzle || !gameState) return prev;
 
-			const { board, puzzle, selectedSquare, solutionStep } = prev;
-			const playerColor = puzzle.playerColor;
-			const clickedPiece = board[position.row]?.[position.col] ?? null;
-
-			// No selection yet — try to select a player piece
-			if (!selectedSquare) {
-				if (!clickedPiece || clickedPiece.color !== playerColor) return prev;
-				const possibleMoves = getPossibleMoves(board, clickedPiece, position);
-				return { ...prev, selectedSquare: position, possibleMoves };
+			const selected = gameState.selectedSquare;
+			const clicked = gameState.board[position.row]?.[position.col] ?? null;
+			if (!selected || (clicked && clicked.color === gameState.currentPlayer)) {
+				return { ...prev, gameState: selectSquare(gameState, position) };
 			}
 
-			// Clicking same square — deselect
-			if (
-				selectedSquare.row === position.row &&
-				selectedSquare.col === position.col
-			) {
-				return { ...prev, selectedSquare: null, possibleMoves: [] };
-			}
-
-			// Clicking another player piece — re-select
-			if (clickedPiece && clickedPiece.color === playerColor) {
-				const possibleMoves = getPossibleMoves(board, clickedPiece, position);
-				return { ...prev, selectedSquare: position, possibleMoves };
-			}
-
-			// Attempting a move from selectedSquare → position
-			const fromAlg = positionToAlgebraic(selectedSquare);
-			const toAlg = positionToAlgebraic(position);
-
-			// Check if this is a legal move first - illegal moves should be ignored
-			const isLegalMove = prev.possibleMoves.some(
+			const isLegalDestination = gameState.possibleMoves.some(
 				move => move.row === position.row && move.col === position.col
 			);
-
-			if (!isLegalMove) {
-				// Illegal move - just clear selection, don't penalize
-				return { ...prev, selectedSquare: null, possibleMoves: [] };
+			if (!isLegalDestination) {
+				return { ...prev, gameState: clearGameSelection(gameState) };
 			}
 
-			const expectedMove = puzzle.solution[solutionStep];
-			const isCorrect =
-				expectedMove != null &&
-				expectedMove.from === fromAlg &&
-				expectedMove.to === toAlg;
+			const expected = puzzle.solution[prev.solutionStep];
+			const from = positionToAlgebraic(selected);
+			const to = positionToAlgebraic(position);
+			if (!expected || expected.from !== from || expected.to !== to) {
+				return wrongMoveState({
+					...prev,
+					gameState: clearGameSelection(gameState),
+				});
+			}
 
-			if (isCorrect) {
-				const nextGameState = makeMove(
-					makePuzzleGameState(board, playerColor),
-					selectedSquare,
-					position
-				);
-				if (!nextGameState) {
-					// Move is pseudo-legal but leaves king in check - ignore, don't penalize
-					return { ...prev, selectedSquare: null, possibleMoves: [] };
-				}
-
-				const nextStep = solutionStep + 1;
-				const isLastMove = nextStep >= puzzle.solution.length;
-
-				if (isLastMove) {
-					return {
-						...prev,
-						phase: 'solved',
-						board: nextGameState.board,
-						solutionStep: nextStep,
-						selectedSquare: null,
-						possibleMoves: [],
-					};
-				}
-
-				// Check if next step is an opponent move (odd index = opponent)
-				const nextIsOpponent = nextStep % 2 === 1;
-				if (nextIsOpponent) {
-					return {
-						...prev,
-						phase: 'opponent',
-						board: nextGameState.board,
-						solutionStep: nextStep,
-						selectedSquare: null,
-						possibleMoves: [],
-					};
-				}
-
+			const nextGameState = applyPuzzleMove(gameState, expected);
+			if (!nextGameState || nextGameState.pendingPromotion) {
 				return {
 					...prev,
-					board: nextGameState.board,
-					solutionStep: nextStep,
-					selectedSquare: null,
-					possibleMoves: [],
+					phase: 'failed',
+					showSolution: true,
+					gameState: clearGameSelection(gameState),
 				};
-			} else {
-				return wrongMoveState(prev);
 			}
+
+			const nextStep = prev.solutionStep + 1;
+			const solved = nextStep >= puzzle.solution.length;
+			return {
+				...prev,
+				phase: solved ? 'solved' : nextStep % 2 === 1 ? 'opponent' : 'playing',
+				gameState: nextGameState,
+				solutionStep: nextStep,
+			};
 		});
 	}, []);
 
 	// Auto-play opponent move after a delay
 	useEffect(() => {
-		if (state.phase !== 'opponent' || !state.puzzle) return;
+		if (state.phase !== 'opponent' || !state.puzzle || !state.gameState) {
+			return;
+		}
 
 		const puzzle = state.puzzle;
-		const board = state.board;
-		const step = state.solutionStep;
+		const gameState = state.gameState;
+		const solutionStep = state.solutionStep;
 
 		const timer = setTimeout(() => {
-			applyOpponentMove(puzzle, board, step);
+			applyOpponentMove(puzzle, gameState, solutionStep);
 		}, OPPONENT_MOVE_DELAY_MS);
 
 		return () => clearTimeout(timer);
 	}, [
 		state.phase,
 		state.puzzle,
-		state.board,
+		state.gameState,
 		state.solutionStep,
 		applyOpponentMove,
 	]);
