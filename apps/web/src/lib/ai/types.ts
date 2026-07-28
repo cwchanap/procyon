@@ -1,4 +1,5 @@
 import type { GameVariant } from './game-variant-types';
+import type { PromotionPiece } from '../chess/types';
 
 export type AIProvider = 'gemini' | 'openrouter' | 'openai' | 'chutes';
 
@@ -55,6 +56,7 @@ export interface AIMove {
 	to: string;
 	pieceType?: string; // Required for drop moves in Shogi (e.g., 'pawn', 'lance')
 	promote?: boolean; // For Shogi promotion (true = promote, false or omitted = don't promote)
+	promotion?: PromotionPiece; // Required for chess pawn promotions
 	reasoning?: string;
 }
 

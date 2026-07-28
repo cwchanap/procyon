@@ -12,6 +12,8 @@ import type { GameState as ChessGameState } from '../chess/types';
 import type { XiangqiGameState } from '../xiangqi/types';
 import type { ShogiGameState } from '../shogi';
 import type { JungleGameState } from '../jungle/types';
+import { attemptMove } from '../chess/rules';
+import type { ChessMoveRequest, ChessSquare } from '../chess/types';
 
 // Re-export types so existing importers (service.ts, tests) don't break:
 export type { RuleGuardian, MoveValidationResult } from './base-rule-guardian';
@@ -28,6 +30,30 @@ const VALID_SHOGI_PIECE_TYPES: ShogiPieceType[] = [
 
 export class ChessRuleGuardian extends BaseRuleGuardian<ChessGameState> {
 	gameVariant = 'chess' as const;
+
+	protected override validateVariantRules(
+		gameState: ChessGameState,
+		_piece: NonNullable<ChessGameState['board'][number][number]>,
+		_parsed: { fromPos: GamePosition; toPos: GamePosition },
+		aiResponse: AIResponse
+	): MoveValidationResult {
+		const request: ChessMoveRequest = {
+			from: aiResponse.move.from as ChessSquare,
+			to: aiResponse.move.to as ChessSquare,
+			...(aiResponse.move.promotion !== undefined
+				? { promotion: aiResponse.move.promotion }
+				: {}),
+		};
+		const result = attemptMove(gameState, request);
+		if (result.kind === 'applied') return { isValid: true };
+		if (result.kind === 'promotion-required') {
+			return {
+				isValid: false,
+				reason: 'Chess promotion moves must include promotion',
+			};
+		}
+		return { isValid: false, reason: `Illegal chess move: ${result.reason}` };
+	}
 }
 
 export class XiangqiRuleGuardian extends BaseRuleGuardian<XiangqiGameState> {

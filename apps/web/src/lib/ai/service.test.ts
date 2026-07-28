@@ -1,7 +1,9 @@
 import { test, expect, describe, beforeEach } from 'bun:test';
 import { UniversalAIService } from './service';
 import { ChessAdapter } from './chess-adapter';
-import type { AIConfig } from './types';
+import { createChessAI } from './factory';
+import { defaultAIConfig } from './storage';
+import type { AIConfig, AIResponse } from './types';
 import type { GameState } from '../chess/types';
 import { createInitialGameState } from '../chess/game';
 
@@ -173,5 +175,27 @@ describe('UniversalAIService.parseAIResponse (via integration)', () => {
 		expect(parsed.move.from).toBe('7g');
 		expect(parsed.move.to).toBe('7f');
 		expect(parsed.move.promote).toBe(false);
+	});
+
+	test('preserves chess promotion while parsing an AI response', () => {
+		const service = createChessAI({
+			...defaultAIConfig,
+			enabled: true,
+			apiKey: 'test-key',
+		});
+		const parser = service as unknown as {
+			parseAIResponse(response: string): AIResponse | null;
+		};
+		const parsed = parser.parseAIResponse(
+			JSON.stringify({
+				move: { from: 'a7', to: 'a8', promotion: 'rook' },
+				reasoning: 'Underpromote to avoid stalemate',
+				confidence: 88,
+			})
+		);
+
+		expect(parsed?.move.promotion).toBe('rook');
+		expect(parsed?.move.from).toBe('a7');
+		expect(parsed?.move.to).toBe('a8');
 	});
 });

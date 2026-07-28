@@ -50,7 +50,7 @@ export function makeMove(
 	const result = attemptMove(state, {
 		from: positionToAlgebraic(from) as ChessSquare,
 		to: positionToAlgebraic(to) as ChessSquare,
-		promotion,
+		...(promotion !== undefined ? { promotion } : {}),
 	});
 	if (result.kind === 'applied') return result.state;
 	if (result.kind === 'promotion-required') {
@@ -104,7 +104,7 @@ export function makeAIMove(
 	const result = attemptMove(state, {
 		from: from as ChessSquare,
 		to: to as ChessSquare,
-		promotion,
+		...(promotion !== undefined ? { promotion } : {}),
 	});
 	return result.kind === 'applied' ? result.state : null;
 }
