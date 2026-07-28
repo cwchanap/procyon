@@ -233,7 +233,7 @@ const ChessGame: React.FC = () => {
 				before.currentPlayer,
 				from,
 				to,
-				move.piece.type
+				move.promotion ?? move.piece.type
 			);
 		},
 		[createAIMove, gameMode, isDebugMode]
@@ -299,7 +299,7 @@ const ChessGame: React.FC = () => {
 							gameState.currentPlayer,
 							aiResponse.move.from,
 							aiResponse.move.to,
-							piece?.type || 'unknown',
+							aiResponse.move.promotion ?? piece?.type ?? 'unknown',
 							{
 								prompt: interaction?.prompt,
 								response: interaction?.rawResponse,

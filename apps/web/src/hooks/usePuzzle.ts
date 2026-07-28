@@ -228,7 +228,7 @@ export function usePuzzle() {
 		(puzzle: PuzzleData, gameState: GameState, step: number) => {
 			const scripted = puzzle.solution[step];
 			const next = scripted ? applyPuzzleMove(gameState, scripted) : null;
-			if (!next || next.pendingPromotion) {
+			if (!next) {
 				setState(prev => ({
 					...prev,
 					phase: 'failed',
@@ -238,15 +238,13 @@ export function usePuzzle() {
 				return;
 			}
 
-			setState(prev => {
-				const nextStep = prev.solutionStep + 1;
-				return {
-					...prev,
-					phase: nextStep >= puzzle.solution.length ? 'solved' : 'playing',
-					gameState: next,
-					solutionStep: nextStep,
-				};
-			});
+			const nextStep = step + 1;
+			setState(prev => ({
+				...prev,
+				phase: nextStep >= puzzle.solution.length ? 'solved' : 'playing',
+				gameState: next,
+				solutionStep: nextStep,
+			}));
 		},
 		[]
 	);
@@ -281,7 +279,7 @@ export function usePuzzle() {
 			}
 
 			const nextGameState = applyPuzzleMove(gameState, expected);
-			if (!nextGameState || nextGameState.pendingPromotion) {
+			if (!nextGameState) {
 				return {
 					...prev,
 					phase: 'failed',

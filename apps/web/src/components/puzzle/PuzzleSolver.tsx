@@ -86,9 +86,18 @@ export default function PuzzleSolver({
 	const selectedSquare = gameState?.selectedSquare ?? null;
 	const possibleMoves = gameState?.possibleMoves ?? [];
 
+	// A null gameState with phase 'failed' means the puzzle position failed
+	// to load (e.g. invalid board), not that the player exhausted attempts.
+	// Distinguish this so we render a load-error state instead of an empty
+	// board with "here is the solution" messaging.
+	const isLoadError = gameState === null && phase === 'failed';
+
 	const isInteractive = phase === 'playing';
 
 	const statusMessage = (): string => {
+		if (isLoadError) {
+			return 'This puzzle could not be loaded.';
+		}
 		switch (phase) {
 			case 'playing':
 				if (failedAttempts === 0)
@@ -105,7 +114,13 @@ export default function PuzzleSolver({
 		}
 	};
 
-	const highlightSquares = showSolution ? solutionHighlights : hintHighlights;
+	// Suppress solution highlights on a load error — there is no board to
+	// highlight against, and the solution is not the relevant state.
+	const highlightSquares = isLoadError
+		? []
+		: showSolution
+			? solutionHighlights
+			: hintHighlights;
 
 	return (
 		<div className='flex flex-col items-center gap-5 w-full max-w-2xl mx-auto'>

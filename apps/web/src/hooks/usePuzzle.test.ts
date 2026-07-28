@@ -6,7 +6,7 @@ import {
 	beforeEach,
 	afterAll,
 } from 'bun:test';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { PuzzleData } from '../lib/puzzle/types';
 import { createGameStateFromFen } from '../lib/chess/rules';
 import { setupReactDom } from '../test/reactSetup';
@@ -99,11 +99,8 @@ describe('authoritative puzzle chess state', () => {
 		act(() => result.current.startPuzzle(puzzle));
 		act(() => result.current.handleSquareClick({ row: 6, col: 0 }));
 		act(() => result.current.handleSquareClick({ row: 0, col: 0 }));
-		await act(async () => {
-			await new Promise(resolve => setTimeout(resolve, 700));
-		});
+		await waitFor(() => expect(result.current.state.phase).toBe('solved'));
 
-		expect(result.current.state.phase).toBe('solved');
 		expect(result.current.state.gameState?.moveHistory).toHaveLength(2);
 		expect(result.current.state.gameState?.board[0]?.[0]?.type).toBe('rook');
 		expect(result.current.state.gameState?.board[1]?.[7]?.type).toBe('king');

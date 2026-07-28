@@ -15,6 +15,7 @@ export default function ChessPromotionDialog({
 	onCancel,
 }: ChessPromotionDialogProps) {
 	const firstChoiceRef = useRef<HTMLButtonElement>(null);
+	const cancelRef = useRef<HTMLButtonElement>(null);
 	const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
 
 	useEffect(() => {
@@ -36,7 +37,20 @@ export default function ChessPromotionDialog({
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === 'Escape') onCancel();
+			if (event.key === 'Escape') {
+				onCancel();
+				return;
+			}
+			if (event.key !== 'Tab') return;
+			const first = firstChoiceRef.current;
+			const cancel = cancelRef.current;
+			if (!first || !cancel) return;
+			event.preventDefault();
+			if (document.activeElement === first) {
+				cancel.focus();
+			} else {
+				first.focus();
+			}
 		};
 		document.addEventListener('keydown', onKeyDown);
 		return () => document.removeEventListener('keydown', onKeyDown);
@@ -73,6 +87,7 @@ export default function ChessPromotionDialog({
 				</div>
 				<button
 					type='button'
+					ref={cancelRef}
 					onClick={onCancel}
 					className='mt-4 w-full rounded-lg border border-line bg-ink-600 px-4 py-2 text-ivory hover:bg-ink-700'
 				>

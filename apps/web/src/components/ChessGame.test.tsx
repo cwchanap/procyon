@@ -487,9 +487,23 @@ describe('ChessGame — inline "AI plays" select', () => {
 				await waitFor(() => expect(rivalMoveCount).toBe(expectedRivalMoves), {
 					timeout: 3000,
 				});
-				await act(async () => {
-					for (let i = 0; i < 20; i++) await Promise.resolve();
-				});
+				// Verify the rival piece actually landed on its expected destination
+				// before proceeding — a concrete per-move UI outcome that confirms
+				// game-state propagation completed (replaces a fixed microtask flush).
+				const rivalMove = rivalMoves[expectedRivalMoves - 1]!;
+				const rivalCol = rivalMove.to.charCodeAt(0) - 'a'.charCodeAt(0);
+				const rivalRow = 8 - parseInt(rivalMove.to.slice(1), 10);
+				const rivalSymbol =
+					'promotion' in rivalMove && rivalMove.promotion === 'rook'
+						? '♜'
+						: '♟';
+				await waitFor(
+					() =>
+						expect(
+							getByLabelText(`Square ${rivalRow}-${rivalCol}`).textContent
+						).toBe(rivalSymbol),
+					{ timeout: 3000 }
+				);
 			};
 
 			fireEvent.click(getByRole('button', { name: /start/i }));

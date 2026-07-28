@@ -306,6 +306,13 @@ describe('ChessGame — DEV debug outcome buttons', () => {
 				.getAllByRole('button', { name: /^Square / })
 				.every(square => (square as HTMLButtonElement).disabled)
 		).toBe(true);
+		// Drain the DEV-mode play-history save so pending state updates
+		// complete before the test ends (mirrors assertDebugOutcomeButtons).
+		await act(async () => {
+			for (let i = 0; i < 10; i++) {
+				await Promise.resolve();
+			}
+		});
 	});
 });
 
