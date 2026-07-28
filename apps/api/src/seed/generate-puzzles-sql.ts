@@ -3,14 +3,14 @@
  * Run with: bun src/seed/generate-puzzles-sql.ts > src/seed/puzzles.sql
  */
 
-type P = { type: string; color: string; hasMoved?: boolean } | null;
+type P = { type: string; color: string } | null;
 const _ = null;
 
 function w(type: string): P {
-	return { type, color: 'white', hasMoved: true };
+	return { type, color: 'white' };
 }
 function b(type: string): P {
-	return { type, color: 'black', hasMoved: true };
+	return { type, color: 'black' };
 }
 
 const wK = w('king');

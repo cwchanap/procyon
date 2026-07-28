@@ -5,7 +5,7 @@ import { selectSquare } from '../lib/chess/game';
 import { attemptMove, createGameStateFromBoard } from '../lib/chess/rules';
 import {
 	positionToAlgebraic,
-	tryAlgebraicToPosition as algebraicToPosition,
+	tryAlgebraicToPosition,
 } from '../lib/chess/board';
 import type {
 	PuzzleData,
@@ -347,8 +347,8 @@ export function usePuzzle() {
 	const solutionHighlights: Position[] =
 		state.showSolution && state.puzzle
 			? state.puzzle.solution.flatMap(move => {
-					const from = algebraicToPosition(move.from);
-					const to = algebraicToPosition(move.to);
+					const from = tryAlgebraicToPosition(move.from);
+					const to = tryAlgebraicToPosition(move.to);
 					return [from, to].filter((p): p is Position => p !== null);
 				})
 			: [];

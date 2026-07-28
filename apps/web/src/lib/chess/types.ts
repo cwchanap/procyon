@@ -20,7 +20,6 @@ export type PieceColor = 'white' | 'black';
 export interface ChessPiece {
 	type: PieceType;
 	color: PieceColor;
-	hasMoved?: boolean;
 }
 
 export type PromotionPiece = 'queen' | 'rook' | 'bishop' | 'knight';
