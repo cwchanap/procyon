@@ -1,6 +1,7 @@
 import { test, expect, describe, beforeEach } from 'bun:test';
 import { ChessAdapter } from './chess-adapter';
 import { createInitialGameState } from '../chess/game';
+import { createGameStateFromFen } from '../chess/rules';
 import type { GameState } from '../chess/types';
 
 describe('ChessAdapter', () => {
@@ -82,6 +83,15 @@ describe('ChessAdapter', () => {
 			// Should return grouped moves containing piece symbols
 			expect(moves[0]).toContain('♙/♟'); // Pawn moves
 			expect(moves[0]).toContain('♘/♞'); // Knight moves
+		});
+
+		test('does not advertise a move that exposes the king in a drawn material position', () => {
+			const state = createGameStateFromFen(
+				'7k/8/7r/8/1b6/8/8/2B1K3 w - - 0 1',
+				{ mode: 'human-vs-ai' }
+			);
+
+			expect(adapter.getAllValidMoves(state)[0]).not.toContain('c1-h6');
 		});
 	});
 

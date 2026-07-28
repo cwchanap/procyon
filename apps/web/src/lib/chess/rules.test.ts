@@ -188,6 +188,34 @@ describe('chess rules move application', () => {
 		}
 	});
 
+	test('rejects invalid runtime promotion values before matching any destination', () => {
+		const cases = [
+			{
+				state: createGameStateFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1'),
+				from: 'a7',
+				to: 'a8',
+			},
+			{
+				state: createInitialGameState(),
+				from: 'e2',
+				to: 'e4',
+			},
+		] as const;
+
+		for (const { state, from, to } of cases) {
+			expect(
+				attemptMove(state, {
+					from,
+					to,
+					promotion: 'king' as PromotionPiece,
+				})
+			).toEqual({
+				kind: 'rejected',
+				reason: 'invalid-promotion',
+			});
+		}
+	});
+
 	test('rejects moves that expose the moving king', () => {
 		const state = createGameStateFromFen('4r2k/8/8/8/8/8/4R3/4K3 w - - 0 1');
 		expect(attemptMove(state, { from: 'e2', to: 'd2' })).toEqual({

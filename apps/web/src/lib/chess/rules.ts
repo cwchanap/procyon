@@ -320,6 +320,16 @@ export function attemptMove(
 		};
 	}
 
+	if (
+		request.promotion &&
+		request.promotion !== 'queen' &&
+		request.promotion !== 'rook' &&
+		request.promotion !== 'bishop' &&
+		request.promotion !== 'knight'
+	) {
+		return { kind: 'rejected', reason: 'invalid-promotion' };
+	}
+
 	const enginePromotion = request.promotion
 		? TO_ENGINE_PROMOTION[request.promotion]
 		: undefined;

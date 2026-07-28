@@ -2,7 +2,7 @@ import type { GameState, Move, Position, ChessPiece } from '../chess/types';
 import { BOARD_SIZE } from '../chess/types';
 import { getPossibleMoves, isMoveValid } from '../chess/moves';
 import { copyBoard, getRow, setPieceAt } from '../chess/board';
-import { createGameStateFromBoard } from '../chess/rules';
+import { createGameStateFromBoard, isSquareAttackedBy } from '../chess/rules';
 import { BaseAdapter } from './base-adapter';
 import type { GamePosition } from './service';
 
@@ -146,8 +146,15 @@ Rules:
 		board: (ChessPiece | null)[][],
 		color: string
 	): boolean {
-		const state = createGameStateFromBoard(board, color as ChessPiece['color']);
-		return state.status === 'check' || state.status === 'checkmate';
+		const pieceColor = color as ChessPiece['color'];
+		const state = createGameStateFromBoard(board, pieceColor);
+		const king = this.findPiece(board, 'king', pieceColor);
+		if (!king) return true;
+		return isSquareAttackedBy(
+			state,
+			king,
+			pieceColor === 'white' ? 'black' : 'white'
+		);
 	}
 
 	// ---------------------------------------------------------------------
