@@ -355,6 +355,96 @@ describe('ChessGame — inline "AI plays" select', () => {
 		}
 	});
 
+	test('applies the rival promotion selected in a mocked AI response', async () => {
+		const originalEnabled = defaultAIConfig.enabled;
+		const originalApiKey = defaultAIConfig.apiKey;
+		defaultAIConfig.enabled = true;
+		defaultAIConfig.apiKey = 'fake-key';
+
+		const rivalMoves = [
+			{ from: 'b7', to: 'b5' },
+			{ from: 'b5', to: 'b4' },
+			{ from: 'a7', to: 'a5' },
+			{ from: 'a5', to: 'a4' },
+			{ from: 'a4', to: 'a3' },
+			{ from: 'a3', to: 'a2' },
+			{ from: 'a2', to: 'b1', promotion: 'rook' },
+		];
+		let rivalMoveCount = 0;
+		const originalFetch = globalThis.fetch;
+		(globalThis as unknown as { fetch: unknown }).fetch = mock(
+			(url: string) => {
+				if (url.includes('/auth/session')) {
+					return Promise.resolve({
+						ok: false,
+						status: 401,
+						statusText: 'Unauthorized',
+						json: () => Promise.resolve({}),
+					});
+				}
+				const move = rivalMoves[rivalMoveCount++];
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					json: () =>
+						Promise.resolve({
+							candidates: [
+								{
+									content: {
+										parts: [
+											{
+												text: JSON.stringify({
+													move,
+													reasoning: 'Advance the passed pawn',
+													confidence: 90,
+												}),
+											},
+										],
+									},
+									finishReason: 'STOP',
+								},
+							],
+						}),
+				});
+			}
+		) as unknown as typeof fetch;
+
+		try {
+			const { getByLabelText, getByRole, queryByText } = render(<ChessGame />);
+			const moveHumanPiece = async (
+				from: string,
+				to: string,
+				expectedRivalMoves: number
+			) => {
+				fireEvent.click(getByLabelText(from));
+				fireEvent.click(getByLabelText(to));
+				await waitFor(() => expect(rivalMoveCount).toBe(expectedRivalMoves), {
+					timeout: 3000,
+				});
+				await act(async () => {
+					for (let i = 0; i < 20; i++) await Promise.resolve();
+				});
+			};
+
+			fireEvent.click(getByRole('button', { name: /start/i }));
+
+			await moveHumanPiece('Square 6-0', 'Square 5-0', 1); // a2-a3, b7-b5
+			await moveHumanPiece('Square 7-6', 'Square 5-5', 2); // Ng1-f3, b5-b4
+			await moveHumanPiece('Square 5-0', 'Square 4-1', 3); // a3xb4, a7-a5
+			await moveHumanPiece('Square 5-5', 'Square 3-6', 4); // Nf3-g5, a5-a4
+			await moveHumanPiece('Square 3-6', 'Square 4-4', 5); // Ng5-e4, a4-a3
+			await moveHumanPiece('Square 4-4', 'Square 5-2', 6); // Ne4-c3, a3-a2
+			await moveHumanPiece('Square 5-2', 'Square 3-1', 7); // Nc3-b5, a2xb1=R
+
+			expect(getByLabelText('Square 7-1').textContent).toBe('♜');
+			expect(queryByText(/❌ AI Error/i)).toBeNull();
+		} finally {
+			defaultAIConfig.enabled = originalEnabled;
+			defaultAIConfig.apiKey = originalApiKey;
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+		}
+	}, 15_000);
+
 	// Mid-flight stale-gen bail: hold the LLM fetch in-flight across a
 	// New Game (resetGame → invalidate), then resolve with an invalid
 	// move. The catch block's `if (isStale(gen)) return` must bail

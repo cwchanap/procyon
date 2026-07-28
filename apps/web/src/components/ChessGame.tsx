@@ -388,7 +388,8 @@ const ChessGame: React.FC = () => {
 				const newGameState = makeAIMove(
 					gameState,
 					aiResponse.move.from,
-					aiResponse.move.to
+					aiResponse.move.to,
+					aiResponse.move.promotion
 				);
 
 				if (newGameState) {
