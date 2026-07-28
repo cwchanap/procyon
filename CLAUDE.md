@@ -314,17 +314,3 @@ API tests: `apps/api/src/routes/*.test.ts`, `apps/api/src/services/*.test.ts`
 4. Generate and apply migrations: `bun run db:generate && bun run db:migrate`
 5. Register route in both `apps/api/src/index.ts` (Node.js) and `apps/api/src/worker.ts` (Cloudflare Workers)
 6. Add E2E tests including auth flows if protected
-
-## Cursor Cloud specific instructions
-
-Runtime is **Bun 1.3.1** (installed at `~/.bun`, symlinked into `/usr/local/bin` so it is on PATH in non-login shells). The startup update script runs `bun install`. Standard lint/typecheck/test/dev/db commands are documented above — prefer those.
-
-Non-obvious caveats:
-
-- **Running the app (dev):** `bun run dev` starts both apps (web on `:3500`, API on `:3501`). They can be started separately with `bun run web:dev` / `bun run api:dev`. Both use watch/HMR; on first web load Vite optimizes deps and does one full page reload — let it settle before interacting.
-- **Local DB (one-time):** the API uses a local SQLite `apps/api/dev.db` (gitignored). Run `bun run db:migrate` then `bun run db:seed` from `apps/api` before hitting DB-backed routes. `initializeDB()` uses SQLite whenever `NODE_ENV` is `development`/`e2e`/`test` or unset.
-- **API without Supabase:** the API server starts fine with no Supabase env. Supabase is only needed for real Google-token verification and the Bearer `/session` fallback. For local/e2e auth, POST `/api/auth/google` with `id_token: "test-claim:{...json claims...}"` — this bypass only works when `NODE_ENV=e2e` or `test`, and requires `JWT_SECRET` (≥32 chars) set. It writes a user row to the local DB and sets an httpOnly cookie.
-- **Playing games needs no login:** chess/xiangqi/shogi/jungle are fully client-side. Use **"Tutorial"** mode on each game page for free, interactive play (no auth, no API key). **"Play vs AI"** mode requires an AI-provider API key (set in Profile) or the board dims and stalls on the AI's turn.
-- **Board contrast gotcha:** the "Nocturne" dark theme renders white pieces (`text-ivory`) low-contrast on dark squares — in screenshots they can look "missing". Pieces are actually present; verify board state via the DOM (each square is a button with `aria-label="Square {row}-{col}"` containing the piece glyph) rather than by eye.
-- **Benign dev log:** Vite prints `bun:test ... could not be resolved` (from `src/test/reactSetup.ts`, imported only by unit tests). It does not affect the running app; pages still return 200.
-- **E2E (Playwright):** not covered by the update script. Requires `bunx playwright install chromium` and a local Supabase (Supabase CLI + Docker, see `.github/workflows/e2e.yml`). Unit tests (`bun run test`) need no external services.
