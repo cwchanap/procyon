@@ -94,3 +94,52 @@ test('restores the invoking focus after cancelling promotion', () => {
 	expect(document.activeElement).toBe(trigger);
 	trigger.remove();
 });
+
+test('Tab cycles through every choice and cancel, wrapping at both ends', () => {
+	const choices: PromotionPiece[] = ['queen', 'rook', 'bishop', 'knight'];
+	const onChoose = mock(() => {});
+	const onCancel = mock(() => {});
+	const view = render(
+		<ChessPromotionDialog
+			color='white'
+			choices={choices}
+			onChoose={onChoose}
+			onCancel={onCancel}
+		/>
+	);
+
+	const queen = view.getByRole('button', { name: 'Promote to queen' });
+	const rook = view.getByRole('button', { name: 'Promote to rook' });
+	const bishop = view.getByRole('button', { name: 'Promote to bishop' });
+	const knight = view.getByRole('button', { name: 'Promote to knight' });
+	const cancel = view.getByRole('button', { name: 'Cancel' });
+
+	// Initial focus on queen (first choice)
+	expect(document.activeElement).toBe(queen);
+
+	// Tab forward: queen → rook → bishop → knight → cancel → wrap to queen
+	fireEvent.keyDown(document, { key: 'Tab' });
+	expect(document.activeElement).toBe(rook);
+	fireEvent.keyDown(document, { key: 'Tab' });
+	expect(document.activeElement).toBe(bishop);
+	fireEvent.keyDown(document, { key: 'Tab' });
+	expect(document.activeElement).toBe(knight);
+	fireEvent.keyDown(document, { key: 'Tab' });
+	expect(document.activeElement).toBe(cancel);
+	// Tab on cancel (last) wraps to queen (first)
+	fireEvent.keyDown(document, { key: 'Tab' });
+	expect(document.activeElement).toBe(queen);
+
+	// Shift+Tab on queen (first) wraps to cancel (last)
+	fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+	expect(document.activeElement).toBe(cancel);
+	// Shift+Tab backward: cancel → knight → bishop → rook → queen
+	fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+	expect(document.activeElement).toBe(knight);
+	fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+	expect(document.activeElement).toBe(bishop);
+	fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+	expect(document.activeElement).toBe(rook);
+	fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+	expect(document.activeElement).toBe(queen);
+});

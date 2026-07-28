@@ -13,7 +13,12 @@ import type {
 	PuzzleState,
 	LocalPuzzleProgress,
 } from '../lib/puzzle/types';
-import type { GameState, Position } from '../lib/chess/types';
+import type {
+	ChessSquare,
+	GameState,
+	Position,
+	PromotionPiece,
+} from '../lib/chess/types';
 
 const LOCAL_STORAGE_KEY_PREFIX = 'procyon_puzzle_progress';
 export const MAX_FAILED_ATTEMPTS = 3;
@@ -109,6 +114,10 @@ function tryCreatePuzzleState(puzzle: PuzzleData): GameState | null {
 export function usePuzzle() {
 	const { isAuthenticated, user } = useAuth();
 	const savedRef = useRef<Set<string>>(new Set());
+	// Stores the expected solution move while a player promotion dialog is
+	// open, so confirmPromotion can compare the user's choice against the
+	// scripted promotion piece.
+	const pendingPromotionExpectedRef = useRef<PuzzleMove | null>(null);
 
 	// Reset dedupe cache when auth or user changes to avoid blocking requests for new session
 	useEffect(() => {
@@ -278,8 +287,74 @@ export function usePuzzle() {
 				});
 			}
 
-			const nextGameState = applyPuzzleMove(gameState, expected);
-			if (!nextGameState) {
+			// Probe the engine WITHOUT promotion first. If the move requires a
+			// promotion, surface the dialog and let the human choose — do not
+			// auto-apply the scripted promotion piece.
+			const probe = attemptMove(gameState, { from, to });
+			if (probe.kind === 'promotion-required') {
+				pendingPromotionExpectedRef.current = expected;
+				return {
+					...prev,
+					gameState: {
+						...gameState,
+						selectedSquare: selected,
+						possibleMoves: [],
+						pendingPromotion: {
+							from: probe.from,
+							to: probe.to,
+							color: probe.color,
+							choices: probe.choices,
+						},
+					},
+				};
+			}
+			if (probe.kind !== 'applied') {
+				return wrongMoveState({
+					...prev,
+					gameState: clearGameSelection(gameState),
+				});
+			}
+
+			const nextGameState = probe.state;
+			const nextStep = prev.solutionStep + 1;
+			const solved = nextStep >= puzzle.solution.length;
+			return {
+				...prev,
+				phase: solved ? 'solved' : nextStep % 2 === 1 ? 'opponent' : 'playing',
+				gameState: nextGameState,
+				solutionStep: nextStep,
+			};
+		});
+	}, []);
+
+	const confirmPromotion = useCallback((promotion: PromotionPiece) => {
+		setState(prev => {
+			const gameState = prev.gameState;
+			const puzzle = prev.puzzle;
+			if (!gameState || !puzzle || !gameState.pendingPromotion) return prev;
+
+			const expected = pendingPromotionExpectedRef.current;
+			pendingPromotionExpectedRef.current = null;
+
+			// If the user's promotion choice differs from the scripted
+			// solution, treat it as a wrong move.
+			if (expected?.promotion !== promotion) {
+				return wrongMoveState({
+					...prev,
+					gameState: clearGameSelection(gameState),
+				});
+			}
+
+			const pending = gameState.pendingPromotion;
+			const result = attemptMove(
+				{ ...gameState, pendingPromotion: null },
+				{
+					from: positionToAlgebraic(pending.from) as ChessSquare,
+					to: positionToAlgebraic(pending.to) as ChessSquare,
+					promotion,
+				}
+			);
+			if (result.kind !== 'applied') {
 				return {
 					...prev,
 					phase: 'failed',
@@ -293,9 +368,17 @@ export function usePuzzle() {
 			return {
 				...prev,
 				phase: solved ? 'solved' : nextStep % 2 === 1 ? 'opponent' : 'playing',
-				gameState: nextGameState,
+				gameState: result.state,
 				solutionStep: nextStep,
 			};
+		});
+	}, []);
+
+	const cancelPromotion = useCallback(() => {
+		pendingPromotionExpectedRef.current = null;
+		setState(prev => {
+			if (!prev.gameState) return prev;
+			return { ...prev, gameState: clearGameSelection(prev.gameState) };
 		});
 	}, []);
 
@@ -359,6 +442,8 @@ export function usePuzzle() {
 		tryAgain,
 		requestHint,
 		handleSquareClick,
+		confirmPromotion,
+		cancelPromotion,
 		hintHighlights,
 		solutionHighlights,
 		readLocalPuzzleProgress,

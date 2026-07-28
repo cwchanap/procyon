@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import ChessBoard from '../ChessBoard';
+import ChessPromotionDialog from '../ChessPromotionDialog';
 import type { PuzzleData } from '../../lib/puzzle/types';
 import type { ChessPiece, GameState } from '../../lib/chess/types';
 import { usePuzzle, MAX_FAILED_ATTEMPTS } from '../../hooks/usePuzzle';
@@ -71,6 +72,8 @@ export default function PuzzleSolver({
 		tryAgain,
 		requestHint,
 		handleSquareClick,
+		confirmPromotion,
+		cancelPromotion,
 		hintHighlights,
 		solutionHighlights,
 	} = usePuzzle();
@@ -92,7 +95,8 @@ export default function PuzzleSolver({
 	// board with "here is the solution" messaging.
 	const isLoadError = gameState === null && phase === 'failed';
 
-	const isInteractive = phase === 'playing';
+	const pendingPromotion = gameState?.pendingPromotion ?? null;
+	const isInteractive = phase === 'playing' && !pendingPromotion;
 
 	const statusMessage = (): string => {
 		if (isLoadError) {
@@ -169,6 +173,15 @@ export default function PuzzleSolver({
 				onSquareClick={isInteractive ? handleSquareClick : () => {}}
 				highlightSquares={highlightSquares}
 			/>
+
+			{pendingPromotion ? (
+				<ChessPromotionDialog
+					color={pendingPromotion.color}
+					choices={pendingPromotion.choices}
+					onChoose={confirmPromotion}
+					onCancel={cancelPromotion}
+				/>
+			) : null}
 
 			{/* Failed attempts indicator */}
 			{phase === 'playing' && (

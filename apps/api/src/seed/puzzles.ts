@@ -39,7 +39,7 @@ const bP = b('pawn');
 
 // Each row in board arrays = one rank, row[0] = rank 8, row[7] = rank 1
 
-const PUZZLE_DATA = [
+export const PUZZLE_DATA = [
 	// ─────────────────────────────────────────────
 	// 1. Back Rank Mate (Beginner)
 	//    White rook on a1, delivers Ra8#
@@ -118,7 +118,9 @@ const PUZZLE_DATA = [
 
 	// ─────────────────────────────────────────────
 	// 4. Skewer (Intermediate)
-	//    wQ a1 → e1+  skewers bK e5, bR behind on e8
+	//    wQ a1 → e1+  skewers bK e6, bR behind on e8
+	//    (bK on e6, not e5 — e5 lies on the a1 diagonal and would
+	//     already be in check before White moves)
 	// ─────────────────────────────────────────────
 	{
 		slug: 'skewer-queen-1',
@@ -130,8 +132,8 @@ const PUZZLE_DATA = [
 		board: [
 			[_, _, _, _, bR, _, _, _], // rank 8: bR e8
 			[_, _, _, _, _, _, _, _],
+			[_, _, _, _, bK, _, _, _], // rank 6: bK e6
 			[_, _, _, _, _, _, _, _],
-			[_, _, _, _, bK, _, _, _], // rank 5: bK e5
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, _, _],
@@ -168,8 +170,10 @@ const PUZZLE_DATA = [
 
 	// ─────────────────────────────────────────────
 	// 6. Two Rooks Mate (Beginner)
-	//    wR b1 → b8#  second rook delivers back-rank mate
-	//    bK a8 trapped by own pawns, wR h8 covers rank
+	//    wR h1 → h8#  ladder mate: Rg7 cuts off the 7th rank,
+	//    Rh8 delivers back-rank check, bK a8 has no escape.
+	//    (wR must start off the 8th rank — a rook on h8 would
+	//     already check bK a8 along rank 8)
 	// ─────────────────────────────────────────────
 	{
 		slug: 'two-rooks-mate-1',
@@ -179,17 +183,17 @@ const PUZZLE_DATA = [
 		difficulty: 'beginner',
 		playerColor: 'white',
 		board: [
-			[bK, _, _, _, _, _, _, wR], // rank 8: bK a8, wR h8
-			[bP, _, _, _, _, _, _, _], // rank 7: bP a7 (b-file clear for rook)
+			[bK, _, _, _, _, _, _, _], // rank 8: bK a8
+			[bP, _, _, _, _, _, wR, _], // rank 7: bP a7, wR g7 (cuts off 7th rank)
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, _, _],
-			[_, wR, _, _, wK, _, _, _], // rank 1: wR b1, wK e1
+			[_, _, _, _, wK, _, _, wR], // rank 1: wK e1, wR h1
 		],
-		solution: [{ from: 'b1', to: 'b8' }],
-		hint: { pieceSquare: { row: 7, col: 1 }, targetSquare: { row: 0, col: 1 } },
+		solution: [{ from: 'h1', to: 'h8' }],
+		hint: { pieceSquare: { row: 7, col: 7 }, targetSquare: { row: 0, col: 7 } },
 	},
 
 	// ─────────────────────────────────────────────
@@ -218,7 +222,9 @@ const PUZZLE_DATA = [
 
 	// ─────────────────────────────────────────────
 	// 8. Queen Fork (Intermediate)
-	//    wQ b3 → d5+  forks bK b7 (diagonal) and bR h5 (rank)
+	//    wQ d3 → d5+  forks bK b7 (diagonal) and bR h5 (rank)
+	//    (wQ on d3, not b3 — b3 already attacks bK b7 along the
+	//     b-file, which would check Black before White moves)
 	// ─────────────────────────────────────────────
 	{
 		slug: 'queen-fork-1',
@@ -233,12 +239,12 @@ const PUZZLE_DATA = [
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, _, bR], // rank 5: bR h5
 			[_, _, _, _, _, _, _, _],
-			[_, wQ, _, _, _, _, _, _], // rank 3: wQ b3
+			[_, _, _, wQ, _, _, _, _], // rank 3: wQ d3 (col 3)
 			[_, _, _, _, _, _, _, _],
 			[_, _, _, _, _, _, wK, _], // rank 1: wK g1
 		],
-		solution: [{ from: 'b3', to: 'd5' }],
-		hint: { pieceSquare: { row: 5, col: 1 }, targetSquare: { row: 3, col: 3 } },
+		solution: [{ from: 'd3', to: 'd5' }],
+		hint: { pieceSquare: { row: 5, col: 3 }, targetSquare: { row: 3, col: 3 } },
 	},
 
 	// ─────────────────────────────────────────────
@@ -292,7 +298,186 @@ const PUZZLE_DATA = [
 	},
 ];
 
+// ─────────────────────────────────────────────
+// Seed validation
+// Ensures each puzzle position is a legal standard-chess position:
+//   - 8×8 board
+//   - exactly one king per side
+//   - the side NOT to move is not in check (a position where the
+//     non-moving side is already attacked is unreachable — after a
+//     legal move the checked player must be the side to move)
+// ─────────────────────────────────────────────
+
+const KNIGHT_OFFSETS: [number, number][] = [
+	[-2, -1],
+	[-2, 1],
+	[-1, -2],
+	[-1, 2],
+	[1, -2],
+	[1, 2],
+	[2, -1],
+	[2, 1],
+];
+const KING_OFFSETS: [number, number][] = [
+	[-1, -1],
+	[-1, 0],
+	[-1, 1],
+	[0, -1],
+	[0, 1],
+	[1, -1],
+	[1, 0],
+	[1, 1],
+];
+const DIAGONAL_DIRS: [number, number][] = [
+	[-1, -1],
+	[-1, 1],
+	[1, -1],
+	[1, 1],
+];
+const ORTHOGONAL_DIRS: [number, number][] = [
+	[-1, 0],
+	[1, 0],
+	[0, -1],
+	[0, 1],
+];
+
+function inBounds(row: number, col: number): boolean {
+	return row >= 0 && row < 8 && col >= 0 && col < 8;
+}
+
+/**
+ * Returns true if `square` is attacked by any piece of `byColor`.
+ * Board layout: row 0 = rank 8, row 7 = rank 1, col 0 = a-file.
+ * White pawns capture toward row 0 (up); black pawns toward row 7.
+ */
+export function isSquareAttacked(
+	board: P[][],
+	row: number,
+	col: number,
+	byColor: Color
+): boolean {
+	// Pawn attacks
+	// White pawns capture toward row 0 (up), so a white pawn attacking
+	// (row, col) sits at (row+1, col±1). Black pawns capture toward
+	// row 7 (down), so the attacker sits at (row-1, col±1).
+	const pawnDir = byColor === 'white' ? 1 : -1;
+	for (const dc of [-1, 1]) {
+		const pr = row + pawnDir;
+		const pc = col + dc;
+		if (inBounds(pr, pc)) {
+			const p = board[pr]?.[pc];
+			if (p && p.color === byColor && p.type === 'pawn') return true;
+		}
+	}
+
+	// Knight attacks
+	for (const [dr, dc] of KNIGHT_OFFSETS) {
+		const kr = row + dr;
+		const kc = col + dc;
+		if (inBounds(kr, kc)) {
+			const p = board[kr]?.[kc];
+			if (p && p.color === byColor && p.type === 'knight') return true;
+		}
+	}
+
+	// King attacks
+	for (const [dr, dc] of KING_OFFSETS) {
+		const kr = row + dr;
+		const kc = col + dc;
+		if (inBounds(kr, kc)) {
+			const p = board[kr]?.[kc];
+			if (p && p.color === byColor && p.type === 'king') return true;
+		}
+	}
+
+	// Sliding attacks: bishop/queen (diagonal), rook/queen (orthogonal)
+	for (const [dr, dc] of DIAGONAL_DIRS) {
+		let r = row + dr;
+		let c = col + dc;
+		while (inBounds(r, c)) {
+			const p = board[r]?.[c];
+			if (p) {
+				if (p.color === byColor && (p.type === 'bishop' || p.type === 'queen'))
+					return true;
+				break;
+			}
+			r += dr;
+			c += dc;
+		}
+	}
+	for (const [dr, dc] of ORTHOGONAL_DIRS) {
+		let r = row + dr;
+		let c = col + dc;
+		while (inBounds(r, c)) {
+			const p = board[r]?.[c];
+			if (p) {
+				if (p.color === byColor && (p.type === 'rook' || p.type === 'queen'))
+					return true;
+				break;
+			}
+			r += dr;
+			c += dc;
+		}
+	}
+
+	return false;
+}
+
+export interface PuzzleSeed {
+	slug: string;
+	playerColor: Color;
+	board: P[][];
+}
+
+/**
+ * Validates a puzzle position. Throws if the board is not 8×8, does
+ * not contain exactly one king per side, or the non-moving side is
+ * currently in check.
+ */
+export function validatePuzzlePosition(puzzle: PuzzleSeed): void {
+	const { board, playerColor, slug } = puzzle;
+	if (board.length !== 8 || board.some(rank => rank.length !== 8)) {
+		throw new Error(`Puzzle "${slug}" board must be exactly 8×8`);
+	}
+
+	const kingPos: Record<Color, [number, number] | null> = {
+		white: null,
+		black: null,
+	};
+	for (let r = 0; r < 8; r++) {
+		for (let c = 0; c < 8; c++) {
+			const p = board[r]?.[c];
+			if (p?.type === 'king') {
+				if (kingPos[p.color]) {
+					throw new Error(`Puzzle "${slug}" has more than one ${p.color} king`);
+				}
+				kingPos[p.color] = [r, c];
+			}
+		}
+	}
+	if (!kingPos.white || !kingPos.black) {
+		throw new Error(`Puzzle "${slug}" must contain exactly one king per side`);
+	}
+
+	const opponent: Color = playerColor === 'white' ? 'black' : 'white';
+	const [okr, okc] = kingPos[opponent]!;
+	if (isSquareAttacked(board, okr, okc, playerColor)) {
+		throw new Error(
+			`Puzzle "${slug}" is invalid: the ${opponent} king is already in check before ${playerColor} moves`
+		);
+	}
+}
+
 async function seed() {
+	// Validate every puzzle position before touching the database.
+	for (const puzzle of PUZZLE_DATA) {
+		validatePuzzlePosition({
+			slug: puzzle.slug,
+			playerColor: puzzle.playerColor as Color,
+			board: puzzle.board,
+		});
+	}
+
 	const db = initializeLocalDB();
 	console.log('Seeding chess puzzles...');
 
@@ -320,7 +505,11 @@ async function seed() {
 	process.exit(0);
 }
 
-seed().catch(err => {
-	console.error('Seed failed:', err);
-	process.exit(1);
-});
+// Only run the seed when executed directly (bun src/seed/puzzles.ts),
+// not when imported by tests.
+if (import.meta.main) {
+	seed().catch(err => {
+		console.error('Seed failed:', err);
+		process.exit(1);
+	});
+}
