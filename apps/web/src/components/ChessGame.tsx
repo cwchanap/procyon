@@ -2,8 +2,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type {
 	GameState,
 	Position,
-	ChessPiece,
 	PieceColor,
+	PromotionPiece,
 } from '../lib/chess/types';
 import {
 	createInitialGameState,
@@ -12,10 +12,13 @@ import {
 	makeAIMove,
 	setAIThinking,
 	isAITurn,
+	confirmPromotion,
+	cancelPromotion,
 } from '../lib/chess/game';
-import { createGameStateFromBoard } from '../lib/chess/rules';
-import { createInitialBoard, getPieceAt, getRow } from '../lib/chess/board';
+import { isTerminalState } from '../lib/chess/rules';
+import { getPieceAt, positionToAlgebraic } from '../lib/chess/board';
 import ChessBoard from './ChessBoard';
+import ChessPromotionDialog from './ChessPromotionDialog';
 import BoardSidePanel, { type Mode } from './game/BoardSidePanel';
 import BoardColumn from './game/BoardColumn';
 import GamePlayLayout from './game/GamePlayLayout';
@@ -38,18 +41,32 @@ import {
 } from '../hooks';
 import { useAuth } from '../lib/auth';
 import { GameExporter } from '../lib/ai/game-export';
-
-interface LogicDemo {
-	id: string;
-	title: string;
-	description: string;
-	board: (ChessPiece | null)[][];
-	focusSquare?: Position;
-	highlightSquares?: Position[];
-	explanation: string;
-}
+import {
+	CHESS_TUTORIALS,
+	createChessTutorialState,
+} from '../lib/chess/tutorials';
 
 type ChessGameMode = Mode;
+
+type ForcedChessStatus = Extract<
+	GameState['status'],
+	'checkmate' | 'stalemate'
+>;
+type ForcedChessOutcome = {
+	status: ForcedChessStatus;
+	currentPlayer?: PieceColor;
+} | null;
+
+const terminalCopy: Record<
+	NonNullable<GameState['terminationReason']>,
+	string
+> = {
+	checkmate: 'Checkmate!',
+	stalemate: 'Draw by stalemate',
+	'threefold-repetition': 'Draw by threefold repetition',
+	'fifty-move': 'Draw by the fifty-move rule',
+	'insufficient-material': 'Draw by insufficient material',
+};
 
 const ChessGame: React.FC = () => {
 	const [gameMode, setGameMode] = useState<ChessGameMode>('ai');
@@ -57,17 +74,11 @@ const ChessGame: React.FC = () => {
 	const [gameState, setGameState] = useState<GameState>(() =>
 		createInitialGameState()
 	);
-	const [forcedOutcome, setForcedOutcome] = useState<{
-		status: 'checkmate' | 'stalemate';
-		currentPlayer?: PieceColor;
-	} | null>(null);
+	const [forcedOutcome, setForcedOutcome] = useState<ForcedChessOutcome>(null);
 	const effectiveStatus = forcedOutcome?.status ?? gameState.status;
 	const effectiveCurrentPlayer =
 		forcedOutcome?.currentPlayer ?? gameState.currentPlayer;
-	const isGameOver =
-		effectiveStatus === 'checkmate' ||
-		effectiveStatus === 'stalemate' ||
-		effectiveStatus === 'draw';
+	const gameOver = forcedOutcome !== null || isTerminalState(gameState);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
 	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
 	const [gameActive, setGameActive] = useState(false);
@@ -152,11 +163,11 @@ const ChessGame: React.FC = () => {
 	// Latch game-ended + clear gameActive when the game finishes (the hook owns
 	// the actual play-history save + dedup).
 	useEffect(() => {
-		if (isGameOver && !hasGameEnded) {
+		if (gameOver && !hasGameEnded) {
 			setHasGameEnded(true);
 			setGameActive(false);
 		}
-	}, [isGameOver, hasGameEnded]);
+	}, [gameOver, hasGameEnded]);
 
 	// Update AI service when debug mode changes
 	useEffect(() => {
@@ -187,181 +198,50 @@ const ChessGame: React.FC = () => {
 		}
 	}, [isDebugMode, aiConfig, aiService, createAIMove, isStale]);
 
-	const createCustomBoard = useCallback(
-		(setup: string): (ChessPiece | null)[][] => {
-			const board: (ChessPiece | null)[][] = Array(8)
-				.fill(null)
-				.map(() => Array(8).fill(null));
-
-			switch (setup) {
-				case 'knight-moves':
-					getRow(board, 4)[4] = {
-						type: 'knight',
-						color: 'white',
-						hasMoved: false,
-					};
-					getRow(board, 2)[1] = {
-						type: 'pawn',
-						color: 'black',
-						hasMoved: false,
-					};
-					getRow(board, 6)[3] = {
-						type: 'pawn',
-						color: 'black',
-						hasMoved: false,
-					};
-					getRow(board, 7)[0] = {
-						type: 'king',
-						color: 'white',
-						hasMoved: false,
-					};
-					getRow(board, 0)[7] = {
-						type: 'king',
-						color: 'black',
-						hasMoved: false,
-					};
-					break;
-				case 'check-demo':
-					getRow(board, 7)[4] = {
-						type: 'king',
-						color: 'white',
-						hasMoved: false,
-					};
-					getRow(board, 0)[0] = {
-						type: 'rook',
-						color: 'black',
-						hasMoved: false,
-					};
-					getRow(board, 7)[0] = {
-						type: 'rook',
-						color: 'white',
-						hasMoved: false,
-					};
-					getRow(board, 0)[7] = {
-						type: 'king',
-						color: 'black',
-						hasMoved: false,
-					};
-					break;
-				case 'castling':
-					getRow(board, 7)[4] = {
-						type: 'king',
-						color: 'white',
-						hasMoved: false,
-					};
-					getRow(board, 7)[7] = {
-						type: 'rook',
-						color: 'white',
-						hasMoved: false,
-					};
-					getRow(board, 7)[0] = {
-						type: 'rook',
-						color: 'white',
-						hasMoved: false,
-					};
-					getRow(board, 0)[4] = {
-						type: 'king',
-						color: 'black',
-						hasMoved: false,
-					};
-					break;
-				case 'pawn-promotion':
-					getRow(board, 1)[3] = {
-						type: 'pawn',
-						color: 'white',
-						hasMoved: true,
-					};
-					getRow(board, 0)[7] = {
-						type: 'king',
-						color: 'black',
-						hasMoved: false,
-					};
-					getRow(board, 7)[4] = {
-						type: 'king',
-						color: 'white',
-						hasMoved: false,
-					};
-					break;
-				default:
-					return createInitialBoard();
-			}
-
-			return board;
-		},
-		[]
-	);
-
-	const logicDemos: LogicDemo[] = [
-		{
-			id: 'basic-movement',
-			title: 'Basic Piece Movement',
-			description: 'Learn how different chess pieces move across the board',
-			board: createInitialBoard(),
-			explanation:
-				'Click on any piece to see its possible moves. Each piece has unique movement patterns that define the strategy of chess.',
-		},
-		{
-			id: 'knight-moves',
-			title: 'Knight Movement Pattern',
-			description:
-				'The knight moves in an L-shape: 2 squares in one direction, then 1 square perpendicular',
-			board: createCustomBoard('knight-moves'),
-			focusSquare: { row: 4, col: 4 },
-			highlightSquares: [
-				{ row: 2, col: 3 },
-				{ row: 2, col: 5 },
-				{ row: 3, col: 2 },
-				{ row: 3, col: 6 },
-				{ row: 5, col: 2 },
-				{ row: 5, col: 6 },
-				{ row: 6, col: 3 },
-				{ row: 6, col: 5 },
-			],
-			explanation:
-				'The knight is unique - it can jump over other pieces and moves in an L-shape. Notice how it can capture the pawns but also move to empty squares.',
-		},
-		{
-			id: 'check-demo',
-			title: 'Check and King Safety',
-			description:
-				'Understanding when the king is in check and must be protected',
-			board: createCustomBoard('check-demo'),
-			focusSquare: { row: 7, col: 4 },
-			explanation:
-				'The white king is in check from the black rook. The king must move to safety, block the attack, or capture the attacking piece.',
-		},
-		{
-			id: 'castling',
-			title: 'Castling Rules',
-			description: 'A special move involving the king and rook for king safety',
-			board: createCustomBoard('castling'),
-			focusSquare: { row: 7, col: 4 },
-			explanation:
-				'Castling allows the king to move 2 squares toward a rook, and the rook moves to the square the king crossed. Both pieces must not have moved, and there must be no pieces between them.',
-		},
-		{
-			id: 'pawn-promotion',
-			title: 'Pawn Promotion',
-			description:
-				'When a pawn reaches the opposite end, it promotes to any piece',
-			board: createCustomBoard('pawn-promotion'),
-			focusSquare: { row: 1, col: 3 },
-			explanation:
-				'This white pawn is one move away from promoting. When it reaches the 8th rank, it can become a queen, rook, bishop, or knight.',
-		},
-	];
-
-	const getCurrentDemo = useCallback((): LogicDemo => {
-		const found = logicDemos.find(demo => demo.id === currentDemo);
+	const getCurrentDemo = useCallback(() => {
+		const found = CHESS_TUTORIALS.find(demo => demo.id === currentDemo);
 		if (found) return found;
-		const fallback = logicDemos[0];
-		if (!fallback) throw new Error('logicDemos must not be empty');
+		const fallback = CHESS_TUTORIALS[0];
+		if (!fallback) throw new Error('Chess tutorials must not be empty');
 		return fallback;
-	}, [currentDemo, logicDemos]);
+	}, [currentDemo]);
+
+	const loadTutorial = useCallback((demoId: string) => {
+		const tutorialState = createChessTutorialState(demoId);
+		setCurrentDemo(demoId);
+		setGameState(tutorialState);
+		setForcedOutcome(null);
+	}, []);
+
+	const recordCompletedHumanMove = useCallback(
+		(before: GameState, after: GameState) => {
+			const move = after.moveHistory.at(-1);
+			if (!move || after.moveHistory.length !== before.moveHistory.length + 1) {
+				return;
+			}
+			const from = positionToAlgebraic(move.from);
+			const to = positionToAlgebraic(move.to);
+
+			if (isDebugMode && gameMode === 'ai') {
+				setAiDebugMoves(prev => [
+					...prev,
+					createAIMove(`${from} → ${to}`, false),
+				]);
+			}
+			gameExporterRef.current?.addMove(
+				Math.floor(before.moveHistory.length / 2) + 1,
+				before.currentPlayer,
+				from,
+				to,
+				move.piece.type
+			);
+		},
+		[createAIMove, gameMode, isDebugMode]
+	);
 
 	// AI Move handling
 	const makeAIMoveAsync = useCallback(async () => {
-		if (forcedOutcome || !isAITurn(gameState) || gameState.isAiThinking) {
+		if (gameOver || !isAITurn(gameState) || gameState.isAiThinking) {
 			return;
 		}
 		const gen = genRef.current;
@@ -463,7 +343,7 @@ const ChessGame: React.FC = () => {
 		createAIMove,
 		genRef,
 		isStale,
-		forcedOutcome,
+		gameOver,
 	]);
 
 	// Retry AI move
@@ -479,11 +359,11 @@ const ChessGame: React.FC = () => {
 			gameMode === 'ai' &&
 			gameStarted &&
 			!configPending &&
-			gameState.currentPlayer === aiPlayer &&
-			(gameState.status === 'playing' || gameState.status === 'check') &&
+			isAITurn(gameState) &&
+			!gameOver &&
 			!gameState.isAiThinking &&
 			!isAiPaused &&
-			!forcedOutcome
+			!gameState.pendingPromotion
 		) {
 			const timer = setTimeout(() => {
 				makeAIMoveAsync();
@@ -496,10 +376,9 @@ const ChessGame: React.FC = () => {
 		gameMode,
 		gameStarted,
 		configPending,
-		aiPlayer,
 		makeAIMoveAsync,
 		isAiPaused,
-		forcedOutcome,
+		gameOver,
 	]);
 
 	// Game mode handlers
@@ -523,12 +402,7 @@ const ChessGame: React.FC = () => {
 			setForcedOutcome(null);
 
 			if (newMode === 'tutorial') {
-				const demo = getCurrentDemo();
-				setGameState(
-					createGameStateFromBoard(demo.board, 'white', {
-						castling: demo.id === 'castling' ? 'KQ' : '-',
-					})
-				);
+				loadTutorial(currentDemo);
 			} else if (newMode === 'ai') {
 				if (aiConfig.enabled && aiConfig.apiKey) {
 					setGameState(createInitialGameState('human-vs-ai', aiPlayer));
@@ -539,7 +413,8 @@ const ChessGame: React.FC = () => {
 			}
 		},
 		[
-			getCurrentDemo,
+			loadTutorial,
+			currentDemo,
 			aiPlayer,
 			aiConfig.enabled,
 			aiConfig.apiKey,
@@ -550,97 +425,47 @@ const ChessGame: React.FC = () => {
 
 	const handleSquareClick = useCallback(
 		(position: Position) => {
-			if (forcedOutcome) return;
-			if (gameMode === 'tutorial') {
-				// If a piece is already selected, try to make a move
-				if (gameState.selectedSquare) {
-					const newGameState = makeMove(
-						gameState,
-						gameState.selectedSquare,
-						position
-					);
-					if (newGameState) {
-						setGameState(newGameState);
-						return;
-					}
-				}
-
-				// Otherwise, select the square using selectSquare function
-				// which enforces turn-based play
-				const newGameState = selectSquare(gameState, position);
-				setGameState(newGameState);
-			} else {
-				// Regular game mode or AI mode
-				// Prevent moves during AI turn or when AI is thinking
-				if (
-					(gameMode === 'ai' && gameState.currentPlayer === aiPlayer) ||
-					gameState.isAiThinking
-				) {
-					return;
-				}
-
-				// If a piece is already selected, try to make a move
-				if (gameState.selectedSquare) {
-					const newGameState = makeMove(
-						gameState,
-						gameState.selectedSquare,
-						position
-					);
-					if (newGameState) {
-						setGameState(newGameState);
-
-						// Track human move in debug
-						if (isDebugMode && gameMode === 'ai') {
-							const fromSquare =
-								String.fromCharCode(97 + gameState.selectedSquare.col) +
-								(8 - gameState.selectedSquare.row);
-							const toSquare =
-								String.fromCharCode(97 + position.col) + (8 - position.row);
-							setAiDebugMoves(prev => [
-								...prev,
-								createAIMove(`${fromSquare} → ${toSquare}`, false),
-							]);
-						}
-
-						// Record human move in exporter
-						if (gameExporterRef.current) {
-							const fromSquare =
-								String.fromCharCode(97 + gameState.selectedSquare.col) +
-								(8 - gameState.selectedSquare.row);
-							const toSquare =
-								String.fromCharCode(97 + position.col) + (8 - position.row);
-							const piece = getPieceAt(
-								gameState.board,
-								gameState.selectedSquare
-							);
-							gameExporterRef.current.addMove(
-								Math.floor(gameState.moveHistory.length / 2) + 1,
-								gameState.currentPlayer,
-								fromSquare,
-								toSquare,
-								piece?.type || 'unknown'
-							);
-						}
-
-						return;
-					}
-				}
-
-				// Otherwise, select the square
-				const newGameState = selectSquare(gameState, position);
-				setGameState(newGameState);
+			if (
+				gameOver ||
+				gameState.pendingPromotion ||
+				(gameMode === 'ai' && gameState.currentPlayer === aiPlayer) ||
+				gameState.isAiThinking
+			) {
+				return;
 			}
+
+			const selected = gameState.selectedSquare;
+			if (!selected) {
+				setGameState(selectSquare(gameState, position));
+				return;
+			}
+
+			const next = makeMove(gameState, selected, position);
+			if (next) {
+				setGameState(next);
+				if (next.pendingPromotion) return;
+				recordCompletedHumanMove(gameState, next);
+				return;
+			}
+
+			setGameState(selectSquare(gameState, position));
 		},
-		[
-			gameMode,
-			gameState,
-			getCurrentDemo,
-			aiPlayer,
-			isDebugMode,
-			createAIMove,
-			forcedOutcome,
-		]
+		[gameMode, gameState, aiPlayer, gameOver, recordCompletedHumanMove]
 	);
+
+	const handlePromotionChoice = useCallback(
+		(promotion: PromotionPiece) => {
+			const next = confirmPromotion(gameState, promotion);
+			if (!next) return;
+			setGameState(next);
+			recordCompletedHumanMove(gameState, next);
+		},
+		[gameState, recordCompletedHumanMove]
+	);
+
+	const handlePromotionCancel = useCallback(() => {
+		setGameState(prev => cancelPromotion(prev));
+	}, []);
 
 	const resetGame = useCallback(() => {
 		// Invalidate any in-flight makeAIMoveAsync callback so it cannot
@@ -659,6 +484,18 @@ const ChessGame: React.FC = () => {
 		setGameActive(false);
 		setForcedOutcome(null);
 	}, [gameMode, aiPlayer, invalidate]);
+
+	const setForcedDebugOutcome = useCallback(
+		(patch: { status: string; currentPlayer?: PieceColor }) => {
+			setForcedOutcome({
+				status: patch.status as ForcedChessStatus,
+				...(patch.currentPlayer !== undefined
+					? { currentPlayer: patch.currentPlayer }
+					: {}),
+			});
+		},
+		[]
+	);
 
 	// Reset local game state when authentication is lost (logout) OR when
 	// the authenticated user identity changes (account switch in another
@@ -682,11 +519,7 @@ const ChessGame: React.FC = () => {
 	} = useGameDebugOutcomes<'white' | 'black'>({
 		aiPlayer,
 		getHumanPlayer: ai => (ai === 'white' ? 'black' : 'white'),
-		setOutcome: patch =>
-			setForcedOutcome({
-				status: patch.status as 'checkmate' | 'stalemate',
-				currentPlayer: patch.currentPlayer,
-			}),
+		setOutcome: setForcedDebugOutcome,
 		debugVariantKey: 'CHESS',
 		winStatus: 'checkmate',
 		drawStatus: 'stalemate',
@@ -722,46 +555,16 @@ const ChessGame: React.FC = () => {
 		}
 	}, [gameStarted, resetGame, gameMode, aiPlayer, aiConfig, aiStarting]);
 
-	const handleDemoChange = useCallback(
-		(demoId: string) => {
-			setCurrentDemo(demoId);
-			const demo = logicDemos.find(d => d.id === demoId);
-			if (demo) {
-				setGameState(
-					createGameStateFromBoard(demo.board, 'white', {
-						castling: demo.id === 'castling' ? 'KQ' : '-',
-					})
-				);
-			}
-		},
-		[logicDemos]
-	);
-
-	const getStatusMessage = (): string => {
-		const playerName = effectiveCurrentPlayer === 'white' ? 'White' : 'Black';
-
-		// Add AI/Human indicator in AI mode
-		const playerType =
-			gameMode === 'ai'
-				? effectiveCurrentPlayer === aiPlayer
-					? '🤖 AI'
-					: '👤 Human'
-				: '';
-
-		switch (effectiveStatus) {
-			case 'check':
-				return `${playerName} is in check!`;
-			case 'checkmate':
-				return `Checkmate! ${effectiveCurrentPlayer === 'white' ? 'Black' : 'White'} wins!`;
-			case 'stalemate':
-				return 'Stalemate! The game is a draw.';
-			case 'draw':
-				return 'The game is a draw.';
-			default:
-				return gameMode === 'ai'
-					? `${playerType} ${playerName} to move`
-					: `${playerName} to move`;
+	const getStatusText = (): string => {
+		if (forcedOutcome?.status === 'checkmate') return 'Checkmate!';
+		if (forcedOutcome?.status === 'stalemate') return 'Draw by stalemate';
+		if (gameState.terminationReason) {
+			return terminalCopy[gameState.terminationReason];
 		}
+		if (gameState.status === 'check') {
+			return `${effectiveCurrentPlayer === 'white' ? 'White' : 'Black'} is in check`;
+		}
+		return `${effectiveCurrentPlayer === 'white' ? 'White' : 'Black'} to move`;
 	};
 
 	const currentBoard = gameState.board;
@@ -774,7 +577,7 @@ const ChessGame: React.FC = () => {
 		gameMode === 'tutorial'
 			? getCurrentDemo().description
 			: gameStarted
-				? getStatusMessage()
+				? getStatusText()
 				: '';
 
 	return (
@@ -784,24 +587,40 @@ const ChessGame: React.FC = () => {
 			boardColumn={
 				<BoardColumn
 					board={
-						<GameStartOverlay active={!gameStarted && gameMode !== 'tutorial'}>
-							<ChessBoard
-								board={currentBoard}
-								selectedSquare={gameState.selectedSquare}
-								possibleMoves={gameState.possibleMoves}
-								onSquareClick={handleSquareClick}
-								highlightSquares={currentHighlightSquares}
-								disabled={
-									(!gameStarted && gameMode !== 'tutorial') || isGameOver
-								}
-							/>
-						</GameStartOverlay>
+						<>
+							<GameStartOverlay
+								active={!gameStarted && gameMode !== 'tutorial'}
+							>
+								<ChessBoard
+									board={currentBoard}
+									selectedSquare={gameState.selectedSquare}
+									possibleMoves={gameState.possibleMoves}
+									onSquareClick={handleSquareClick}
+									highlightSquares={currentHighlightSquares}
+									disabled={
+										Boolean(gameState.pendingPromotion) ||
+										Boolean(gameState.isAiThinking) ||
+										(gameMode === 'ai' &&
+											gameState.currentPlayer === aiPlayer) ||
+										gameOver
+									}
+								/>
+							</GameStartOverlay>
+							{gameState.pendingPromotion ? (
+								<ChessPromotionDialog
+									color={gameState.pendingPromotion.color}
+									choices={gameState.pendingPromotion.choices}
+									onChoose={handlePromotionChoice}
+									onCancel={handlePromotionCancel}
+								/>
+							) : null}
+						</>
 					}
 					controls={
 						gameMode === 'ai' ? (
 							<GameControls
 								hasGameStarted={gameStarted}
-								isGameOver={isGameOver}
+								isGameOver={gameOver}
 								aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
 								startDisabled={aiStarting}
 								isDebugMode={isDebugMode}
@@ -819,7 +638,7 @@ const ChessGame: React.FC = () => {
 						import.meta.env.DEV &&
 						showDebugWinButton &&
 						gameStarted &&
-						!isGameOver ? (
+						!gameOver ? (
 							<DebugOutcomeButtons
 								onWin={triggerDebugWin}
 								onLoss={triggerDebugLoss}
@@ -873,9 +692,9 @@ const ChessGame: React.FC = () => {
 					) : (
 						<>
 							<DemoSelector
-								demos={logicDemos}
+								demos={CHESS_TUTORIALS}
 								currentDemo={currentDemo}
-								onDemoChange={handleDemoChange}
+								onDemoChange={loadTutorial}
 							/>
 							<TutorialInstructions
 								title={getCurrentDemo().title}
