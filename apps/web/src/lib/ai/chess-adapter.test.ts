@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeEach } from 'bun:test';
 import { ChessAdapter } from './chess-adapter';
-import { createInitialBoard } from '../chess/board';
+import { createInitialGameState } from '../chess/game';
 import type { GameState } from '../chess/types';
 
 describe('ChessAdapter', () => {
@@ -9,15 +9,7 @@ describe('ChessAdapter', () => {
 
 	beforeEach(() => {
 		adapter = new ChessAdapter();
-		gameState = {
-			board: createInitialBoard(),
-			currentPlayer: 'white',
-			status: 'playing',
-			moveHistory: [],
-			selectedSquare: null,
-			possibleMoves: [],
-			mode: 'human-vs-ai',
-		};
+		gameState = createInitialGameState('human-vs-ai');
 	});
 
 	describe('gameVariant', () => {

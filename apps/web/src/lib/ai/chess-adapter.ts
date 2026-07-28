@@ -1,8 +1,8 @@
 import type { GameState, Move, Position, ChessPiece } from '../chess/types';
 import { BOARD_SIZE } from '../chess/types';
 import { getPossibleMoves, isMoveValid } from '../chess/moves';
-import { isKingInCheck } from '../chess/game';
 import { copyBoard, getRow, setPieceAt } from '../chess/board';
+import { createGameStateFromBoard } from '../chess/rules';
 import { BaseAdapter } from './base-adapter';
 import type { GamePosition } from './service';
 
@@ -146,7 +146,8 @@ Rules:
 		board: (ChessPiece | null)[][],
 		color: string
 	): boolean {
-		return isKingInCheck(board, color as ChessPiece['color']);
+		const state = createGameStateFromBoard(board, color as ChessPiece['color']);
+		return state.status === 'check' || state.status === 'checkmate';
 	}
 
 	// ---------------------------------------------------------------------

@@ -1,7 +1,11 @@
 import { test, expect, describe, beforeEach } from 'bun:test';
 import { ChessAdapter } from './chess-adapter';
-import { createInitialGameState } from '../chess/game';
-import type { GameState, Move, ChessPiece } from '../chess/types';
+import { createInitialGameState, makeAIMove } from '../chess/game';
+import type { GameState, ChessPiece } from '../chess/types';
+import {
+	createGameStateFromBoard,
+	createGameStateFromFen,
+} from '../chess/rules';
 
 describe('ChessAdapter - formatMoveHistory (via generatePrompt)', () => {
 	let adapter: ChessAdapter;
@@ -16,34 +20,17 @@ describe('ChessAdapter - formatMoveHistory (via generatePrompt)', () => {
 		// FILES = ['a','b','c','d','e','f','g','h'], RANKS = ['8','7','6','5','4','3','2','1']
 		// row 6, col 4 => RANKS[6]='2', FILES[4]='e' => 'e2'
 		// row 4, col 4 => RANKS[4]='4', FILES[4]='e' => 'e4'
-		const move: Move = {
-			from: { row: 6, col: 4 },
-			to: { row: 4, col: 4 },
-			piece: { type: 'pawn', color: 'white' },
-		};
-		const stateWithHistory: GameState = {
-			...gameState,
-			moveHistory: [move],
-		};
+		const stateWithHistory = makeAIMove(gameState, 'e2', 'e4');
+		if (!stateWithHistory) throw new Error('expected legal move');
 		const prompt = adapter.generatePrompt(stateWithHistory);
 		expect(prompt).toContain('e2-e4');
 	});
 
 	test('prompt includes multiple moves in history', () => {
-		const whiteMove: Move = {
-			from: { row: 6, col: 4 },
-			to: { row: 4, col: 4 },
-			piece: { type: 'pawn', color: 'white' },
-		};
-		const blackMove: Move = {
-			from: { row: 1, col: 4 },
-			to: { row: 3, col: 4 },
-			piece: { type: 'pawn', color: 'black' },
-		};
-		const stateWithHistory: GameState = {
-			...gameState,
-			moveHistory: [whiteMove, blackMove],
-		};
+		const afterWhite = makeAIMove(gameState, 'e2', 'e4');
+		if (!afterWhite) throw new Error('expected legal white move');
+		const stateWithHistory = makeAIMove(afterWhite, 'e7', 'e5');
+		if (!stateWithHistory) throw new Error('expected legal black move');
 		const prompt = adapter.generatePrompt(stateWithHistory);
 		// Both moves should appear
 		expect(prompt).toContain('e2-e4');
@@ -51,17 +38,9 @@ describe('ChessAdapter - formatMoveHistory (via generatePrompt)', () => {
 	});
 
 	test('prompt includes captured piece move in history', () => {
-		const capturedPiece: ChessPiece = { type: 'pawn', color: 'black' };
-		const move: Move = {
-			from: { row: 3, col: 4 },
-			to: { row: 2, col: 3 },
-			piece: { type: 'pawn', color: 'white' },
-			capturedPiece,
-		};
-		const stateWithHistory: GameState = {
-			...gameState,
-			moveHistory: [move],
-		};
+		const capture = createGameStateFromFen('4k3/8/3p4/4P3/8/8/8/4K3 w - - 0 1');
+		const stateWithHistory = makeAIMove(capture, 'e5', 'd6');
+		if (!stateWithHistory) throw new Error('expected legal capture');
 		const prompt = adapter.generatePrompt(stateWithHistory);
 		expect(prompt).toContain('e5-d6');
 	});
@@ -104,11 +83,7 @@ describe('ChessAdapter - hanging pieces analysis (isSquareDefendedBy path)', () 
 		// capture toward higher rows, so row 4 col 1 -> row 5 col 0/2.
 		board[4]![1] = { type: 'pawn', color: 'black' };
 
-		const state: GameState = {
-			...createInitialGameState(),
-			board,
-			currentPlayer: 'white',
-		};
+		const state = createGameStateFromBoard(board, 'white');
 
 		const prompt = adapter.generatePrompt(state);
 		// findHangingPieces detected the attacked knight and called
@@ -130,11 +105,7 @@ describe('ChessAdapter - hanging pieces analysis (isSquareDefendedBy path)', () 
 		// and the knight is NOT listed as hanging.
 		board[4]![3] = { type: 'bishop', color: 'white' };
 
-		const state: GameState = {
-			...createInitialGameState(),
-			board,
-			currentPlayer: 'white',
-		};
+		const state = createGameStateFromBoard(board, 'white');
 
 		const prompt = adapter.generatePrompt(state);
 		// The defended knight is not reported as a critical threat.
