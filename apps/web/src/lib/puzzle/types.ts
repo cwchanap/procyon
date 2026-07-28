@@ -1,8 +1,16 @@
-import type { ChessPiece, PieceColor, Position } from '../chess/types';
+import type {
+	ChessPiece,
+	ChessSquare,
+	GameState,
+	PieceColor,
+	Position,
+	PromotionPiece,
+} from '../chess/types';
 
 export interface PuzzleMove {
-	from: string; // algebraic notation e.g. "e2"
-	to: string; // algebraic notation e.g. "e4"
+	from: ChessSquare;
+	to: ChessSquare;
+	promotion?: PromotionPiece;
 }
 
 export interface PuzzleHint {
@@ -17,6 +25,7 @@ export interface PuzzleData {
 	description: string;
 	difficulty: 'beginner' | 'intermediate' | 'advanced';
 	playerColor: PieceColor;
+	/** API contract: 8×8 board with exactly one white king and one black king. */
 	initialBoard: (ChessPiece | null)[][];
 	solution: PuzzleMove[];
 	hint: PuzzleHint;
@@ -37,13 +46,11 @@ export type PuzzlePhase =
 export interface PuzzleState {
 	phase: PuzzlePhase;
 	puzzle: PuzzleData | null;
-	board: (ChessPiece | null)[][];
+	gameState: GameState | null;
 	solutionStep: number;
 	failedAttempts: number;
 	showHint: boolean;
 	showSolution: boolean;
-	selectedSquare: Position | null;
-	possibleMoves: Position[];
 }
 
 // localStorage anonymous progress
