@@ -81,10 +81,10 @@ adjudication, insufficient material, terminal move rejection, or promotion UI.
 
 ## Architectural Decision
 
-Add `chess.js` to `apps/web` as the authoritative standard-chess rules dependency.
-The implementation will use the documented 1.x TypeScript API for legal verbose
-moves, coordinate move application, FEN, replay history, and specific terminal
-condition predicates.
+Add exactly `chess.js` 1.4.0 to `apps/web` as the authoritative standard-chess
+rules dependency. The implementation will use its documented TypeScript API for
+legal verbose moves, coordinate move application, attack maps, FEN, replay
+history, and specific terminal-condition predicates.
 
 `chess.js` will be isolated behind a chess-only façade, expected at
 `apps/web/src/lib/chess/rules.ts`. A mutable `Chess` object will exist only inside
@@ -98,7 +98,9 @@ coordinate-move contract that a later Stockfish worker will require.
 
 ## Serializable Game State
 
-`GameState` remains an immutable, serializable Procyon object. It gains:
+`GameState` remains an immutable, serializable Procyon object. Existing fields,
+including `moveHistory`, remain; the move element type becomes richer and the
+state gains the remaining fields below:
 
 ```ts
 type PromotionPiece = 'queen' | 'rook' | 'bishop' | 'knight';
@@ -146,6 +148,11 @@ interface Move {
 }
 ```
 
+Narrowing the existing unused `Move.promotion` field from `PieceType` to
+`PromotionPiece` is an intentional type-contract change. There are no current
+readers, and the narrower type prevents kings and pawns from being represented as
+promotion results.
+
 `initialFen + moveHistory` is the reproducible game record. `fen`, `board`,
 `currentPlayer`, `status`, and `terminationReason` are cached views generated
 together by the façade after a successful move. They must not be independently
@@ -156,6 +163,11 @@ from `initialFen` and replays the coordinate moves, including promotion choices.
 It verifies that the replayed FEN matches the cached `fen`; inconsistent state
 fails closed. Replaying a few hundred half-moves is negligible compared with UI
 and rival-turn work and avoids storing a mutable engine object.
+
+Each public rules action constructs and replays at most one ephemeral `Chess`
+instance. A successful `attemptMove` derives the verbose move, board snapshot,
+FEN, turn, status, and termination reason from that same instance; it does not
+call another public status helper that would repeat reconstruction.
 
 The legacy `ChessPiece.hasMoved` field is no longer authoritative. Castling rights
 come from FEN and replay history. The field may remain temporarily for seed and
@@ -173,10 +185,17 @@ All playable chess state will be created through explicit factories:
   with explicit castling, en passant, halfmove, and fullmove defaults. Castling
   defaults to unavailable rather than being guessed from piece placement.
 
+Unless overridden, board conversion uses no castling rights, no en-passant
+target, halfmove clock `0`, and fullmove number `1`. The resulting FEN becomes
+both `initialFen` and the initial cached `fen`.
+
 Authored tutorial positions will be converted to valid FEN positions containing
-both kings. Puzzle flow will create one complete `GameState` at puzzle start and
-carry it through the scripted sequence instead of rebuilding a rules state from
-the board after every half-move.
+both kings, placed away from each example's instructional focus. This is an
+intentional, minimal visible change: tutorial snapshots and interactions will
+verify that the additional kings do not obscure the demonstrated piece,
+destinations, highlights, or explanatory copy. Puzzle flow will create one
+complete `GameState` at puzzle start and carry it through the scripted sequence
+instead of rebuilding a rules state from the board after every half-move.
 
 ## Rules Façade
 
@@ -186,6 +205,9 @@ The façade owns all conversion and rule decisions:
 - Procyon `ChessPiece` to and from `chess.js` piece codes.
 - FEN to Procyon's board snapshot.
 - Legal verbose move generation for one square or the whole side to move.
+- Dedicated attack and defender queries backed by `chess.js` `isAttacked` and
+  `attackers`; these preserve the standard rule that a pinned piece still
+  attacks a square even when moving it would expose its own king.
 - Move application and verbose-move mapping.
 - Replay validation.
 - Status and termination-reason derivation.
@@ -218,7 +240,7 @@ Expected exported operations are:
 Existing functions in `game.ts` remain the Procyon-facing orchestration layer and
 delegate to this façade. `moves.ts` may retain low-level movement helpers for
 other non-game consumers during migration, but it is no longer authoritative for
-playable chess legality.
+playable chess legality or AI attack maps.
 
 ## Human Move Flow
 
@@ -231,8 +253,8 @@ playable chess legality.
    `pendingPromotion` and opens the promotion dialog.
 5. Choosing queen, rook, bishop, or knight retries the same move with the explicit
    promotion choice.
-6. Cancelling the dialog clears `pendingPromotion` and restores ordinary
-   selection without changing the board or turn.
+6. Cancelling the dialog clears `pendingPromotion`, `selectedSquare`, and legal
+   destination indicators without changing the board or turn.
 
 Castling and en passant need no special UI gestures. They are legal destinations
 and are applied atomically from the verbose move returned by `chess.js`.
@@ -259,12 +281,22 @@ owned by HPA-166/HPA-187.
 All rival moves use the same exact move request:
 
 ```ts
+type ChessFile = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h';
+type ChessRank = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8';
+type ChessSquare = `${ChessFile}${ChessRank}`;
+
 interface ChessMoveRequest {
-  from: Position;
-  to: Position;
+  from: ChessSquare;
+  to: ChessSquare;
   promotion?: PromotionPiece;
 }
 ```
+
+`ChessSquare` is a Procyon-local algebraic type rather than an exported
+`chess.js` type. Human board coordinates convert to this request once at the
+façade boundary. The existing `makeAIMove(gameState, from, to, promotion?)`
+algebraic-string wrapper remains source-compatible and constructs this request
+internally.
 
 The existing language-model `AIMove` gains an optional chess `promotion` field.
 The existing Shogi `promote` boolean and `pieceType` fields remain unchanged.
@@ -274,13 +306,15 @@ The existing Shogi `promote` boolean and `pieceType` fields remain unchanged.
 - Enumerate legal moves from the façade instead of pseudo-legal movement plus a
   separate king-safety simulation.
 - Emit all four promotion variants in the valid-move list.
-- Describe the optional promotion field in the chess JSON response format.
+- Describe the promotion field as required when the move ends on the promotion
+  rank and omitted otherwise.
 - Continue using existing from/to notation for non-promotion moves.
 
 `ChessRuleGuardian` will validate the complete `{from, to, promotion}` request
-against the façade. `makeAIMove` will accept an optional promotion, apply only an
-`applied` result, and reject `promotion-required` rather than defaulting to a
-queen.
+against the façade, reading promotion from `aiResponse.move.promotion` without a
+shared guardian signature change. `makeAIMove` will accept an optional
+promotion, apply only an `applied` result, and reject `promotion-required` rather
+than defaulting to a queen.
 
 This same request shape is the future on-device-rival seam. A later UCI parser can
 map `a7a8n` to `{from: 'a7', to: 'a8', promotion: 'knight'}` and call the same
@@ -303,7 +337,14 @@ in this order:
 Checkmate is resolved before draw predicates so a mating move remains decisive.
 HPA-160 intentionally treats threefold repetition and the fifty-move rule as
 automatic terminal draws even though formal over-the-board rules normally allow
-claims.
+claims. Insufficient material is different: it represents the standard
+immediate dead-position outcome, not an optional claim or a product-specific
+extension.
+
+Threefold repetition is delegated to `chess.js` position-history logic rather
+than implemented with complete-FEN string equality. Repetition identity includes
+piece placement, side to move, castling rights, and effective en-passant
+availability; halfmove and fullmove counters do not distinguish positions.
 
 Status mapping remains compatible with shared consumers:
 
@@ -359,6 +400,12 @@ selection reads legal destinations from the façade. Existing puzzle data begins
 with no inferred castling or en passant rights unless those rights are explicitly
 added to the puzzle contract in a future ticket.
 
+`PuzzleMove` gains `promotion?: PromotionPiece`. The ten current seeded solutions
+contain no promotion moves, so existing data remains valid. Any future scripted
+move that reaches a promotion rank must provide the exact promotion piece;
+puzzle execution will reject missing promotion data rather than silently choose
+a queen.
+
 ## Automated Verification
 
 ### Rules façade tests
@@ -374,22 +421,32 @@ added to the puzzle contract in a future ticket.
 - Quiet and capture promotions to queen, rook, bishop, and knight.
 - Pinned pieces and all check-evasion categories.
 - King moves cannot enter attacked squares.
-- Legal-destination output is a subset of authoritative legal moves.
+- Dedicated attack queries still count pinned pieces as attackers and defenders.
+- Legal-destination output equals the deduplicated destination set from
+  authoritative legal moves.
 - Check, checkmate, and stalemate.
 - Threefold repetition after a repeatable move sequence.
-- Fifty-move adjudication after the hundredth qualifying half-move.
+- Repetition identity changes with castling rights and effective en-passant
+  availability but ignores halfmove and fullmove counters.
+- Fifty-move adjudication after the hundredth qualifying half-move, including a
+  pawn move that resets the halfmove clock before counting restarts.
 - Representative insufficient-material positions, including bare kings,
-  king-and-bishop versus king, and king-and-knight versus king.
+  king-and-bishop versus king, king-and-knight versus king, same-color
+  king-and-bishop versus king-and-bishop, and the non-draw
+  king-and-two-knights versus king case.
 - Terminal-state move rejection.
 - Initial-FEN plus move-history replay exactly reproduces current FEN.
 - Verbose move records contain SAN, LAN, before/after FEN, capture, promotion,
   castling, and en passant information when applicable.
+- LAN remains chess.js coordinate notation: `e2e4`, `e1g1`, `e5d6`, and
+  promotion such as `a7a8q`; SAN separately carries display notation.
 
 ### Game orchestration tests
 
 - Human promotion produces pending state without changing board or turn.
 - Confirming each promotion choice applies the expected piece.
-- Cancelling promotion leaves the position unchanged.
+- Cancelling promotion leaves the position unchanged and clears selection and
+  legal destinations.
 - `selectSquare` exposes legal destinations only.
 - Human and rival wrappers produce identical state for the same legal request.
 - `makeAIMove` applies rival castling, en passant, queen promotion, and
@@ -410,7 +467,8 @@ added to the puzzle contract in a future ticket.
 - Status copy distinguishes stalemate, repetition, fifty-move, and
   insufficient-material draws.
 - The language-model response path forwards promotion.
-- Existing tutorial and puzzle journeys remain operational.
+- Existing tutorial and puzzle journeys remain operational; tutorial coverage
+  accounts for the minimally visible added kings.
 
 ### Regression commands
 
@@ -440,8 +498,9 @@ not add the on-device engine.
 
 ## Dependency and Release Boundary
 
-The web package will declare `chess.js` and commit the resulting Bun lockfile
-change. HPA-160 will not add Stockfish or load any engine asset.
+The web package will declare exact version `chess.js` 1.4.0 and commit the
+resulting Bun lockfile change. HPA-160 will not add Stockfish or load any engine
+asset.
 
 HPA-187 owns the consolidated third-party notices and release compliance for both
 the chess-rules and Stockfish dependencies. HPA-160's move records and FEN state
