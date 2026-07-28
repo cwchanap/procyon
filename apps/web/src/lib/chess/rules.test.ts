@@ -216,6 +216,19 @@ describe('chess rules move application', () => {
 		}
 	});
 
+	test('rejects a supplied empty promotion value on an ordinary move', () => {
+		expect(
+			attemptMove(createInitialGameState(), {
+				from: 'e2',
+				to: 'e4',
+				promotion: '' as PromotionPiece,
+			})
+		).toEqual({
+			kind: 'rejected',
+			reason: 'invalid-promotion',
+		});
+	});
+
 	test('rejects moves that expose the moving king', () => {
 		const state = createGameStateFromFen('4r2k/8/8/8/8/8/4R3/4K3 w - - 0 1');
 		expect(attemptMove(state, { from: 'e2', to: 'd2' })).toEqual({

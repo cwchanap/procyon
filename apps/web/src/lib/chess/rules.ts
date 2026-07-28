@@ -310,7 +310,21 @@ export function attemptMove(
 		.moves({ square: request.from as Square, verbose: true })
 		.filter(move => move.to === request.to);
 	const promotionCandidates = candidates.filter(move => move.isPromotion());
-	if (!request.promotion && promotionCandidates.length > 0) {
+	const promotionSupplied = Object.prototype.hasOwnProperty.call(
+		request,
+		'promotion'
+	);
+	if (
+		promotionSupplied &&
+		request.promotion !== 'queen' &&
+		request.promotion !== 'rook' &&
+		request.promotion !== 'bishop' &&
+		request.promotion !== 'knight'
+	) {
+		return { kind: 'rejected', reason: 'invalid-promotion' };
+	}
+
+	if (!promotionSupplied && promotionCandidates.length > 0) {
 		return {
 			kind: 'promotion-required',
 			from,
@@ -318,16 +332,6 @@ export function attemptMove(
 			color: state.currentPlayer,
 			choices: ['queen', 'rook', 'bishop', 'knight'],
 		};
-	}
-
-	if (
-		request.promotion &&
-		request.promotion !== 'queen' &&
-		request.promotion !== 'rook' &&
-		request.promotion !== 'bishop' &&
-		request.promotion !== 'knight'
-	) {
-		return { kind: 'rejected', reason: 'invalid-promotion' };
 	}
 
 	const enginePromotion = request.promotion
@@ -339,7 +343,7 @@ export function attemptMove(
 	if (!candidate) {
 		return {
 			kind: 'rejected',
-			reason: request.promotion ? 'invalid-promotion' : 'illegal-move',
+			reason: promotionSupplied ? 'invalid-promotion' : 'illegal-move',
 		};
 	}
 
