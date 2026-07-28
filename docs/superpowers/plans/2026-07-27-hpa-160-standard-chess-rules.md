@@ -12,8 +12,10 @@
 
 - Pin exactly `chess.js` version `1.4.0` in `apps/web/package.json` and commit `bun.lock`.
 - `chess.js` types and mutable `Chess` objects stay inside `apps/web/src/lib/chess/rules.ts`; expose only Procyon-local types.
+- `initialFen`, `fen`, `pendingPromotion`, and `terminationReason` are required `GameState` fields. Do not add optional compatibility fields or generic `Partial<GameState>` fixtures that can create incoherent cached views.
 - `initialFen + moveHistory` is the replay record; `fen`, `board`, `currentPlayer`, `status`, and `terminationReason` are derived together.
-- Every public rules action reconstructs and replays at most one engine; a successful move derives all post-move state from that same engine.
+- Every public rules action reconstructs from `initialFen` and replays the full rich move history at most once; it deliberately does not fast-path `fen`, because replay is the fail-closed consistency check. This is O(n) per action and O(n²) across a completed game's successive moves, accepted for HPA-160 and deferred to HPA-166.
+- `createGameStateFromFen` creates a new replay root with empty prior history. A mid-game FEN therefore starts repetition counting at one occurrence; callers that need earlier repetition history must supply `initialFen + moveHistory`.
 - Rival prompt generation calls one whole-side legal-move query and one batched attack query; it never reconstructs an engine once per piece or destination.
 - Never default a missing promotion to queen. Human moves enter pending promotion; rival and scripted moves reject missing promotion data.
 - LM valid-move listings use `a7-a8=Q`, `a7-a8=R`, `a7-a8=B`, or `a7-a8=N`; response JSON uses `promotion: 'queen'|'rook'|'bishop'|'knight'` only for promotion moves.
@@ -22,7 +24,10 @@
 - Automatically terminate threefold repetition and fifty-move-rule positions as required by HPA-160; insufficient material is an immediate standard dead-position result.
 - FIDE fivefold-repetition and seventy-five-move automatic draws, plus dead-position detection beyond chess.js 1.4.0's insufficient-material predicate, are explicitly out of scope.
 - Repetition identity includes placement, side, castling rights, and effective en-passant availability, but not halfmove/fullmove counters.
-- Authored invalid-FEN factories throw; runtime move failures return a rejected `MoveAttempt` and never mutate state.
+- Authored FEN/board factories throw when chess.js 1.4.0 rejects the position. The board factory additionally requires an 8×8 board with exactly one king per side. Acceptance means structurally loadable by chess.js, not proof that the position is historically reachable or that every authored right is meaningful.
+- Runtime move failures return a rejected `MoveAttempt` and never mutate state.
+- DEV-only forced outcomes stay in `ChessGame` component state and never patch the authoritative chess `GameState`.
+- `chess.js` is expected to ship in the client bundles that execute chess games, tutorials, and puzzles; measuring or reducing that bundle cost belongs to HPA-166.
 - Preserve current play-history result contracts and AI-turn invalidation behavior.
 - Do not add Stockfish, worker assets, export-format changes, or unrelated `@procyon/game-core` abstractions.
 
@@ -38,6 +43,7 @@
 - Create `apps/web/src/lib/chess/tutorials.ts` and `tutorials.test.ts`: valid-FEN tutorial definitions kept outside the React component.
 - Create `apps/web/src/components/ChessPromotionDialog.tsx` and `.test.tsx`: accessible four-choice promotion interaction.
 - Modify `apps/web/src/components/ChessGame.tsx` and `ChessGame.test.tsx`: human/rival integration, terminal copy, board locking, and tutorial use.
+- Modify `apps/web/src/components/game/GameDebugAndModeGuard.test.tsx`: preserve DEV outcome behavior without mutating authoritative chess state.
 - Modify `apps/web/src/lib/ai/chess-adapter.ts`, `rule-guardian.ts`, `types.ts`, and `service.ts`: authoritative move enumeration and promotion propagation.
 - Modify the existing AI tests beside those files: promotion prompt, parser, guardian, pinned legality, and threat-map coverage.
 - Modify `apps/web/src/lib/puzzle/types.ts`, `apps/web/src/hooks/usePuzzle.ts`, `usePuzzle.test.ts`, and `apps/web/src/components/puzzle/PuzzleSolver.tsx`: carry one complete chess state through a puzzle.
@@ -55,7 +61,7 @@
 - Create: `apps/web/src/lib/chess/rules.ts`
 - Create: `apps/web/src/lib/chess/rules.test.ts`
 - Modify: `apps/web/src/lib/chess/game.ts:21-36`
-- Modify fixtures in: `apps/web/src/lib/ai/base-adapter.coverage.test.ts`, `apps/web/src/lib/ai/chess-adapter.coverage.test.ts`, `apps/web/src/lib/ai/rule-guardian.extended.test.ts`, `apps/web/src/lib/ai/rule-guardian.test.ts`, `apps/web/src/lib/ai/service.test.ts`
+- Modify fixtures in: `apps/web/src/lib/ai/base-adapter.coverage.test.ts`, `base-rule-guardian.coverage.test.ts`, `chess-adapter.test.ts`, `chess-adapter.coverage.test.ts`, `rule-guardian.extended.test.ts`, `rule-guardian.test.ts`, `service.extended.test.ts`, `service.test.ts`
 
 **Interfaces:**
 
@@ -70,6 +76,7 @@ Add these cases to the new `rules.test.ts`:
 
 ```ts
 import { describe, expect, test } from 'bun:test';
+import type { ChessPiece } from './types';
 import {
   createGameStateFromBoard,
   createGameStateFromFen,
@@ -100,6 +107,19 @@ describe('chess rules state factories', () => {
 
   test('throws for authored invalid FEN instead of normalizing it', () => {
     expect(() => createGameStateFromFen('not-a-fen')).toThrow();
+  });
+
+  test('throws for authored boards without exactly one king per side', () => {
+    const board = Array.from({ length: 8 }, () =>
+      Array<ChessPiece | null>(8).fill(null)
+    );
+    board[7]![4] = { type: 'king', color: 'white' };
+    expect(() => createGameStateFromBoard(board, 'white')).toThrow();
+  });
+
+  test('throws for authored boards that are not exactly eight by eight', () => {
+    const board = createInitialGameState().board.slice(0, 7);
+    expect(() => createGameStateFromBoard(board, 'white')).toThrow();
   });
 
   test('board conversion uses explicit safe defaults', () => {
@@ -396,6 +416,22 @@ function fenPlacement(board: (ChessPiece | null)[][]): string {
     })
     .join('/');
 }
+
+function assertBoardContract(board: (ChessPiece | null)[][]): void {
+  if (board.length !== 8 || board.some(rank => rank.length !== 8)) {
+    throw new Error('Chess board must be exactly 8×8');
+  }
+
+  const kingCounts: Record<PieceColor, number> = { white: 0, black: 0 };
+  for (const rank of board) {
+    for (const piece of rank) {
+      if (piece?.type === 'king') kingCounts[piece.color] += 1;
+    }
+  }
+  if (kingCounts.white !== 1 || kingCounts.black !== 1) {
+    throw new Error('Chess board must contain exactly one king per side');
+  }
+}
 ```
 
 Construct state through one helper, with initial status limited to playing/check/checkmate/stalemate until Task 3 adds draw predicates:
@@ -455,6 +491,7 @@ export function createGameStateFromBoard(
   sideToMove: PieceColor,
   options: BoardFenOptions = {}
 ): GameState {
+  assertBoardContract(board);
   const fen = [
     fenPlacement(board),
     TO_ENGINE_COLOR[sideToMove],
@@ -587,7 +624,7 @@ export function createInitialGameState(
 In AI tests with literal chess states, replace incomplete literals with either:
 
 ```ts
-const state = createGameStateFromFen('4k3/8/8/8/8/8/8/4K3 w - - 0 1');
+const state = createGameStateFromFen('r3k3/8/8/8/8/8/8/R3K3 w - - 0 1');
 ```
 
 or a spread from `createInitialGameState()` when a test changes only UI fields:
@@ -599,13 +636,29 @@ const stateWithSelection: GameState = {
 };
 ```
 
+All four new chess state fields are required. Use this migration matrix rather
+than weakening the type:
+
+| Existing test surface                                                                                                                                                      | Migration                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/chess/moves.test.ts`, `moves.extended.test.ts`, `moves.coverage.test.ts`                                                                                              | Delete with `moves.ts` in Task 8; do not retain pseudo-legal expectations.                                                                                                                                                          |
+| `lib/chess/game.test.ts`, `game.coverage.test.ts`, `game.extended.test.ts`, `game.functions.test.ts`, `game.simple.test.ts`                                                | Replace with Task 4's FEN-backed orchestration suite, then delete the four superseded files.                                                                                                                                        |
+| `lib/chess/board.test.ts`                                                                                                                                                  | Keep raw-board unit coverage unchanged. These tests do not construct playable `GameState` or enter the rules façade, so partial boards remain valid test inputs.                                                                    |
+| `lib/ai/base-adapter.coverage.test.ts`                                                                                                                                     | Spread `createInitialGameState()` so required fields exist, then allow its deliberately synthetic board override only inside direct `BaseAdapter` hook tests. Those values must never enter `rules.ts`.                             |
+| `lib/ai/base-rule-guardian.coverage.test.ts`                                                                                                                               | Build chess-shaped guardian inputs from `createInitialGameState()` and override UI-only fields only.                                                                                                                                |
+| `lib/ai/chess-adapter.test.ts`, `chess-adapter.coverage.test.ts`, `rule-guardian.test.ts`, `rule-guardian.extended.test.ts`, `service.test.ts`, `service.extended.test.ts` | Replace every playable chess literal with `createInitialGameState()` or `createGameStateFromFen(...)`; never override `board`, `fen`, `initialFen`, `currentPlayer`, `moveHistory`, `status`, or `terminationReason` independently. |
+
+The production factories are the shared fixture surface. Do not introduce a
+generic test-only factory accepting `Partial<GameState>`, because it would
+recreate the inconsistent-state path this façade is designed to reject.
+
 - [ ] **Step 6: Run focused tests and type checking**
 
 Run:
 
 ```bash
 cd apps/web
-rtk bun test src/lib/chess/rules.test.ts
+rtk bun test src/lib/chess/rules.test.ts src/lib/ai/base-adapter.coverage.test.ts src/lib/ai/base-rule-guardian.coverage.test.ts src/lib/ai/chess-adapter.test.ts src/lib/ai/chess-adapter.coverage.test.ts src/lib/ai/rule-guardian.test.ts src/lib/ai/rule-guardian.extended.test.ts src/lib/ai/service.test.ts src/lib/ai/service.extended.test.ts
 rtk bun run typecheck
 ```
 
@@ -1001,6 +1054,33 @@ test('automatically adjudicates threefold despite changing halfmove clocks', () 
   expect(state.terminationReason).toBe('threefold-repetition');
 });
 
+test('mid-game FEN starts repetition history at its current position', () => {
+  let state = createGameStateFromFen('6nk/8/8/8/8/8/8/KN6 w - - 17 42');
+  expect(state.initialFen).toBe(state.fen);
+  expect(state.moveHistory).toEqual([]);
+
+  const cycle = [
+    { from: 'b1', to: 'c3' },
+    { from: 'g8', to: 'f6' },
+    { from: 'c3', to: 'b1' },
+    { from: 'f6', to: 'g8' },
+  ] as const;
+
+  for (const request of cycle) {
+    const result = attemptMove(state, request);
+    if (result.kind !== 'applied') throw new Error('expected applied');
+    state = result.state;
+  }
+  expect(state.terminationReason).toBeNull();
+
+  for (const request of cycle) {
+    const result = attemptMove(state, request);
+    if (result.kind !== 'applied') throw new Error('expected applied');
+    state = result.state;
+  }
+  expect(state.terminationReason).toBe('threefold-repetition');
+});
+
 test('castling and effective en-passant rights prevent premature repetition', () => {
   let castling = createGameStateFromFen('4k2r/8/8/8/8/8/8/4K2R w Kk - 0 1');
   for (const request of [
@@ -1192,6 +1272,7 @@ rtk git commit -m "feat(chess): adjudicate standard terminal results"
 - Produces: compatible `createInitialGameState(mode, aiPlayer)`.
 - Produces: `makeMove(state, from, to, promotion?)`, `confirmPromotion(state, promotion)`, `cancelPromotion(state)`, `makeAIMove(state, from, to, promotion?)`.
 - Preserves: `selectSquare`, `setAIThinking`, `isAITurn`, and `getGameStatus`.
+- Removes: exported raw-board `isKingInCheck(board, color)`; callers use authoritative legal moves, status, or attack queries instead.
 
 - [ ] **Step 1: Replace legacy game tests with orchestration tests**
 
@@ -1416,6 +1497,12 @@ export function isAITurn(state: GameState): boolean {
 }
 ```
 
+Delete `isKingInCheck` rather than preserving an overload or missing-king
+fallback. Its only production consumer outside this file is the chess
+adapter's pseudo-legal validation shell, which Task 5 removes. The superseded
+raw-board game tests are deleted after their legal-state behaviors are covered
+through `rules.test.ts` and the orchestration suite.
+
 - [ ] **Step 4: Remove redundant manual status recomputation from orchestration tests**
 
 Ensure no game test constructs a custom board without a matching FEN. Use `createGameStateFromFen` for authored states and assert that status updates in the same returned state as the move.
@@ -1617,7 +1704,12 @@ protected override forEachOwnPieceMove(
 }
 ```
 
-Remove chess overrides and imports for `getPossibleMoves`, `isMoveValid`, manual board simulation, and `isKingInCheck`; the public override bypasses the base pseudo-legal validation shell.
+Keep `forEachOwnPieceMove` only because `BaseAdapter` declares the hook
+abstract; `ChessAdapter#getAllValidMoves` is the only runtime enumeration path
+for chess. Remove chess overrides and imports for `expandMoveVariants`,
+`getPossibleMoves`, `isMoveValid`, manual board simulation, and
+`isKingInCheck`; the public override bypasses the base pseudo-legal validation
+shell.
 
 Replace the example parser and response-example construction so the canonical
 `=Q`, `=R`, `=B`, or `=N` suffix becomes the typed JSON property, while normal
@@ -1771,6 +1863,7 @@ rtk git commit -m "feat(chess): validate complete rival moves"
 - Create: `apps/web/src/lib/chess/tutorials.test.ts`
 - Modify: `apps/web/src/components/ChessGame.tsx:37-45,178-320,330-430,516-716,719-820`
 - Modify: `apps/web/src/components/ChessGame.test.tsx`
+- Modify: `apps/web/src/components/game/GameDebugAndModeGuard.test.tsx`
 
 **Interfaces:**
 
@@ -1848,6 +1941,12 @@ describe('chess tutorials', () => {
     const lan = getLegalMoves(state, { row: 7, col: 4 }).map(move => move.lan);
     expect(lan).toContain('e1g1');
     expect(lan).toContain('e1c1');
+  });
+
+  test('check tutorial derives check from its authored position', () => {
+    const state = createChessTutorialState('check-demo');
+    expect(state.status).toBe('check');
+    expect(state.currentPlayer).toBe('white');
   });
 
   test('promotion tutorial exposes all four explicit choices', () => {
@@ -1988,16 +2087,90 @@ export function createChessTutorialState(id: string): GameState {
 
 In `ChessGame.tsx`:
 
-- replace manual tutorial boards with `CHESS_TUTORIALS` and `createChessTutorialState`;
+- replace manual tutorial boards with `CHESS_TUTORIALS` and `createChessTutorialState`; both entering tutorial mode and changing demos replace the complete state rather than spreading a new board into cached state;
 - import and use `isTerminalState` from `../lib/chess/rules`;
 - import `positionToAlgebraic` from `../lib/chess/board`;
+- import `PieceColor` with the other chess types;
 - remove every post-move `{ ...newGameState, status: getGameStatus(newGameState) }`;
 - pass `aiResponse.move.promotion` into `makeAIMove`;
 - add `handlePromotionChoice` and `handlePromotionCancel`;
 - render `ChessPromotionDialog` from `gameState.pendingPromotion`;
-- disable `ChessBoard` while promotion is pending, AI is thinking/playing, or `isTerminalState(gameState)` is true;
-- replace the component's repeated terminal status union with `isTerminalState(gameState)` in the game-ended latch, and use `isAITurn(gameState)` in the rival-trigger effect;
+- keep DEV-forced results outside `gameState`, and use the effective result only for display, play-history recording, board locking, and the game-ended latch;
+- disable `ChessBoard` while promotion is pending, AI is thinking/playing, or the effective game-over predicate is true;
+- use `isAITurn(gameState)` plus `!gameOver` in the rival-trigger effect;
 - keep debug/export logging after a promotion is completed, not when it becomes pending.
+
+Replace both tutorial state mutation paths with one callback:
+
+```ts
+const loadTutorial = useCallback((demoId: string) => {
+  const tutorialState = createChessTutorialState(demoId);
+  setCurrentDemo(demoId);
+  setGameState(tutorialState);
+  setForcedOutcome(null);
+}, []);
+
+// In toggleToMode:
+if (newMode === 'tutorial') {
+  loadTutorial(currentDemo);
+}
+
+// DemoSelector callback:
+const handleDemoChange = loadTutorial;
+```
+
+Do not preserve the current `handleDemoChange(prev => ({ ...prev, board }))`
+path: that leaves `fen`, `initialFen`, history, turn, and adjudication cached
+from the previous position.
+
+Represent debug-only results outside the authoritative state:
+
+```ts
+type ForcedChessStatus = Extract<
+  GameState['status'],
+  'checkmate' | 'stalemate'
+>;
+
+type ForcedChessOutcome = {
+  status: ForcedChessStatus;
+  currentPlayer?: PieceColor;
+} | null;
+
+const [forcedOutcome, setForcedOutcome] = useState<ForcedChessOutcome>(null);
+const effectiveStatus = forcedOutcome?.status ?? gameState.status;
+const effectiveCurrentPlayer =
+  forcedOutcome?.currentPlayer ?? gameState.currentPlayer;
+const gameOver = forcedOutcome !== null || isTerminalState(gameState);
+
+const getWinnerColor = useCallback(
+  () => (effectiveCurrentPlayer === 'white' ? 'black' : 'white'),
+  [effectiveCurrentPlayer]
+);
+
+const setForcedDebugOutcome = (patch: {
+  status: string;
+  currentPlayer?: PieceColor;
+}) =>
+  setForcedOutcome({
+    status: patch.status as ForcedChessStatus,
+    ...(patch.currentPlayer !== undefined
+      ? { currentPlayer: patch.currentPlayer }
+      : {}),
+  });
+```
+
+In the existing `usePlayHistory` call, replace
+`gameStatus: gameState.status` with `gameStatus: effectiveStatus` and pass the
+`getWinnerColor` callback above. In the existing `useGameDebugOutcomes` call,
+replace only `setOutcome` with `setOutcome: setForcedDebugOutcome`; keep its
+current invalidation, AI-side, win/draw status, and preparation callbacks.
+
+Use `gameOver` in the game-ended latch, `ChessBoard` lock, debug-button
+visibility, and rival effect. Use `effectiveStatus` and
+`effectiveCurrentPlayer` for status/result rendering. Call
+`setForcedOutcome(null)` from `resetGame`, every real game start, every mode
+change, and tutorial loading. Do not change the shared
+`useGameDebugOutcomes` contract or other variants.
 
 Use the applied rich move as the source for the existing human debug/export
 schema:
@@ -2064,7 +2237,7 @@ disabled={
   Boolean(gameState.pendingPromotion) ||
   Boolean(gameState.isAiThinking) ||
   (gameMode === 'ai' && gameState.currentPlayer === aiPlayer) ||
-  isTerminalState(gameState)
+  gameOver
 }
 ```
 
@@ -2083,13 +2256,19 @@ const terminalCopy: Record<
 };
 
 const getStatusText = (): string => {
+  if (forcedOutcome?.status === 'checkmate') {
+    return 'Checkmate!';
+  }
+  if (forcedOutcome?.status === 'stalemate') {
+    return 'Draw by stalemate';
+  }
   if (gameState.terminationReason) {
     return terminalCopy[gameState.terminationReason];
   }
   if (gameState.status === 'check') {
-    return `${gameState.currentPlayer === 'white' ? 'White' : 'Black'} is in check`;
+    return `${effectiveCurrentPlayer === 'white' ? 'White' : 'Black'} is in check`;
   }
-  return `${gameState.currentPlayer === 'white' ? 'White' : 'Black'} to move`;
+  return `${effectiveCurrentPlayer === 'white' ? 'White' : 'Black'} to move`;
 };
 ```
 
@@ -2169,11 +2348,44 @@ test('switches own-piece selection and clears it after an illegal empty click', 
 });
 ```
 
+In the existing `ChessGame — DEV debug outcome buttons` describe block in
+`GameDebugAndModeGuard.test.tsx`, add:
+
+```tsx
+test('forced win locks chess without changing the rendered position', async () => {
+  const view = render(<ChessGame />);
+  const start = await waitFor(() =>
+    view.getByRole('button', { name: /start/i })
+  );
+  fireEvent.click(start);
+
+  const KE = (window as unknown as { KeyboardEvent: typeof KeyboardEvent })
+    .KeyboardEvent;
+  act(() => {
+    window.dispatchEvent(new KE('keydown', { key: 'd', shiftKey: true }));
+  });
+
+  const board = view.getByTestId('chess-board');
+  const renderedPosition = board.textContent;
+  fireEvent.click(await waitFor(() => view.getByTitle('Debug: Win')));
+
+  await waitFor(() => {
+    expect(view.getByRole('button', { name: /Play Again/i })).toBeTruthy();
+  });
+  expect(board.textContent).toBe(renderedPosition);
+  expect(
+    view
+      .getAllByRole('button', { name: /^Square / })
+      .every(square => (square as HTMLButtonElement).disabled)
+  ).toBe(true);
+});
+```
+
 - [ ] **Step 7: Run component and tutorial tests**
 
 ```bash
 cd apps/web
-rtk bun test src/components/ChessPromotionDialog.test.tsx src/components/ChessGame.test.tsx src/lib/chess/tutorials.test.ts
+rtk bun test src/components/ChessPromotionDialog.test.tsx src/components/ChessGame.test.tsx src/components/game/GameDebugAndModeGuard.test.tsx src/lib/chess/tutorials.test.ts
 rtk bun run typecheck
 ```
 
@@ -2182,7 +2394,7 @@ Expected: PASS.
 - [ ] **Step 8: Commit the human interaction**
 
 ```bash
-rtk git add apps/web/src/components/ChessPromotionDialog.tsx apps/web/src/components/ChessPromotionDialog.test.tsx apps/web/src/components/ChessGame.tsx apps/web/src/components/ChessGame.test.tsx apps/web/src/lib/chess/tutorials.ts apps/web/src/lib/chess/tutorials.test.ts
+rtk git add apps/web/src/components/ChessPromotionDialog.tsx apps/web/src/components/ChessPromotionDialog.test.tsx apps/web/src/components/ChessGame.tsx apps/web/src/components/ChessGame.test.tsx apps/web/src/components/game/GameDebugAndModeGuard.test.tsx apps/web/src/lib/chess/tutorials.ts apps/web/src/lib/chess/tutorials.test.ts
 rtk git commit -m "feat(chess): add explicit human promotion flow"
 ```
 
@@ -2202,6 +2414,7 @@ rtk git commit -m "feat(chess): add explicit human promotion flow"
 - Consumes: `createGameStateFromBoard`, `selectSquare`, and `attemptMove`.
 - Produces: `PuzzleMove.promotion?: PromotionPiece`.
 - Changes: `PuzzleState.board/selectedSquare/possibleMoves` become one `PuzzleState.gameState: GameState | null`.
+- Defines: `PuzzleData.initialBoard` is runtime API data and must be an 8×8 board with exactly one king per side; invalid data fails the puzzle closed instead of throwing through React.
 
 - [ ] **Step 1: Add failing pure and hook-level puzzle tests**
 
@@ -2272,6 +2485,19 @@ test('rejects a scripted promotion that omits the piece', () => {
     })?.board[0]?.[0]?.type
   ).toBe('bishop');
 });
+
+test('fails closed when API puzzle data omits a king', () => {
+  const puzzle = makePuzzle({
+    initialBoard: Array.from({ length: 8 }, () => Array<null>(8).fill(null)),
+  });
+  const { result } = renderHook(() => usePuzzle());
+
+  act(() => result.current.startPuzzle(puzzle));
+
+  expect(result.current.state.phase).toBe('failed');
+  expect(result.current.state.gameState).toBeNull();
+  expect(result.current.state.showSolution).toBe(true);
+});
 ```
 
 Import `PuzzleData` and `createGameStateFromFen` for those helpers, plus
@@ -2312,6 +2538,17 @@ export interface PuzzleState {
   showSolution: boolean;
 }
 ```
+
+Retain `PuzzleData.initialBoard`, but document its runtime boundary on the
+property itself:
+
+```ts
+/** API contract: 8×8 board with exactly one white king and one black king. */
+initialBoard: (ChessPiece | null)[][];
+```
+
+The TypeScript shape cannot enforce king counts, so `startPuzzle` still
+validates by constructing the authoritative state.
 
 - [ ] **Step 4: Replace board reconstruction with state-preserving puzzle moves**
 
@@ -2358,35 +2595,41 @@ function wrongMoveState(prev: PuzzleState): PuzzleState {
 Replace `startPuzzle` and `tryAgain` with:
 
 ```ts
-const createPuzzleState = (puzzle: PuzzleData): GameState =>
-  createGameStateFromBoard(puzzle.initialBoard, puzzle.playerColor);
+const tryCreatePuzzleState = (puzzle: PuzzleData): GameState | null => {
+  try {
+    return createGameStateFromBoard(puzzle.initialBoard, puzzle.playerColor);
+  } catch {
+    return null;
+  }
+};
 
 const startPuzzle = useCallback((puzzle: PuzzleData) => {
+  const gameState = tryCreatePuzzleState(puzzle);
   setState({
-    phase: 'playing',
+    phase: gameState ? 'playing' : 'failed',
     puzzle,
-    gameState: createPuzzleState(puzzle),
+    gameState,
     solutionStep: 0,
     failedAttempts: 0,
     showHint: false,
-    showSolution: false,
+    showSolution: !gameState,
   });
 }, []);
 
 const tryAgain = useCallback(() => {
-  setState(prev =>
-    prev.puzzle
-      ? {
-          ...prev,
-          phase: 'playing',
-          gameState: createPuzzleState(prev.puzzle),
-          solutionStep: 0,
-          failedAttempts: 0,
-          showHint: false,
-          showSolution: false,
-        }
-      : prev
-  );
+  setState(prev => {
+    if (!prev.puzzle) return prev;
+    const gameState = tryCreatePuzzleState(prev.puzzle);
+    return {
+      ...prev,
+      phase: gameState ? 'playing' : 'failed',
+      gameState,
+      solutionStep: 0,
+      failedAttempts: 0,
+      showHint: false,
+      showSolution: !gameState,
+    };
+  });
 }, []);
 ```
 
@@ -2576,7 +2819,7 @@ Delete exactly the four files listed above with `apply_patch`. Do not change `@p
 
 ```bash
 cd apps/web
-rtk bun test src/lib/chess/rules.test.ts src/lib/chess/game.test.ts src/lib/chess/tutorials.test.ts src/lib/ai/chess-adapter.test.ts src/lib/ai/chess-adapter.coverage.test.ts src/lib/ai/rule-guardian.test.ts src/lib/ai/rule-guardian.extended.test.ts src/lib/ai/service.test.ts src/components/ChessPromotionDialog.test.tsx src/components/ChessGame.test.tsx src/hooks/usePuzzle.test.ts
+rtk bun test src/lib/chess/rules.test.ts src/lib/chess/game.test.ts src/lib/chess/tutorials.test.ts src/lib/ai/base-adapter.coverage.test.ts src/lib/ai/base-rule-guardian.coverage.test.ts src/lib/ai/chess-adapter.test.ts src/lib/ai/chess-adapter.coverage.test.ts src/lib/ai/rule-guardian.test.ts src/lib/ai/rule-guardian.extended.test.ts src/lib/ai/service.test.ts src/lib/ai/service.extended.test.ts src/components/ChessPromotionDialog.test.tsx src/components/ChessGame.test.tsx src/components/game/GameDebugAndModeGuard.test.tsx src/hooks/usePuzzle.test.ts
 ```
 
 Expected: PASS.
@@ -2608,9 +2851,13 @@ Confirm from the diff and tests:
 - every displayed destination is legal;
 - checkmate, stalemate, threefold, fifty-move, and insufficient-material reasons are exact;
 - terminal states reject selection and moves;
-- tutorials contain both kings and puzzles retain one full state;
-- invalid authored FEN throws while runtime move rejection leaves state untouched;
+- the check tutorial derives `check`, the castling tutorial exposes both rights, and every tutorial contains both kings;
+- puzzles retain one full state, reject scripted promotion without a piece, and fail closed for invalid API boards;
+- every surviving chess `GameState` fixture uses a production factory, while obsolete game/move suites are explicitly consolidated or deleted;
+- invalid authored FEN throws while accepted FEN is not described as proof of legal reachability, and runtime move rejection leaves state untouched;
 - every chess entry point and board lock uses `isTerminalState`;
+- DEV forced outcomes never patch `GameState`, and both tutorial-switch paths replace the complete state;
+- the raw-board `isKingInCheck` export and all playable pseudo-legal consumers are gone;
 - no mutable chess.js object or chess.js type escapes `rules.ts`.
 
 - [ ] **Step 6: Commit cleanup and verification**
@@ -2635,5 +2882,9 @@ rtk git commit -m "test(chess): complete standard rules coverage"
 | Same legal pipeline for LM rival and future algebraic/UCI seam                 | Tasks 4-5      |
 | Valid tutorial FEN with minimal visible king additions                         | Task 6         |
 | Puzzle promotion field and continuous game state                               | Task 7         |
+| Puzzle API board shape and exact king-count validation                         | Tasks 1, 7     |
+| Required-state fixture migration without partial compatibility states          | Tasks 1, 4, 8  |
+| Full-history replay root and accepted O(n) per-action cost                     | Tasks 1-3      |
+| Tutorial state replacement and DEV outcomes outside authoritative state        | Task 6         |
 | One authoritative chess rules implementation                                   | Task 8         |
 | Focused plus whole-web automated verification                                  | Tasks 1-8      |
