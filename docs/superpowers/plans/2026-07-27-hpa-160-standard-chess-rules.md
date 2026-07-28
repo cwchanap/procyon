@@ -14,11 +14,15 @@
 - `chess.js` types and mutable `Chess` objects stay inside `apps/web/src/lib/chess/rules.ts`; expose only Procyon-local types.
 - `initialFen + moveHistory` is the replay record; `fen`, `board`, `currentPlayer`, `status`, and `terminationReason` are derived together.
 - Every public rules action reconstructs and replays at most one engine; a successful move derives all post-move state from that same engine.
+- Rival prompt generation calls one whole-side legal-move query and one batched attack query; it never reconstructs an engine once per piece or destination.
 - Never default a missing promotion to queen. Human moves enter pending promotion; rival and scripted moves reject missing promotion data.
+- LM valid-move listings use `a7-a8=Q`, `a7-a8=R`, `a7-a8=B`, or `a7-a8=N`; response JSON uses `promotion: 'queen'|'rook'|'bishop'|'knight'` only for promotion moves.
 - Legal destination indicators equal the deduplicated authoritative destination set.
 - Pinned pieces still count in attack and defender maps even though their pinned moves are not legal moves.
 - Automatically terminate threefold repetition and fifty-move-rule positions as required by HPA-160; insufficient material is an immediate standard dead-position result.
+- FIDE fivefold-repetition and seventy-five-move automatic draws, plus dead-position detection beyond chess.js 1.4.0's insufficient-material predicate, are explicitly out of scope.
 - Repetition identity includes placement, side, castling rights, and effective en-passant availability, but not halfmove/fullmove counters.
+- Authored invalid-FEN factories throw; runtime move failures return a rejected `MoveAttempt` and never mutate state.
 - Preserve current play-history result contracts and AI-turn invalidation behavior.
 - Do not add Stockfish, worker assets, export-format changes, or unrelated `@procyon/game-core` abstractions.
 
@@ -55,9 +59,9 @@
 
 **Interfaces:**
 
-- Produces: `PromotionPiece`, `ChessSquare`, `ChessTerminationReason`, `PendingPromotion`, `ChessMoveRequest`, `LegalChessMove`, `MoveAttempt`.
+- Produces: `PromotionPiece`, `ChessSquare`, `ChessTerminationReason`, `PendingPromotion`, `ChessMoveRequest`, `LegalChessMove`, `MoveRejectionReason`, `MoveAttempt`, `AttackQuery`, `AttackResult`.
 - Produces: `createInitialGameState(options?)`, `createGameStateFromFen(fen, options?)`, `createGameStateFromBoard(board, sideToMove, options?)`.
-- Produces: `getLegalMoves(state, from?)`, `getLegalDestinations(state, from)`, `isSquareAttackedBy(state, square, color)`, `getAttackers(state, square, color)`.
+- Produces: `getLegalMoves(state, from?)`, `getLegalDestinations(state, from)`, `queryAttacks(state, queries)`, `isSquareAttackedBy(state, square, color)`, `getAttackers(state, square, color)`, `isTerminalState(state)`.
 - Consumes: existing Procyon `Position`, `ChessPiece`, `GameMode`, and board notation helpers.
 
 - [ ] **Step 1: Add failing factory, legal-destination, and attack-map tests**
@@ -73,7 +77,9 @@ import {
   getAttackers,
   getLegalDestinations,
   getLegalMoves,
+  isTerminalState,
   isSquareAttackedBy,
+  queryAttacks,
 } from './rules';
 
 describe('chess rules state factories', () => {
@@ -88,7 +94,12 @@ describe('chess rules state factories', () => {
     expect(state.moveHistory).toEqual([]);
     expect(state.pendingPromotion).toBeNull();
     expect(state.terminationReason).toBeNull();
+    expect(isTerminalState(state)).toBe(false);
     expect(getLegalMoves(state)).toHaveLength(20);
+  });
+
+  test('throws for authored invalid FEN instead of normalizing it', () => {
+    expect(() => createGameStateFromFen('not-a-fen')).toThrow();
   });
 
   test('board conversion uses explicit safe defaults', () => {
@@ -125,6 +136,25 @@ describe('chess rules state factories', () => {
       row: 6,
       col: 4,
     });
+    expect(
+      queryAttacks(state, [
+        { square: { row: 6, col: 3 }, attacker: 'white' },
+        { square: { row: 6, col: 4 }, attacker: 'black' },
+      ])
+    ).toEqual([
+      {
+        square: { row: 6, col: 3 },
+        attacker: 'white',
+        attacked: true,
+        attackers: [{ row: 6, col: 4 }],
+      },
+      {
+        square: { row: 6, col: 4 },
+        attacker: 'black',
+        attacked: true,
+        attackers: [{ row: 0, col: 4 }],
+      },
+    ]);
     expect(getLegalDestinations(state, { row: 6, col: 4 })).not.toContainEqual({
       row: 6,
       col: 3,
@@ -222,6 +252,24 @@ export interface LegalChessMove {
   lan: string;
 }
 
+export type MoveRejectionReason =
+  | 'terminal'
+  | 'invalid-coordinate'
+  | 'wrong-side'
+  | 'illegal-move'
+  | 'invalid-promotion'
+  | 'state-inconsistent';
+
+export interface AttackQuery {
+  square: Position;
+  attacker: PieceColor;
+}
+
+export interface AttackResult extends AttackQuery {
+  attacked: boolean;
+  attackers: Position[];
+}
+
 export type MoveAttempt =
   | { kind: 'applied'; state: GameState; move: Move }
   | {
@@ -233,15 +281,13 @@ export type MoveAttempt =
     }
   | {
       kind: 'rejected';
-      reason:
-        | 'terminal'
-        | 'invalid-coordinate'
-        | 'wrong-side'
-        | 'illegal-move'
-        | 'invalid-promotion'
-        | 'state-inconsistent';
+      reason: MoveRejectionReason;
     };
 ```
+
+`PendingPromotion.choices` remains data-driven even though standard chess
+currently returns all four pieces: the domain result owns the legal completion
+options and the dialog renders exactly what that result supplies.
 
 - [ ] **Step 4: Implement FEN conversion, factory construction, legal moves, and attacks**
 
@@ -258,6 +304,8 @@ import {
 } from 'chess.js';
 import { positionToAlgebraic, tryAlgebraicToPosition } from './board';
 import type {
+  AttackQuery,
+  AttackResult,
   ChessPiece,
   ChessSquare,
   GameMode,
@@ -417,6 +465,15 @@ export function createGameStateFromBoard(
   ].join(' ');
   return createGameStateFromFen(fen, options);
 }
+
+export function isTerminalState(state: GameState): boolean {
+  return (
+    state.terminationReason !== null ||
+    state.status === 'checkmate' ||
+    state.status === 'stalemate' ||
+    state.status === 'draw'
+  );
+}
 ```
 
 Map verbose candidates and attacks without exposing engine types:
@@ -473,15 +530,28 @@ export function getLegalDestinations(
   return [...unique.values()];
 }
 
+export function queryAttacks(
+  state: GameState,
+  queries: readonly AttackQuery[]
+): AttackResult[] {
+  const engine = replayEngine(state);
+  return queries.map(query => {
+    const square = positionToSquare(query.square) as Square;
+    const attacker = TO_ENGINE_COLOR[query.attacker];
+    return {
+      ...query,
+      attacked: engine.isAttacked(square, attacker),
+      attackers: engine.attackers(square, attacker).map(squareToPosition),
+    };
+  });
+}
+
 export function isSquareAttackedBy(
   state: GameState,
   square: Position,
   attacker: PieceColor
 ): boolean {
-  return replayEngine(state).isAttacked(
-    positionToSquare(square) as Square,
-    TO_ENGINE_COLOR[attacker]
-  );
+  return queryAttacks(state, [{ square, attacker }])[0]?.attacked ?? false;
 }
 
 export function getAttackers(
@@ -489,13 +559,15 @@ export function getAttackers(
   square: Position,
   attacker: PieceColor
 ): Position[] {
-  return replayEngine(state)
-    .attackers(positionToSquare(square) as Square, TO_ENGINE_COLOR[attacker])
-    .map(squareToPosition);
+  return queryAttacks(state, [{ square, attacker }])[0]?.attackers ?? [];
 }
 ```
 
-`replayEngine` initially loads `initialFen`, replays any existing rich moves, and throws on a cached-FEN mismatch. Task 2 will add explicit rejection mapping around that failure.
+`queryAttacks` is the adapter-facing bulk path: one call may contain every
+attack and defence query needed for a prompt, while the two single-square
+helpers remain convenient UI/test wrappers. `replayEngine` initially loads
+`initialFen`, replays any existing rich moves, and throws on a cached-FEN
+mismatch. Task 2 will add explicit rejection mapping around that failure.
 
 - [ ] **Step 5: Update construction fixtures and the compatibility factory**
 
@@ -612,6 +684,10 @@ test('applies en passant and removes the captured pawn', () => {
   expect(result.kind).toBe('applied');
   if (result.kind !== 'applied') throw new Error('expected applied');
   expect(result.move.isEnPassant).toBe(true);
+  expect(result.move.capturedPiece).toEqual({
+    type: 'pawn',
+    color: 'black',
+  });
   expect(result.move.lan).toBe('e5d6');
   expect(result.state.board[3]?.[3]).toBeNull();
   expect(result.state.board[2]?.[3]?.type).toBe('pawn');
@@ -1031,6 +1107,7 @@ test('finishes a legal game and rejects all later moves', () => {
 
   expect(state.status).toBe('checkmate');
   expect(state.terminationReason).toBe('checkmate');
+  expect(isTerminalState(state)).toBe(true);
   expect(attemptMove(state, { from: 'e1', to: 'f2' })).toEqual({
     kind: 'rejected',
     reason: 'terminal',
@@ -1076,18 +1153,12 @@ function deriveStatus(engine: Chess): {
   }
   return { status: 'playing', terminationReason: null };
 }
-
-function isTerminalState(state: GameState): boolean {
-  return (
-    state.terminationReason !== null ||
-    state.status === 'checkmate' ||
-    state.status === 'stalemate' ||
-    state.status === 'draw'
-  );
-}
 ```
 
-Call `deriveStatus(engine)` inside `stateFromEngine` so factories and completed moves share the exact order.
+Call `deriveStatus(engine)` inside `stateFromEngine` so factories and completed
+moves share the exact order. Keep the exported `isTerminalState` from Task 1 as
+the only domain terminal predicate; its status/reason checks already cover the
+new draw reasons.
 
 - [ ] **Step 4: Run authoritative rules tests**
 
@@ -1117,7 +1188,7 @@ rtk git commit -m "feat(chess): adjudicate standard terminal results"
 
 **Interfaces:**
 
-- Consumes: `attemptMove`, `getLegalDestinations`, and factory functions.
+- Consumes: `attemptMove`, `getLegalDestinations`, `isTerminalState`, and factory functions.
 - Produces: compatible `createInitialGameState(mode, aiPlayer)`.
 - Produces: `makeMove(state, from, to, promotion?)`, `confirmPromotion(state, promotion)`, `cancelPromotion(state)`, `makeAIMove(state, from, to, promotion?)`.
 - Preserves: `selectSquare`, `setAIThinking`, `isAITurn`, and `getGameStatus`.
@@ -1129,16 +1200,38 @@ import { describe, expect, test } from 'bun:test';
 import {
   cancelPromotion,
   confirmPromotion,
+  createInitialGameState,
+  isAITurn,
   makeAIMove,
   makeMove,
   selectSquare,
 } from './game';
-import { createGameStateFromFen } from './rules';
+import { createGameStateFromFen, isTerminalState } from './rules';
 
 test('selection exposes only legal destinations for a pinned rook', () => {
   const state = createGameStateFromFen('4r2k/8/8/8/8/8/4R3/4K3 w - - 0 1');
   const selected = selectSquare(state, { row: 6, col: 4 });
   expect(selected.possibleMoves).not.toContainEqual({ row: 6, col: 3 });
+});
+
+test('selection switches to another own piece and clears on an empty square', () => {
+  const initial = createInitialGameState();
+  const selected = selectSquare(initial, { row: 6, col: 4 });
+  expect(selected.selectedSquare).toEqual({ row: 6, col: 4 });
+
+  const reselected = selectSquare(selected, { row: 6, col: 3 });
+  expect(reselected.selectedSquare).toEqual({ row: 6, col: 3 });
+  expect(reselected.possibleMoves).toHaveLength(2);
+  expect(reselected.possibleMoves).toEqual(
+    expect.arrayContaining([
+      { row: 5, col: 3 },
+      { row: 4, col: 3 },
+    ])
+  );
+
+  const cleared = selectSquare(reselected, { row: 3, col: 3 });
+  expect(cleared.selectedSquare).toBeNull();
+  expect(cleared.possibleMoves).toEqual([]);
 });
 
 test('human promotion waits without changing board or turn', () => {
@@ -1203,6 +1296,7 @@ test('wrong-side and terminal interactions are inert', () => {
   expect(selectSquare(terminal, { row: 0, col: 7 })).toEqual(terminal);
   expect(makeMove(terminal, { row: 0, col: 7 }, { row: 1, col: 7 })).toBeNull();
   expect(makeAIMove(terminal, 'h8', 'h7')).toBeNull();
+  expect(isTerminalState(terminal)).toBe(true);
   expect(isAITurn(terminal)).toBe(false);
 });
 ```
@@ -1219,8 +1313,10 @@ Expected: FAIL because the old orchestrator has no pending-promotion APIs.
 - [ ] **Step 3: Rewrite `game.ts` as a thin façade wrapper**
 
 ```ts
+import { attemptMove, getLegalDestinations, isTerminalState } from './rules';
+
 export function selectSquare(state: GameState, position: Position): GameState {
-  if (state.terminationReason || state.pendingPromotion) return state;
+  if (isTerminalState(state) || state.pendingPromotion) return state;
   const piece = getPieceAt(state.board, position);
   const isSelected =
     state.selectedSquare?.row === position.row &&
@@ -1313,10 +1409,9 @@ export function setAIThinking(state: GameState, thinking: boolean): GameState {
 
 export function isAITurn(state: GameState): boolean {
   return (
-    !state.terminationReason &&
+    !isTerminalState(state) &&
     state.mode === 'human-vs-ai' &&
-    state.currentPlayer === state.aiPlayer &&
-    (state.status === 'playing' || state.status === 'check')
+    state.currentPlayer === state.aiPlayer
   );
 }
 ```
@@ -1360,13 +1455,16 @@ rtk git commit -m "refactor(chess): route game flow through rules facade"
 
 **Interfaces:**
 
-- Consumes: `getLegalMoves`, `isSquareAttackedBy`, `attemptMove`, `PromotionPiece`.
+- Consumes: `getLegalMoves`, `queryAttacks`, `attemptMove`, `ChessMoveRequest`, `PromotionPiece`.
 - Produces: `AIMove.promotion?: PromotionPiece`.
 - Preserves: Shogi `promote?: boolean` and `pieceType?: string`.
 
 - [ ] **Step 1: Add failing adapter, parser, and guardian tests**
 
 ```ts
+import { createInitialGameState } from '../chess/game';
+import { createGameStateFromFen } from '../chess/rules';
+
 test('lists all legal promotion variants and explains the required field', () => {
   const state = createGameStateFromFen('7k/P7/8/8/8/8/8/7K w - - 0 1');
   const adapter = new ChessAdapter();
@@ -1381,6 +1479,10 @@ test('lists all legal promotion variants and explains the required field', () =>
     'promotion is required when the move ends on rank 8 or rank 1'
   );
   expect(prompt).toContain('omit promotion for every other move');
+  expect(prompt).toMatch(/"promotion": "(queen|rook|bishop|knight)"/);
+
+  const normalPrompt = adapter.generatePrompt(createInitialGameState());
+  expect(normalPrompt).not.toContain('"promotion":');
 });
 
 test('does not offer a pseudo-legal move by a pinned piece', () => {
@@ -1405,6 +1507,13 @@ test('guardian rejects missing promotion and accepts underpromotion', () => {
       confidence: 90,
     })
   ).toEqual({ isValid: true });
+
+  expect(
+    guardian.validateAIMove(createInitialGameState(), {
+      move: { from: 'e2', to: 'e4', promotion: 'queen' },
+      confidence: 90,
+    })
+  ).toMatchObject({ isValid: false });
 });
 ```
 
@@ -1468,6 +1577,22 @@ next to the existing `pieceType` and Shogi `promote` assignments.
 
 - [ ] **Step 4: Replace chess move enumeration and threat scans**
 
+Replace the chess adapter's legacy move imports with:
+
+```ts
+import { getLegalMoves, queryAttacks } from '../chess/rules';
+import { BOARD_SIZE } from '../chess/types';
+import type {
+  ChessMoveRequest,
+  ChessPiece,
+  ChessSquare,
+  GameState,
+  Move,
+  PieceColor,
+  Position,
+} from '../chess/types';
+```
+
 Override `ChessAdapter#getAllValidMoves` so promotion metadata is not lost through the base `(from, to)` callback:
 
 ```ts
@@ -1494,16 +1619,99 @@ protected override forEachOwnPieceMove(
 
 Remove chess overrides and imports for `getPossibleMoves`, `isMoveValid`, manual board simulation, and `isKingInCheck`; the public override bypasses the base pseudo-legal validation shell.
 
-Change `findHangingPieces` to accept `GameState`, and use:
+Replace the example parser and response-example construction so the canonical
+`=Q`, `=R`, `=B`, or `=N` suffix becomes the typed JSON property, while normal
+moves omit it:
 
 ```ts
-const attacked = isSquareAttackedBy(gameState, pos, opponent);
-const defended = isSquareAttackedBy(gameState, pos, color);
+private getExampleMoveFromValidMoves(
+  validMovesText: string
+): ChessMoveRequest {
+  const match = validMovesText.match(
+    /([a-h][1-8])-([a-h][1-8])(?:=([QRBN]))?/
+  );
+  if (!match) return { from: 'e2', to: 'e4' };
+
+  const [, from, to, suffix] = match;
+  if (!from || !to) return { from: 'e2', to: 'e4' };
+  const promotionBySuffix = {
+    Q: 'queen',
+    R: 'rook',
+    B: 'bishop',
+    N: 'knight',
+  } as const;
+  const promotion = suffix
+    ? promotionBySuffix[suffix as keyof typeof promotionBySuffix]
+    : undefined;
+  return {
+    from: from as ChessSquare,
+    to: to as ChessSquare,
+    ...(promotion ? { promotion } : {}),
+  };
+}
+
+const exampleMove = this.getExampleMoveFromValidMoves(validMoves);
+const responseExample = JSON.stringify(
+  {
+    move: exampleMove,
+    reasoning: 'Brief tactical/strategic reason',
+    confidence: 85,
+  },
+  null,
+  2
+);
 ```
 
-so pinned attackers/defenders retain standard attack semantics.
+Insert `${responseExample}` under `Respond in JSON:` instead of manually
+interpolating only `from` and `to`.
 
-Generate each promotion variant explicitly and produce JSON containing `promotion` only when the selected example is a promotion. Add the two exact prompt rules asserted above.
+Change `findHangingPieces` to accept `GameState` and resolve all attack and
+defence questions through one batched replay:
+
+```ts
+private findHangingPieces(
+  gameState: GameState
+): Array<{ piece: string; square: string }> {
+  const color = gameState.currentPlayer;
+  const opponent: PieceColor = color === 'white' ? 'black' : 'white';
+  const pieces: Array<{ piece: ChessPiece; position: Position }> = [];
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      const piece = gameState.board[row]?.[col];
+      if (piece?.color === color) {
+        pieces.push({ piece, position: { row, col } });
+      }
+    }
+  }
+
+  const results = queryAttacks(gameState, [
+    ...pieces.map(({ position }) => ({
+      square: position,
+      attacker: opponent,
+    })),
+    ...pieces.map(({ position }) => ({
+      square: position,
+      attacker: color,
+    })),
+  ]);
+  const count = pieces.length;
+
+  return pieces.flatMap(({ piece, position }, index) => {
+    const attacked = results[index]?.attacked ?? false;
+    const defended = results[index + count]?.attacked ?? false;
+    if (!attacked || defended) return [];
+    return [{
+      piece: piece.type,
+      square: this.positionToAlgebraic(position),
+    }];
+  });
+}
+```
+
+Call it as `this.findHangingPieces(gameState)`. This preserves pinned
+attacker/defender semantics while reducing prompt threat analysis from up to two
+replays per own piece to one replay total.
 
 - [ ] **Step 5: Implement chess-specific guardian validation**
 
@@ -1781,12 +1989,84 @@ export function createChessTutorialState(id: string): GameState {
 In `ChessGame.tsx`:
 
 - replace manual tutorial boards with `CHESS_TUTORIALS` and `createChessTutorialState`;
+- import and use `isTerminalState` from `../lib/chess/rules`;
+- import `positionToAlgebraic` from `../lib/chess/board`;
 - remove every post-move `{ ...newGameState, status: getGameStatus(newGameState) }`;
 - pass `aiResponse.move.promotion` into `makeAIMove`;
 - add `handlePromotionChoice` and `handlePromotionCancel`;
 - render `ChessPromotionDialog` from `gameState.pendingPromotion`;
-- disable `ChessBoard` while promotion is pending, AI is thinking/playing, or the game is terminal;
+- disable `ChessBoard` while promotion is pending, AI is thinking/playing, or `isTerminalState(gameState)` is true;
+- replace the component's repeated terminal status union with `isTerminalState(gameState)` in the game-ended latch, and use `isAITurn(gameState)` in the rival-trigger effect;
 - keep debug/export logging after a promotion is completed, not when it becomes pending.
+
+Use the applied rich move as the source for the existing human debug/export
+schema:
+
+```ts
+const recordCompletedHumanMove = useCallback(
+  (before: GameState, after: GameState) => {
+    const move = after.moveHistory.at(-1);
+    if (!move || after.moveHistory.length !== before.moveHistory.length + 1) {
+      return;
+    }
+    const from = positionToAlgebraic(move.from);
+    const to = positionToAlgebraic(move.to);
+
+    if (isDebugMode && gameMode === 'ai') {
+      setAiDebugMoves(prev => [
+        ...prev,
+        createAIMove(`${from} → ${to}`, false),
+      ]);
+    }
+    gameExporterRef.current?.addMove(
+      Math.floor(before.moveHistory.length / 2) + 1,
+      before.currentPlayer,
+      from,
+      to,
+      move.piece.type
+    );
+  },
+  [createAIMove, gameMode, isDebugMode]
+);
+```
+
+Preserve the current click semantics with this exact order in both tutorial and
+play modes:
+
+```ts
+const selected = gameState.selectedSquare;
+if (!selected) {
+  setGameState(selectSquare(gameState, position));
+  return;
+}
+
+const next = makeMove(gameState, selected, position);
+if (next) {
+  setGameState(next);
+  if (next.pendingPromotion) return;
+  recordCompletedHumanMove(gameState, next);
+  return;
+}
+
+// Own piece => switch selection. Illegal empty/opponent square => clear it.
+setGameState(selectSquare(gameState, position));
+```
+
+Delete the old coordinate reconstruction blocks. In
+`handlePromotionChoice`, call `recordCompletedHumanMove(gameState, next)` after
+`confirmPromotion` returns an applied state and before returning.
+`handlePromotionCancel` calls only `cancelPromotion`.
+
+Use this board lock expression:
+
+```tsx
+disabled={
+  Boolean(gameState.pendingPromotion) ||
+  Boolean(gameState.isAiThinking) ||
+  (gameMode === 'ai' && gameState.currentPlayer === aiPlayer) ||
+  isTerminalState(gameState)
+}
+```
 
 Use exact result copy:
 
@@ -1863,6 +2143,29 @@ test('cancels promotion without moving the pawn or retaining selection', () => {
   expect(
     view.getByRole('button', { name: 'Square 0-3' }).hasAttribute('disabled')
   ).toBe(false);
+});
+```
+
+Add the component-level selection contract:
+
+```tsx
+test('switches own-piece selection and clears it after an illegal empty click', () => {
+  const view = render(<ChessGame />);
+  fireEvent.click(view.getByRole('button', { name: 'Tutorial' }));
+
+  const e2 = view.getByRole('button', { name: 'Square 6-4' });
+  const d2 = view.getByRole('button', { name: 'Square 6-3' });
+  const d5 = view.getByRole('button', { name: 'Square 3-3' });
+
+  fireEvent.click(e2);
+  expect(e2.className).toContain('ring-brass');
+
+  fireEvent.click(d2);
+  expect(e2.className).not.toContain('ring-brass');
+  expect(d2.className).toContain('ring-brass');
+
+  fireEvent.click(d5);
+  expect(d2.className).not.toContain('ring-brass');
 });
 ```
 
@@ -2300,10 +2603,14 @@ Confirm from the diff and tests:
 - en passant applies, expires, and respects king safety;
 - human promotion blocks until Q/R/B/N choice and cancellation changes no position;
 - LM rival castling, en passant, queen promotion, and underpromotion use the same move attempt;
+- one rival prompt performs one whole-side legal replay and one batched attack replay, never one replay per piece;
+- promotion-only prompts include a typed `promotion` example and normal prompts omit that JSON field;
 - every displayed destination is legal;
 - checkmate, stalemate, threefold, fifty-move, and insufficient-material reasons are exact;
 - terminal states reject selection and moves;
 - tutorials contain both kings and puzzles retain one full state;
+- invalid authored FEN throws while runtime move rejection leaves state untouched;
+- every chess entry point and board lock uses `isTerminalState`;
 - no mutable chess.js object or chess.js type escapes `rules.ts`.
 
 - [ ] **Step 6: Commit cleanup and verification**
@@ -2317,16 +2624,16 @@ rtk git commit -m "test(chess): complete standard rules coverage"
 
 ## Spec Coverage Check
 
-| Approved design requirement                                                | Implemented by |
-| -------------------------------------------------------------------------- | -------------- |
-| Exact chess.js 1.4.0 façade and serializable FEN/history state             | Tasks 1-2      |
-| Legal-only destinations and pinned attack semantics                        | Tasks 1, 5     |
-| Castling, en passant, Q/R/B/N promotion, and king safety                   | Tasks 2, 4, 6  |
-| Check, checkmate, stalemate, repetition, fifty-move, insufficient material | Task 3         |
-| Automatic supported draws and terminal move guard                          | Tasks 3-4      |
-| Human promotion dialog and clear cancellation                              | Tasks 4, 6     |
-| Same legal pipeline for LM rival and future algebraic/UCI seam             | Tasks 4-5      |
-| Valid tutorial FEN with minimal visible king additions                     | Task 6         |
-| Puzzle promotion field and continuous game state                           | Task 7         |
-| One authoritative chess rules implementation                               | Task 8         |
-| Focused plus whole-web automated verification                              | Tasks 1-8      |
+| Approved design requirement                                                    | Implemented by |
+| ------------------------------------------------------------------------------ | -------------- |
+| Exact chess.js 1.4.0 façade and serializable FEN/history state                 | Tasks 1-2      |
+| Bulk legal moves, batched pinned attack semantics, and no prompt replay thrash | Tasks 1, 5     |
+| Castling, en passant, Q/R/B/N promotion, and king safety                       | Tasks 2, 4, 6  |
+| Check, checkmate, stalemate, repetition, fifty-move, insufficient material     | Task 3         |
+| Automatic supported draws and terminal move guard                              | Tasks 3-4      |
+| Human promotion dialog and clear cancellation                                  | Tasks 4, 6     |
+| Same legal pipeline for LM rival and future algebraic/UCI seam                 | Tasks 4-5      |
+| Valid tutorial FEN with minimal visible king additions                         | Task 6         |
+| Puzzle promotion field and continuous game state                               | Task 7         |
+| One authoritative chess rules implementation                                   | Task 8         |
+| Focused plus whole-web automated verification                                  | Tasks 1-8      |
