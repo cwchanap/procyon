@@ -292,6 +292,8 @@ This permits an immediately usable engine path while still converging to the con
 | Remembered LLM | unavailable | confirmed unusable | Engine unavailable state |
 | Explicit user selection | any | any | Keep explicit selection; gate Start and show its state |
 
+A matrix result of **Engine** while the engine state is `checking` is provisional. Keep the engine selected and display its checking state, but keep Start disabled and create no active session until the probe reaches `available`. If the probe resolves to `unavailable`, rerun the remembered/default fallback rule for the current untouched setup; never override an explicit selection or any setup the player has already interacted with.
+
 ## Opponent usability state
 
 Track selection separately from usability.
@@ -509,15 +511,17 @@ Minimum behavior:
 1. Construct the Worker from a same-origin prepared asset URL.
 2. Send `uci`; require `uciok`.
 3. Send `isready`; require `readyok`.
-4. Send `ucinewgame` for a newly started session.
+4. When Start adopts the provider into a newly committed active session, send `ucinewgame` exactly once for that session. Capability probing and `initialize()` send only `uci` and `isready`; a successfully probed provider retained for Start must not receive `ucinewgame` during the probe.
 5. For a move, send `position fen ${state.fen}`.
 6. Send `go movetime 250` as the fixed bootstrap search policy.
 7. Parse exactly one `bestmove` result.
-8. Convert UCI coordinates and `q/r/b/n` promotion suffixes to `ChessMoveRequest`.
+8. Convert UCI coordinates and map promotion suffixes explicitly: `q → queen`, `r → rook`, `b → bishop`, and `n → knight`. Return the long-form value required by `ChessMoveRequest.promotion`; never pass a raw UCI suffix into chess state.
 9. Reject `(none)`, missing, malformed, duplicate, or out-of-order results.
 10. Terminate the Worker on `dispose()`.
 
 The fixed `250 ms` search is an internal bootstrap value, not a difficulty label or rating claim. HPA-162 replaces it with calibrated preset policy.
+
+`movetime` begins only after the engine is initialized and the `go` command is accepted. Worker startup plus WASM fetch/compile are outside the 250 ms search budget and may dominate first-use latency on slower devices. Retaining a successfully probed provider avoids recompiling at Start; HPA-166 measures and validates the remaining first-use experience.
 
 Use `GameState.fen` directly. Do not add a second board-to-FEN implementation.
 
@@ -536,6 +540,15 @@ stockfish-18-lite-single.js
 stockfish-18-lite-single.wasm
 ```
 
+Published-package verification performed on 2026-07-30 confirmed that `stockfish@18.0.8` contains both artifacts at:
+
+```text
+node_modules/stockfish/bin/stockfish-18-lite-single.js
+node_modules/stockfish/bin/stockfish-18-lite-single.wasm
+```
+
+The preparation script must still verify these exact paths and fail closed, because a later dependency change, corrupted install, or changed package layout must not silently produce an incomplete deployment.
+
 Rationale:
 
 - the upstream package recommends the lite single-threaded build for normal browser use;
@@ -548,7 +561,7 @@ Rationale:
 Add a repository-owned preparation script that:
 
 1. resolves the exact pinned package installation;
-2. verifies both expected artifact names exist;
+2. verifies both expected source paths exist under `node_modules/stockfish/bin/`;
 3. copies them to a stable generated directory such as:
 
 ```text
@@ -596,6 +609,8 @@ The real handshake is authoritative. Preliminary checks provide faster messages 
 4. wait for `uciok` and `readyok`;
 5. mark available only after both acknowledgements.
 
+The probe does not send `ucinewgame`. That command belongs to the Start transaction after the prepared provider has been adopted into a specific active session.
+
 Any script fetch, WASM fetch/compile, Worker startup, protocol, or readiness failure maps to the plain unavailable state. Development logging may retain the underlying technical error.
 
 ### Atomic Start transaction
@@ -610,7 +625,8 @@ Start is an atomic attempt, not an early `gameStarted = true` toggle.
 6. Re-check that the Start attempt is current.
 7. Create a fresh `createInitialGameState('human-vs-ai', rivalSide)`.
 8. Commit the provider, `ActiveRivalSession`, clean game state, and `gameStarted` together.
-9. If the rival is White, allow the normal rival-turn effect to request the first move only after the commit.
+9. For an engine session, send `ucinewgame` exactly once after the provider/session commit and before the first move request.
+10. If the rival is White, allow the normal rival-turn effect to request the first move only after that session initialization is complete.
 
 If initialization fails or the attempt becomes stale:
 
@@ -820,6 +836,8 @@ Cover:
 - signed out + no preference → engine;
 - configured signed in + no preference + untouched resolution → LLM;
 - provisional engine remains when the user interacts before config resolves;
+- provisional engine keeps Start disabled while its probe is checking;
+- a provisional remembered/default engine selection reruns fallback resolution if the probe becomes unavailable;
 - remembered engine + available → engine;
 - remembered engine + unavailable + usable LLM → LLM with notice;
 - remembered engine + unavailable + unusable LLM → engine unavailable;
@@ -847,10 +865,12 @@ Verify:
 Verify:
 
 - `uci` / `uciok` and `isready` / `readyok` sequencing;
+- the capability probe never emits `ucinewgame`;
+- Start emits `ucinewgame` exactly once before the first position/search command, including when adopting a retained prepared provider;
 - FEN command formatting;
 - `go movetime 250` command;
 - normal best move parsing;
-- promotion parsing such as `e7e8q`;
+- promotion parsing maps `q/r/b/n` to `queen/rook/bishop/knight`, including `e7e8q`;
 - optional `ponder` text is ignored;
 - `(none)`, malformed squares, invalid promotion suffixes, and duplicate responses are rejected.
 
@@ -923,6 +943,7 @@ The real Stockfish/WASM browser smoke and supported-browser matrix remain HPA-18
 
 Verify:
 
+- the installed `stockfish@18.0.8` package exposes both exact source paths under `node_modules/stockfish/bin/`;
 - engine preparation finds the exact pinned artifact names;
 - missing or changed package layout fails clearly;
 - web build contains both generated Stockfish assets;
