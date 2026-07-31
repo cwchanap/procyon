@@ -34,8 +34,8 @@ async function assertDownloadableArchive(
 	expectedSha256: string
 ) {
 	// Use Playwright's APIRequestContext (same decompression behavior as
-	// browser/fetch). Preview must omit Content-Encoding for .tar.gz so the
-	// body bytes stay the archive, not a gunzipped payload.
+	// browser/fetch). The stockfish preview server must omit Content-Encoding
+	// for .tar.gz so the body bytes stay the archive, not a gunzipped payload.
 	const response = await page.request.get(archivePath, { maxRedirects: 0 });
 	const body = Buffer.from(await response.body());
 	const headers = response.headers();
