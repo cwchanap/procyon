@@ -22,7 +22,7 @@ import { prepareStockfishAssets } from './prepare-stockfish';
 async function createSyntheticPackageRoot(): Promise<{
 	packageRoot: string;
 	jsContent: string;
-	wasmContent: Buffer;
+	wasmContent: Buffer<ArrayBuffer>;
 	jsPath: string;
 	wasmPath: string;
 }> {
