@@ -53,29 +53,32 @@ describe('stockfish tar.gz preview headers', () => {
 		fs.writeFileSync(filePath, payload);
 
 		const headers = new Map<string, string>();
-		let statusCode = 0;
-		let ended: Buffer | null = null;
+		const capture = { statusCode: 0, body: null as Buffer | null };
 		const res = {
-			statusCode: 0,
+			get statusCode() {
+				return capture.statusCode;
+			},
+			set statusCode(value: number) {
+				capture.statusCode = value;
+			},
 			setHeader(name: string, value: string) {
 				headers.set(name.toLowerCase(), value);
 			},
 			end(body: Buffer) {
-				ended = body;
+				capture.body = body;
 			},
 		};
-		Object.defineProperty(res, 'statusCode', {
-			get: () => statusCode,
-			set: (value: number) => {
-				statusCode = value;
-			},
-		});
 
-		expect(serveTarGzArchive(filePath, res as never)).toBe(true);
-		expect(statusCode).toBe(200);
+		expect(
+			serveTarGzArchive(
+				filePath,
+				res as Parameters<typeof serveTarGzArchive>[1]
+			)
+		).toBe(true);
+		expect(capture.statusCode).toBe(200);
 		expect(headers.get('content-type')).toBe('application/gzip');
 		expect(headers.get('content-length')).toBe(String(payload.byteLength));
 		expect(headers.has('content-encoding')).toBe(false);
-		expect(ended?.equals(payload)).toBe(true);
+		expect(capture.body).toEqual(payload);
 	});
 });

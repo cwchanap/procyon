@@ -171,3 +171,9 @@ jobs:
           CI: "true"
           PLAYWRIGHT_SKIP_WEB_SERVER: "1"
         run: bun run test:e2e
+
+      - name: Run Stockfish asset delivery e2e
+        working-directory: apps/web
+        env:
+          CI: "true"
+        run: bun run test:e2e:stockfish-assets
