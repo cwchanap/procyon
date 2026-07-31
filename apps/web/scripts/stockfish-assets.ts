@@ -18,6 +18,13 @@ export const STOCKFISH_ENGINE_SOURCE_ARCHIVE =
 export const STOCKFISH_ENGINE_UPSTREAM_TAG = 'sf_18' as const;
 export const STOCKFISH_ENGINE_UPSTREAM_COMMIT =
 	'cb3d4ee9b47d0c5aae855b12379378ea1439675c' as const;
+/** Repository-integrity digests for the committed corresponding-source archives. */
+export const STOCKFISH_JS_SOURCE_ARCHIVE_SHA256 =
+	'ef9b6e9bd66de9869dc4715979ada23c6ab4fa96648025823a0a865f300667b2' as const;
+export const STOCKFISH_ENGINE_SOURCE_ARCHIVE_SHA256 =
+	'22a195567e3493e7c9ca8bf8fa2339f4ffc876384849ac8a417ff4b919607e7b' as const;
+export const STOCKFISH_JS_SOURCE_ARCHIVE_BYTES = 591_162 as const;
+export const STOCKFISH_ENGINE_SOURCE_ARCHIVE_BYTES = 251_738 as const;
 
 export function validateStockfishAssetPair(
 	jsPath: string,

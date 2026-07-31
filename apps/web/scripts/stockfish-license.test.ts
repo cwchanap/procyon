@@ -1,14 +1,17 @@
 import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
 	STOCKFISH_CORRESPONDING_SOURCE_FILENAME,
 	STOCKFISH_ENGINE_SOURCE_ARCHIVE,
+	STOCKFISH_ENGINE_SOURCE_ARCHIVE_SHA256,
 	STOCKFISH_ENGINE_UPSTREAM_COMMIT,
 	STOCKFISH_ENGINE_UPSTREAM_TAG,
 	STOCKFISH_JS_FILENAME,
 	STOCKFISH_JS_PACKAGE_COMMIT,
 	STOCKFISH_JS_SOURCE_ARCHIVE,
+	STOCKFISH_JS_SOURCE_ARCHIVE_SHA256,
 	STOCKFISH_LICENSE_FILENAME,
 	STOCKFISH_WASM_FILENAME,
 } from './stockfish-assets';
@@ -37,6 +40,37 @@ const STOCKFISH_ENGINE_UPSTREAM_REPO =
 	'https://github.com/official-stockfish/Stockfish';
 const STOCKFISH_DISTRIBUTION_PATH = 'apps/web/public/vendor/stockfish/';
 
+const STOCKFISH_JS_ARCHIVE_ROOT = `stockfish.js-${STOCKFISH_JS_PACKAGE_COMMIT}`;
+const STOCKFISH_ENGINE_ARCHIVE_ROOT = 'Stockfish-sf_18';
+
+function sha256File(filePath: string): string {
+	return createHash('sha256')
+		.update(Buffer.from(readFileSync(filePath)))
+		.digest('hex');
+}
+
+async function listTarMembers(archivePath: string): Promise<string[]> {
+	const proc = Bun.spawn({
+		cmd: ['tar', '-tzf', archivePath],
+		stdout: 'pipe',
+		stderr: 'pipe',
+	});
+	const [exitCode, stdout, stderr] = await Promise.all([
+		proc.exited,
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+	]);
+	if (exitCode !== 0) {
+		throw new Error(
+			`tar -tzf failed for ${archivePath}: ${stderr || `exit ${exitCode}`}`
+		);
+	}
+	return stdout
+		.split('\n')
+		.map(line => line.trim())
+		.filter(Boolean);
+}
+
 describe('Stockfish license traceability', () => {
 	test('keeps the copied GPL-3.0 license text', () => {
 		expect(existsSync(COPYING_PATH)).toBe(true);
@@ -46,10 +80,37 @@ describe('Stockfish license traceability', () => {
 		expect(copyingText).toContain('Version 3');
 	});
 
-	test('vendors exact corresponding-source archives beside the license', () => {
+	test('vendors exact corresponding-source archives beside the license', async () => {
 		expect(existsSync(CORRESPONDING_SOURCE_PATH)).toBe(true);
 		expect(existsSync(JS_ARCHIVE_PATH)).toBe(true);
 		expect(existsSync(ENGINE_ARCHIVE_PATH)).toBe(true);
+
+		expect(sha256File(JS_ARCHIVE_PATH)).toBe(
+			STOCKFISH_JS_SOURCE_ARCHIVE_SHA256
+		);
+		expect(sha256File(ENGINE_ARCHIVE_PATH)).toBe(
+			STOCKFISH_ENGINE_SOURCE_ARCHIVE_SHA256
+		);
+
+		const jsMembers = await listTarMembers(JS_ARCHIVE_PATH);
+		expect(jsMembers).toContain(`${STOCKFISH_JS_ARCHIVE_ROOT}/build.js`);
+		expect(jsMembers).toContain(`${STOCKFISH_JS_ARCHIVE_ROOT}/package.json`);
+		expect(jsMembers).toContain(`${STOCKFISH_JS_ARCHIVE_ROOT}/src/Makefile`);
+		expect(
+			jsMembers.some(member =>
+				member.startsWith(`${STOCKFISH_JS_ARCHIVE_ROOT}/src/`)
+			)
+		).toBe(true);
+
+		const engineMembers = await listTarMembers(ENGINE_ARCHIVE_PATH);
+		expect(engineMembers).toContain(
+			`${STOCKFISH_ENGINE_ARCHIVE_ROOT}/src/Makefile`
+		);
+		expect(
+			engineMembers.some(member =>
+				member.startsWith(`${STOCKFISH_ENGINE_ARCHIVE_ROOT}/src/`)
+			)
+		).toBe(true);
 
 		const correspondingSourceText = readFileSync(
 			CORRESPONDING_SOURCE_PATH,
@@ -59,6 +120,12 @@ describe('Stockfish license traceability', () => {
 		expect(correspondingSourceText).toContain(STOCKFISH_ENGINE_UPSTREAM_TAG);
 		expect(correspondingSourceText).toContain(STOCKFISH_JS_SOURCE_ARCHIVE);
 		expect(correspondingSourceText).toContain(STOCKFISH_ENGINE_SOURCE_ARCHIVE);
+		expect(correspondingSourceText).toContain(
+			STOCKFISH_JS_SOURCE_ARCHIVE_SHA256
+		);
+		expect(correspondingSourceText).toContain(
+			STOCKFISH_ENGINE_SOURCE_ARCHIVE_SHA256
+		);
 		expect(correspondingSourceText).toContain(STOCKFISH_JS_FILENAME);
 		expect(correspondingSourceText).toContain(STOCKFISH_WASM_FILENAME);
 	});

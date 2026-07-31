@@ -968,6 +968,45 @@ The real Stockfish/WASM cross-browser smoke remains HPA-187/HPA-166.
 - HPA-166 validates browser/performance/accessibility targets, including first-load budget.
 - HPA-187 completes real deployment verification and GPL compliance.
 
+## Implementation deviations (2026-07-31)
+
+Packaging PR A recorded two deliberate deviations from earlier wording in this
+design. Later HPA-161 runtime work and HPA-187 inherit this addendum.
+
+### Turborepo lockfile hashing
+
+The original Turborepo guidance above said not to add `bun.lock` to
+`globalDependencies` because Turborepo was expected to hash the root lockfile
+by default. Packaging verification disproved that for this Bun workspace: a
+`bun.lock` newline mutation did not change the `web#build` task hash until
+`bun.lock` was listed under `globalDependencies` in root `turbo.json`.
+
+**Current contract:** keep the explicit `bun.lock` global dependency. Do not
+remove it without re-running the packaging dry-run probe and proving default
+hashing again.
+
+### Corresponding-source publication
+
+The original licensing section said release remained blocked on HPA-187
+confirming corresponding-source obligations, and that a notice alone was not
+sufficient. Packaging PR A closed that gap for network distribution by
+publishing, beside the object code:
+
+- `Copying.txt`
+- `CorrespondingSource.txt`
+- exact Stockfish.js and Stockfish source archives under
+  `/vendor/stockfish/source/` (SHA-256 pinned in repository tests)
+
+**Current contract:**
+
+- HPA-161 packaging owns vendoring and same-origin publication of the license
+  and corresponding-source archives for the distributed Stockfish browser
+  assets, plus deterministic preview checks that those archives are reachable.
+- HPA-187 still owns release-checklist / deployed-environment verification that
+  production continues to serve those materials across the supported browser
+  matrix. It does not re-open whether corresponding source must be published;
+  packaging already does.
+
 ## Completion checklist
 
 HPA-161 is complete when:
