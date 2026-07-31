@@ -8,52 +8,57 @@
 
 ## Summary
 
-Add an explicit opponent choice to standard chess so a player can choose either:
+Add a first-class opponent choice to standard chess:
 
 - **On-device computer** — Stockfish running in the browser, with no account or API key required; or
 - **Language model** — the existing configured provider/model experience.
 
-HPA-161 is the first playable local-rival vertical slice. It owns opponent and side selection, opponent-specific startup gating, a minimal Stockfish browser runtime, board orientation, clean session initialization, and basic safe failure handling. It does not absorb the calibrated difficulty work from HPA-162 or the production-grade lifecycle, cancellation, turn timeout, and retry work from HPA-163.
+HPA-161 is the first playable local-rival vertical slice. It owns opponent and side selection, opponent-specific Start gating, a minimal Stockfish browser runtime, board orientation, immutable active-session identity, safe Start/reset behavior, and basic failure handling.
 
-The central architecture decision is to keep an editable pre-game setup separate from an immutable active-session snapshot. Gameplay, history, turn ownership, and status render from the active snapshot, so authentication updates, preference hydration, or selector state cannot silently change the opponent or side during a game.
+The core architecture separates an editable pre-game `GameSetup` from an immutable `ActiveRivalSession`. Gameplay, history, turn ownership, status, debug/export visibility, and provider identity read from the frozen active session so live preferences, authentication, or AI configuration cannot silently change an in-progress or completed game.
+
+The local engine is **not downloaded merely because it is the selected/default opponent**. Selection performs only cheap synchronous capability checks. The approximately 7 MB lite-single WASM artifact is fetched and compiled on the player's first Start attempt. This avoids charging every signed-out visitor the engine download before they choose to play.
 
 ## Current state
 
-The standard chess screen currently has two top-level modes: `tutorial` and `ai`. The user-facing label is hard-coded as **Play vs AI** in `BoardSidePanel`, and `ChessGame` treats every `ai` game as an LLM game.
+Standard chess currently has two top-level modes: `tutorial` and `ai`. `BoardSidePanel` hard-codes **Play vs AI**, and `ChessGame` treats every `ai` game as a language-model game.
 
 Relevant current behavior:
 
-- `ChessGame` stores a single `aiPlayer` side and creates one `createChessAI(defaultAIConfig)` service.
-- `useAIConfigHydration` and the Start button assume AI play requires authenticated provider configuration.
+- `ChessGame` stores one `aiPlayer` side and eagerly creates one `createChessAI(defaultAIConfig)` service;
+- authenticated AI-config hydration can disable Start while configuration is loading or failed;
+- signed-out visitors are not blocked by that hydration gate, but can start and then fail on the first LLM turn because no provider key exists;
 - the move effect always calls the LLM-backed service;
-- `AIStatusPanel` and `AIGameInstructions` contain provider/API-key-specific copy;
+- `AIStatusPanel`, `AIGameInstructions`, debug state, and `GameExporter` assume an LLM opponent;
+- some mode/setup branches create `human-vs-human` state when no LLM key exists;
 - `ChessBoard` always renders White's orientation;
-- opponent history already supports `{ kind: 'engine', id: 'stockfish' }` through the HPA-165 contract;
-- the chess rules state already exposes authoritative `fen`, legal move application, promotions, and terminal-state handling from HPA-160.
+- `GameState.fen`, `ChessMoveRequest`, legal move application, promotion handling, and terminal rules already exist;
+- play history already accepts `{ kind: 'engine', id: 'stockfish' }` through HPA-165;
+- the monotonic AI move-generation token already prevents many stale LLM callbacks.
 
-This issue should replace the LLM-only orchestration assumptions without redesigning shared game rules or the existing rated LLM path.
+HPA-161 replaces the LLM-only orchestration assumptions without redesigning chess rules or the rated LLM path.
 
 ## Goals
 
-1. A signed-out visitor can start and complete a standard chess game against an on-device computer without sign-in or API-key prompts.
+1. A signed-out visitor can start and complete a standard chess game against an on-device computer without account or API-key prompts.
 2. A player can clearly choose **On-device computer** or **Language model** before starting.
 3. The language-model option remains visible and preserves its existing sign-in/provider requirements.
 4. The selected human side is respected from the first move, including when the rival plays White.
 5. Opponent and side cannot drift during an active or completed session.
-6. Switching opponent or side before Start always produces a clean preview position.
-7. Starting always creates a clean game from a frozen setup snapshot.
-8. A local-engine result cannot apply after reset, opponent change, navigation, or session replacement.
-9. Unsupported browsers/devices receive an understandable and actionable unavailable state.
-10. Existing language-model play, ratings, debug tooling, and prompt export continue to behave as before.
+6. Switching opponent or side before Start produces a clean preview position.
+7. Starting creates a clean game from a frozen setup snapshot only after the selected provider is ready.
+8. A rival result cannot apply after reset, opponent change, navigation, position replacement, or session replacement.
+9. Unsupported environments and engine load failures produce accurate, actionable states.
+10. Existing language-model ratings, debug tooling, prompt export, and retry behavior remain available.
+11. Opening `/chess` does not fetch or compile Stockfish until the player presses Start for an engine game.
 
 ## Non-goals
 
-- Difficulty selection, labels, calibration, or benchmark evidence — HPA-162.
+- Four difficulty presets, labels, calibration, or benchmark evidence — HPA-162.
 - Full loading/ready/thinking/recovering state-machine design — HPA-163.
-- Per-move timeout policy, in-position retry, robust cancellation, or recovery from a crashed Worker — HPA-163. The bounded preparation/initialization deadline required to prevent an unbounded **Checking** or Start state is explicitly in HPA-161.
-- Engine version and difficulty presentation in history/export — HPA-164.
+- Per-move timeout policy, same-position retry, robust search cancellation, or recovery from a crashed Worker — HPA-163.
+- Engine version/difficulty presentation and downloadable engine-game export — HPA-164.
 - Full browser matrix, performance budgets, and accessibility release verification — HPA-166/HPA-187.
-- A real-engine cross-browser release smoke matrix — HPA-187.
 - Local rivals for Xiangqi, Shogi, or Jungle.
 - Multiple local engines.
 - Multithreaded Stockfish, `SharedArrayBuffer`, or cross-origin isolation.
@@ -66,112 +71,89 @@ This issue should replace the LLM-only orchestration assumptions without redesig
 
 ### Delivery boundary
 
-HPA-161 ships a **playable vertical slice**, not selection-only scaffolding. It includes the minimum Stockfish loading and move-generation path required to play a legal game. HPA-163 hardens that path afterward.
+HPA-161 ships a playable standard-chess vertical slice, not selection-only scaffolding. It includes enough Stockfish integration to initialize and complete legal games. HPA-163 hardens the active-turn lifecycle afterward.
 
-### Availability check
+### Engine loading boundary
 
-Use a lightweight real capability probe:
+Selecting or defaulting to **On-device computer** performs only cheap synchronous checks:
 
-- check for browser Worker and WebAssembly primitives;
-- initialize the selected Stockfish artifact;
-- complete a UCI `uci` / `isready` handshake;
-- enforce a 15-second wall-clock deadline for each probe or initialization attempt;
-- show a plain-language unavailable state if the probe fails or times out;
-- provide **Try checking again**, which invalidates and disposes the prior attempt before starting a fresh probe.
+- `Worker` exists;
+- `WebAssembly` exists;
+- a minimal WASM module validates successfully.
 
-The 15-second deadline applies to preparation and to Start only when Start must initialize a new provider. It is not a chess-move timeout and does not absorb HPA-163.
+These checks may mark the engine as **ready to load**, not **loaded** or fully verified. They do not fetch the Worker script or WASM binary.
 
-HPA-166 remains responsible for the documented support matrix and performance validation.
+The first engine Start attempt performs the real Worker creation, WASM fetch/compile, UCI initialization, option configuration, and new-game readiness handshake. A successful engine instance is then owned by that active session.
 
 ### Language-model option when unusable
 
-Keep **Language model** visible and selectable. When it is not usable:
+Keep **Language model** visible and selectable. When unusable:
 
 - signed-out players see sign-in guidance;
-- signed-in players without a usable provider see provider/API-key configuration guidance;
-- Start is disabled only for the language-model selection.
+- signed-in players without a usable provider see configuration guidance;
+- Start is disabled only for the LLM selection.
 
-Do not hide the option and do not apply LLM requirements to the on-device selection.
+Do not hide the option or apply LLM configuration requirements to the engine path.
 
-### Initial default
+### Initial default and memory
 
-Remember the last deliberately selected opponent on the current device.
+Remember the last deliberately selected opponent on the device.
 
 When no remembered choice exists:
 
-- a signed-in player with a usable LLM configuration defaults to **Language model**;
+- a signed-in player with a confirmed usable LLM configuration defaults to **Language model**;
 - everyone else defaults to **On-device computer**.
 
-### Side memory
+Remember the human side separately for each opponent kind.
 
-Remember the human side separately for each opponent kind. A player can therefore prefer White against Stockfish and Black against the language model.
+### Automatic fallback
 
-### Setup changes
+Automatic fallback applies only during untouched remembered/default resolution and never overwrites the stored preference.
+
+- remembered engine + failed cheap capability check + usable LLM → select LLM and announce the fallback;
+- remembered LLM + confirmed unusable LLM + engine passes cheap capability checks → select engine and announce the fallback;
+- remembered LLM while auth/config is still loading → keep LLM selected provisionally and disable Start;
+- explicit user selections are never silently overridden.
+
+A failed **engine load at Start** does not silently switch opponents. Preserve the engine selection, show the load failure, and offer **Try again** or a manual switch to Language model.
+
+### Setup changes and locking
 
 Changing opponent or side before Start:
 
-- immediately creates a clean preview position;
-- updates board orientation to the human side;
-- clears stale error/debug/export/terminal state;
-- does not trigger the rival's first move before Start.
+- immediately creates a clean Play preview;
+- updates orientation to the human side;
+- clears stale errors, debug moves, exporter state, and terminal state;
+- does not load the engine or generate a rival move.
 
-### Active-game locking
-
-Keep opponent and side controls visible but disabled while an active-session snapshot exists, including the terminal result state. Show:
+Once Start begins, setup mutation is disabled. Opponent and side controls remain visible but disabled through the terminal result state, with:
 
 > Start a new game to change opponent or side.
 
-The player must choose New Game/Play Again to clear the prior session before editing setup. This preserves the identity of the completed opponent and side on the result screen.
-
-### Automatic remembered/default fallback
-
-If a remembered engine selection is unavailable and a usable LLM configuration exists, automatically fall back to Language model and announce the change.
-
-If a remembered LLM selection is confirmed unusable and the engine is available, automatically fall back to On-device computer and announce the change.
-
-If neither opponent is usable, keep On-device computer selected in an actionable unavailable state.
-
-An explicit user selection is never silently overridden:
-
-- explicitly selecting an unusable LLM keeps it selected so setup guidance remains visible;
-- explicitly selecting an unavailable engine keeps it selected so the unavailable explanation remains visible.
-
-Automatic fallback applies only during remembered/default resolution and never overwrites the stored last-opponent preference.
-
-## Approaches considered
+## Architecture approaches
 
 ### Approach A — Editable setup plus immutable active session (selected)
 
-Maintain a mutable pre-game draft and create an immutable snapshot at Start. Use a small chess-rival provider interface to isolate LLM and Stockfish move generation.
+Use a mutable pre-game setup, then freeze opponent, side, provider identity, provider/model configuration, and history ownership into an active session after provider initialization succeeds.
 
-Advantages:
+This approach:
 
 - prevents opponent/side drift;
-- gives history and status a trustworthy opponent identity;
-- keeps setup hydration separate from gameplay;
-- preserves the current generation-token safety model;
-- creates a clean extension point for HPA-162/HPA-163;
+- gives history and result UI a trustworthy opponent identity;
+- preserves the current stale-generation guard while adding session/provider/position guards;
+- isolates engine and LLM move production;
+- creates clean extension points for HPA-162 and HPA-163;
 - limits changes to standard chess.
 
-### Approach B — Branch directly throughout `ChessGame`
+### Approach B — Inline opponent branches in `ChessGame` (rejected)
 
-Add `opponentKind` conditionals to the existing configuration, move, status, reset, export, and history code.
+Adding engine/LLM conditionals throughout startup, move generation, history, export, status, and reset would make an already broad component more race-prone.
 
-Rejected because `ChessGame` already combines authoritative game state, LLM hydration, move execution, debug state, history, export, tutorial mode, and reset behavior. More inline branching would make race and consistency bugs more likely.
+### Approach C — Full lifecycle state machine in HPA-161 (rejected)
 
-### Approach C — Full rival-session state machine now
+A complete loading/thinking/recovering/canceling state machine would absorb most of HPA-163. HPA-161 defines safe minimal lifecycle boundaries only.
 
-Model setup, probing, loading, ready, thinking, recovering, failed, terminal, and reset states in HPA-161.
-
-Rejected because it would absorb the majority of HPA-163. HPA-161 needs explicit safe boundaries, but not the complete production lifecycle.
-
-## Terminology and state model
-
-Use player-facing **On-device computer** and **Language model**. Internal code may use `engine` and `llm`.
-
-The existing top-level `gameMode: 'tutorial' | 'ai'` can remain to avoid unrelated cross-variant refactoring. For standard chess, the user-facing mode label becomes **Play** through an optional `BoardSidePanel` label override whose default preserves every existing caller.
-
-### Canonical types
+## Canonical state model
 
 ```ts
 type RivalKind = 'engine' | 'llm';
@@ -204,47 +186,44 @@ interface ActiveRivalSession {
 }
 ```
 
-`humanSide` is canonical because the UI says **You play**. `rivalSide` is derived once as the opposite color and copied into the active snapshot.
+`humanSide` is canonical because the UI says **You play**. `rivalSide` is derived once as the opposite color.
 
 `startedByUserId` freezes history ownership:
 
-- a game started signed out remains unsaved even if somebody signs in later;
-- a game started by account A is never saved under account B;
-- an engine game can continue through logout/account changes without misattributing history.
-
-### Setup versus active session
+- anonymous-start games remain unsaved after later sign-in;
+- account A's game is never recorded under account B;
+- engine play can continue through logout/account changes without misattribution.
 
 `GameSetup` is editable only when there is no active session and no Start attempt in progress.
 
-`ActiveRivalSession` is created only after the selected provider initializes successfully. All of the following read from the active snapshot once it exists:
+`ActiveRivalSession` is created only after the selected provider completes initialization and per-game readiness. All active behavior reads from it:
 
 - turn ownership;
 - board orientation;
 - opponent summary;
-- status copy;
 - move provider;
-- play-history opponent descriptor;
-- history-owner eligibility;
-- debug/export visibility.
+- history descriptor and ownership;
+- debug/export visibility;
+- status and result copy.
 
-Never derive active gameplay behavior from the mutable preference store, current auth state, or current AI configuration store.
+## Session and stale-result protection
 
-### Session identity and stale-result protection
+Keep the existing monotonic generation token and add explicit session/provider/position ownership.
 
-Keep the existing monotonic AI generation token and add the active session ID as an explicit ownership boundary.
+A move result may be consumed only when:
 
-A rival result may be applied only when:
-
-1. its captured generation token is current;
-2. its captured session ID matches the active session;
+1. the captured generation token is current;
+2. the captured session ID matches the active session;
 3. the provider instance is still the active provider;
-4. the authoritative chess state is still waiting for the rival on the requested position.
+4. the current FEN matches the requested FEN;
+5. the authoritative game is still waiting for the frozen rival side;
+6. no result has already been accepted for the request.
 
-`makeAIMove` remains the final legality gate. Provider output is never applied directly.
+`makeAIMove` remains the final legality gate. Providers never mutate chess or React state.
 
-## Device preference model
+## Device preference and first render
 
-Store one versioned object in local storage, for example under:
+Store a versioned local object, for example:
 
 ```text
 procyon.chess.rival-preferences.v1
@@ -260,85 +239,38 @@ interface RivalPreferencesV1 {
 
 Rules:
 
-- validate parsed values; corrupt, partial, or unknown future payloads fall back safely;
-- default both side entries to human White;
-- persist deliberate opponent and side changes;
-- do not overwrite `lastRivalKind` because of an automatic fallback;
-- preferences are device-local and do not require an account;
-- no server schema is introduced.
+- validate all parsed values;
+- default both human sides to White;
+- persist only deliberate opponent/side changes;
+- automatic fallback does not overwrite `lastRivalKind`;
+- preferences are device-local and require no account;
+- corrupt, partial, or future-version payloads fall back safely.
 
-### Non-blocking initial resolution
-
-The setup resolver must preserve both approved properties:
-
-- signed-out engine play is not blocked by AI-config hydration;
-- a configured signed-in player with no saved preference defaults to LLM.
-
-Use a non-blocking, interaction-safe resolver:
-
-1. Read preferences synchronously after client hydration.
-2. If a stored opponent exists, use it provisionally and resolve only that opponent's usability.
-3. If no stored opponent exists, provisionally select engine so signed-out play can proceed without waiting for account/config requests.
-4. While setup is still untouched and no Start attempt has begun, a subsequently confirmed usable signed-in LLM configuration may switch the no-preference provisional default to LLM once.
-5. The first deliberate setup interaction or Start attempt closes automatic default resolution for the visit.
-6. Never switch the setup beneath a player after they interact or after a session starts.
-
-This permits an immediately usable engine path while still converging to the configured-user default when auth/config resolves before interaction.
+Because the Astro output is static, do not render an interactive White-oriented board and then flip it after client preference hydration. Render the board area behind the existing start overlay or a neutral loading skeleton until the synchronous client preference read completes. Then reveal the resolved orientation and setup. This avoids a visible orientation flash and prevents pre-resolution interaction.
 
 ### Resolution matrix
 
-| Source | Engine state | LLM state | Result |
+| Source | Engine preflight | LLM state | Result |
 |---|---|---|---|
-| No stored choice, untouched | available/checking | confirmed usable | LLM |
-| No stored choice | available/checking | signed out/unconfigured/failed | Engine |
-| Remembered engine | available | any | Engine |
-| Remembered engine | unavailable | usable | LLM + engine→LLM fallback notice |
-| Remembered engine | unavailable | unusable | Engine unavailable state |
+| No stored choice, untouched | supported | confirmed usable | LLM |
+| No stored choice | supported | signed out/unconfigured/failed | Engine |
+| No stored choice | unsupported | usable | LLM + notice if selection changes |
+| Remembered engine | supported | any | Engine |
+| Remembered engine | unsupported | usable | LLM + engine→LLM notice |
+| Remembered engine | unsupported | unusable | Engine unavailable state |
 | Remembered LLM | any | loading | LLM provisionally; Start disabled |
 | Remembered LLM | any | usable | LLM |
-| Remembered LLM | available/checking | confirmed unusable | Engine + LLM→engine fallback notice |
-| Remembered LLM | unavailable | confirmed unusable | Engine unavailable state |
-| Explicit user selection | any | any | Keep explicit selection; gate Start and show its state |
+| Remembered LLM | supported | confirmed unusable | Engine + LLM→engine notice |
+| Remembered LLM | unsupported | confirmed unusable | Engine unavailable state |
+| Explicit user selection | any | any | Keep selection; gate Start and show its state |
 
-A matrix result of **Engine** while the engine state is `checking` is provisional. Keep the engine selected and display its checking state, but keep Start disabled and create no active session until the probe reaches `available`. If the probe resolves to `unavailable`, rerun the remembered/default fallback rule for the current untouched setup; never override an explicit selection or any setup the player has already interacted with.
-
-A remembered LLM remains selected while its usability is `loading`; do not start the engine probe merely because LLM hydration has not completed. Only a confirmed signed-out, unconfigured, or failed LLM state may trigger the remembered/default fallback rule.
-
-## Opponent usability state
-
-Track selection separately from usability.
-
-### Engine availability
-
-```ts
-type EngineAvailability =
-  | { status: 'idle' }
-  | { status: 'checking' }
-  | { status: 'available' }
-  | { status: 'unavailable'; message: string };
-```
-
-Probe Stockfish only when engine is selected or needed as an automatic fallback. Do not download or initialize Stockfish when a usable or still-loading remembered LLM remains selected.
-
-### LLM usability
-
-Derive an explicit view state from the existing auth/config state:
-
-```ts
-type LlmUsability =
-  | { status: 'loading' }
-  | { status: 'signed-out' }
-  | { status: 'unconfigured' }
-  | { status: 'available'; provider: string; model: string };
-```
-
-`useAIConfigHydration` may continue hydrating authenticated configuration, but its `configPending`/Start gate is consumed only by the LLM selection. Engine Start, engine turns, and engine status must ignore LLM config loading and errors.
+Engine preflight support is not proof that the binary can load. Real engine availability is established only by a successful Start-time initialization.
 
 ## User interface
 
 ### Mode label and tutorial interaction
 
-Keep Tutorial as-is. Add the following backward-compatible shared prop:
+Keep the internal `gameMode: 'tutorial' | 'ai'` key to avoid unrelated cross-variant work. Add a backward-compatible label override:
 
 ```ts
 interface BoardSidePanelProps {
@@ -349,26 +281,26 @@ interface BoardSidePanelProps {
 }
 ```
 
-Only standard `ChessGame` passes `aiModeLabel='Play'`. Xiangqi, Shogi, Jungle, and existing shared-component tests continue to receive **Play vs AI** by default.
+Only standard chess passes `aiModeLabel='Play'`. Existing variants retain **Play vs AI**.
 
-Rival setup, opponent status, and side controls are hidden while `gameMode === 'tutorial'`. Switching Play → Tutorial invalidates pending preparation and Start work, disposes prepared or active providers, clears the active session, and loads a clean tutorial state. Switching Tutorial → Play leaves tutorial state, resolves the saved setup preferences, and creates a clean Play preview; it never reuses a provider or session from the prior Play visit.
+Rival setup is hidden in Tutorial. Switching modes disposes any provider, invalidates pending Start/move work, clears the active session, and initializes a clean destination state. Tutorial state never reuses a Play provider or session.
 
 ### Opponent selector
 
-Use an accessible radio group or two selectable cards, not a compact `<select>`.
+Use an accessible radio group or selectable cards.
 
 **On-device computer**
 
 - Runs on this device
 - No account or API key required
 - Unrated
-- Inline checking/available/unavailable state
+- Ready to load / Loading / Load failed / Unsupported state
 
 **Language model**
 
-- Show configured provider/model when available
-- Otherwise show sign-in or provider-configuration guidance
-- Keep selectable when unusable
+- configured provider/model when available;
+- otherwise sign-in or provider-configuration guidance;
+- remains selectable when unusable.
 
 ### Side selector
 
@@ -376,11 +308,9 @@ Use:
 
 > **You play:** White / Black
 
-Store and display the human side. Derive the computer side.
+### Persistent summary
 
-### Persistent setup/session summary
-
-Show a concise summary before and during the game.
+Before Start, render from `GameSetup` and current resolved opponent details. During active/terminal play, render only from `ActiveRivalSession`.
 
 Examples:
 
@@ -392,39 +322,37 @@ On-device computer · Computer plays Black · Unrated
 Language model · Gemini 2.5 Flash · Computer plays White
 ```
 
-During an active or terminal session, render the summary from `ActiveRivalSession`, not the editable setup or live configuration store.
-
-### Locked-state explanation
-
-When the active snapshot exists, opponent and side controls remain visible but disabled. Show:
-
-> Start a new game to change opponent or side.
-
 ### Automatic fallback notices
 
-When remembered engine automatically falls back:
+Engine to LLM:
 
-> The on-device computer is unavailable here, so Language model was selected.
+> The on-device computer is not supported here, so Language model was selected.
 
-When remembered LLM automatically falls back:
+LLM to engine:
 
 > Language model is not available with the current account or settings, so On-device computer was selected.
 
-Render both automatic fallback notices in an `aria-live="polite"` region. Do not announce provisional selections while LLM hydration or the engine probe is still pending.
+Render notices in `aria-live='polite'`. Do not announce provisional states while auth/config is loading.
 
-### Engine unavailable copy and recheck
+### Engine failure copy
 
-Use plain language, for example:
+Distinguish unsupported capability from load failure.
 
-> On-device computer is not available in this browser or device. Try checking again, use another supported browser/device, or choose Language model.
+Unsupported:
 
-Show a **Try checking again** action. It must invalidate the current preparation generation, dispose the prior Worker/provider even if it appears hung, clear the unavailable error, and begin a new bounded probe. It must not start an automatic retry loop.
+> On-device computer is not supported in this browser or device. Choose Language model or use another supported browser or device.
 
-Do not surface Worker, WASM, MIME, UCI, CSP, timeout internals, or stack-trace terminology to players.
+Load/timeout failure:
 
-### Opponent-specific controls with shared compatibility
+> On-device computer could not finish loading. Check your connection and try again, or choose Language model.
 
-Refactor `GameControls` to accept chess-specific overrides without breaking its three other game callers:
+**Try again** starts a fresh bounded Start initialization attempt. It invalidates and disposes the previous candidate first. Do not automatically retry.
+
+Do not expose Worker, WASM, MIME, UCI, CSP, timeout constants, or stack traces to players.
+
+### Shared `GameControls` compatibility
+
+Do not replace the existing shared API in a way that forces unrelated variant edits. Add optional overrides while retaining legacy behavior:
 
 ```ts
 interface GameControlsProps {
@@ -432,7 +360,7 @@ interface GameControlsProps {
   isGameOver: boolean;
   aiConfigured?: boolean; // existing compatibility input; default false
   startDisabled?: boolean;
-  startLabel?: string;
+  startLabel?: React.ReactNode;
   showLlmTools?: boolean; // default: aiConfigured ?? false
   isDebugMode: boolean;
   canExport: boolean;
@@ -443,48 +371,30 @@ interface GameControlsProps {
 }
 ```
 
+`startLabel` is the **complete rendered button content**, including any icon/emoji. It is not a suffix.
+
 Resolution rules:
 
+- `startLabel` wins whenever supplied, regardless of `startDisabled`;
+- without `startLabel`, preserve the exact current labels and their emoji behavior;
 - debug/export visibility uses `showLlmTools ?? aiConfigured ?? false`;
-- `startLabel`, when provided, overrides only the Start/New Game button text;
-- when `startLabel` is omitted, preserve the current label behavior, including **Loading AI config…**, **Start**, and **New Game**;
-- existing Xiangqi/Shogi/Jungle call sites may continue passing only `aiConfigured` and require no edits;
-- standard chess passes explicit `showLlmTools` and `startLabel` derived from the selected or active opponent.
+- Xiangqi, Shogi, and Jungle require no call-site changes;
+- standard chess supplies explicit label and tool visibility derived from setup/session state.
 
-Expected chess labels include:
+Chess labels:
 
-- `Checking on-device computer…`
-- `Loading language-model settings…`
-- `Start`
-- `New Game`
+- ready: `▶️ Start`;
+- engine loading: `⏳ Loading on-device computer…`;
+- engine unsupported/load failed: `⚠️ On-device computer unavailable`;
+- LLM config loading: `⏳ Loading language-model settings…`;
+- LLM unusable: `⚠️ Language model setup required`;
+- active/terminal reset entry: `🆕 New Game`.
 
-LLM debug and prompt-export controls remain visible only for an active LLM session. Engine export is deferred to HPA-164.
+Detailed guidance remains outside the button.
 
-### Component boundaries
+## Board orientation and Play preview
 
-Do not generalize the existing LLM-specific status/instruction components into a large union of unrelated props. Keep them for the LLM path and add focused chess-rival components.
-
-```text
-ChessGame
-├── ChessRivalSetup
-│   ├── OpponentChoice
-│   ├── SideChoice
-│   ├── RivalSetupSummary
-│   └── fallback / locked messages
-├── LlmRivalDetails
-│   ├── existing AIStatusPanel
-│   └── existing AIGameInstructions
-└── EngineRivalDetails
-    ├── availability
-    ├── basic starting/thinking/error status
-    └── unrated explanation
-```
-
-`ChessGame` retains authoritative board/game state. Preference resolution and provider lifecycle should move into focused chess-rival modules/hooks rather than adding more unrelated state branches directly to the component.
-
-## Board orientation
-
-Add an orientation prop to `ChessBoard`:
+Add:
 
 ```ts
 orientation: 'white' | 'black';
@@ -492,75 +402,296 @@ orientation: 'white' | 'black';
 
 Rules:
 
-- White orientation traverses rows and columns in their current order.
-- Black orientation traverses both in reverse order.
-- Each rendered square still receives and reports its original logical `{ row, col }`.
-- Never reverse or mutate the board array.
-- Chess rules, FEN, move history, promotions, and provider serialization remain orientation-independent.
-- During setup, orientation follows `GameSetup.humanSide` immediately.
-- During a session, orientation follows `ActiveRivalSession.humanSide` and cannot change until New Game.
+- White orientation traverses rows/columns in current order;
+- Black orientation traverses both in reverse;
+- each rendered square reports its canonical logical coordinates;
+- never reverse or mutate the board array;
+- FEN, rules, move history, promotion, and providers remain orientation-independent;
+- setup orientation follows resolved `GameSetup.humanSide`;
+- active orientation follows frozen `ActiveRivalSession.humanSide`.
+
+Every Play preview must use:
+
+```ts
+createInitialGameState('human-vs-ai', rivalSide)
+```
+
+for both engine and LLM selections, even when the selected opponent is not yet usable. Remove the existing `aiConfig`-conditioned `human-vs-human` fallback branches from Play-mode setup/mode-switch logic. Tutorial-only state may continue using its tutorial/human state as appropriate.
+
+The preview board remains interaction-disabled until Start commits an active session.
 
 ## Rival provider boundary
 
-Introduce a standard-chess-only provider contract.
+The provider contract must preserve LLM metadata and typed non-exception failures.
 
 ```ts
+type RivalMoveFailureReason =
+  | 'no-move'
+  | 'invalid-response'
+  | 'invalid-move'
+  | 'protocol-error';
+
+interface RivalMoveMeta {
+  thinking?: string;
+  confidence?: number;
+  interaction?: {
+    prompt?: string;
+    response?: string;
+  };
+}
+
+type RivalMoveResult =
+  | {
+      ok: true;
+      move: ChessMoveRequest;
+      meta?: RivalMoveMeta;
+    }
+  | {
+      ok: false;
+      reason: RivalMoveFailureReason;
+      message?: string;
+    };
+
 interface ChessRivalProvider {
   readonly kind: 'engine' | 'llm';
 
   initialize(): Promise<void>;
-
-  makeMove(
-    state: GameState,
-    requestToken: number
-  ): Promise<ChessMoveRequest>;
-
+  beginGame(): Promise<void>;
+  makeMove(state: GameState, requestToken: number): Promise<RivalMoveResult>;
   dispose(): void;
 }
 ```
 
-Responsibilities:
+Provider rules:
 
-- providers produce a move request only;
-- providers never mutate React or chess state;
-- the controller owns session/generation validation;
-- the authoritative chess layer validates and applies the move;
-- only one `makeMove` may be in flight for a provider instance;
-- `dispose()` is idempotent.
+- `initialize()` prepares the provider process/service;
+- `beginGame()` performs per-game setup; it is a no-op for LLM and a UCI new-game readiness sequence for Stockfish;
+- expected no-response/protocol failures return `ok: false`;
+- thrown errors are reserved for unexpected transport/provider crashes or aborted ownership;
+- only one `makeMove` may be in flight for an instance;
+- `dispose()` is idempotent;
+- providers never mutate game state.
 
 ### LLM provider
 
-Wrap the existing `createChessAI` service.
+Wrap the existing `createChessAI` service and freeze its configuration at Start.
 
-- Capture the selected provider/model/API configuration when Start begins.
-- Do not update the active provider from later AI-config store changes.
-- Preserve the existing prompt generation, provider behavior, debug callback, retry UI, and rating path.
-- `dispose()` removes callbacks and prevents future results from being accepted.
+The adapter maps current outcomes:
 
-This replaces the current eager singleton service that is continuously updated from live configuration.
+- valid AI response → `ok: true` with move plus `thinking`, `confidence`, and last prompt/raw-response interaction;
+- null/missing move response → `ok: false, reason: 'no-move'`;
+- existing thrown provider errors remain thrown for the controller's current error path.
+
+The LLM provider accepts a debug-event callback at construction or through a provider-level listener API, so `ChessGame` never casts or reaches into the concrete provider. Preserve the existing debug dialog, prompt generation, prompt/response export, retry UI, and rating behavior.
 
 ### Stockfish provider
 
-Own a dedicated classic browser Worker and the UCI protocol interaction.
+Use a dedicated classic same-origin Worker.
 
-Minimum behavior:
+Initialization sequence:
 
-1. Construct the Worker from a same-origin prepared asset URL.
-2. Send `uci`; require `uciok`.
-3. Send `isready`; require `readyok`.
-4. When Start adopts the provider into a newly committed active session, send `ucinewgame` exactly once for that session. Capability probing and `initialize()` send only `uci` and `isready`; a successfully probed provider retained for Start must not receive `ucinewgame` during the probe.
-5. For a move, send `position fen ${state.fen}`.
-6. Send `go movetime 250` as the fixed bootstrap search policy.
-7. Parse exactly one `bestmove` result.
-8. Convert UCI coordinates and map promotion suffixes explicitly: `q → queen`, `r → rook`, `b → bishop`, and `n → knight`. Return the long-form value required by `ChessMoveRequest.promotion`; never pass a raw UCI suffix into chess state.
-9. Reject `(none)`, missing, malformed, duplicate, or out-of-order results.
-10. Terminate the Worker on `dispose()`.
+1. construct the Worker;
+2. send `uci` and wait for `uciok`;
+3. verify the advertised **Skill Level** option exists;
+4. send `setoption name Skill Level value 0` as the fixed bootstrap strength;
+5. send `isready` and wait for `readyok`.
 
-The fixed `250 ms` search is an internal bootstrap value, not a difficulty label or rating claim. HPA-162 replaces it with calibrated preset policy. The bootstrap rival is intentionally uncalibrated and may feel too strong or harsh for casual players; do not claim beginner-friendliness in HPA-161 copy. HPA-162 is load-bearing for the intended approachable experience.
+Per-game sequence:
 
-`movetime` begins only after the engine is initialized and the `go` command is accepted. Worker startup plus WASM fetch/compile are outside the 250 ms search budget and may dominate first-use latency on slower devices. Retaining a successfully probed provider avoids recompiling at Start; HPA-166 measures and validates the remaining first-use experience.
+1. send `ucinewgame`;
+2. send `isready`;
+3. wait for `readyok`;
+4. only then allow the active session to commit and the first move request to run.
 
-Use `GameState.fen` directly. Do not add a second board-to-FEN implementation.
+Move sequence:
+
+1. send `position fen ${state.fen}`;
+2. send `go movetime 250`;
+3. parse exactly one `bestmove`;
+4. map promotion suffixes `q/r/b/n` to `queen/rook/bishop/knight`;
+5. return `ok: true` for one valid move request;
+6. return typed failures for `(none)`, malformed output, or protocol failure;
+7. ignore duplicate output after a request has settled.
+
+`Skill Level 0` is an uncalibrated bootstrap safeguard, not a player-facing preset or Elo claim. HPA-162 replaces it with the four benchmarked presets. Do not describe HPA-161 as beginner-calibrated.
+
+Use `GameState.fen` directly. Do not add another FEN serializer.
+
+## Start-time initialization deadline
+
+Because the engine is loaded only after an explicit Start, use a bounded but download-aware deadline:
+
+```ts
+const ENGINE_START_TIMEOUT_MS = 60_000;
+```
+
+The deadline covers Worker script fetch, WASM fetch/compile, UCI initialization, bootstrap option application, and `beginGame()` readiness.
+
+On timeout:
+
+- mark the candidate attempt stale;
+- terminate/dispose the candidate provider;
+- do not create an active session or set `gameStarted`;
+- leave a clean locked-then-unlocked preview;
+- show the load/timeout failure copy;
+- allow a user-triggered **Try again**.
+
+A timeout is a load failure, not proof that the browser/device is unsupported. HPA-166 must measure first-use latency and may revise the budget before release.
+
+No per-move timeout is introduced here; that remains HPA-163.
+
+## Atomic Start transaction
+
+1. Validate selected-opponent usability:
+   - LLM must be configured and hydrated;
+   - engine must pass cheap capability checks.
+2. Disable setup mutation.
+3. Increment and capture generation/candidate session IDs.
+4. Snapshot opponent, human/rival sides, selected LLM configuration, and current user ID.
+5. Create the matching provider.
+6. Run `initialize()` within the Start deadline.
+7. Run `beginGame()` within the same deadline.
+8. Re-check generation/provider ownership.
+9. Create fresh `human-vs-ai` state using the frozen rival side.
+10. Commit provider, active session, game state, and `gameStarted` together.
+11. If the rival is White, allow the normal rival-turn effect only after commit.
+
+Failure before step 10 commits nothing. Dispose the candidate and return to editable setup.
+
+## Rival-turn flow
+
+The opponent-neutral turn controller runs only when:
+
+- an active session exists;
+- the position is non-terminal;
+- there is no pending promotion;
+- it is the frozen rival side's turn;
+- no request is in flight;
+- the active provider is ready.
+
+Request flow:
+
+1. capture generation, session ID, provider identity, and FEN;
+2. set shared thinking state;
+3. call `provider.makeMove`;
+4. reject stale ownership/FEN results;
+5. for `ok: false`, preserve the board and enter the opponent-specific basic failure UI;
+6. for `ok: true`, call authoritative `makeAIMove`;
+7. if legal, apply one move and use metadata for LLM debug/export;
+8. if illegal, preserve the board and report invalid-move failure;
+9. clear thinking only for the current request.
+
+HPA-161 engine recovery is **New Game**. Existing LLM retry behavior remains. HPA-163 adds engine same-position retry, cancellation, and move timeouts.
+
+## Provider ownership and React replay
+
+Every Start/preparation attempt receives a unique attempt ID and exactly one disposer. Cleanup marks the attempt stale before terminating its Worker/provider.
+
+This must hold under React development Strict Mode and effect replay:
+
+- duplicate construction may occur;
+- every superseded instance is disposed;
+- a disposed instance cannot publish readiness or mutate setup/session state;
+- no Worker is shared across component mounts.
+
+## Reset, mode changes, and terminal state
+
+### Pre-game opponent or side change
+
+- invalidate pending Start work;
+- dispose any candidate provider;
+- create a clean `human-vs-ai` preview for the new rival side;
+- clear errors/debug/export/terminal state;
+- update orientation;
+- keep `activeSession = null` and `gameStarted = false`.
+
+### New Game / Play Again
+
+- invalidate move and Start generations;
+- dispose the active provider;
+- clear active session and all game-specific auxiliary state;
+- create a clean preview from current preferences;
+- re-enable setup controls.
+
+### Terminal game
+
+Retain the active snapshot through the result state. New Game clears it.
+
+### Tutorial or unmount
+
+Invalidate all work, dispose providers, and prevent late callbacks. Tutorial mode hides rival setup and owns a clean tutorial state.
+
+## Authentication and identity
+
+### LLM session
+
+Preserve the current security boundary:
+
+- logout/account switch invalidates LLM work;
+- active LLM play resets;
+- captured API configuration cannot continue after identity loss/change.
+
+### Engine session
+
+Engine play does not depend on account/config and continues through logout, account switch, AI-config hydration failure, and provider/model changes.
+
+Extend `useGameIdentityReset` with an optional enable/policy input that defaults to current behavior. Even while callbacks are disabled, the hook must update previous-auth refs so re-enabling does not process an old transition.
+
+Enable identity-driven reset for LLM setup/start/session ownership, not active engine sessions.
+
+## Play-history call-site contract
+
+Do not add a second retry or terminal snapshot mechanism around `usePlayHistory`. Preserve its existing terminal snapshot, account-switch guard, and bounded 401 behavior.
+
+For an active engine session, call the hook with:
+
+```ts
+const isSameStartingUser =
+  activeSession.startedByUserId !== null &&
+  isAuthenticated &&
+  user?.id === activeSession.startedByUserId;
+
+usePlayHistory({
+  gameVariant: 'chess',
+  gameStatus: effectiveStatus,
+  aiPlayer: activeSession.rivalSide,
+  opponentDescriptor: { kind: 'engine', id: 'stockfish' },
+  moveCount: gameState.moveHistory.length,
+  getWinnerColor,
+  enabled:
+    gameMode === 'ai' &&
+    gameStarted &&
+    activeSession.opponent.kind === 'engine' &&
+    isSameStartingUser,
+  isAuthenticated,
+  userId: user?.id,
+  debugVariantKey: 'CHESS',
+});
+```
+
+Engine callers omit `aiConfig`. LLM callers preserve the existing LLM options and pass the frozen active provider/model configuration.
+
+Identity-reset suppression for an engine game must not clear a terminal active-session snapshot while the same starting user is still authenticated and the history hook is attempting its save. If the user logs out or switches account first, `enabled` becomes false and the engine game remains playable but unsaved rather than being attributed incorrectly.
+
+## History, rating, export, and debug
+
+### Engine
+
+- Show **Unrated** before, during, and after the game.
+- Use the HPA-165 engine descriptor when history-eligible.
+- Show no rating delta.
+- Do not initialize the prompt-oriented `GameExporter`.
+- Hide LLM debug and prompt-export controls.
+- Defer downloadable engine export and richer metadata to HPA-164.
+
+### LLM
+
+- Preserve rated history.
+- Preserve debug callbacks/dialog.
+- Preserve prompt/response export.
+- Preserve provider/model instructions and existing retry behavior.
+
+All decisions read from the active opponent kind, not editable setup.
 
 ## Stockfish packaging
 
@@ -570,287 +701,113 @@ Pin:
 stockfish@18.0.8
 ```
 
-Use the Stockfish 18 lite, single-threaded browser artifacts:
-
-```text
-stockfish-18-lite-single.js
-stockfish-18-lite-single.wasm
-```
-
-Published-package verification performed on 2026-07-30 confirmed that `stockfish@18.0.8` contains both artifacts at:
+Consume the shipped lite single-threaded files:
 
 ```text
 node_modules/stockfish/bin/stockfish-18-lite-single.js
 node_modules/stockfish/bin/stockfish-18-lite-single.wasm
 ```
 
-The preparation script must still verify these exact paths and fail closed, because a later dependency change, corrupted install, or changed package layout must not silently produce an incomplete deployment.
+The selected files ship directly in the package tarball. The package's `postinstall` only creates a convenience symlink for another entry point and is not required for these artifacts. **Do not add `stockfish` to Bun `trustedDependencies`.** Skipping that lifecycle script is acceptable and reduces unnecessary install-time execution.
 
-Rationale:
+### Preparation script
 
-- the upstream package recommends the lite single-threaded build for normal browser use;
-- it avoids `SharedArrayBuffer`, thread headers, and cross-origin isolation;
-- it is substantially smaller than the full engine;
-- it remains more than sufficient for the initial uncalibrated local rival.
+Add a repository-owned script that:
 
-### Build preparation
-
-Add a repository-owned preparation script that:
-
-1. resolves the exact pinned package installation;
-2. verifies both expected source paths exist under `node_modules/stockfish/bin/`;
-3. copies them to a stable generated directory such as:
+1. resolves the pinned package installation;
+2. verifies both exact source paths;
+3. verifies the `.js` and `.wasm` files have the identical basename and are colocated;
+4. copies both without renaming or content hashing to:
 
 ```text
 apps/web/public/vendor/stockfish/
 ```
 
-4. fails the build with a clear message if the package layout does not match expectations.
+5. verifies the destination pair remains:
 
-Invoke preparation before local web development and production web builds. Generated engine artifacts should not be manually edited. Application code loads stable same-origin URLs derived from Astro's base URL, not paths inside `node_modules`.
-
-The package uses a `postinstall` script, so merge `stockfish` into Bun's root `trustedDependencies` configuration rather than relying on lifecycle scripts that Bun may skip.
-
-### Static-host delivery requirements
-
-The web app is an Astro static build, so HPA-161 must verify the generated engine files through the actual production-style static serving path, not only by checking the filesystem:
-
-- construct the Worker URL from Astro's base URL and keep the Worker script same-origin;
-- serve `stockfish-18-lite-single.wasm` with `Content-Type: application/wasm`;
-- serve the Worker JavaScript with a JavaScript-compatible content type;
-- verify the deployed or production-preview response does not redirect either asset to an HTML fallback;
-- if a Content Security Policy is present now or added later, verify it permits same-origin workers and WebAssembly compilation for the supported browsers, including the applicable `worker-src` and `script-src`/`wasm-unsafe-eval` directives;
-- fail the release smoke test when the Worker cannot fetch or compile the WASM asset under production headers.
-
-HPA-161 owns deterministic build/preview checks for these requirements. HPA-187 owns the final real-deployment and browser-matrix release verification.
-
-### Licensing boundary
-
-Stockfish.js/Stockfish is GPL-3.0 licensed. HPA-161 must add:
-
-- the upstream license text;
-- a third-party notice naming Stockfish.js and Stockfish;
-- the exact package/version and upstream source/tag reference used to create the distributed artifact.
-
-Release remains blocked on HPA-187's compliance verification, including confirming the corresponding-source distribution/offer obligations for the actual deployed binary. This design does not claim that a notice alone completes GPL release compliance.
-
-## Engine preparation and Start flow
-
-### Lazy preparation and ownership
-
-Prepare/probe Stockfish only when engine is selected or required as a fallback.
-
-A successful probe may retain the ready provider as a prepared provider so Start does not repeat WASM compilation. The prepared provider is owned by setup state until one of these occurs:
-
-- Start adopts it into the active session;
-- the player switches away from engine;
-- availability is rechecked;
-- the component unmounts.
-
-Every probe or Start attempt receives a unique preparation generation/attempt ID and owns exactly one disposer. Cleanup marks the attempt stale before terminating its Worker. Only the current attempt may publish availability or be adopted into Start. This rule must hold under React development Strict Mode and other mount/effect replay: duplicate construction may occur, but every superseded Worker is disposed and cannot mark the current setup available.
-
-### Preparation deadline
-
-Use one named constant:
-
-```ts
-const ENGINE_PREPARATION_TIMEOUT_MS = 15_000;
+```text
+stockfish-18-lite-single.js
+stockfish-18-lite-single.wasm
 ```
 
-The deadline covers Worker script fetch, WASM fetch/compile, `uci`, and `isready`. It starts when the attempt constructs the provider and is cleared only after `readyok`, disposal, or failure. On timeout:
+6. fails clearly on any package-layout or basename mismatch.
 
-- mark the attempt stale;
-- dispose/terminate the candidate provider;
-- map the result to the normal plain-language unavailable state;
-- unlock setup or abort the Start attempt;
-- permit a user-triggered **Try checking again** probe.
+The loader derives its WASM sibling from the Worker script filename, so the pair must remain in the same directory with matching basenames. Application code loads the stable same-origin Worker URL derived from Astro's base URL.
 
-Do not automatically retry and do not reuse a timed-out provider.
+### Turborepo cache behavior
 
-### Capability probe
+No extra `bun.lock` entry is required in `globalDependencies`: Turborepo includes the root package manifest and lockfile in the global hash by default. The root/package manifest, preparation script, and tracked source configuration already invalidate the build when the pinned dependency changes.
 
-The real handshake is authoritative. Preliminary checks provide faster messages only:
+Do not add redundant global invalidation solely for Stockfish. Add a build-cache regression check proving that a dependency/version or preparation-script change misses the web build cache and regenerates the packaged pair.
 
-1. confirm `Worker` exists;
-2. confirm `WebAssembly` exists;
-3. construct and initialize the provider under `ENGINE_PREPARATION_TIMEOUT_MS`;
-4. wait for `uciok` and `readyok`;
-5. mark available only after both acknowledgements.
+### Static delivery
 
-The probe does not send `ucinewgame`. That command belongs to the Start transaction after the prepared provider has been adopted into a specific active session.
+Verify through production-style preview, not only filesystem assertions:
 
-Any script fetch, WASM fetch/compile, Worker startup, protocol, readiness, or deadline failure maps to the plain unavailable state. Development logging may retain the underlying technical error.
+- Worker URL respects Astro's base path and is same-origin;
+- WASM is served as `application/wasm`;
+- Worker JS has a JavaScript-compatible content type;
+- neither URL redirects to an HTML fallback;
+- applicable CSP permits same-origin Worker and WASM compilation;
+- the Worker successfully initializes under production headers.
 
-### Atomic Start transaction
+HPA-161 owns deterministic build/preview checks. HPA-187 owns final deployed/browser-matrix verification.
 
-Start is an atomic attempt, not an early `gameStarted = true` toggle.
+### Licensing
 
-1. Validate the selected opponent is usable.
-2. Disable setup mutation for the Start attempt.
-3. Increment/capture the generation and candidate session IDs.
-4. Snapshot opponent, human side, rival side, and current user ID.
-5. Adopt a ready prepared provider, or initialize a new provider under `ENGINE_PREPARATION_TIMEOUT_MS` when no current prepared provider exists.
-6. Re-check that the Start attempt is current.
-7. Create a fresh `createInitialGameState('human-vs-ai', rivalSide)`.
-8. Commit the provider, `ActiveRivalSession`, clean game state, and `gameStarted` together.
-9. For an engine session, send `ucinewgame` exactly once after the provider/session commit and before the first move request.
-10. If the rival is White, allow the normal rival-turn effect to request the first move only after that session initialization is complete.
+Add:
 
-If initialization fails, times out, or the attempt becomes stale:
+- the upstream GPL-3.0 `Copying.txt`;
+- third-party notices naming Stockfish.js and Stockfish;
+- exact package version and source/tag/commit reference used for the binary.
 
-- do not create an active session;
-- do not mark the game started;
-- dispose the candidate provider;
-- retain a clean preview board;
-- unlock setup;
-- show the appropriate LLM or engine error guidance.
+Release remains blocked on HPA-187 confirming corresponding-source obligations for the deployed artifact. A notice alone is not sufficient.
 
-## Rival-turn flow
+## Basic failure behavior
 
-The existing rival-turn effect becomes opponent-neutral.
-
-It may request a move only when:
-
-- an active session exists;
-- `gameStarted` is true;
-- the authoritative position is non-terminal;
-- there is no pending human promotion;
-- it is the frozen rival side's turn;
-- no rival move is already in flight;
-- the active provider is ready.
-
-Request sequence:
-
-1. capture generation ID, session ID, provider identity, and current FEN;
-2. set the shared thinking flag/status;
-3. call `provider.makeMove(gameState, generation)`;
-4. reject the result if any captured ownership value is stale;
-5. confirm the current FEN still matches the requested position;
-6. call the existing authoritative `makeAIMove` path;
-7. apply at most one legal move;
-8. clear thinking state when the current request settles.
-
-The FEN comparison adds a position-specific guard without introducing HPA-163's full cancellation protocol.
-
-## Reset, switching, terminal state, and navigation
-
-### Pre-game opponent or side change
-
-- invalidate pending preparation/Start work;
-- dispose any provider no longer owned;
-- create a clean preview game state;
-- clear rival errors, pause state, debug moves, exporter reference, forced outcome, and terminal latch;
-- update orientation;
-- keep `gameStarted = false` and `activeSession = null`.
-
-A side-only change may retain a ready engine provider because provider readiness is side-independent.
-
-### New Game / Play Again
-
-- invalidate the current generation;
-- dispose the active provider;
-- clear `ActiveRivalSession`;
-- clear game/error/debug/export/terminal state;
-- create a clean preview from current preferences;
-- re-enable setup controls;
-- begin engine preparation again only if engine remains selected.
-
-### Terminal game
-
-Keep the active snapshot after checkmate/draw so the completed-game summary remains stable. New Game/Play Again clears it.
-
-### Tutorial mode change or unmount
-
-Switching either direction between Tutorial and Play is a full game/provider boundary. Invalidate generation, dispose prepared/active providers, clear the active session, and prevent all late callbacks from writing state. Rival setup is never rendered in Tutorial mode.
-
-## Authentication and identity behavior
-
-### LLM session
-
-Preserve the existing security boundary:
-
-- logout or account switch invalidates pending LLM work;
-- the active LLM game resets;
-- no prior user's captured API configuration may continue after identity loss/change.
-
-### Engine session
-
-An engine session does not depend on an account or API key and therefore continues through:
-
-- logout;
-- account switch;
-- AI-config hydration failure;
-- provider/model changes.
-
-Identity changes must not reset or interrupt the engine Worker.
-
-Extend `useGameIdentityReset` with an optional enable/policy input, defaulting to current behavior for all existing callers. It must continue updating its previous-auth refs even while reset callbacks are disabled, so re-enabling it does not process an old identity transition.
-
-For standard chess, enable identity-driven game reset only for LLM setup/start/session ownership.
-
-### History ownership and `usePlayHistory` call-site contract
-
-The active-session snapshot, not live setup, determines the hook inputs.
-
-For an engine session:
-
-- `aiPlayer` receives `ActiveRivalSession.rivalSide`; the prop name is historical and represents the non-human player's side;
-- `opponentDescriptor` is always `{ kind: 'engine', id: 'stockfish' }` from `ActiveRivalSession`;
-- `aiConfig` is omitted;
-- `userId` remains the live `user?.id`, never the frozen `startedByUserId`;
-- `enabled` is true only when the game/session is active and saveable, `startedByUserId` is non-null, `isAuthenticated` is true, and live `user?.id === startedByUserId`.
-
-For an LLM session, preserve the existing call shape and rated behavior, using the frozen active-session provider/model configuration rather than live setup.
-
-Do not add a second save snapshot, retry timer, or account-switch detector around `usePlayHistory`. Its existing terminal snapshot, live-user guard, and bounded 401 recovery remain authoritative. Identity-reset suppression for engine play must not clear the board, terminal state, or `ActiveRivalSession` before the hook has a chance to save when the initiating user is still authenticated.
-
-An anonymously started game is permanently ineligible because `startedByUserId` is null. Account B is ineligible because its live ID cannot match account A's frozen ID. If an actual logout or account switch occurs before the terminal save attempt, the board may continue but history can be lost; HPA-161 does not retroactively attribute a completed game after an identity transition. The hook's existing 401 retry remains available for the distinct case where the client still represents the same initiating user and the server session expires during the save request.
-
-## History, rating, export, and debug behavior
-
-### Engine
-
-- Show **Unrated** before and during the game.
-- Use the existing HPA-165 engine opponent descriptor for signed-in history.
-- Do not display a rating delta on the terminal engine state.
-- Do not initialize the existing prompt-oriented `GameExporter`.
-- Hide LLM debug and prompt-export controls.
-- Defer engine version/difficulty export metadata and downloadable engine-game export to HPA-164.
-
-### LLM
-
-- Keep the current rated history path.
-- Keep current debug callbacks/dialog.
-- Keep current prompt/response exporter.
-- Keep provider/model instructions.
-- Keep current error retry behavior.
-
-All history/export/debug decisions read from `ActiveRivalSession.opponent.kind`, not editable setup.
-
-## Basic failure behavior owned by HPA-161
-
-| Failure | Required behavior |
+| Failure | HPA-161 behavior |
 |---|---|
-| Worker or WebAssembly primitive missing | Engine unavailable; Start disabled for engine; actionable copy |
-| JS/WASM asset or Worker initialization failure | Abort preparation/Start; dispose; clean preview remains |
-| Probe or Start initialization exceeds 15 seconds | Dispose timed-out provider; map to unavailable; unlock setup; offer Try checking again |
-| Missing `uciok` or `readyok` before deadline | Engine unavailable; no active session; offer Try checking again |
-| Worker crashes during an active game | Preserve current board; stop engine play; offer New Game |
-| Malformed or missing `bestmove` | Reject result; preserve board; offer New Game |
-| `bestmove (none)` in non-terminal position | Treat as engine failure; preserve board |
-| Illegal engine move | Reject through authoritative rules; preserve board |
-| Duplicate/out-of-order engine output | Ignore after the accepted response |
-| Old result after reset/switch/navigation or Strict Mode cleanup | Ignore through generation/session/provider/FEN checks |
-| LLM signed out/unconfigured | Keep selected if explicit; show setup guidance; block LLM Start only |
-| Auth/config changes during engine game | Continue engine game; prevent history misattribution |
+| Worker/WASM primitives absent | Unsupported state; engine Start disabled |
+| Engine script/WASM load or Start timeout | Load-failed state; clean preview; Try again/manual LLM switch |
+| Missing `uciok`/`readyok` | Typed protocol/init failure; no active session |
+| Missing advertised Skill Level option | Protocol incompatibility; no active session |
+| Worker crashes during active game | Preserve board; stop engine play; offer New Game |
+| `bestmove (none)` or malformed response | Typed failure; preserve board; offer New Game |
+| Illegal move | Reject through chess rules; preserve board |
+| Duplicate/out-of-order output | Ignore after request settlement |
+| Old result after reset/switch/navigation | Ignore via generation/session/provider/FEN guards |
+| LLM signed out/unconfigured | Keep explicit selection; guidance; LLM Start disabled |
+| Auth/config changes during engine game | Continue play; prevent history misattribution |
 
-HPA-161's active-game engine recovery action is New Game. HPA-163 later adds bounded move timeout, retry from the same position, cancellation semantics, and richer recoverable lifecycle states.
+## Implementation delivery sequence
+
+HPA-161 may land as two implementation PRs under the same Linear issue:
+
+### PR A — Engine packaging and production loading fixture
+
+- pin dependency;
+- preparation script;
+- stable public asset pair;
+- static headers/base-path/CSP checks;
+- license and third-party notices;
+- fake/minimal Worker loading fixture and build-cache checks.
+
+This PR is independently reviewable and has no opponent UI dependency.
+
+### PR B — Opponent/session UI and runtime integration
+
+- setup/preferences/default resolution;
+- shared-component compatible overrides;
+- board orientation;
+- provider interfaces and adapters;
+- Start/session/move/reset/history integration;
+- component and browser journeys.
+
+HPA-161 closes only after both land. No separate product ticket is required unless implementation planning discovers a new independent deliverable.
 
 ## Suggested file boundaries
 
-Exact file names may be adjusted during planning, but responsibilities should remain isolated.
-
-### New chess-rival modules
+New chess-rival modules:
 
 ```text
 apps/web/src/lib/chess/rival/types.ts
@@ -862,17 +819,7 @@ apps/web/src/lib/chess/rival/stockfish-provider.ts
 apps/web/src/lib/chess/rival/stockfish-protocol.ts
 ```
 
-Responsibilities:
-
-- `types.ts`: setup/session/usability/provider types;
-- `preferences.ts`: versioned parsing and persistence;
-- `resolve-setup.ts`: pure default/fallback decisions;
-- `provider.ts`: interface and factory;
-- `llm-provider.ts`: existing AI-service wrapper;
-- `stockfish-provider.ts`: Worker lifecycle, bounded initialization, and request ownership;
-- `stockfish-protocol.ts`: pure UCI parsing/formatting.
-
-### New UI modules
+New UI modules:
 
 ```text
 apps/web/src/components/game/ChessRivalSetup.tsx
@@ -881,7 +828,7 @@ apps/web/src/components/game/LlmRivalDetails.tsx
 apps/web/src/components/game/RivalSetupSummary.tsx
 ```
 
-### Existing files likely changed
+Likely existing changes:
 
 ```text
 apps/web/src/components/ChessGame.tsx
@@ -896,197 +843,148 @@ bun.lock
 THIRD_PARTY_NOTICES.md
 ```
 
-Add the engine preparation script under `apps/web/scripts/` and the upstream license under a clear third-party licenses directory.
-
-Avoid unrelated refactors in other variants.
+Add preparation under `apps/web/scripts/` and upstream license under a third-party licenses directory. Avoid unrelated non-chess refactors.
 
 ## Testing strategy
 
-### Pure preference/default tests
+### Preference/default tests
 
-Cover:
+- signed out + no preference → engine without downloading engine assets;
+- configured signed in + no preference + untouched setup → LLM;
+- remembered LLM + loading → remain LLM, Start disabled;
+- engine/LLM automatic fallback notices;
+- explicit unusable choice not overridden;
+- independent side preferences;
+- automatic fallback does not alter stored opponent;
+- corrupt/future preference recovery;
+- board remains hidden/non-interactive until preference resolution.
 
-- signed out + no preference → engine;
-- configured signed in + no preference + untouched resolution → LLM;
-- provisional engine remains when the user interacts before config resolves;
-- provisional engine keeps Start disabled while its probe is checking;
-- a provisional remembered/default engine selection reruns fallback resolution if the probe becomes unavailable;
-- remembered engine + available → engine;
-- remembered engine + unavailable + usable LLM → LLM with notice;
-- remembered engine + unavailable + unusable LLM → engine unavailable;
-- remembered LLM + loading → LLM remains selected and Start disabled;
-- remembered LLM + usable → LLM;
-- remembered LLM + unusable + available engine → engine with symmetric notice;
-- explicit unusable LLM is not auto-overridden;
-- explicit unavailable engine is not auto-overridden;
-- side preferences are independent by opponent;
-- automatic fallback does not overwrite remembered opponent;
-- corrupt/partial/future preference payloads fall back safely.
+### Shared UI tests
 
-### Board-orientation tests
+- `BoardSidePanel` defaults to **Play vs AI**;
+- standard chess override displays **Play**;
+- `GameControls` legacy labels/emoji remain unchanged without overrides;
+- `startLabel` is rendered verbatim as full content;
+- `showLlmTools` override works while legacy `aiConfigured` remains compatible;
+- Xiangqi/Shogi/Jungle call sites need no changes.
 
-Verify:
+### Orientation and preview tests
 
-- White orientation preserves current traversal;
-- Black orientation reverses visual rows and columns;
-- clicking a visually reversed square reports canonical logical coordinates;
-- board data is not mutated;
-- setup side changes orientation immediately;
-- active orientation remains frozen despite preference changes.
+- White/Black traversal and canonical click coordinates;
+- no board-array mutation;
+- no hydration orientation flash;
+- all Play previews use `human-vs-ai` with derived rival side;
+- no LLM-key-conditioned `human-vs-human` fallback remains;
+- active orientation is immutable.
 
-### UCI/protocol unit tests
+### Provider contract tests
 
-Verify:
+- LLM valid response maps move plus metadata;
+- LLM null response maps typed `no-move` failure;
+- LLM debug callback remains provider-boundary-safe;
+- exporter receives prompt/response/thinking/confidence without concrete-provider casts;
+- expected engine failures return `ok: false` rather than throwing;
+- unexpected Worker/provider crashes reject/throw and reach controller error handling.
 
-- `uci` / `uciok` and `isready` / `readyok` sequencing;
-- the capability probe never emits `ucinewgame`;
-- Start emits `ucinewgame` exactly once before the first position/search command, including when adopting a retained prepared provider;
-- FEN command formatting;
-- `go movetime 250` command;
-- normal best move parsing;
-- promotion parsing maps `q/r/b/n` to `queen/rook/bishop/knight`, including `e7e8q`;
-- optional `ponder` text is ignored;
-- `(none)`, malformed squares, invalid promotion suffixes, and duplicate responses are rejected.
+### UCI tests
 
-### Stockfish provider tests
+- `uci` → `uciok`;
+- advertised Skill Level option required;
+- `setoption name Skill Level value 0` precedes readiness;
+- `isready` → `readyok` after options;
+- `ucinewgame` then second `isready` → `readyok` before session commit;
+- `position fen` and `go movetime 250` order;
+- promotion suffix mapping;
+- `(none)`, malformed, duplicate, and out-of-order handling;
+- disposal and stale-attempt suppression.
 
-Inject a fake Worker factory and fake timers. Verify:
+### Start/session tests
 
-- preparation succeeds only after both readiness acknowledgements;
-- no `uciok`, no `readyok`, or hung Worker reaches the 15-second deadline and terminates;
-- Try checking again creates a fresh attempt and disposes the prior attempt;
-- a Start-time reinitialization uses the same deadline;
-- messages are emitted in order;
-- only one move request is allowed at a time;
-- Worker errors reject initialization or the current request appropriately;
-- `dispose()` is idempotent and terminates the Worker;
-- results after disposal are ignored;
-- superseded/double-mounted probe attempts cannot publish availability;
-- the provider never mutates game state.
+- selection alone never constructs Worker or downloads WASM;
+- first engine Start initializes under the deadline;
+- timeout produces load-failed, not unsupported, state;
+- failed Start commits no session/game;
+- successful Start freezes opponent/sides/user/provider;
+- rival White moves only after session commit;
+- generation/session/provider/FEN guards reject stale results;
+- Strict Mode replay leaks no Worker;
+- engine survives auth/config changes;
+- LLM identity change still resets LLM play.
 
-Unit tests must not load the real WASM artifact.
+### History tests
 
-### Session/controller tests
+- signed-in engine terminal game passes engine descriptor and frozen rival side;
+- anonymous-start engine game never saves after sign-in;
+- account switch disables engine save without resetting play;
+- existing terminal snapshot and 401 retry semantics remain unchanged;
+- LLM history/rating behavior is unchanged.
 
-Verify:
+### Packaging/build tests
 
-- Start freezes opponent, sides, provider/model, and user ID;
-- Start commits no active session before provider readiness;
-- failed or timed-out initialization leaves a clean editable preview;
-- side/opponent switch creates a clean preview;
-- rival playing White moves only after Start commits;
-- preference/config/auth updates cannot mutate an active engine session;
-- LLM identity change still resets the active LLM session;
-- engine identity change does not reset the board;
-- stale generation/session/provider/FEN results cannot apply;
-- at most one rival move applies for one requested position;
-- Tutorial ↔ Play disposes providers, clears active session state, and creates the correct clean destination state.
+- exact package paths exist;
+- postinstall is not required and `trustedDependencies` is unchanged;
+- copied files keep exact matching basenames and directory;
+- package/layout mismatch fails closed;
+- production preview returns correct MIME types and no HTML fallback;
+- Worker loads WASM successfully under headers/CSP;
+- build cache invalidates when package version or prep script changes;
+- no engine asset request occurs before engine Start.
 
-### `ChessGame` component tests
+### Browser journeys
 
-Extend `ChessGame.test.tsx` to cover:
+Mocked Worker journeys:
 
-- signed-out player starts engine without account/API-key prompts;
-- configured signed-in no-preference player resolves to LLM before interaction;
-- remembered LLM stays selected during hydration;
-- opponent cards and **You play** choices;
-- persistent selected-opponent/side summary;
-- controls disabled during active and terminal session;
-- lock explanation is present;
-- changing side before Start resets and flips the preview;
-- changing opponent before Start resets the preview;
-- Start gating is opponent-specific;
-- unavailable-engine fallback notice;
-- unavailable-LLM fallback notice;
-- timed-out probe shows unavailable/recheck rather than indefinite checking;
-- neither-usable state remains understandable;
-- active engine game survives auth/config changes;
-- engine game never exposes LLM debug/prompt export controls;
-- LLM flow retains existing debug/export/status behavior;
-- signed-in engine completion passes live `userId`, frozen engine descriptor, and frozen rival side to `usePlayHistory`;
-- anonymous-start engine game does not save after later sign-in;
-- account B cannot save account A's continuing engine game;
-- engine result shows Unrated/no rating delta;
-- rival setup is hidden in Tutorial mode.
+1. signed-out engine selection, side choice, Start loading, rival-first move, human move, New Game;
+2. configured LLM startup and existing debug/export path;
+3. unsupported engine preflight;
+4. engine load timeout/failure and manual retry;
+5. automatic fallback notices.
 
-### Shared-component regression tests
-
-Verify:
-
-- `BoardSidePanel` defaults `aiModeLabel` to **Play vs AI** and renders **Play** only when explicitly overridden;
-- `GameControls` preserves existing label and debug/export behavior when only `aiConfigured` is supplied;
-- `showLlmTools` overrides `aiConfigured` only for the explicit chess path;
-- Xiangqi, Shogi, and Jungle behavior remains unchanged without call-site edits.
-
-### Browser tests
-
-HPA-161 adds mocked-Worker Playwright journeys for:
-
-1. signed-out engine selection, side choice, Start, rival-first move, human move, reset;
-2. configured LLM selection and existing startup flow;
-3. engine unavailable/timeout/recheck fallback and guidance;
-4. Tutorial ↔ Play provider disposal and clean-state behavior.
-
-The real Stockfish/WASM browser smoke and supported-browser matrix remain HPA-187/HPA-166.
-
-### Build and production-preview tests
-
-Verify:
-
-- the installed `stockfish@18.0.8` package exposes both exact source paths under `node_modules/stockfish/bin/`;
-- engine preparation finds the exact pinned artifact names;
-- missing or changed package layout fails clearly;
-- web build contains both generated Stockfish assets;
-- the Worker URL respects the configured Astro base path and remains same-origin;
-- production preview returns JavaScript rather than HTML for the Worker URL;
-- production preview returns `Content-Type: application/wasm` for the WASM URL;
-- any configured CSP permits the Worker and WebAssembly compilation;
-- a production-style Worker can fetch and compile the WASM artifact.
+The real Stockfish/WASM cross-browser smoke remains HPA-187/HPA-166.
 
 ## Acceptance-criteria mapping
 
-| HPA-161 acceptance criterion | Design coverage |
+| HPA-161 criterion | Design coverage |
 |---|---|
-| Signed-out visitor starts local computer without account/API prompts | Provisional/default engine path, opponent-specific Start gating, lazy Stockfish provider |
-| Signed-in player switches between local and LLM before Start | Explicit opponent cards and clean preview reset |
-| Local computer defaults when no usable LLM exists | Default-resolution matrix and symmetric fallback notices |
-| Selected side respected from first move | Canonical human side, derived frozen rival side, atomic Start, rival-first effect |
-| Rival and side cannot become inconsistent during active game | Immutable `ActiveRivalSession`, disabled controls, session-owned rendering |
-| Unsupported browser/device gets actionable message | Bounded real handshake probe, plain unavailable state, and recheck action |
-| Existing language-model play remains available and behaves as before | LLM provider wrapper, existing rated/debug/export/error path retained |
-| Starting/switching initializes a clean game | Clean preview reset plus atomic Start-created initial state |
-| Selected opponent and side visible before/during game | Persistent setup/session summary |
-| Reset required to change active settings | Active snapshot retained through terminal state and locked controls |
+| Signed-out local play without account/API prompts | Engine default, cheap preflight, Start-time local provider |
+| Switch between engine and LLM before Start | Explicit cards and clean preview reset |
+| Engine default when no usable LLM | Preference/default matrix |
+| Selected side respected from move one | Frozen human/rival sides and rival-first post-commit effect |
+| Opponent/side consistent during active game | Immutable active session and disabled controls |
+| Unsupported environment gets actionable message | Cheap capability checks and separate unsupported copy |
+| Existing LLM play remains available | LLM adapter preserves metadata/debug/export/rating/retry |
+| Starting/switching creates clean game | `human-vs-ai` preview plus atomic Start |
+| Opponent and side visible before/during play | Setup/session summary |
+| Reset required to change active settings | Active snapshot retained through terminal state |
+| Local option does not impose page-load engine cost | No Worker/WASM fetch before explicit engine Start |
 
-## Dependency and follow-up boundaries
+## Dependency boundaries
 
-- HPA-160 is complete and supplies authoritative standard rules/FEN/legal application.
-- HPA-165 is complete and supplies the engine history/unrated contract; HPA-161 consumes it and closes the missing pre-game/in-game Unrated presentation.
-- HPA-161 blocks HPA-162 because difficulty UI/policy needs an engine opponent/session boundary. The 250 ms bootstrap is intentionally uncalibrated and not a substitute for HPA-162.
-- HPA-161 blocks HPA-163 because lifecycle hardening needs the provider/session boundary.
-- HPA-164 adds richer history/export metadata on top of the active engine session.
-- HPA-166 validates accessibility, compatibility, and performance rather than redefining selection behavior.
-- HPA-187 performs real-engine release verification and GPL compliance validation.
+- HPA-160 supplies authoritative rules/FEN/legal move application.
+- HPA-165 supplies engine history/unrated contract.
+- HPA-162 replaces bootstrap Skill Level 0 and fixed movetime with calibrated presets.
+- HPA-163 adds active-turn cancellation, move timeout, same-position retry, and richer lifecycle recovery.
+- HPA-164 adds engine version/difficulty history/export metadata.
+- HPA-166 validates browser/performance/accessibility targets, including first-load budget.
+- HPA-187 completes real deployment verification and GPL compliance.
 
 ## Completion checklist
 
 HPA-161 is complete when:
 
-- both opponent choices are present with approved copy;
-- signed-out engine play is functional;
-- LLM setup requirements remain isolated to LLM selection;
-- the approved default/fallback/preference behavior and both automatic notices are covered by tests;
-- human side and board orientation are correct;
-- active opponent/side are immutable and visibly locked;
-- Stockfish can initialize within the bounded deadline and make legal moves through the provider boundary;
-- unavailable or timed-out engine preparation offers a working recheck action;
-- reset/navigation/Strict Mode cleanup/stale results cannot mutate a replaced game;
-- engine unavailable state is actionable;
-- engine games use the existing unrated history descriptor when eligible without bypassing existing hook guards;
-- shared `GameControls` and `BoardSidePanel` defaults preserve every non-chess caller;
-- production-style serving provides valid same-origin Worker/WASM responses and compatible headers;
-- Tutorial ↔ Play transitions fully dispose prior rival state;
-- LLM rating/debug/export behavior is unchanged;
-- pinned artifacts, notices, and license files are present;
-- unit/component/mocked-browser/build tests pass;
-- no HPA-162/HPA-163/HPA-164/HPA-166/HPA-187 scope is silently pulled into the implementation.
+- both opponent choices and side selector are present;
+- engine selection does not fetch Stockfish until Start;
+- signed-out engine play completes legally;
+- LLM requirements affect only the LLM path;
+- preferences/default/fallback behavior is tested;
+- first render avoids an orientation flash;
+- all Play previews use `human-vs-ai` with the selected rival side;
+- active opponent/side/provider/history ownership are frozen;
+- provider result union preserves LLM metadata and typed engine failures;
+- Stockfish runs Skill Level 0 with correct UCI readiness sequencing;
+- reset/navigation/stale results cannot mutate a replaced game;
+- engine unsupported and load-failure states are distinct and actionable;
+- LLM rating/debug/export behavior remains unchanged;
+- exact asset pairing, MIME/base-path/CSP, build-cache, license, and source-notice checks pass;
+- implementation may be reviewed in packaging and runtime PRs, but both are complete;
+- no HPA-162/163/164/166/187 scope is silently absorbed.
