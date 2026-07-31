@@ -17,6 +17,42 @@ export interface PrepareStockfishOptions {
 	complianceRoot: string;
 }
 
+export function assertNonEmptySourceFile(
+	label: string,
+	filePath: string,
+	size: number
+): void {
+	if (size === 0) {
+		throw new Error(`Stockfish ${label} source is empty: ${filePath}`);
+	}
+}
+
+export function assertMatchingCopySize(
+	label: string,
+	expectedSize: number,
+	actualSize: number
+): void {
+	if (actualSize !== expectedSize) {
+		throw new Error(
+			`Stockfish ${label} copy size mismatch: expected ${expectedSize}, got ${actualSize}`
+		);
+	}
+}
+
+export function assertNonEmptyComplianceMaterial(
+	filePath: string,
+	size: number,
+	phase: 'source' | 'destination' = 'source'
+): void {
+	if (size === 0) {
+		throw new Error(
+			phase === 'source'
+				? `Stockfish compliance material is empty: ${filePath}`
+				: `Stockfish compliance material missing after copy: ${filePath}`
+		);
+	}
+}
+
 export async function prepareStockfishAssets(
 	options: PrepareStockfishOptions
 ): Promise<{
@@ -49,12 +85,8 @@ export async function prepareStockfishAssets(
 		stat(wasmPath),
 	]);
 
-	if (jsSourceStat.size === 0) {
-		throw new Error(`Stockfish JS source is empty: ${jsPath}`);
-	}
-	if (wasmSourceStat.size === 0) {
-		throw new Error(`Stockfish WASM source is empty: ${wasmPath}`);
-	}
+	assertNonEmptySourceFile('JS', jsPath, jsSourceStat.size);
+	assertNonEmptySourceFile('WASM', wasmPath, wasmSourceStat.size);
 
 	await copyFile(jsPath, jsDestination);
 	await copyFile(wasmPath, wasmDestination);
@@ -64,16 +96,8 @@ export async function prepareStockfishAssets(
 		stat(wasmDestination),
 	]);
 
-	if (jsDestinationStat.size !== jsSourceStat.size) {
-		throw new Error(
-			`Stockfish JS copy size mismatch: expected ${jsSourceStat.size}, got ${jsDestinationStat.size}`
-		);
-	}
-	if (wasmDestinationStat.size !== wasmSourceStat.size) {
-		throw new Error(
-			`Stockfish WASM copy size mismatch: expected ${wasmSourceStat.size}, got ${wasmDestinationStat.size}`
-		);
-	}
+	assertMatchingCopySize('JS', jsSourceStat.size, jsDestinationStat.size);
+	assertMatchingCopySize('WASM', wasmSourceStat.size, wasmDestinationStat.size);
 
 	await copyComplianceMaterials(options.complianceRoot, destinationDirectory);
 
@@ -108,11 +132,7 @@ async function copyComplianceMaterials(
 
 	for (const requiredPath of requiredSources) {
 		const requiredStat = await stat(requiredPath);
-		if (requiredStat.size === 0) {
-			throw new Error(
-				`Stockfish compliance material is empty: ${requiredPath}`
-			);
-		}
+		assertNonEmptyComplianceMaterial(requiredPath, requiredStat.size, 'source');
 	}
 
 	const licenseDestination = path.join(
@@ -146,11 +166,11 @@ async function copyComplianceMaterials(
 		engineArchiveDestination,
 	]) {
 		const destinationStat = await stat(destinationPath);
-		if (destinationStat.size === 0) {
-			throw new Error(
-				`Stockfish compliance material missing after copy: ${destinationPath}`
-			);
-		}
+		assertNonEmptyComplianceMaterial(
+			destinationPath,
+			destinationStat.size,
+			'destination'
+		);
 	}
 }
 
@@ -168,18 +188,40 @@ export function resolveDefaultStockfishComplianceRoot(
 	);
 }
 
-async function main(): Promise<void> {
-	const packageRoot = stockfishAssets.resolveInstalledStockfishPackageRoot();
+export async function runPrepareStockfishCli(
+	options?: Partial<PrepareStockfishOptions>
+): Promise<{
+	jsDestination: string;
+	wasmDestination: string;
+	destinationDirectory: string;
+}> {
 	const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-	const publicRoot = path.resolve(scriptDirectory, '..', 'public');
-	const complianceRoot = resolveDefaultStockfishComplianceRoot(scriptDirectory);
+	const packageRoot =
+		options?.packageRoot ??
+		stockfishAssets.resolveInstalledStockfishPackageRoot();
+	const publicRoot =
+		options?.publicRoot ?? path.resolve(scriptDirectory, '..', 'public');
+	const complianceRoot =
+		options?.complianceRoot ??
+		resolveDefaultStockfishComplianceRoot(scriptDirectory);
 
+	return prepareStockfishAssets({
+		packageRoot,
+		publicRoot,
+		complianceRoot,
+	});
+}
+
+export function reportPrepareStockfishCliFailure(error: unknown): never {
+	console.error(error instanceof Error ? error.message : error);
+	process.exit(1);
+}
+
+export async function main(
+	options?: Partial<PrepareStockfishOptions>
+): Promise<void> {
 	const { jsDestination, wasmDestination, destinationDirectory } =
-		await prepareStockfishAssets({
-			packageRoot,
-			publicRoot,
-			complianceRoot,
-		});
+		await runPrepareStockfishCli(options);
 
 	console.log(jsDestination);
 	console.log(wasmDestination);
@@ -187,8 +229,5 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-	main().catch((error: unknown) => {
-		console.error(error instanceof Error ? error.message : error);
-		process.exit(1);
-	});
+	main().catch(reportPrepareStockfishCliFailure);
 }

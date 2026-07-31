@@ -21,7 +21,15 @@ import {
 	STOCKFISH_WASM_FILENAME,
 	resolveStockfishPackageRootFromEntry,
 } from './stockfish-assets';
-import { prepareStockfishAssets } from './prepare-stockfish';
+import {
+	prepareStockfishAssets,
+	assertMatchingCopySize,
+	assertNonEmptyComplianceMaterial,
+	assertNonEmptySourceFile,
+	reportPrepareStockfishCliFailure,
+	runPrepareStockfishCli,
+	main as prepareStockfishMain,
+} from './prepare-stockfish';
 
 async function createSyntheticPackageRoot(): Promise<{
 	packageRoot: string;
@@ -201,6 +209,18 @@ describe('prepareStockfishAssets', () => {
 		).rejects.toThrow();
 	});
 
+	test('fails when JS source is empty', async () => {
+		const { packageRoot, jsPath } = await createSyntheticPackageRoot();
+		await writeFile(jsPath, '');
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
+
+		await expect(
+			prepareStockfishAssets({ packageRoot, publicRoot, complianceRoot })
+		).rejects.toThrow(/JS source is empty/i);
+	});
+
 	test('fails when WASM is missing', async () => {
 		const { packageRoot, wasmPath } = await createSyntheticPackageRoot();
 		await rm(wasmPath);
@@ -211,6 +231,30 @@ describe('prepareStockfishAssets', () => {
 		await expect(
 			prepareStockfishAssets({ packageRoot, publicRoot, complianceRoot })
 		).rejects.toThrow();
+	});
+
+	test('fails when WASM source is empty', async () => {
+		const { packageRoot, wasmPath } = await createSyntheticPackageRoot();
+		await writeFile(wasmPath, Buffer.alloc(0));
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
+
+		await expect(
+			prepareStockfishAssets({ packageRoot, publicRoot, complianceRoot })
+		).rejects.toThrow(/WASM source is empty/i);
+	});
+
+	test('fails when a compliance material is empty', async () => {
+		const { packageRoot } = await createSyntheticPackageRoot();
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
+		await writeFile(path.join(complianceRoot, STOCKFISH_LICENSE_FILENAME), '');
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
+
+		await expect(
+			prepareStockfishAssets({ packageRoot, publicRoot, complianceRoot })
+		).rejects.toThrow(/compliance material is empty/i);
 	});
 
 	test('fails if the pair does not have identical basenames', async () => {
@@ -356,5 +400,102 @@ describe('prepareStockfishAssets', () => {
 
 		await expect(stat(destinationDirectory)).rejects.toThrow();
 		await rm(packageRoot, { recursive: true, force: true });
+	});
+
+	test('CLI helper prepares installed assets into an override public root', async () => {
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
+
+		const result = await runPrepareStockfishCli({
+			publicRoot,
+			complianceRoot,
+		});
+
+		await expect(stat(result.jsDestination)).resolves.toBeDefined();
+		await expect(stat(result.wasmDestination)).resolves.toBeDefined();
+		await expect(
+			stat(path.join(result.destinationDirectory, STOCKFISH_LICENSE_FILENAME))
+		).resolves.toBeDefined();
+	});
+
+	test('main logs prepared destinations', async () => {
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
+		const logSpy = spyOn(console, 'log').mockImplementation(() => {});
+
+		try {
+			await prepareStockfishMain({
+				publicRoot,
+				complianceRoot,
+			});
+
+			expect(logSpy).toHaveBeenCalledTimes(3);
+			expect(String(logSpy.mock.calls[0]?.[0])).toContain(
+				STOCKFISH_JS_FILENAME
+			);
+			expect(String(logSpy.mock.calls[1]?.[0])).toContain(
+				STOCKFISH_WASM_FILENAME
+			);
+			expect(String(logSpy.mock.calls[2]?.[0])).toContain(
+				STOCKFISH_PUBLIC_DIRECTORY
+			);
+		} finally {
+			logSpy.mockRestore();
+		}
+	});
+});
+
+describe('prepare-stockfish guards', () => {
+	test('assertNonEmptySourceFile rejects empty sources', () => {
+		expect(() => assertNonEmptySourceFile('JS', '/tmp/engine.js', 0)).toThrow(
+			/JS source is empty/i
+		);
+		expect(() =>
+			assertNonEmptySourceFile('WASM', '/tmp/engine.wasm', 8)
+		).not.toThrow();
+	});
+
+	test('assertMatchingCopySize rejects mismatched sizes', () => {
+		expect(() => assertMatchingCopySize('JS', 10, 9)).toThrow(
+			/JS copy size mismatch/i
+		);
+		expect(() => assertMatchingCopySize('WASM', 10, 10)).not.toThrow();
+	});
+
+	test('assertNonEmptyComplianceMaterial rejects empty materials', () => {
+		expect(() =>
+			assertNonEmptyComplianceMaterial('/tmp/Copying.txt', 0, 'source')
+		).toThrow(/compliance material is empty/i);
+		expect(() =>
+			assertNonEmptyComplianceMaterial('/tmp/Copying.txt', 0, 'destination')
+		).toThrow(/missing after copy/i);
+		expect(() =>
+			assertNonEmptyComplianceMaterial('/tmp/Copying.txt', 12, 'destination')
+		).not.toThrow();
+	});
+
+	test('reportPrepareStockfishCliFailure prints and exits', () => {
+		const exitSpy = spyOn(process, 'exit').mockImplementation((() => {
+			throw new Error('process.exit');
+		}) as never);
+		const errorSpy = spyOn(console, 'error').mockImplementation(() => {});
+
+		try {
+			expect(() => reportPrepareStockfishCliFailure(new Error('boom'))).toThrow(
+				'process.exit'
+			);
+			expect(errorSpy).toHaveBeenCalledWith('boom');
+			expect(exitSpy).toHaveBeenCalledWith(1);
+
+			expect(() => reportPrepareStockfishCliFailure('raw-failure')).toThrow(
+				'process.exit'
+			);
+			expect(errorSpy).toHaveBeenCalledWith('raw-failure');
+		} finally {
+			exitSpy.mockRestore();
+			errorSpy.mockRestore();
+		}
 	});
 });
