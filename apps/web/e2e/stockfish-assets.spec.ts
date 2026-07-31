@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import {
 	STOCKFISH_CORRESPONDING_SOURCE_FILENAME,
@@ -28,7 +28,7 @@ function sha256Bytes(body: Buffer): string {
 }
 
 async function assertDownloadableArchive(
-	page: Parameters<Parameters<typeof test>[1]>[0]['page'],
+	page: Page,
 	archivePath: string,
 	expectedBytes: number,
 	expectedSha256: string

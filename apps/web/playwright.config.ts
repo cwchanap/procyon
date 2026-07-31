@@ -98,6 +98,9 @@ if (shouldStartWebServer) {
  */
 export default defineConfig({
   testDir: './e2e',
+  // Stockfish asset delivery needs the dedicated preview server (no
+  // Content-Encoding on *.tar.gz). Run via test:e2e:stockfish-assets.
+  testIgnore: ['**/stockfish-assets.spec.ts'],
   globalSetup: './e2e/global-setup.ts',
 
   /* Run tests in files in parallel */
