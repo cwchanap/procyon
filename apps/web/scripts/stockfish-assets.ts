@@ -6,6 +6,18 @@ export const STOCKFISH_PACKAGE_VERSION = '18.0.8' as const;
 export const STOCKFISH_JS_FILENAME = 'stockfish-18-lite-single.js' as const;
 export const STOCKFISH_WASM_FILENAME = 'stockfish-18-lite-single.wasm' as const;
 export const STOCKFISH_PUBLIC_DIRECTORY = 'vendor/stockfish' as const;
+export const STOCKFISH_LICENSE_FILENAME = 'Copying.txt' as const;
+export const STOCKFISH_CORRESPONDING_SOURCE_FILENAME =
+	'CorrespondingSource.txt' as const;
+export const STOCKFISH_JS_PACKAGE_COMMIT =
+	'93c994592dcf3b4b21052ab925e9b534df9c0918' as const;
+export const STOCKFISH_JS_SOURCE_ARCHIVE =
+	`stockfish.js-${STOCKFISH_JS_PACKAGE_COMMIT}.tar.gz` as const;
+export const STOCKFISH_ENGINE_SOURCE_ARCHIVE =
+	'Stockfish-sf_18.tar.gz' as const;
+export const STOCKFISH_ENGINE_UPSTREAM_TAG = 'sf_18' as const;
+export const STOCKFISH_ENGINE_UPSTREAM_COMMIT =
+	'cb3d4ee9b47d0c5aae855b12379378ea1439675c' as const;
 
 export function validateStockfishAssetPair(
 	jsPath: string,
