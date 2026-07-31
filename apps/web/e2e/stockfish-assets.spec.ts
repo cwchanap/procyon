@@ -5,10 +5,7 @@ const STOCKFISH_JS_PATH = `${STOCKFISH_BASE_PATH}/stockfish-18-lite-single.js`;
 const STOCKFISH_WASM_PATH = `${STOCKFISH_BASE_PATH}/stockfish-18-lite-single.wasm`;
 const KNOWN_FAVICON_PATH = '/favicon.svg';
 
-const isKnownFaviconFailure = (entry: string): boolean =>
-	entry.includes(KNOWN_FAVICON_PATH);
-
-const isKnownFaviconConsoleError = (entry: string): boolean =>
+const isKnownFaviconEntry = (entry: string): boolean =>
 	entry.includes(KNOWN_FAVICON_PATH);
 
 test.describe('Stockfish production asset delivery', () => {
@@ -72,8 +69,7 @@ test.describe('Stockfish production asset delivery', () => {
 			}
 		});
 		page.on('response', response => {
-			const { pathname } = new URL(response.url());
-			if (response.status() >= 400 && pathname === KNOWN_FAVICON_PATH) {
+			if (response.status() >= 400) {
 				failedAssetRequests.push(`${response.url()} HTTP ${response.status()}`);
 			}
 		});
@@ -84,7 +80,9 @@ test.describe('Stockfish production asset delivery', () => {
 		});
 
 		await page.goto('/');
-		await page.waitForLoadState('networkidle');
+		await expect(
+			page.getByRole('heading', { name: 'Procyon Chess' })
+		).toBeVisible();
 
 		await page.evaluate(
 			async ({ scriptPath }) => {
@@ -128,11 +126,11 @@ test.describe('Stockfish production asset delivery', () => {
 			{ scriptPath: STOCKFISH_JS_PATH }
 		);
 
+		expect(consoleErrors.filter(entry => !isKnownFaviconEntry(entry))).toEqual(
+			[]
+		);
 		expect(
-			consoleErrors.filter(entry => !isKnownFaviconConsoleError(entry))
-		).toEqual([]);
-		expect(
-			failedAssetRequests.filter(entry => !isKnownFaviconFailure(entry))
+			failedAssetRequests.filter(entry => !isKnownFaviconEntry(entry))
 		).toEqual([]);
 	});
 });
