@@ -15,6 +15,12 @@ const NOTICES_PATH = path.join(REPO_ROOT, 'THIRD_PARTY_NOTICES.md');
 
 const STOCKFISH_JS_UPSTREAM_TAG = 'v18.0.0';
 const STOCKFISH_JS_UPSTREAM_REPO = 'https://github.com/nmrugg/stockfish.js';
+const STOCKFISH_ENGINE_UPSTREAM_REPO =
+	'https://github.com/official-stockfish/Stockfish';
+const STOCKFISH_ENGINE_UPSTREAM_TAG = 'sf_18';
+const STOCKFISH_ENGINE_UPSTREAM_COMMIT =
+	'cb3d4ee9b47d0c5aae855b12379378ea1439675c';
+const STOCKFISH_DISTRIBUTION_PATH = 'apps/web/public/vendor/stockfish/';
 
 describe('Stockfish license traceability', () => {
 	test('keeps the copied GPL-3.0 license text', () => {
@@ -35,8 +41,12 @@ describe('Stockfish license traceability', () => {
 		expect(noticesText).toContain('GPL-3.0');
 		expect(noticesText).toContain(STOCKFISH_JS_UPSTREAM_REPO);
 		expect(noticesText).toContain(STOCKFISH_JS_UPSTREAM_TAG);
+		expect(noticesText).toContain(STOCKFISH_ENGINE_UPSTREAM_REPO);
+		expect(noticesText).toContain(STOCKFISH_ENGINE_UPSTREAM_TAG);
+		expect(noticesText).toContain(STOCKFISH_ENGINE_UPSTREAM_COMMIT);
 		expect(noticesText).toContain(STOCKFISH_JS_FILENAME);
 		expect(noticesText).toContain(STOCKFISH_WASM_FILENAME);
+		expect(noticesText).toContain(STOCKFISH_DISTRIBUTION_PATH);
 		expect(noticesText).toContain('third_party/licenses/stockfish/Copying.txt');
 	});
 
