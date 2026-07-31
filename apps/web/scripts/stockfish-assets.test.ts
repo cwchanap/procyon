@@ -90,4 +90,18 @@ describe('Stockfish package root resolution', () => {
 
 		expect(resolveStockfishPackageRootFromEntry(entryPath)).toBe(packageRoot);
 	});
+
+	test('fails when no stockfish package.json is found', async () => {
+		const orphanRoot = await mkdtemp(
+			path.join(os.tmpdir(), 'stockfish-orphan-')
+		);
+		fixtureRoots.push(orphanRoot);
+		const entryPath = path.join(orphanRoot, 'bin', 'index.js');
+		await mkdir(path.dirname(entryPath), { recursive: true });
+		await writeFile(entryPath, '// orphan entry');
+
+		expect(() => resolveStockfishPackageRootFromEntry(entryPath)).toThrow(
+			/Could not resolve installed stockfish package root/i
+		);
+	});
 });
