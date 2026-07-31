@@ -1,14 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { Plugin, PreviewServer } from 'vite';
+import type { ServerResponse } from 'node:http';
 
 /**
- * Vite/sirv treats any filename ending in `.gz` as a precompressed asset and
- * sets `Content-Encoding: gzip`. That is wrong for downloadable `.tar.gz`
- * archives: browsers and fetch then gunzip the body, so clients never receive
- * the archive bytes. Serve those files ourselves during preview with correct
- * response metadata (no Content-Encoding).
+ * Helpers for serving downloadable `.tar.gz` archives without
+ * `Content-Encoding: gzip`.
+ *
+ * Vite/sirv treats any filename ending in `.gz` as a precompressed asset.
+ * Astro's static `astro preview` also hardcodes Vite with `configFile: false`
+ * (user Vite plugins never load), so Stockfish asset e2e uses
+ * `stockfish-assets-preview-server.ts` instead of `astro preview`.
  */
 export function isTarGzPath(pathname: string): boolean {
 	return pathname.endsWith('.tar.gz');
@@ -46,28 +47,4 @@ export function serveTarGzArchive(
 	// Intentionally omit Content-Encoding so clients receive archive bytes.
 	res.end(body);
 	return true;
-}
-
-export function stockfishTarGzPreviewHeaders(): Plugin {
-	return {
-		name: 'stockfish-tar-gz-preview-headers',
-		configurePreviewServer(server: PreviewServer) {
-			server.middlewares.use(
-				(req: IncomingMessage, res: ServerResponse, next: () => void) => {
-					const pathname = decodeURIComponent(
-						(req.url ?? '').split('?')[0] ?? ''
-					);
-					const filePath = resolvePreviewAssetPath(
-						server.config.root,
-						server.config.build.outDir,
-						pathname
-					);
-					if (!filePath || !serveTarGzArchive(filePath, res)) {
-						next();
-						return;
-					}
-				}
-			);
-		},
-	};
 }

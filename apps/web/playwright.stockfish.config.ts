@@ -16,7 +16,11 @@ export default defineConfig({
 		},
 	],
 	webServer: {
-		command: 'bun run build && bunx astro preview --host 127.0.0.1 --port 3510',
+		// Astro static preview uses sirv and ignores user Vite plugins, so
+		// *.tar.gz would get Content-Encoding: gzip. Serve dist with correct
+		// archive metadata instead (see scripts/stockfish-assets-preview-server.ts).
+		command:
+			'bun run build && bun run scripts/stockfish-assets-preview-server.ts 3510',
 		env: {
 			PUBLIC_GOOGLE_CLIENT_ID: 'verification-only',
 		},
