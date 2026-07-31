@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
+import { stockfishTarGzPreviewHeaders } from './scripts/stockfish-tar-gz-preview-headers.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,5 +72,8 @@ export default defineConfig({
   server: {
     port: 3500,
     host: true
-  }
+  },
+  vite: {
+    plugins: [stockfishTarGzPreviewHeaders()],
+  },
 });

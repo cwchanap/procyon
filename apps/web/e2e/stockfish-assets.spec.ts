@@ -1,7 +1,5 @@
 import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import http from 'node:http';
-import type { IncomingHttpHeaders } from 'node:http';
 import {
 	STOCKFISH_CORRESPONDING_SOURCE_FILENAME,
 	STOCKFISH_ENGINE_SOURCE_ARCHIVE,
@@ -29,32 +27,25 @@ function sha256Bytes(body: Buffer): string {
 	return createHash('sha256').update(body).digest('hex');
 }
 
-/**
- * Fetch raw response bytes without auto-decompressing Content-Encoding.
- * Astro preview labels some static .tar.gz assets as gzip even when the body
- * is the verbatim archive; Playwright/fetch would otherwise gunzip and break
- * integrity checks.
- */
-function fetchRaw(
-	url: string
-): Promise<{ status: number; headers: IncomingHttpHeaders; body: Buffer }> {
-	return new Promise((resolve, reject) => {
-		http
-			.get(url, response => {
-				const chunks: Buffer[] = [];
-				response.on('data', chunk => {
-					chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-				});
-				response.on('end', () => {
-					resolve({
-						status: response.statusCode ?? 0,
-						headers: response.headers,
-						body: Buffer.concat(chunks),
-					});
-				});
-			})
-			.on('error', reject);
-	});
+async function assertDownloadableArchive(
+	page: Parameters<Parameters<typeof test>[1]>[0]['page'],
+	archivePath: string,
+	expectedBytes: number,
+	expectedSha256: string
+) {
+	// Use Playwright's APIRequestContext (same decompression behavior as
+	// browser/fetch). Preview must omit Content-Encoding for .tar.gz so the
+	// body bytes stay the archive, not a gunzipped payload.
+	const response = await page.request.get(archivePath, { maxRedirects: 0 });
+	const body = Buffer.from(await response.body());
+	const headers = response.headers();
+
+	expect(response.status()).toBe(200);
+	expect(headers['location']).toBeUndefined();
+	expect(headers['content-encoding']).toBeUndefined();
+	expect(headers['content-type'] ?? '').not.toContain('text/html');
+	expect(body.byteLength).toBe(expectedBytes);
+	expect(sha256Bytes(body)).toBe(expectedSha256);
 }
 
 test.describe('Stockfish production asset delivery', () => {
@@ -86,7 +77,6 @@ test.describe('Stockfish production asset delivery', () => {
 
 	test('serves license and corresponding-source materials beside the binaries', async ({
 		page,
-		baseURL,
 	}) => {
 		const licenseResponse = await page.request.get(STOCKFISH_LICENSE_PATH, {
 			maxRedirects: 0,
@@ -116,31 +106,16 @@ test.describe('Stockfish production asset delivery', () => {
 			STOCKFISH_ENGINE_SOURCE_ARCHIVE_SHA256
 		);
 
-		expect(baseURL).toBeTruthy();
-		const jsArchive = await fetchRaw(`${baseURL}${STOCKFISH_JS_ARCHIVE_PATH}`);
-		const engineArchive = await fetchRaw(
-			`${baseURL}${STOCKFISH_ENGINE_ARCHIVE_PATH}`
-		);
-
-		expect(jsArchive.status).toBe(200);
-		expect(jsArchive.headers.location).toBeUndefined();
-		expect(String(jsArchive.headers['content-type'] ?? '')).not.toContain(
-			'text/html'
-		);
-		expect(jsArchive.body.byteLength).toBe(STOCKFISH_JS_SOURCE_ARCHIVE_BYTES);
-		expect(sha256Bytes(jsArchive.body)).toBe(
+		await assertDownloadableArchive(
+			page,
+			STOCKFISH_JS_ARCHIVE_PATH,
+			STOCKFISH_JS_SOURCE_ARCHIVE_BYTES,
 			STOCKFISH_JS_SOURCE_ARCHIVE_SHA256
 		);
-
-		expect(engineArchive.status).toBe(200);
-		expect(engineArchive.headers.location).toBeUndefined();
-		expect(String(engineArchive.headers['content-type'] ?? '')).not.toContain(
-			'text/html'
-		);
-		expect(engineArchive.body.byteLength).toBe(
-			STOCKFISH_ENGINE_SOURCE_ARCHIVE_BYTES
-		);
-		expect(sha256Bytes(engineArchive.body)).toBe(
+		await assertDownloadableArchive(
+			page,
+			STOCKFISH_ENGINE_ARCHIVE_PATH,
+			STOCKFISH_ENGINE_SOURCE_ARCHIVE_BYTES,
 			STOCKFISH_ENGINE_SOURCE_ARCHIVE_SHA256
 		);
 	});
