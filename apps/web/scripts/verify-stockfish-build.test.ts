@@ -10,9 +10,16 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { prepareStockfishAssets } from './prepare-stockfish';
 import {
+	prepareStockfishAssets,
+	resolveDefaultStockfishComplianceRoot,
+} from './prepare-stockfish';
+import {
+	STOCKFISH_CORRESPONDING_SOURCE_FILENAME,
+	STOCKFISH_ENGINE_SOURCE_ARCHIVE,
 	STOCKFISH_JS_FILENAME,
+	STOCKFISH_JS_SOURCE_ARCHIVE,
+	STOCKFISH_LICENSE_FILENAME,
 	STOCKFISH_PUBLIC_DIRECTORY,
 	STOCKFISH_WASM_FILENAME,
 	resolveInstalledStockfishPackageRoot,
@@ -45,6 +52,31 @@ async function createSyntheticPackageRoot(jsContent: string): Promise<{
 	return { packageRoot, jsPath };
 }
 
+async function createSyntheticComplianceRoot(): Promise<string> {
+	const complianceRoot = await mkdtemp(
+		path.join(os.tmpdir(), 'stockfish-verify-compliance-')
+	);
+	const sourceDirectory = path.join(complianceRoot, 'source');
+	await mkdir(sourceDirectory, { recursive: true });
+	await writeFile(
+		path.join(complianceRoot, STOCKFISH_LICENSE_FILENAME),
+		'GNU GENERAL PUBLIC LICENSE\nVersion 3'
+	);
+	await writeFile(
+		path.join(complianceRoot, STOCKFISH_CORRESPONDING_SOURCE_FILENAME),
+		'Corresponding Source for Stockfish browser assets'
+	);
+	await writeFile(
+		path.join(sourceDirectory, STOCKFISH_JS_SOURCE_ARCHIVE),
+		'js-source-archive'
+	);
+	await writeFile(
+		path.join(sourceDirectory, STOCKFISH_ENGINE_SOURCE_ARCHIVE),
+		'engine-source-archive'
+	);
+	return complianceRoot;
+}
+
 describe('Stockfish build verification', () => {
 	const tempRoots: string[] = [];
 
@@ -58,6 +90,7 @@ describe('Stockfish build verification', () => {
 
 	test('recreates both installed engine files with matching SHA-256 hashes from no destination directory', async () => {
 		const packageRoot = resolveInstalledStockfishPackageRoot();
+		const complianceRoot = resolveDefaultStockfishComplianceRoot();
 		const { jsPath, wasmPath } = resolveStockfishSourcePair(packageRoot);
 		const publicRoot = await mkdtemp(
 			path.join(os.tmpdir(), 'stockfish-verify-public-')
@@ -70,7 +103,11 @@ describe('Stockfish build verification', () => {
 
 		await expect(stat(destinationDirectory)).rejects.toThrow();
 
-		const result = await prepareStockfishAssets({ packageRoot, publicRoot });
+		const result = await prepareStockfishAssets({
+			packageRoot,
+			publicRoot,
+			complianceRoot,
+		});
 
 		expect(path.basename(result.jsDestination)).toBe(STOCKFISH_JS_FILENAME);
 		expect(path.basename(result.wasmDestination)).toBe(STOCKFISH_WASM_FILENAME);
@@ -82,20 +119,40 @@ describe('Stockfish build verification', () => {
 		expect(await sha256File(result.wasmDestination)).toBe(
 			await sha256File(wasmPath)
 		);
+		await expect(
+			stat(path.join(result.destinationDirectory, STOCKFISH_LICENSE_FILENAME))
+		).resolves.toBeDefined();
+		await expect(
+			stat(
+				path.join(
+					result.destinationDirectory,
+					STOCKFISH_CORRESPONDING_SOURCE_FILENAME
+				)
+			)
+		).resolves.toBeDefined();
 	});
 
 	test('changes the destination hash when a source fixture byte changes', async () => {
 		const { packageRoot, jsPath } = await createSyntheticPackageRoot('a');
+		const complianceRoot = await createSyntheticComplianceRoot();
 		const publicRoot = await mkdtemp(
 			path.join(os.tmpdir(), 'stockfish-verify-public-')
 		);
-		tempRoots.push(packageRoot, publicRoot);
+		tempRoots.push(packageRoot, complianceRoot, publicRoot);
 
-		const first = await prepareStockfishAssets({ packageRoot, publicRoot });
+		const first = await prepareStockfishAssets({
+			packageRoot,
+			publicRoot,
+			complianceRoot,
+		});
 		const firstHash = await sha256File(first.jsDestination);
 
 		await writeFile(jsPath, 'b');
-		const second = await prepareStockfishAssets({ packageRoot, publicRoot });
+		const second = await prepareStockfishAssets({
+			packageRoot,
+			publicRoot,
+			complianceRoot,
+		});
 		const secondHash = await sha256File(second.jsDestination);
 
 		expect(second.jsDestination).toBe(first.jsDestination);

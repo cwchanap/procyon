@@ -1,0 +1,32 @@
+Corresponding Source for Stockfish browser assets
+=================================================
+
+This directory (when published to /vendor/stockfish/) distributes GPL-3.0
+object code together with the license text and corresponding source for the
+exact binaries Procyon serves.
+
+Distributed object code
+-----------------------
+- stockfish-18-lite-single.js
+- stockfish-18-lite-single.wasm
+- npm package: stockfish@18.0.8
+
+License
+-------
+- Copying.txt (GNU GPL Version 3), colocated with the object code
+
+Corresponding source archives (same origin, under source/)
+----------------------------------------------------------
+- stockfish.js-93c994592dcf3b4b21052ab925e9b534df9c0918.tar.gz
+  Stockfish.js packaging and build sources matching the npm package gitHead
+  for stockfish@18.0.8
+  https://github.com/nmrugg/stockfish.js/tree/93c994592dcf3b4b21052ab925e9b534df9c0918
+
+- Stockfish-sf_18.tar.gz
+  Official Stockfish engine sources at release tag sf_18
+  (commit cb3d4ee9b47d0c5aae855b12379378ea1439675c)
+  https://github.com/official-stockfish/Stockfish/tree/sf_18
+
+These archives are offered from the same place as the object code so network
+recipients have equivalent access to the corresponding source for the exact
+distributed binaries.

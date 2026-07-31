@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test';
 const STOCKFISH_BASE_PATH = '/vendor/stockfish';
 const STOCKFISH_JS_PATH = `${STOCKFISH_BASE_PATH}/stockfish-18-lite-single.js`;
 const STOCKFISH_WASM_PATH = `${STOCKFISH_BASE_PATH}/stockfish-18-lite-single.wasm`;
+const STOCKFISH_LICENSE_PATH = `${STOCKFISH_BASE_PATH}/Copying.txt`;
+const STOCKFISH_CORRESPONDING_SOURCE_PATH = `${STOCKFISH_BASE_PATH}/CorrespondingSource.txt`;
 const KNOWN_FAVICON_PATH = '/favicon.svg';
 
 const isKnownFaviconEntry = (entry: string): boolean =>
@@ -33,6 +35,30 @@ test.describe('Stockfish production asset delivery', () => {
 		expect(response.headers()['location']).toBeUndefined();
 		expect(response.headers()['content-type']).toContain('application/wasm');
 		expect(body.byteLength).toBeGreaterThan(1024 * 1024);
+	});
+
+	test('serves license and corresponding-source materials beside the binaries', async ({
+		page,
+	}) => {
+		const licenseResponse = await page.request.get(STOCKFISH_LICENSE_PATH, {
+			maxRedirects: 0,
+		});
+		const correspondingSourceResponse = await page.request.get(
+			STOCKFISH_CORRESPONDING_SOURCE_PATH,
+			{ maxRedirects: 0 }
+		);
+		const licenseBody = await licenseResponse.text();
+		const correspondingSourceBody = await correspondingSourceResponse.text();
+
+		expect(licenseResponse.status()).toBe(200);
+		expect(licenseBody).toContain('GNU GENERAL PUBLIC LICENSE');
+		expect(licenseBody).toContain('Version 3');
+		expect(correspondingSourceResponse.status()).toBe(200);
+		expect(correspondingSourceBody).toContain('stockfish-18-lite-single.js');
+		expect(correspondingSourceBody).toContain(
+			'93c994592dcf3b4b21052ab925e9b534df9c0918'
+		);
+		expect(correspondingSourceBody).toContain('sf_18');
 	});
 
 	test('starts a same-origin Stockfish worker and completes UCI readiness', async ({

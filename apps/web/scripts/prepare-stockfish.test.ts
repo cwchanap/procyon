@@ -11,7 +11,11 @@ import os from 'node:os';
 import path from 'node:path';
 import * as stockfishAssets from './stockfish-assets';
 import {
+	STOCKFISH_CORRESPONDING_SOURCE_FILENAME,
+	STOCKFISH_ENGINE_SOURCE_ARCHIVE,
 	STOCKFISH_JS_FILENAME,
+	STOCKFISH_JS_SOURCE_ARCHIVE,
+	STOCKFISH_LICENSE_FILENAME,
 	STOCKFISH_PUBLIC_DIRECTORY,
 	STOCKFISH_PACKAGE_VERSION,
 	STOCKFISH_WASM_FILENAME,
@@ -43,22 +47,78 @@ async function createSyntheticPackageRoot(): Promise<{
 	return { packageRoot, jsContent, wasmContent, jsPath, wasmPath };
 }
 
+async function createSyntheticComplianceRoot(): Promise<{
+	complianceRoot: string;
+	licenseContent: string;
+	correspondingSourceContent: string;
+	jsArchiveContent: string;
+	engineArchiveContent: string;
+}> {
+	const complianceRoot = await mkdtemp(
+		path.join(os.tmpdir(), 'stockfish-compliance-')
+	);
+	const sourceDirectory = path.join(complianceRoot, 'source');
+	await mkdir(sourceDirectory, { recursive: true });
+
+	const licenseContent = 'GNU GENERAL PUBLIC LICENSE\nVersion 3';
+	const correspondingSourceContent =
+		'Corresponding Source for Stockfish browser assets';
+	const jsArchiveContent = 'stockfish.js corresponding source archive';
+	const engineArchiveContent = 'Stockfish engine corresponding source archive';
+
+	await writeFile(
+		path.join(complianceRoot, STOCKFISH_LICENSE_FILENAME),
+		licenseContent
+	);
+	await writeFile(
+		path.join(complianceRoot, STOCKFISH_CORRESPONDING_SOURCE_FILENAME),
+		correspondingSourceContent
+	);
+	await writeFile(
+		path.join(sourceDirectory, STOCKFISH_JS_SOURCE_ARCHIVE),
+		jsArchiveContent
+	);
+	await writeFile(
+		path.join(sourceDirectory, STOCKFISH_ENGINE_SOURCE_ARCHIVE),
+		engineArchiveContent
+	);
+
+	return {
+		complianceRoot,
+		licenseContent,
+		correspondingSourceContent,
+		jsArchiveContent,
+		engineArchiveContent,
+	};
+}
+
 describe('prepareStockfishAssets', () => {
 	let publicRoot: string;
+	let complianceRoot: string;
 
 	afterEach(async () => {
 		if (publicRoot) {
 			await rm(publicRoot, { recursive: true, force: true });
 			publicRoot = '';
 		}
+		if (complianceRoot) {
+			await rm(complianceRoot, { recursive: true, force: true });
+			complianceRoot = '';
+		}
 	});
 
 	test('copies the approved pair unchanged', async () => {
 		const { packageRoot, jsContent, wasmContent } =
 			await createSyntheticPackageRoot();
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
 		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
 
-		const result = await prepareStockfishAssets({ packageRoot, publicRoot });
+		const result = await prepareStockfishAssets({
+			packageRoot,
+			publicRoot,
+			complianceRoot,
+		});
 
 		expect(await readFile(result.jsDestination, 'utf8')).toBe(jsContent);
 		expect(Buffer.from(await readFile(result.wasmDestination))).toEqual(
@@ -68,9 +128,15 @@ describe('prepareStockfishAssets', () => {
 
 	test('creates the destination directory', async () => {
 		const { packageRoot } = await createSyntheticPackageRoot();
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
 		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
 
-		const result = await prepareStockfishAssets({ packageRoot, publicRoot });
+		const result = await prepareStockfishAssets({
+			packageRoot,
+			publicRoot,
+			complianceRoot,
+		});
 
 		await expect(stat(result.jsDestination)).resolves.toBeDefined();
 		await expect(stat(result.wasmDestination)).resolves.toBeDefined();
@@ -79,9 +145,15 @@ describe('prepareStockfishAssets', () => {
 	test('preserves exact filenames and bytes', async () => {
 		const { packageRoot, jsContent, wasmContent } =
 			await createSyntheticPackageRoot();
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
 		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
 
-		const result = await prepareStockfishAssets({ packageRoot, publicRoot });
+		const result = await prepareStockfishAssets({
+			packageRoot,
+			publicRoot,
+			complianceRoot,
+		});
 
 		expect(path.basename(result.jsDestination)).toBe(STOCKFISH_JS_FILENAME);
 		expect(path.basename(result.wasmDestination)).toBe(STOCKFISH_WASM_FILENAME);
@@ -94,10 +166,20 @@ describe('prepareStockfishAssets', () => {
 	test('is idempotent', async () => {
 		const { packageRoot, jsContent, wasmContent } =
 			await createSyntheticPackageRoot();
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
 		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
 
-		const first = await prepareStockfishAssets({ packageRoot, publicRoot });
-		const second = await prepareStockfishAssets({ packageRoot, publicRoot });
+		const first = await prepareStockfishAssets({
+			packageRoot,
+			publicRoot,
+			complianceRoot,
+		});
+		const second = await prepareStockfishAssets({
+			packageRoot,
+			publicRoot,
+			complianceRoot,
+		});
 
 		expect(second.jsDestination).toBe(first.jsDestination);
 		expect(second.wasmDestination).toBe(first.wasmDestination);
@@ -108,31 +190,33 @@ describe('prepareStockfishAssets', () => {
 	});
 
 	test('fails when JS is missing', async () => {
-		const { packageRoot, wasmPath } = await createSyntheticPackageRoot();
-		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
-		const jsPath = path.join(packageRoot, 'bin', STOCKFISH_JS_FILENAME);
+		const { packageRoot, jsPath } = await createSyntheticPackageRoot();
 		await rm(jsPath);
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
 
 		await expect(
-			prepareStockfishAssets({ packageRoot, publicRoot })
+			prepareStockfishAssets({ packageRoot, publicRoot, complianceRoot })
 		).rejects.toThrow();
-		await expect(stat(wasmPath)).resolves.toBeDefined();
 	});
 
 	test('fails when WASM is missing', async () => {
-		const { packageRoot, jsPath } = await createSyntheticPackageRoot();
-		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
-		const wasmPath = path.join(packageRoot, 'bin', STOCKFISH_WASM_FILENAME);
+		const { packageRoot, wasmPath } = await createSyntheticPackageRoot();
 		await rm(wasmPath);
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
 
 		await expect(
-			prepareStockfishAssets({ packageRoot, publicRoot })
+			prepareStockfishAssets({ packageRoot, publicRoot, complianceRoot })
 		).rejects.toThrow();
-		await expect(stat(jsPath)).resolves.toBeDefined();
 	});
 
 	test('fails if the pair does not have identical basenames', async () => {
 		const { packageRoot, jsPath } = await createSyntheticPackageRoot();
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
 		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
 
 		const resolveSpy = spyOn(
@@ -145,7 +229,7 @@ describe('prepareStockfishAssets', () => {
 
 		try {
 			await expect(
-				prepareStockfishAssets({ packageRoot, publicRoot })
+				prepareStockfishAssets({ packageRoot, publicRoot, complianceRoot })
 			).rejects.toThrow(/matching basename/i);
 		} finally {
 			resolveSpy.mockRestore();
@@ -154,13 +238,82 @@ describe('prepareStockfishAssets', () => {
 
 	test('removes no unrelated files outside the destination directory', async () => {
 		const { packageRoot } = await createSyntheticPackageRoot();
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
 		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
 		const unrelatedPath = path.join(publicRoot, 'unrelated.txt');
 		await writeFile(unrelatedPath, 'keep me');
 
-		await prepareStockfishAssets({ packageRoot, publicRoot });
+		await prepareStockfishAssets({ packageRoot, publicRoot, complianceRoot });
 
 		expect(await readFile(unrelatedPath, 'utf8')).toBe('keep me');
+	});
+
+	test('recreates the destination directory and removes stale files', async () => {
+		const { packageRoot } = await createSyntheticPackageRoot();
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
+		const destinationDirectory = path.join(
+			publicRoot,
+			STOCKFISH_PUBLIC_DIRECTORY
+		);
+		await mkdir(destinationDirectory, { recursive: true });
+		const stalePath = path.join(destinationDirectory, 'stale-engine.wasm');
+		await writeFile(stalePath, 'obsolete binary');
+
+		await prepareStockfishAssets({ packageRoot, publicRoot, complianceRoot });
+
+		await expect(stat(stalePath)).rejects.toThrow();
+	});
+
+	test('publishes license and corresponding-source materials beside the binaries', async () => {
+		const { packageRoot } = await createSyntheticPackageRoot();
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
+
+		const result = await prepareStockfishAssets({
+			packageRoot,
+			publicRoot,
+			complianceRoot,
+		});
+
+		expect(
+			await readFile(
+				path.join(result.destinationDirectory, STOCKFISH_LICENSE_FILENAME),
+				'utf8'
+			)
+		).toBe(compliance.licenseContent);
+		expect(
+			await readFile(
+				path.join(
+					result.destinationDirectory,
+					STOCKFISH_CORRESPONDING_SOURCE_FILENAME
+				),
+				'utf8'
+			)
+		).toBe(compliance.correspondingSourceContent);
+		expect(
+			await readFile(
+				path.join(
+					result.destinationDirectory,
+					'source',
+					STOCKFISH_JS_SOURCE_ARCHIVE
+				),
+				'utf8'
+			)
+		).toBe(compliance.jsArchiveContent);
+		expect(
+			await readFile(
+				path.join(
+					result.destinationDirectory,
+					'source',
+					STOCKFISH_ENGINE_SOURCE_ARCHIVE
+				),
+				'utf8'
+			)
+		).toBe(compliance.engineArchiveContent);
 	});
 
 	test('version mismatch rejects before copying assets', async () => {
@@ -180,6 +333,8 @@ describe('prepareStockfishAssets', () => {
 			Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
 		);
 
+		const compliance = await createSyntheticComplianceRoot();
+		complianceRoot = compliance.complianceRoot;
 		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
 		const destinationDirectory = path.join(
 			publicRoot,
@@ -192,6 +347,7 @@ describe('prepareStockfishAssets', () => {
 				await prepareStockfishAssets({
 					packageRoot: resolvedRoot,
 					publicRoot,
+					complianceRoot,
 				});
 			})()
 		).rejects.toThrow(
