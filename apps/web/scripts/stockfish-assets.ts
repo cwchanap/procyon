@@ -70,10 +70,16 @@ function findStockfishPackageRoot(startPath: string): string {
 	throw new Error('Could not resolve installed stockfish package root');
 }
 
+export function resolveStockfishPackageRootFromEntry(
+	startPath: string
+): string {
+	return findStockfishPackageRoot(startPath);
+}
+
 export function resolveInstalledStockfishPackageRoot(): string {
 	const require = createRequire(import.meta.url);
 	const resolvedEntry = require.resolve('stockfish');
-	return findStockfishPackageRoot(resolvedEntry);
+	return resolveStockfishPackageRootFromEntry(resolvedEntry);
 }
 
 export function resolveStockfishSourcePair(packageRoot: string): {

@@ -12,7 +12,10 @@ import path from 'node:path';
 import * as stockfishAssets from './stockfish-assets';
 import {
 	STOCKFISH_JS_FILENAME,
+	STOCKFISH_PUBLIC_DIRECTORY,
+	STOCKFISH_PACKAGE_VERSION,
 	STOCKFISH_WASM_FILENAME,
+	resolveStockfishPackageRootFromEntry,
 } from './stockfish-assets';
 import { prepareStockfishAssets } from './prepare-stockfish';
 
@@ -158,5 +161,44 @@ describe('prepareStockfishAssets', () => {
 		await prepareStockfishAssets({ packageRoot, publicRoot });
 
 		expect(await readFile(unrelatedPath, 'utf8')).toBe('keep me');
+	});
+
+	test('version mismatch rejects before copying assets', async () => {
+		const packageRoot = await mkdtemp(
+			path.join(os.tmpdir(), 'stockfish-pkg-bad-version-')
+		);
+		await writeFile(
+			path.join(packageRoot, 'package.json'),
+			JSON.stringify({ name: 'stockfish', version: '99.0.0' })
+		);
+		const binDirectory = path.join(packageRoot, 'bin');
+		await mkdir(binDirectory, { recursive: true });
+		const entryPath = path.join(binDirectory, STOCKFISH_JS_FILENAME);
+		await writeFile(entryPath, 'console.log("stockfish");');
+		await writeFile(
+			path.join(binDirectory, STOCKFISH_WASM_FILENAME),
+			Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00])
+		);
+
+		publicRoot = await mkdtemp(path.join(os.tmpdir(), 'stockfish-public-'));
+		const destinationDirectory = path.join(
+			publicRoot,
+			STOCKFISH_PUBLIC_DIRECTORY
+		);
+
+		await expect(
+			(async () => {
+				const resolvedRoot = resolveStockfishPackageRootFromEntry(entryPath);
+				await prepareStockfishAssets({
+					packageRoot: resolvedRoot,
+					publicRoot,
+				});
+			})()
+		).rejects.toThrow(
+			`Expected stockfish@${STOCKFISH_PACKAGE_VERSION}, found 99.0.0`
+		);
+
+		await expect(stat(destinationDirectory)).rejects.toThrow();
+		await rm(packageRoot, { recursive: true, force: true });
 	});
 });
