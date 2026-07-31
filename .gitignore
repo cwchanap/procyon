@@ -51,5 +51,7 @@ playwright/.cache/
 # specs
 specs/
 
+/apps/web/public/vendor/stockfish/
+
 # database
 *.db
