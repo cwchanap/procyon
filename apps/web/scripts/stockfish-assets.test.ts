@@ -1,11 +1,32 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import {
 	STOCKFISH_PACKAGE_VERSION,
 	STOCKFISH_JS_FILENAME,
 	STOCKFISH_WASM_FILENAME,
+	resolveStockfishPackageRootFromEntry,
 	validateStockfishAssetPair,
 } from './stockfish-assets';
+
+async function createStockfishPackageFixture(version: string): Promise<{
+	packageRoot: string;
+	entryPath: string;
+}> {
+	const packageRoot = await mkdtemp(
+		path.join(os.tmpdir(), 'stockfish-resolver-')
+	);
+	await writeFile(
+		path.join(packageRoot, 'package.json'),
+		JSON.stringify({ name: 'stockfish', version })
+	);
+	const binDirectory = path.join(packageRoot, 'bin');
+	await mkdir(binDirectory, { recursive: true });
+	const entryPath = path.join(binDirectory, 'index.js');
+	await writeFile(entryPath, '// stockfish entry stub');
+	return { packageRoot, entryPath };
+}
 
 describe('Stockfish asset contract', () => {
 	test('pins the approved package and filenames', () => {
@@ -37,5 +58,36 @@ describe('Stockfish asset contract', () => {
 				'/pkg/bin/renamed.wasm'
 			)
 		).toThrow(/matching basename/i);
+	});
+});
+
+describe('Stockfish package root resolution', () => {
+	const fixtureRoots: string[] = [];
+
+	afterEach(async () => {
+		await Promise.all(
+			fixtureRoots
+				.splice(0)
+				.map(fixtureRoot => rm(fixtureRoot, { recursive: true, force: true }))
+		);
+	});
+
+	test('rejects a mismatched installed package version', async () => {
+		const { packageRoot, entryPath } =
+			await createStockfishPackageFixture('18.0.7');
+		fixtureRoots.push(packageRoot);
+
+		expect(() => resolveStockfishPackageRootFromEntry(entryPath)).toThrow(
+			`Expected stockfish@${STOCKFISH_PACKAGE_VERSION}, found 18.0.7`
+		);
+	});
+
+	test('accepts the pinned package version', async () => {
+		const { packageRoot, entryPath } = await createStockfishPackageFixture(
+			STOCKFISH_PACKAGE_VERSION
+		);
+		fixtureRoots.push(packageRoot);
+
+		expect(resolveStockfishPackageRootFromEntry(entryPath)).toBe(packageRoot);
 	});
 });
