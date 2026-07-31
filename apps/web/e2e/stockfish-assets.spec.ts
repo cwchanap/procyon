@@ -1,14 +1,61 @@
 import { expect, test } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import http from 'node:http';
+import type { IncomingHttpHeaders } from 'node:http';
+import {
+	STOCKFISH_CORRESPONDING_SOURCE_FILENAME,
+	STOCKFISH_ENGINE_SOURCE_ARCHIVE,
+	STOCKFISH_ENGINE_SOURCE_ARCHIVE_BYTES,
+	STOCKFISH_ENGINE_SOURCE_ARCHIVE_SHA256,
+	STOCKFISH_JS_SOURCE_ARCHIVE,
+	STOCKFISH_JS_SOURCE_ARCHIVE_BYTES,
+	STOCKFISH_JS_SOURCE_ARCHIVE_SHA256,
+	STOCKFISH_LICENSE_FILENAME,
+} from '../scripts/stockfish-assets';
 
 const STOCKFISH_BASE_PATH = '/vendor/stockfish';
 const STOCKFISH_JS_PATH = `${STOCKFISH_BASE_PATH}/stockfish-18-lite-single.js`;
 const STOCKFISH_WASM_PATH = `${STOCKFISH_BASE_PATH}/stockfish-18-lite-single.wasm`;
-const STOCKFISH_LICENSE_PATH = `${STOCKFISH_BASE_PATH}/Copying.txt`;
-const STOCKFISH_CORRESPONDING_SOURCE_PATH = `${STOCKFISH_BASE_PATH}/CorrespondingSource.txt`;
+const STOCKFISH_LICENSE_PATH = `${STOCKFISH_BASE_PATH}/${STOCKFISH_LICENSE_FILENAME}`;
+const STOCKFISH_CORRESPONDING_SOURCE_PATH = `${STOCKFISH_BASE_PATH}/${STOCKFISH_CORRESPONDING_SOURCE_FILENAME}`;
+const STOCKFISH_JS_ARCHIVE_PATH = `${STOCKFISH_BASE_PATH}/source/${STOCKFISH_JS_SOURCE_ARCHIVE}`;
+const STOCKFISH_ENGINE_ARCHIVE_PATH = `${STOCKFISH_BASE_PATH}/source/${STOCKFISH_ENGINE_SOURCE_ARCHIVE}`;
 const KNOWN_FAVICON_PATH = '/favicon.svg';
 
 const isKnownFaviconEntry = (entry: string): boolean =>
 	entry.includes(KNOWN_FAVICON_PATH);
+
+function sha256Bytes(body: Buffer): string {
+	return createHash('sha256').update(body).digest('hex');
+}
+
+/**
+ * Fetch raw response bytes without auto-decompressing Content-Encoding.
+ * Astro preview labels some static .tar.gz assets as gzip even when the body
+ * is the verbatim archive; Playwright/fetch would otherwise gunzip and break
+ * integrity checks.
+ */
+function fetchRaw(
+	url: string
+): Promise<{ status: number; headers: IncomingHttpHeaders; body: Buffer }> {
+	return new Promise((resolve, reject) => {
+		http
+			.get(url, response => {
+				const chunks: Buffer[] = [];
+				response.on('data', chunk => {
+					chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+				});
+				response.on('end', () => {
+					resolve({
+						status: response.statusCode ?? 0,
+						headers: response.headers,
+						body: Buffer.concat(chunks),
+					});
+				});
+			})
+			.on('error', reject);
+	});
+}
 
 test.describe('Stockfish production asset delivery', () => {
 	test('serves the browser worker script as a static non-HTML asset', async ({
@@ -39,6 +86,7 @@ test.describe('Stockfish production asset delivery', () => {
 
 	test('serves license and corresponding-source materials beside the binaries', async ({
 		page,
+		baseURL,
 	}) => {
 		const licenseResponse = await page.request.get(STOCKFISH_LICENSE_PATH, {
 			maxRedirects: 0,
@@ -59,6 +107,42 @@ test.describe('Stockfish production asset delivery', () => {
 			'93c994592dcf3b4b21052ab925e9b534df9c0918'
 		);
 		expect(correspondingSourceBody).toContain('sf_18');
+		expect(correspondingSourceBody).toContain(STOCKFISH_JS_SOURCE_ARCHIVE);
+		expect(correspondingSourceBody).toContain(STOCKFISH_ENGINE_SOURCE_ARCHIVE);
+		expect(correspondingSourceBody).toContain(
+			STOCKFISH_JS_SOURCE_ARCHIVE_SHA256
+		);
+		expect(correspondingSourceBody).toContain(
+			STOCKFISH_ENGINE_SOURCE_ARCHIVE_SHA256
+		);
+
+		expect(baseURL).toBeTruthy();
+		const jsArchive = await fetchRaw(`${baseURL}${STOCKFISH_JS_ARCHIVE_PATH}`);
+		const engineArchive = await fetchRaw(
+			`${baseURL}${STOCKFISH_ENGINE_ARCHIVE_PATH}`
+		);
+
+		expect(jsArchive.status).toBe(200);
+		expect(jsArchive.headers.location).toBeUndefined();
+		expect(String(jsArchive.headers['content-type'] ?? '')).not.toContain(
+			'text/html'
+		);
+		expect(jsArchive.body.byteLength).toBe(STOCKFISH_JS_SOURCE_ARCHIVE_BYTES);
+		expect(sha256Bytes(jsArchive.body)).toBe(
+			STOCKFISH_JS_SOURCE_ARCHIVE_SHA256
+		);
+
+		expect(engineArchive.status).toBe(200);
+		expect(engineArchive.headers.location).toBeUndefined();
+		expect(String(engineArchive.headers['content-type'] ?? '')).not.toContain(
+			'text/html'
+		);
+		expect(engineArchive.body.byteLength).toBe(
+			STOCKFISH_ENGINE_SOURCE_ARCHIVE_BYTES
+		);
+		expect(sha256Bytes(engineArchive.body)).toBe(
+			STOCKFISH_ENGINE_SOURCE_ARCHIVE_SHA256
+		);
 	});
 
 	test('starts a same-origin Stockfish worker and completes UCI readiness', async ({

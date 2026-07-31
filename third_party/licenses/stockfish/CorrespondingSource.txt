@@ -18,11 +18,13 @@ License
 Corresponding source archives (same origin, under source/)
 ----------------------------------------------------------
 - stockfish.js-93c994592dcf3b4b21052ab925e9b534df9c0918.tar.gz
+  SHA-256: ef9b6e9bd66de9869dc4715979ada23c6ab4fa96648025823a0a865f300667b2
   Stockfish.js packaging and build sources matching the npm package gitHead
   for stockfish@18.0.8
   https://github.com/nmrugg/stockfish.js/tree/93c994592dcf3b4b21052ab925e9b534df9c0918
 
 - Stockfish-sf_18.tar.gz
+  SHA-256: 22a195567e3493e7c9ca8bf8fa2339f4ffc876384849ac8a417ff4b919607e7b
   Official Stockfish engine sources at release tag sf_18
   (commit cb3d4ee9b47d0c5aae855b12379378ea1439675c)
   https://github.com/official-stockfish/Stockfish/tree/sf_18

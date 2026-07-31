@@ -14,7 +14,7 @@ license text and upstream traceability references.
 | Stockfish.js upstream     | https://github.com/nmrugg/stockfish.js (npm package commit `93c994592dcf3b4b21052ab925e9b534df9c0918`)                   |
 | Stockfish engine upstream | https://github.com/official-stockfish/Stockfish (release tag `sf_18`, commit `cb3d4ee9b47d0c5aae855b12379378ea1439675c`) |
 | License text              | `third_party/licenses/stockfish/Copying.txt` (also published beside the binaries)                                        |
-| Corresponding source      | `third_party/licenses/stockfish/source/` archives, published under `/vendor/stockfish/source/`                           |
+| Corresponding source      | `third_party/licenses/stockfish/source/` archives (SHA-256 pinned), published under `/vendor/stockfish/source/`          |
 
 Stockfish.js is a WASM build of the Stockfish chess engine. The npm package
 `stockfish@18.0.8` records gitHead `93c994592dcf3b4b21052ab925e9b534df9c0918`.
