@@ -17,6 +17,7 @@
     "test:watch": "bun test src --watch",
     "test:chess": "bun test src/lib/chess/game.test.ts",
     "test:e2e": "playwright test",
+    "test:e2e:stockfish-assets": "playwright test --config=playwright.stockfish.config.ts e2e/stockfish-assets.spec.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
