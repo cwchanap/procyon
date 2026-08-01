@@ -79,8 +79,12 @@ async function expectPending<T>(promise: Promise<T>): Promise<void> {
 }
 
 async function flushProviderTasks(): Promise<void> {
-	await Promise.resolve();
-	await Promise.resolve();
+	// The initialization continuation crosses the deferred promise and its
+	// cleanup/finally promise. Drain a bounded number of microtask turns rather
+	// than relying on a runtime-specific exact count.
+	for (let i = 0; i < 10; i++) {
+		await Promise.resolve();
+	}
 }
 
 async function initialize(
