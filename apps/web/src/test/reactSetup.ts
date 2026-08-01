@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, afterEach } from 'bun:test';
+import { beforeAll, afterAll, afterEach, jest } from 'bun:test';
 import { cleanup } from '@testing-library/react';
 import { Window } from 'happy-dom';
 
@@ -28,6 +28,15 @@ export function setupReactDom() {
 
 	afterEach(() => {
 		cleanup();
+		// Bun can restore the real timer implementation while leaving its
+		// `clock` compatibility marker on setTimeout. Testing Library treats
+		// that marker as proof fake timers are still active and then attempts
+		// to advance an inactive clock. Normalize both pieces of state between
+		// tests so one timer-focused suite cannot poison every later render.
+		jest.useRealTimers();
+		delete (
+			globalThis.setTimeout as typeof setTimeout & { clock?: unknown }
+		).clock;
 	});
 
 	afterAll(() => {
