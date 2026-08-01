@@ -114,4 +114,21 @@ describe('rival preferences', () => {
 			'"lastRivalKind":"engine"'
 		);
 	});
+
+	test('blocked storage reads fall back to defaults and persists never throw', () => {
+		const throwingStorage: RivalPreferenceStorage = {
+			getItem: () => {
+				throw new Error('storage blocked');
+			},
+			setItem: () => {
+				throw new Error('storage blocked');
+			},
+		};
+
+		expect(readRivalPreferences(throwingStorage)).toEqual(defaultPreferences);
+		expect(() => persistRivalKind(throwingStorage, 'llm')).not.toThrow();
+		expect(() =>
+			persistHumanSide(throwingStorage, 'engine', 'black')
+		).not.toThrow();
+	});
 });

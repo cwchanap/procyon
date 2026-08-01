@@ -240,6 +240,32 @@ describe('useChessRivalSetup', () => {
 		});
 	});
 
+	test('selection still works when storage stays blocked after hydration', async () => {
+		const throwingStorage: RivalPreferenceStorage = {
+			getItem: () => {
+				throw new Error('storage blocked');
+			},
+			setItem: () => {
+				throw new Error('storage blocked');
+			},
+		};
+
+		const { result } = renderHook(() =>
+			useChessRivalSetup(createOptions({ storage: throwingStorage }))
+		);
+		await waitForResolved(result);
+
+		act(() => {
+			result.current.selectRival('llm');
+		});
+		expect(result.current.setup.rivalKind).toBe('llm');
+
+		act(() => {
+			result.current.selectHumanSide('black');
+		});
+		expect(result.current.setup.humanSide).toBe('black');
+	});
+
 	test('corrupt stored preferences are treated as no remembered choice', async () => {
 		const store = new Map<string, string>();
 		store.set(RIVAL_PREFERENCES_STORAGE_KEY, '{not valid json');
