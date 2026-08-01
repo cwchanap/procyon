@@ -246,12 +246,16 @@ export function useChessRivalSetup({
 			storageRef.current = clientStorage;
 			const { preferences: storedPreferences, rememberedKind } =
 				readPreferencesOnce(clientStorage);
+			const automaticResolutionAllowed =
+				!setupTouchedRef.current && !isGameActive && !isStarting;
+			const fixedKind =
+				explicitKindRef.current ?? rememberedKind ?? defaultSetup.rivalKind;
 			const initialResolution = resolveSetup({
-				rememberedKind,
+				rememberedKind: automaticResolutionAllowed ? rememberedKind : fixedKind,
 				enginePreflight,
 				llmUsability,
-				setupTouched: false,
-				explicitKind: null,
+				setupTouched: !automaticResolutionAllowed,
+				explicitKind: automaticResolutionAllowed ? null : fixedKind,
 			});
 
 			rememberedKindRef.current = rememberedKind;
