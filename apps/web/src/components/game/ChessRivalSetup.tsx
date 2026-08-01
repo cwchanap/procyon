@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
 import type {
+	ActiveRivalSession,
 	ChessSide,
 	EnginePreflight,
 	GameSetup,
@@ -13,6 +14,7 @@ interface ChessRivalSetupProps {
 	setup: GameSetup;
 	enginePreflight: EnginePreflight;
 	llmUsability: LlmUsability;
+	activeSession?: ActiveRivalSession | null;
 	disabled?: boolean;
 	lockReason?: string | null;
 	fallbackNotice?: string | null;
@@ -91,6 +93,7 @@ const ChessRivalSetup: React.FC<ChessRivalSetupProps> = ({
 	setup,
 	enginePreflight,
 	llmUsability,
+	activeSession = null,
 	disabled = false,
 	lockReason = null,
 	fallbackNotice = null,
@@ -104,7 +107,11 @@ const ChessRivalSetup: React.FC<ChessRivalSetupProps> = ({
 		<section className='space-y-4 rounded-lg border border-line bg-ink-800 p-4'>
 			<div className='space-y-1'>
 				<h3 className='text-base font-semibold text-brass'>Opponent</h3>
-				<RivalSetupSummary setup={setup} llmModel={llmModel} />
+				<RivalSetupSummary
+					setup={setup}
+					activeSession={activeSession}
+					llmModel={llmModel}
+				/>
 			</div>
 
 			{lockReason && <p className='text-sm text-ivory-dim'>{lockReason}</p>}

@@ -1228,4 +1228,94 @@ describe('ChessGame — identity policy, history & tools', () => {
 			env.restore();
 		}
 	});
+
+	test('a signed-out engine game shows no LLM-only UI', async () => {
+		const { options } = engineOptions();
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await startEngine(view);
+
+		// LlmRivalDetails (sign-in guidance, AI status panel, AI instructions)
+		// is reserved for a language-model opponent; an engine game must not
+		// surface any of its copy.
+		expect(view.queryByText(/Click on a piece to select it/i)).toBeNull();
+		expect(
+			view.queryByText(/Sign in to configure your AI provider/i)
+		).toBeNull();
+		expect(view.queryByText(/AI not configured/i)).toBeNull();
+		expect(view.queryByText(/Playing against/i)).toBeNull();
+	});
+
+	test('an active LLM session keeps the provider/model copy frozen at Start', async () => {
+		const authed = installAuthedEnv(true);
+		const options = {
+			createLlmProvider: () =>
+				new FakeRivalProvider({
+					kind: 'llm',
+					makeMove: async () => ({ ok: true, move: { from: 'e7', to: 'e5' } }),
+				}),
+		};
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startLlm(view);
+			expect(
+				view.getByText(/Playing against openai \(gpt-4o-mini\)/i)
+			).toBeTruthy();
+
+			// A config change mid-game must not swap the shown opponent: the
+			// details copy stays frozen to the session that is actually playing.
+			act(() => {
+				setConfig({
+					provider: 'gemini',
+					model: 'gemini-2.5-flash',
+					apiKey: 'gem-key',
+					enabled: true,
+				});
+			});
+			await flushEffects();
+
+			expect(
+				view.getByText(/Playing against openai \(gpt-4o-mini\)/i)
+			).toBeTruthy();
+			expect(view.queryByText(/Playing against gemini/i)).toBeNull();
+		} finally {
+			authed.restore();
+		}
+	});
+
+	test('a terminal untouched engine game stays frozen to the engine once LLM becomes usable', async () => {
+		const env = installSaveEnv(null); // anonymous signed-out visitor
+		const { options } = engineOptions();
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startEngine(view);
+
+			// Terminal: force a win clears `gameActive` but the frozen session
+			// stays committed. Sign in and obtain a usable LLM config — the
+			// mutable setup must not drift from the engine.
+			await forceWin(view);
+			signInEvent({ id: 'user-a', email: 'a@test.com', username: 'userA' });
+			act(() => {
+				setConfig({
+					provider: 'openai',
+					model: 'gpt-4o-mini',
+					apiKey: 'sk-test',
+					enabled: true,
+				});
+			});
+			await flushEffects();
+
+			const engineRadio = view.getByRole('radio', {
+				name: /On-device computer/i,
+			}) as HTMLInputElement;
+			expect(engineRadio.checked).toBe(true);
+			const llmRadio = view.getByRole('radio', {
+				name: /Language model/i,
+			}) as HTMLInputElement;
+			expect(llmRadio.checked).toBe(false);
+			// The summary still reflects the frozen engine session.
+			expect(view.getByText(/Computer plays \w+ · Unrated/i)).toBeTruthy();
+		} finally {
+			env.restore();
+		}
+	});
 });
