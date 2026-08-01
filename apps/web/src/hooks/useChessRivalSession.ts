@@ -66,6 +66,7 @@ export interface UseChessRivalSessionResult {
 	requestMove(
 		context: RivalMoveRequestContext
 	): Promise<RivalMoveResult | null>;
+	reportMoveFailure(reason: RivalMoveFailureReason, message?: string): void;
 	reset(): void;
 	clearError(): void;
 }
@@ -375,6 +376,17 @@ export function useChessRivalSession(
 		setRivalError(null);
 	}, []);
 
+	const reportMoveFailure = useCallback(
+		(reason: RivalMoveFailureReason, message?: string) => {
+			setRivalError({
+				kind: 'move-failed',
+				reason,
+				message: message ?? failureMessages[reason],
+			});
+		},
+		[]
+	);
+
 	const clearError = useCallback(() => {
 		setRivalError(null);
 	}, []);
@@ -401,6 +413,7 @@ export function useChessRivalSession(
 		rivalError,
 		start,
 		requestMove,
+		reportMoveFailure,
 		reset,
 		clearError,
 	};
