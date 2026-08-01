@@ -71,12 +71,12 @@ test.describe('hasGameEnded reset flow', () => {
 		await expect(tutorialModeButton).toBeVisible();
 		await tutorialModeButton.click();
 
-		// Switch back to AI mode via the board-side panel toggle
-		const playVsAiButton = page.getByRole('button', {
-			name: /Play vs AI/i,
+		// Switch back to Play mode via the board-side panel toggle
+		const playButton = page.getByRole('button', {
+			name: /^Play$/,
 		});
-		await expect(playVsAiButton).toBeVisible();
-		await playVsAiButton.click();
+		await expect(playButton).toBeVisible();
+		await playButton.click();
 
 		// --- Second game after mode switches ---
 		await startButton.click();
