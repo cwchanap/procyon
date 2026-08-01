@@ -13,3 +13,13 @@ export {
 	type UseChessRivalSetupOptions,
 	type UseChessRivalSetupResult,
 } from './useChessRivalSetup';
+export {
+	useChessRivalSession,
+	ENGINE_START_TIMEOUT_MS,
+	type StartRivalSessionInput,
+	type RivalMoveRequestContext,
+	type RivalSessionStartState,
+	type RivalSessionError,
+	type UseChessRivalSessionOptions,
+	type UseChessRivalSessionResult,
+} from './useChessRivalSession';
