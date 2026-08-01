@@ -20,8 +20,11 @@ describe('installRivalTestEnv', () => {
 		delete globals[initialAuthUserKey];
 		const env = installRivalTestEnv();
 
-		expect(globals[initialAuthUserKey]).toBeTruthy();
-		env.restore();
+		try {
+			expect(globals[initialAuthUserKey]).toBeTruthy();
+		} finally {
+			env.restore();
+		}
 
 		expect(initialAuthUserKey in globals).toBe(false);
 	});
@@ -34,8 +37,11 @@ describe('installRivalTestEnv', () => {
 			user: { username: 'temporary-user' },
 		});
 
-		expect(globals[initialAuthUserKey]).not.toBe(originalUser);
-		env.restore();
+		try {
+			expect(globals[initialAuthUserKey]).not.toBe(originalUser);
+		} finally {
+			env.restore();
+		}
 
 		expect(globals[initialAuthUserKey]).toBe(originalUser);
 	});

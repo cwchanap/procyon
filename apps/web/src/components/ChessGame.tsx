@@ -835,14 +835,19 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 	const aiConfigured = !!aiConfig.enabled && !!aiConfig.apiKey;
 	// The prompt-oriented debug/export tools apply only to a language-model
 	// opponent — the engine carries no prompt/response to inspect or export.
-	// Pre-Start this follows the selected rival; once a game is committed it
-	// follows the frozen session opponent so an active engine session hides
-	// the tools even when an AI provider is configured.
+	// Pre-Start this follows the selected rival gated on a usable live AI
+	// config; once a game is committed it follows the frozen session opponent
+	// so an active engine session hides the tools even when an AI provider is
+	// configured, and an active LLM session keeps them visible even if the
+	// live config is later cleared (Start already proved usability).
 	const rivalIsLlm =
 		activeSession != null
 			? activeSession.opponent.kind === 'llm'
 			: rivalSetup.setup.rivalKind === 'llm';
-	const showLlmTools = rivalIsLlm && aiConfigured;
+	const showLlmTools =
+		activeSession !== null
+			? activeSession.opponent.kind === 'llm'
+			: rivalSetup.setup.rivalKind === 'llm' && aiConfigured;
 
 	// The LLM details block renders only for a language-model rival. Its
 	// provider/model copy is frozen to the active session once a game is
