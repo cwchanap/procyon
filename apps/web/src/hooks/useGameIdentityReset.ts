@@ -6,8 +6,16 @@ export function useGameIdentityReset(options: {
 	onReset: () => void;
 	/** Called immediately before onReset when auth is lost or identity changes */
 	invalidate?: () => void;
+	/** When false, skip reset on auth/identity transitions (default true) */
+	enabled?: boolean;
 }): void {
-	const { isAuthenticated, userId, onReset, invalidate } = options;
+	const {
+		isAuthenticated,
+		userId,
+		onReset,
+		invalidate,
+		enabled = true,
+	} = options;
 	const prevAuthenticatedRef = useRef(isAuthenticated);
 	const prevUserIdRef = useRef<string | null | undefined>(userId);
 	// Keep latest callbacks without re-subscribing logic via identity of onReset
@@ -23,7 +31,7 @@ export function useGameIdentityReset(options: {
 			isAuthenticated &&
 			prevUserIdRef.current != null &&
 			prevUserIdRef.current !== currentUserId;
-		if (authLost || identityChanged) {
+		if (enabled && (authLost || identityChanged)) {
 			// `invalidate` bumps the AI move-generation token so any in-flight
 			// makeAIMove callback bails. `onReset` (typically `resetGame`) also
 			// calls `invalidate` internally, so the token bumps twice on a
@@ -36,5 +44,5 @@ export function useGameIdentityReset(options: {
 		}
 		prevAuthenticatedRef.current = isAuthenticated;
 		prevUserIdRef.current = currentUserId;
-	}, [isAuthenticated, userId]);
+	}, [isAuthenticated, userId, enabled]);
 }
