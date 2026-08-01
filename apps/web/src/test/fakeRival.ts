@@ -198,10 +198,11 @@ export function installRivalTestEnv(
 	const capturePlayHistory = config.capturePlayHistory ?? false;
 	const deferModel = config.deferModelGeneration ?? false;
 
+	const authGlobals = window as unknown as Record<string, unknown>;
+	const hadInitialAuthUser = '__PROCYON_INITIAL_AUTH_USER__' in authGlobals;
+	const originalInitialAuthUser = authGlobals.__PROCYON_INITIAL_AUTH_USER__;
 	if (config.user !== null) {
-		(
-			window as unknown as Record<string, unknown>
-		).__PROCYON_INITIAL_AUTH_USER__ = user;
+		authGlobals.__PROCYON_INITIAL_AUTH_USER__ = user;
 	}
 	const originalFetch = globalThis.fetch;
 	const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
@@ -335,6 +336,11 @@ export function installRivalTestEnv(
 		},
 		restore() {
 			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			if (hadInitialAuthUser) {
+				authGlobals.__PROCYON_INITIAL_AUTH_USER__ = originalInitialAuthUser;
+			} else {
+				delete authGlobals.__PROCYON_INITIAL_AUTH_USER__;
+			}
 			if (originalLocalStorageDesc) {
 				Object.defineProperty(
 					globalThis,
