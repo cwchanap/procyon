@@ -28,7 +28,7 @@ test.describe('Chess page layout', () => {
 			page.getByRole('button', { name: /^Tutorial$/ })
 		).toBeVisible();
 		await expect(
-			page.getByRole('button', { name: /Play vs AI/i })
+			page.getByRole('button', { name: /^Play$/ })
 		).toBeVisible();
 	});
 
