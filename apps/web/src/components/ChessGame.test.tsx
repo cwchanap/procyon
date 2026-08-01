@@ -692,6 +692,38 @@ describe('ChessGame — atomic Start & rival session', () => {
 		await waitFor(() => expect(view.getByText(/Black to move/i)).toBeTruthy());
 	});
 
+	test('a mid-game engine move failure does not retry the same position', async () => {
+		const { options, instances } = engineOptions(() => ({
+			makeMove: async () => ({
+				ok: false,
+				reason: 'no-move',
+				message: 'The engine could not find a legal move.',
+			}),
+		}));
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
+
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		await waitFor(() =>
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy()
+		);
+
+		fireEvent.click(view.getByRole('button', { name: 'Square 6-4' }));
+		fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
+		await waitFor(() => expect(instances[0]?.makeMoveCount).toBe(1), {
+			timeout: 3000,
+		});
+
+		await waitFor(() =>
+			expect(view.getByText(/Start a New Game to reset/i)).toBeTruthy()
+		);
+		await act(async () => {
+			await new Promise(resolve => setTimeout(resolve, 1300));
+		});
+
+		expect(instances[0]?.makeMoveCount).toBe(1);
+	});
+
 	test('an LLM Start is blocked until the model is configured', async () => {
 		const llmCreated = { count: 0 };
 		const options = {
