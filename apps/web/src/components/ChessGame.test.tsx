@@ -652,15 +652,16 @@ describe('ChessGame — atomic Start & rival session', () => {
 		await waitFor(() =>
 			expect(view.getByText(/Start a New Game to reset/i)).toBeTruthy()
 		);
-		// Freeze delayed retries with fake timers, flush microtasks/0ms
-		// timers, then assert no retry occurred. (bun:test lacks
-		// advanceTimersByTime, so we rely on useFakeTimers to prevent any
-		// delayed callback from firing rather than advancing past it.)
+		// Freeze delayed retries, flush only queued microtasks, then assert no
+		// retry occurred without awaiting a timer that is itself frozen.
 		jest.useFakeTimers();
-		await act(async () => {
-			await new Promise(resolve => setTimeout(resolve, 0));
-		});
-		jest.useRealTimers();
+		try {
+			await act(async () => {
+				await Promise.resolve();
+			});
+		} finally {
+			jest.useRealTimers();
+		}
 
 		expect(instances[0]?.makeMoveCount).toBe(1);
 	});
@@ -696,10 +697,13 @@ describe('ChessGame — atomic Start & rival session', () => {
 			expect(view.getByText(/Start a New Game to reset/i)).toBeTruthy()
 		);
 		jest.useFakeTimers();
-		await act(async () => {
-			await new Promise(resolve => setTimeout(resolve, 0));
-		});
-		jest.useRealTimers();
+		try {
+			await act(async () => {
+				await Promise.resolve();
+			});
+		} finally {
+			jest.useRealTimers();
+		}
 
 		expect(instances[0]?.makeMoveCount).toBe(1);
 		expect(view.getByRole('button', { name: 'Square 6-4' }).textContent).toBe(
