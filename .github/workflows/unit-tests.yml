@@ -37,18 +37,7 @@ jobs:
 
       - name: Unit tests (web)
         # Component tests share process-global happy-dom, auth, and fetch state.
-        shell: bash
-        run: |
-          set -o pipefail
-          bun run test --filter=web -- --max-concurrency=1 --coverage --coverage-reporter=lcov --coverage-dir=coverage 2>&1 | tee web-unit-test.log
-
-      - name: Upload web unit test log
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-unit-test-log
-          path: web-unit-test.log
-          retention-days: 1
+        run: bun run test --filter=web -- --max-concurrency=1 --coverage --coverage-reporter=lcov --coverage-dir=coverage
 
       - name: Upload coverage to Codecov (web)
         if: ${{ always() && hashFiles('apps/web/coverage/lcov.info') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
