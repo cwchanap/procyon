@@ -8,6 +8,9 @@ import ShogiGame from './ShogiGame';
 import JungleGame from './JungleGame';
 import { AUTH_CHANGE_EVENT } from '../lib/auth';
 import { resetAIConfigStore, setConfig } from '../lib/ai/ai-config-store';
+import { RIVAL_PREFERENCES_STORAGE_KEY } from '../lib/chess/rival/preferences';
+import type { RivalMoveResult } from '../lib/chess/rival/types';
+import { deferred, engineOptions } from '../test/fakeRival';
 
 setupReactDom();
 
@@ -522,15 +525,10 @@ type LateCallbackCase = GameCase & {
 	validMoveBody: string;
 };
 
+// ChessGame is covered separately below: since Task 14 it drives the rival
+// through an injected session provider (not the shared `AI plays` select),
+// so it can't share this parameterized `AI plays` harness.
 const LATE_CALLBACK_GAMES: LateCallbackCase[] = [
-	{
-		name: 'ChessGame',
-		Component: ChessGame,
-		selectId: 'chess-ai-side',
-		firstPlayerValue: 'white',
-		validMoveBody:
-			'{"move":{"from":"e2","to":"e4"},"thinking":"valid","confidence":0.9}',
-	},
 	{
 		name: 'XiangqiGame',
 		Component: XiangqiGame,
@@ -646,32 +644,192 @@ describe.each(LATE_CALLBACK_GAMES)(
 	}
 );
 
-// ChessGame-only: the debug-callback useEffect registers a callback on the
-// AI service that fires for ai-debug (thinking) and ai-move (result) events
-// during makeMove, each stamped with the request's gen as data.requestId.
-// The callback's first statement is `if (isStale(data?.requestId)) return`
-// so a late callback from a superseded request is dropped instead of
-// appending to the new game's AI Move History. The mode-switch tests above
-// cover the makeAIMove stale-gen bail but run WITHOUT debug mode, so the
-// debug-callback stale bail is never exercised. Here we hold the LLM
-// in-flight across a mode-switch with debug mode ON: the ai-debug (thinking)
-// callback fires before the fetch with the current gen (appended), then the
-// mode-switch invalidates; when the LLM resolves, the ai-move callback fires
-// with the now-stale requestId and bails — so the "AI suggests" entry never
-// appears in AI Move History.
-describe('ChessGame — debug callback stale-requestId bail', () => {
+function clearChessRivalPrefs(): void {
+	try {
+		window.localStorage?.removeItem(RIVAL_PREFERENCES_STORAGE_KEY);
+		window.localStorage?.removeItem('procyon_ai_config');
+	} catch {
+		/* localStorage may be unavailable */
+	}
+}
+
+// ChessGame drives its rival through the injected session provider since
+// Task 14. Here we hold the engine's move in-flight across a New Game so
+// makeRivalMoveAsync reaches its stale-generation bail (and the session hook
+// drops the stale result) — no board mutation, no error, provider disposed.
+describe('ChessGame — mode-switch late callback dropped after invalidate', () => {
 	beforeEach(() => {
 		clearInitialAuthUser();
 		resetAIConfigStore();
+		clearChessRivalPrefs();
 	});
 
 	afterEach(() => {
 		clearInitialAuthUser();
 		resetAIConfigStore();
+		clearChessRivalPrefs();
+	});
+
+	test('in-flight engine move bails on stale gen after New Game (no board mutation)', async () => {
+		const move = deferred<RivalMoveResult>();
+		const { options, instances } = engineOptions(() => ({
+			makeMove: () => move.promise,
+		}));
+
+		const { getByRole, queryByText } = render(
+			<ChessGame rivalSessionOptions={options} />
+		);
+		await waitFor(() => getByRole('radiogroup', { name: /opponent/i }));
+
+		// Human plays Black → the engine (White) moves first.
+		fireEvent.click(getByRole('radio', { name: 'Black' }));
+
+		fireEvent.click(getByRole('button', { name: /start/i }));
+
+		// Wait for the 1s turn timer to fire and the engine move to be
+		// requested (now in-flight).
+		await waitFor(() => expect(instances[0]?.makeMoveCount).toBe(1), {
+			timeout: 3000,
+		});
+
+		// New Game bumps the generation and disposes the provider.
+		fireEvent.click(getByRole('button', { name: /new game/i }));
+		await waitFor(() =>
+			expect(
+				(getByRole('radio', { name: 'White' }) as HTMLInputElement).disabled
+			).toBe(false)
+		);
+		expect(instances[0]?.disposeCount).toBe(1);
+
+		// Resolve the stale in-flight move. The session hook drops it and
+		// makeRivalMoveAsync bails on the stale generation.
+		await act(async () => {
+			move.resolve({ ok: true, move: { from: 'e2', to: 'e4' } });
+			for (let i = 0; i < 40; i++) {
+				await Promise.resolve();
+			}
+		});
+
+		// No error, and the disposed provider is never asked to move again.
+		expect(queryByText(/❌ AI Error/i)).toBeNull();
+		expect(queryByText(/Computer move failed/i)).toBeNull();
+		expect(instances[0]?.makeMoveCount).toBe(1);
+	});
+});
+
+// Authenticated LLM environment with the generation call held in-flight so a
+// mode switch can race it. Hydrates a usable OpenAI config so the LLM
+// opponent is selectable, and defers the actual model call.
+function installAuthedLlmEnv(): {
+	resolveLLM: (text: string) => void;
+	readonly llmFetchCalled: boolean;
+	restore: () => void;
+} {
+	const user = { id: 'user-a', email: 'a@test.com', username: 'userA' };
+	(window as unknown as Record<string, unknown>).__PROCYON_INITIAL_AUTH_USER__ =
+		user;
+	const originalFetch = globalThis.fetch;
+	const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
+		globalThis,
+		'localStorage'
+	);
+	Object.defineProperty(globalThis, 'localStorage', {
+		configurable: true,
+		value: window.localStorage,
+	});
+	clearChessRivalPrefs();
+
+	const llm = deferred<string>();
+	let llmFetchCalled = false;
+
+	(globalThis as unknown as { fetch: unknown }).fetch = ((url: string) => {
+		if (url.includes('/auth/session')) {
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({ user }),
+			});
+		}
+		if (url.includes('/ai-config')) {
+			if (url.includes('/full')) {
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					json: () =>
+						Promise.resolve({
+							provider: 'openai',
+							apiKey: 'sk-test',
+							modelName: 'gpt-4o-mini',
+							gameVariant: 'chess',
+						}),
+				});
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () =>
+					Promise.resolve({
+						configurations: [
+							{ id: 'c1', provider: 'openai', isActive: true, hasApiKey: true },
+						],
+					}),
+			});
+		}
+		// Model generation call — held in-flight.
+		llmFetchCalled = true;
+		return llm.promise.then(text => ({
+			ok: true,
+			status: 200,
+			json: () =>
+				Promise.resolve({
+					choices: [{ message: { content: text } }],
+					candidates: [
+						{ content: { parts: [{ text }] }, finishReason: 'STOP' },
+					],
+				}),
+		}));
+	}) as unknown as typeof fetch;
+
+	return {
+		resolveLLM: (text: string) => llm.resolve(text),
+		get llmFetchCalled() {
+			return llmFetchCalled;
+		},
+		restore() {
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			if (originalLocalStorageDesc) {
+				Object.defineProperty(
+					globalThis,
+					'localStorage',
+					originalLocalStorageDesc
+				);
+			} else {
+				delete (globalThis as Record<string, unknown>).localStorage;
+			}
+		},
+	};
+}
+
+// ChessGame-only: with debug mode ON the real LLM provider forwards the
+// service's ai-debug (thinking) event before the model call — appended while
+// the generation is current — then a mode switch invalidates the request and
+// disposes the provider. When the model resolves, the ai-move ("AI suggests")
+// event is dropped, so it never lands in AI Move History.
+describe('ChessGame — debug callback stale-requestId bail', () => {
+	beforeEach(() => {
+		clearInitialAuthUser();
+		resetAIConfigStore();
+		clearChessRivalPrefs();
+	});
+
+	afterEach(() => {
+		clearInitialAuthUser();
+		resetAIConfigStore();
+		clearChessRivalPrefs();
 	});
 
 	test('ai-move debug callback is dropped after mode-switch invalidate (no "AI suggests" entry)', async () => {
-		const env = setupControllableLLMMock();
+		const env = installAuthedLlmEnv();
 
 		const originalError = console.error;
 		const errorCalls: string[] = [];
@@ -681,32 +839,30 @@ describe('ChessGame — debug callback stale-requestId bail', () => {
 		};
 
 		try {
-			const { getByLabelText, getByRole, getByText, queryByText } = render(
-				<ChessGame />
+			const { getByRole, getByText, queryByText } = render(<ChessGame />);
+			await waitFor(() => getByRole('radiogroup', { name: /opponent/i }));
+
+			// Once AI-config hydrates, the untouched setup resolves to the LLM.
+			await waitFor(
+				() =>
+					expect(
+						(
+							getByRole('radio', {
+								name: /Language model/i,
+							}) as HTMLInputElement
+						).checked
+					).toBe(true),
+				{ timeout: 3000 }
 			);
 
-			const select = (await waitFor(() =>
-				getByLabelText(/AI plays/i)
-			)) as HTMLSelectElement;
-
-			await env.waitForAuthSettled();
-			act(() => {
-				setConfig({ enabled: true, apiKey: 'fake-key' });
-			});
-
-			// Toggle debug mode ON so the debug-callback useEffect registers
-			// a callback on the AI service.
+			// Debug mode ON so the provider forwards service debug events.
 			fireEvent.click(getByRole('button', { name: /Debug Mode/i }));
-
-			// AI plays the first-moving side (white) so the AI-turn effect
-			// fires immediately on Start.
-			fireEvent.change(select, { target: { value: 'white' } });
+			// Human plays Black → the LLM (White) moves first on Start.
+			fireEvent.click(getByRole('radio', { name: 'Black' }));
 			fireEvent.click(getByRole('button', { name: /start/i }));
 
-			// Wait for the 1s setTimeout to fire and makeMove to reach the
-			// LLM fetch. By now the ai-debug (thinking) callback has already
-			// fired with the current gen and appended a thinking entry, so
-			// "AI Move History" is visible.
+			// The turn timer fires, the model call goes in-flight, and the
+			// ai-debug (thinking) entry has been appended → history visible.
 			await waitFor(() => expect(env.llmFetchCalled).toBe(true), {
 				timeout: 3000,
 			});
@@ -717,25 +873,23 @@ describe('ChessGame — debug callback stale-requestId bail', () => {
 				{ timeout: 3000 }
 			);
 
-			// Mode switch to Tutorial → invalidate() bumps the gen.
-			const tutorialButton = getByRole('button', { name: /^tutorial$/i });
-			fireEvent.click(tutorialButton);
+			// Mode switch to Tutorial → invalidate() bumps the gen and the
+			// session is disposed.
+			fireEvent.click(getByRole('button', { name: /^tutorial$/i }));
 
-			// Resolve with a valid opening move. The ai-move callback now
-			// fires with the stale requestId and must bail at
-			// `if (isStale(data?.requestId)) return` — so the "AI suggests"
-			// result entry is NOT appended to AI Move History.
-			await env.resolveLLMAndSettle(
-				'{"move":{"from":"e2","to":"e4"},"thinking":"valid","confidence":0.9}'
-			);
+			// Resolve the model call. The ai-move ("AI suggests") event is
+			// dropped, so no result entry is appended.
+			await act(async () => {
+				env.resolveLLM(
+					'{"move":{"from":"e2","to":"e4"},"thinking":"valid","confidence":0.9}'
+				);
+				for (let i = 0; i < 40; i++) {
+					await Promise.resolve();
+				}
+			});
 
 			expect(queryByText(/AI suggests/i)).toBeNull();
-
-			// No error surfaced from the dropped callback.
 			expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(false);
-
-			// Mode-switch succeeded and wasn't corrupted by the stale
-			// callback: the tutorial heading is visible.
 			expect(getByRole('heading', { name: /Logic & Tutorials/i })).toBeTruthy();
 		} finally {
 			env.restore();
