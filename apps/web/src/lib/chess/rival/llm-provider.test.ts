@@ -137,7 +137,7 @@ describe('createLlmRivalProvider', () => {
 	});
 
 	test('maps a valid service response and last interaction metadata', async () => {
-		const { provider, service } = createHarness();
+		const { provider, service } = createHarness({ debug: true });
 		const state = createInitialGameState('human-vs-ai', 'white');
 
 		const result = await provider.makeMove(state, 42);
@@ -153,6 +153,19 @@ describe('createLlmRivalProvider', () => {
 					response: service.lastInteraction?.rawResponse,
 				},
 			},
+		});
+		expect(service.moveCalls).toEqual([{ state, requestToken: 42 }]);
+	});
+
+	test('non-debug mode omits interaction metadata', async () => {
+		const { provider, service } = createHarness({ debug: false });
+		const state = createInitialGameState('human-vs-ai', 'white');
+
+		const result = await provider.makeMove(state, 42);
+
+		expect(result).toEqual({
+			ok: true,
+			move: { from: 'e7', to: 'e5' },
 		});
 		expect(service.moveCalls).toEqual([{ state, requestToken: 42 }]);
 	});

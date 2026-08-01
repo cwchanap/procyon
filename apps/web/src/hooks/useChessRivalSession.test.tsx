@@ -2,14 +2,11 @@ import { describe, expect, jest, mock, test } from 'bun:test';
 import { StrictMode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { setupReactDom } from '../test/reactSetup';
+import { deferred, FakeRivalProvider } from '../test/fakeRival';
 import { createInitialGameState } from '../lib/chess/game';
 import type { ChessMoveRequest, GameState } from '../lib/chess/types';
 import type { ChessRivalProvider } from '../lib/chess/rival/provider';
-import type {
-	GameSetup,
-	RivalKind,
-	RivalMoveResult,
-} from '../lib/chess/rival/types';
+import type { GameSetup, RivalMoveResult } from '../lib/chess/rival/types';
 import type { AIConfig } from '../lib/ai/types';
 import {
 	ENGINE_START_TIMEOUT_MS,
@@ -41,66 +38,10 @@ const unconfiguredConfig: AIConfig = {
 	enabled: false,
 };
 
-interface Deferred<T> {
-	promise: Promise<T>;
-	resolve(value: T): void;
-	reject(reason?: unknown): void;
-}
-
 function advanceTimers(ms: number): void {
 	(
 		jest as unknown as { advanceTimersByTime(ms: number): void }
 	).advanceTimersByTime(ms);
-}
-
-function deferred<T>(): Deferred<T> {
-	let resolve!: (value: T) => void;
-	let reject!: (reason?: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
-	});
-	return { promise, resolve, reject };
-}
-
-class FakeProvider implements ChessRivalProvider {
-	readonly kind: RivalKind;
-	readonly calls: string[] = [];
-	initializeCount = 0;
-	beginGameCount = 0;
-	makeMoveCount = 0;
-	disposeCount = 0;
-	onInitialize: () => Promise<void> = async () => {};
-	onBeginGame: () => Promise<void> = async () => {};
-	onMakeMove: (state: GameState, token: number) => Promise<RivalMoveResult> =
-		async () => ({ ok: true, move: sampleMove });
-
-	constructor(kind: RivalKind = 'engine') {
-		this.kind = kind;
-	}
-
-	async initialize(): Promise<void> {
-		this.initializeCount += 1;
-		this.calls.push('initialize');
-		await this.onInitialize();
-	}
-
-	async beginGame(): Promise<void> {
-		this.beginGameCount += 1;
-		this.calls.push('beginGame');
-		await this.onBeginGame();
-	}
-
-	makeMove(state: GameState, token: number): Promise<RivalMoveResult> {
-		this.makeMoveCount += 1;
-		this.calls.push('makeMove');
-		return this.onMakeMove(state, token);
-	}
-
-	dispose(): void {
-		this.disposeCount += 1;
-		this.calls.push('dispose');
-	}
 }
 
 function orderedEngineFactory(...providers: ChessRivalProvider[]) {
@@ -158,7 +99,7 @@ function renderSession(
 
 describe('useChessRivalSession — Start transaction', () => {
 	test('Start validates selected usability before constructing a provider', async () => {
-		const factory = mock(() => new FakeProvider('llm'));
+		const factory = mock(() => new FakeRivalProvider('llm'));
 		const { result } = renderSession({ createLlmProvider: factory });
 
 		let session: unknown;
@@ -175,7 +116,7 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('Start disables further Start/requestMove while pending', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const init = deferred<void>();
 		provider.onInitialize = () => init.promise;
 		const factory = mock(() => provider);
@@ -207,13 +148,13 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('engine provider is not constructed before Start', () => {
-		const factory = mock(() => new FakeProvider('engine'));
+		const factory = mock(() => new FakeRivalProvider('engine'));
 		renderSession({ createEngineProvider: factory });
 		expect(factory).not.toHaveBeenCalled();
 	});
 
 	test('engine Start calls initialize() then beginGame()', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const { result } = renderSession({
 			createEngineProvider: mock(() => provider),
 		});
@@ -230,7 +171,7 @@ describe('useChessRivalSession — Start transaction', () => {
 
 	test('LLM Start uses a frozen config and freezes the opponent identity', async () => {
 		let received: AIConfig | undefined;
-		const provider = new FakeProvider('llm');
+		const provider = new FakeRivalProvider('llm');
 		const factory = mock((input: { config: AIConfig }) => {
 			received = input.config;
 			return provider;
@@ -255,7 +196,7 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('60-second timeout disposes the candidate and commits nothing', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		provider.onInitialize = () => new Promise<void>(() => {});
 		const { result } = renderSession({
 			createEngineProvider: mock(() => provider),
@@ -283,7 +224,7 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('timeout is classified as load-failed, not unsupported', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		provider.onInitialize = () => new Promise<void>(() => {});
 		const { result } = renderSession({
 			createEngineProvider: mock(() => provider),
@@ -307,7 +248,7 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('failed initialize commits nothing and disposes the candidate', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		provider.onInitialize = async () => {
 			throw new Error('init failed');
 		};
@@ -327,7 +268,7 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('failed beginGame commits nothing and disposes the candidate', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		provider.onBeginGame = async () => {
 			throw new Error('begin failed');
 		};
@@ -347,7 +288,7 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('successful Start returns one frozen session backed by a single provider', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const factory = mock(() => provider);
 		const { result } = renderSession({ createEngineProvider: factory });
 
@@ -366,8 +307,8 @@ describe('useChessRivalSession — Start transaction', () => {
 	test('startedByUserId captures the current user or null', async () => {
 		const { result } = renderSession({
 			createEngineProvider: orderedEngineFactory(
-				new FakeProvider('engine'),
-				new FakeProvider('engine')
+				new FakeRivalProvider('engine'),
+				new FakeRivalProvider('engine')
 			),
 		});
 
@@ -389,7 +330,7 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('rival is eligible to move only after commit', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const init = deferred<void>();
 		provider.onInitialize = () => init.promise;
 		const { result } = renderSession({
@@ -428,7 +369,7 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('reset disposes an in-flight candidate without committing', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const init = deferred<void>();
 		provider.onInitialize = () => init.promise;
 		const { result } = renderSession({
@@ -456,8 +397,70 @@ describe('useChessRivalSession — Start transaction', () => {
 		expect(provider.disposeCount).toBe(1);
 	});
 
+	test('a stale Start settling after a new Start cannot clear the new attempt', async () => {
+		const providerA = new FakeRivalProvider('engine');
+		const initA = deferred<void>();
+		providerA.onInitialize = () => initA.promise;
+		const providerB = new FakeRivalProvider('engine');
+		const initB = deferred<void>();
+		providerB.onInitialize = () => initB.promise;
+		const { result, unmount } = renderSession({
+			createEngineProvider: orderedEngineFactory(providerA, providerB),
+		});
+
+		let startA: Promise<unknown> | undefined;
+		act(() => {
+			startA = result.current.start(startInput());
+		});
+		expect(result.current.startState).toBe('starting');
+
+		act(() => {
+			result.current.reset();
+		});
+		expect(providerA.disposeCount).toBe(1);
+
+		let startB: Promise<unknown> | undefined;
+		act(() => {
+			startB = result.current.start(startInput());
+		});
+		expect(result.current.startState).toBe('starting');
+
+		// Stale A settles. It must not clear B's in-flight flag, commit, or
+		// double-dispose A (reset already disposed it).
+		await act(async () => {
+			initA.resolve();
+			await startA;
+		});
+		expect(result.current.activeSession).toBeNull();
+		expect(result.current.startState).toBe('starting');
+		expect(providerA.disposeCount).toBe(1);
+
+		// A subsequent Start is rejected while B is still in flight.
+		let startC: unknown = 'unset';
+		await act(async () => {
+			startC = await result.current.start(startInput());
+		});
+		expect(startC).toBeNull();
+
+		// B commits when its initialization resolves; A stays disposed once.
+		await act(async () => {
+			initB.resolve();
+			await startB;
+		});
+		expect(result.current.activeSession).not.toBeNull();
+		expect(providerA.disposeCount).toBe(1);
+		expect(providerB.disposeCount).toBe(0);
+
+		// Reset disposes the active B provider.
+		act(() => {
+			result.current.reset();
+		});
+		expect(providerB.disposeCount).toBe(1);
+		unmount();
+	});
+
 	test('reset disposes an active committed provider', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const { result } = renderSession({
 			createEngineProvider: mock(() => provider),
 		});
@@ -476,7 +479,7 @@ describe('useChessRivalSession — Start transaction', () => {
 	});
 
 	test('Strict Mode replay leaks no provider or Worker', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const factory = mock(() => provider);
 		const { result, unmount } = renderSession(
 			{ createEngineProvider: factory },
@@ -496,7 +499,7 @@ describe('useChessRivalSession — Start transaction', () => {
 });
 
 describe('useChessRivalSession — move ownership', () => {
-	async function startedSession(provider: FakeProvider) {
+	async function startedSession(provider: FakeRivalProvider) {
 		const rendered = renderSession({
 			createEngineProvider: mock(() => provider),
 		});
@@ -518,7 +521,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('accepts a current result and stops thinking', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const { result } = await startedSession(provider);
 
 		let moveResult: unknown = 'unset';
@@ -534,7 +537,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('ignores a result from a stale generation', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const move = deferred<RivalMoveResult>();
 		provider.onMakeMove = () => move.promise;
 		const { result } = await startedSession(provider);
@@ -562,7 +565,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('ignores a result after the session was reset', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const move = deferred<RivalMoveResult>();
 		provider.onMakeMove = () => move.promise;
 		const { result } = await startedSession(provider);
@@ -585,10 +588,10 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('ignores a result after the provider was replaced', async () => {
-		const providerA = new FakeProvider('engine');
+		const providerA = new FakeRivalProvider('engine');
 		const move = deferred<RivalMoveResult>();
 		providerA.onMakeMove = () => move.promise;
-		const providerB = new FakeProvider('engine');
+		const providerB = new FakeRivalProvider('engine');
 		const { result } = renderSession({
 			createEngineProvider: orderedEngineFactory(providerA, providerB),
 		});
@@ -615,7 +618,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('ignores a result when the board FEN changed', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const move = deferred<RivalMoveResult>();
 		provider.onMakeMove = () => move.promise;
 		const { result } = await startedSession(provider);
@@ -641,7 +644,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('ignores a result when it is no longer the rival turn', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const move = deferred<RivalMoveResult>();
 		provider.onMakeMove = () => move.promise;
 		const { result } = await startedSession(provider);
@@ -666,7 +669,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('accepts at most one result per request', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const first = deferred<RivalMoveResult>();
 		const second = deferred<RivalMoveResult>();
 		let call = 0;
@@ -703,7 +706,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('typed failure preserves the board and exposes a basic error', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		provider.onMakeMove = async () => ({ ok: false, reason: 'no-move' });
 		const { result } = await startedSession(provider);
 
@@ -722,7 +725,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('unexpected thrown failure preserves the board and exposes an error', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		provider.onMakeMove = async () => {
 			throw new Error('worker crashed');
 		};
@@ -746,7 +749,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('clearError clears a surfaced rival error', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		provider.onMakeMove = async () => ({ ok: false, reason: 'no-move' });
 		const { result } = await startedSession(provider);
 
@@ -762,7 +765,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('unmount disposes the active provider', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const { result, unmount } = renderSession({
 			createEngineProvider: mock(() => provider),
 		});
@@ -775,7 +778,7 @@ describe('useChessRivalSession — move ownership', () => {
 	});
 
 	test('active engine session survives auth/config-driven rerenders', async () => {
-		const provider = new FakeProvider('engine');
+		const provider = new FakeRivalProvider('engine');
 		const { result, rerender } = renderHook(
 			(props: UseChessRivalSessionOptions) => useChessRivalSession(props),
 			{ initialProps: { createEngineProvider: mock(() => provider) } }
@@ -786,14 +789,16 @@ describe('useChessRivalSession — move ownership', () => {
 		const session = result.current.activeSession;
 		expect(session).not.toBeNull();
 
-		rerender({ createEngineProvider: mock(() => new FakeProvider('engine')) });
+		rerender({
+			createEngineProvider: mock(() => new FakeRivalProvider('engine')),
+		});
 
 		expect(result.current.activeSession).toBe(session);
 		expect(provider.disposeCount).toBe(0);
 	});
 
 	test('active LLM identity reset is delegated to caller policy', async () => {
-		const provider = new FakeProvider('llm');
+		const provider = new FakeRivalProvider('llm');
 		const { result, rerender } = renderHook(
 			(props: UseChessRivalSessionOptions) => useChessRivalSession(props),
 			{ initialProps: { createLlmProvider: () => provider } }
@@ -805,7 +810,7 @@ describe('useChessRivalSession — move ownership', () => {
 		});
 		const session = result.current.activeSession;
 
-		rerender({ createLlmProvider: () => new FakeProvider('llm') });
+		rerender({ createLlmProvider: () => new FakeRivalProvider('llm') });
 		expect(result.current.activeSession).toBe(session);
 		expect(provider.disposeCount).toBe(0);
 

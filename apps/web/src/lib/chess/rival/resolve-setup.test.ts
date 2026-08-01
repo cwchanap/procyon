@@ -194,5 +194,9 @@ describe('resolveSetup matrix', () => {
 
 		expect(first).toEqual(second);
 		expect(first.notice).toBe('engine-to-llm');
+		// The input object must not be mutated by resolveSetup.
+		expect(input.rememberedKind).toBe('engine');
+		expect(input.setupTouched).toBe(false);
+		expect(input.explicitKind).toBeNull();
 	});
 });

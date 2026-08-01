@@ -76,6 +76,15 @@ describe('ChessRivalSetup', () => {
 		expect(onSelectHumanSide).toHaveBeenCalledWith('black');
 	});
 
+	test('emits rival selection changes via onSelectRival', () => {
+		const onSelectRival = mock(() => {});
+		const { getByRole } = renderSetup({ onSelectRival });
+
+		fireEvent.click(getByRole('radio', { name: /Language model/i }));
+
+		expect(onSelectRival).toHaveBeenCalledWith('llm');
+	});
+
 	test('disables opponent and side selectors while setup is locked', () => {
 		const { getByRole, getByText } = renderSetup({
 			disabled: true,

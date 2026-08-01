@@ -133,12 +133,19 @@ export function useChessRivalSession(
 	const engineFactoryRef = useRef(
 		options.createEngineProvider ?? defaultCreateEngineProvider
 	);
-	engineFactoryRef.current =
-		options.createEngineProvider ?? defaultCreateEngineProvider;
 	const llmFactoryRef = useRef(
 		options.createLlmProvider ?? defaultCreateLlmProvider
 	);
-	llmFactoryRef.current = options.createLlmProvider ?? defaultCreateLlmProvider;
+	// Sync factory refs in an effect (not during render) so callers can pass
+	// fresh inline factories without triggering a render-time ref mutation.
+	useEffect(() => {
+		engineFactoryRef.current =
+			options.createEngineProvider ?? defaultCreateEngineProvider;
+	});
+	useEffect(() => {
+		llmFactoryRef.current =
+			options.createLlmProvider ?? defaultCreateLlmProvider;
+	});
 
 	const [activeSession, setActiveSession] = useState<ActiveRivalSession | null>(
 		null
@@ -153,6 +160,11 @@ export function useChessRivalSession(
 	const activeSessionRef = useRef<ActiveRivalSession | null>(null);
 	// The in-flight Start candidate, tracked so reset()/unmount can dispose it.
 	const candidateRef = useRef<ChessRivalProvider | null>(null);
+	// Candidates that reset()/unmount already disposed. A stale Start
+	// completion checks membership so it does not double-dispose a candidate
+	// reset already cleaned up (provider.dispose is idempotent for the real
+	// providers, but the hook avoids relying on that for teardown accounting).
+	const disposedCandidatesRef = useRef<Set<ChessRivalProvider>>(new Set());
 	const pendingRequestRef = useRef<PendingMoveRequest | null>(null);
 
 	const attemptCounterRef = useRef(0);
@@ -189,8 +201,8 @@ export function useChessRivalSession(
 						? engineFactoryRef.current()
 						: llmFactoryRef.current({ config: frozenConfig });
 			} catch {
-				startInFlightRef.current = false;
 				if (currentAttemptRef.current === attemptId) {
+					startInFlightRef.current = false;
 					currentAttemptRef.current = null;
 					setStartState('load-failed');
 				}
@@ -232,19 +244,29 @@ export function useChessRivalSession(
 			// deadline cannot surface an unhandled rejection.
 			sequence.catch(() => {});
 
-			startInFlightRef.current = false;
+			const ownsAttempt = currentAttemptRef.current === attemptId;
+			// Only clear the in-flight flag when this attempt still owns it.
+			// A stale attempt (reset() ran, then a newer Start began) must not
+			// clear the flag the newer attempt set.
+			if (ownsAttempt) {
+				startInFlightRef.current = false;
+			}
 
 			if (outcome !== 'ready') {
-				// Only dispose when we still own the candidate — reset() may have
-				// already taken and disposed it.
+				// Clear our candidate slot only if we still own it, so a newer
+				// attempt's candidate is not dropped. Dispose every non-committed
+				// candidate that reset()/unmount has not already disposed —
+				// including stale ones no longer in candidateRef. The disposed
+				// set retains ownership records for reset-disposed candidates
+				// so we never double-dispose.
 				if (candidateRef.current === candidate) {
 					candidateRef.current = null;
+				}
+				if (!disposedCandidatesRef.current.has(candidate)) {
+					disposedCandidatesRef.current.add(candidate);
 					candidate.dispose();
 				}
-				if (
-					(outcome === 'timeout' || outcome === 'error') &&
-					currentAttemptRef.current === attemptId
-				) {
+				if (ownsAttempt && (outcome === 'timeout' || outcome === 'error')) {
 					currentAttemptRef.current = null;
 					setStartState('load-failed');
 				}
@@ -367,9 +389,11 @@ export function useChessRivalSession(
 		activeSessionRef.current = null;
 
 		if (candidate) {
+			disposedCandidatesRef.current.add(candidate);
 			candidate.dispose();
 		}
 		if (active && active !== candidate) {
+			disposedCandidatesRef.current.add(active);
 			active.dispose();
 		}
 
@@ -401,9 +425,15 @@ export function useChessRivalSession(
 			currentAttemptRef.current = null;
 			startInFlightRef.current = false;
 			pendingRequestRef.current = null;
-			candidateRef.current?.dispose();
+			if (candidateRef.current) {
+				disposedCandidatesRef.current.add(candidateRef.current);
+				candidateRef.current.dispose();
+			}
 			candidateRef.current = null;
-			providerRef.current?.dispose();
+			if (providerRef.current) {
+				disposedCandidatesRef.current.add(providerRef.current);
+				providerRef.current.dispose();
+			}
 			providerRef.current = null;
 			activeSessionRef.current = null;
 		};

@@ -101,6 +101,7 @@ export class StockfishRivalProvider implements ChessRivalProvider {
 
 	private readonly worker: WorkerLike;
 	private disposed = false;
+	private workerError: Error | null = null;
 	private uciWaiter: Deferred<void> | null = null;
 	private readyWaiter: Deferred<void> | null = null;
 	private moveWaiter: MoveWaiter | null = null;
@@ -257,7 +258,12 @@ export class StockfishRivalProvider implements ChessRivalProvider {
 
 	private handleWorkerError(event: ErrorEvent): void {
 		const message = event.message || 'Stockfish worker error';
-		this.rejectPending(new Error(message));
+		const error = new Error(message);
+		// Mark the provider unusable so initialize/beginGame/makeMove reject
+		// subsequent calls with the same worker failure rather than attempting
+		// to drive a dead worker.
+		this.workerError = error;
+		this.rejectPending(error);
 	}
 
 	private postCommand(command: string): void {
@@ -268,6 +274,9 @@ export class StockfishRivalProvider implements ChessRivalProvider {
 	private ensureUsable(): void {
 		if (this.disposed) {
 			throw new Error('Stockfish provider disposed');
+		}
+		if (this.workerError !== null) {
+			throw this.workerError;
 		}
 	}
 

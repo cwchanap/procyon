@@ -100,10 +100,16 @@ describe('rival preferences', () => {
 		persistRivalKind(storage, 'engine');
 		persistHumanSide(storage, 'engine', 'white');
 
+		// Capture the storage snapshot after the explicit persists.
+		const before = storage.getItem(RIVAL_PREFERENCES_STORAGE_KEY);
+		expect(before).not.toBeNull();
+
 		readRivalPreferences(storage);
 		readRivalPreferences(storage);
 
 		expect(readRivalPreferences(storage).lastRivalKind).toBe('engine');
+		// No write should have occurred during the reads.
+		expect(storage.getItem(RIVAL_PREFERENCES_STORAGE_KEY)).toBe(before);
 		expect(storage.getItem(RIVAL_PREFERENCES_STORAGE_KEY)).toContain(
 			'"lastRivalKind":"engine"'
 		);

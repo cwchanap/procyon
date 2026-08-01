@@ -185,5 +185,32 @@ describe('useGameIdentityReset', () => {
 			expect(onReset).not.toHaveBeenCalled();
 			expect(invalidate).not.toHaveBeenCalled();
 		});
+
+		test('re-enabling after a userId change while disabled triggers reset on the next change', () => {
+			const onReset = mock(() => {});
+			const invalidate = mock(() => {});
+			const initial: IdentityProps = {
+				isAuthenticated: true,
+				userId: 'a',
+				enabled: false,
+			};
+			const { rerender } = renderHook(
+				(props: IdentityProps) =>
+					useGameIdentityReset({ ...props, onReset, invalidate }),
+				{ initialProps: initial }
+			);
+			// userId changes while disabled — refs update but no reset fires.
+			rerender({
+				isAuthenticated: true,
+				userId: 'b',
+				enabled: false,
+			});
+			expect(onReset).not.toHaveBeenCalled();
+			// Re-enable with a new userId — the transition from 'b' to 'c'
+			// is a real identity change, so reset must fire.
+			rerender({ isAuthenticated: true, userId: 'c', enabled: true });
+			expect(onReset).toHaveBeenCalledTimes(1);
+			expect(invalidate).toHaveBeenCalledTimes(1);
+		});
 	});
 });

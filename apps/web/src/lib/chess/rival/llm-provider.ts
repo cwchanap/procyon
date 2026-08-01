@@ -34,16 +34,19 @@ class LlmRivalProvider implements ChessRivalProvider {
 	readonly kind = 'llm' as const;
 
 	private readonly service: LlmAiService;
+	private readonly debug: boolean;
 	private disposed = false;
 	private onDebugEvent: ((event: RivalDebugEvent) => void) | undefined;
 
 	constructor(options: CreateLlmRivalProviderOptions) {
+		// Shallow freeze is sufficient — AIConfig has only primitive fields.
 		const config = Object.freeze({
 			...options.config,
 			debug: options.debug,
 		});
 		const createService = options.createService ?? createChessAI;
 
+		this.debug = options.debug;
 		this.onDebugEvent = options.onDebugEvent;
 		this.service = createService(config);
 		this.service.setDebugCallback((type, message, data) => {
@@ -73,6 +76,16 @@ class LlmRivalProvider implements ChessRivalProvider {
 
 		if (!aiResponse?.move) {
 			return { ok: false, reason: 'no-move' };
+		}
+
+		// Only attach the interaction meta (thinking, confidence, prompt/
+		// response) when debug mode is on — it's never needed in production
+		// and avoids leaking prompt/response text into non-debug contexts.
+		if (!this.debug) {
+			return {
+				ok: true,
+				move: aiResponse.move as ChessMoveRequest,
+			};
 		}
 
 		const interaction = this.service.getLastInteraction();

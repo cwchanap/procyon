@@ -13,6 +13,11 @@ import {
 const stockfishJsUrl = `/${STOCKFISH_PUBLIC_DIRECTORY}/${STOCKFISH_JS_FILENAME}`;
 const stockfishWasmUrl = `/${STOCKFISH_PUBLIC_DIRECTORY}/${STOCKFISH_WASM_FILENAME}`;
 
+// Capture the real fetch before any test replaces globalThis.fetch. A mock
+// created with `mock()` and assigned to globalThis.fetch is not restored by
+// mockRestore(), so afterEach restores this reference directly.
+const originalFetch = globalThis.fetch;
+
 function createPassingEnvironment(): EngineCapabilityEnvironment {
 	return {
 		Worker: class MockWorker {},
@@ -27,7 +32,7 @@ describe('runEnginePreflight', () => {
 	let workerSpy: ReturnType<typeof mock>;
 
 	afterEach(() => {
-		fetchSpy?.mockRestore();
+		globalThis.fetch = originalFetch;
 		workerSpy?.mockRestore();
 	});
 

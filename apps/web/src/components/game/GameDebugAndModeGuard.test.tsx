@@ -97,6 +97,21 @@ async function assertSameModeGuard(
 // ChessGame drives its rival through an injected session provider (not the
 // shared `AI plays` select) since Task 14, so it gets a chess-specific
 // version of the same-mode guard assertion using the rival-setup selectors.
+
+/** Start a ChessGame rival session and wait until the side selectors lock. */
+async function startChessGame(view: RenderResult): Promise<void> {
+	await waitFor(() => view.getByRole('radiogroup', { name: /opponent/i }));
+	const startButton = await waitFor(() =>
+		view.getByRole('button', { name: /start/i })
+	);
+	fireEvent.click(startButton);
+	await waitFor(() =>
+		expect(
+			(view.getByRole('radio', { name: 'White' }) as HTMLInputElement).disabled
+		).toBe(true)
+	);
+}
+
 describe('ChessGame — same-mode guard', () => {
 	beforeEach(resetUnauthenticatedState);
 	afterEach(cleanupUnauthenticatedState);
@@ -104,18 +119,7 @@ describe('ChessGame — same-mode guard', () => {
 	test('re-clicking the active "Play" mode does not reset the started game', async () => {
 		const { options } = engineOptions();
 		const view = render(<ChessGame rivalSessionOptions={options} />);
-		await waitFor(() => view.getByRole('radiogroup', { name: /opponent/i }));
-
-		const startButton = await waitFor(() =>
-			view.getByRole('button', { name: /start/i })
-		);
-		fireEvent.click(startButton);
-		await waitFor(() =>
-			expect(
-				(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
-					.disabled
-			).toBe(true)
-		);
+		await startChessGame(view);
 
 		// Re-click the active "Play" toggle: the same-mode guard must
 		// short-circuit toggleToMode so the game is NOT reset (the setup

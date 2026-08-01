@@ -33,7 +33,7 @@ const EngineRivalDetails: React.FC<EngineRivalDetailsProps> = ({
 
 	if (startState === 'starting') {
 		return (
-			<div className={panelClass}>
+			<div className={panelClass} role='status' aria-live='polite'>
 				<div className='font-semibold text-brass'>
 					Loading on-device engine...
 				</div>
@@ -46,7 +46,7 @@ const EngineRivalDetails: React.FC<EngineRivalDetailsProps> = ({
 
 	if (startState === 'load-failed') {
 		return (
-			<div className={panelClass}>
+			<div className={panelClass} role='alert'>
 				<div className='font-semibold text-destructive'>Engine load failed</div>
 				<p className='mt-1 text-ivory-dim'>
 					The on-device computer could not start.
@@ -64,7 +64,7 @@ const EngineRivalDetails: React.FC<EngineRivalDetailsProps> = ({
 
 	if (rivalError) {
 		return (
-			<div className={panelClass}>
+			<div className={panelClass} role='alert'>
 				<div className='font-semibold text-destructive'>
 					Computer move failed
 				</div>
@@ -78,7 +78,7 @@ const EngineRivalDetails: React.FC<EngineRivalDetailsProps> = ({
 
 	if (rivalThinking) {
 		return (
-			<div className={panelClass}>
+			<div className={panelClass} role='status' aria-live='polite'>
 				<div className='font-semibold text-brass'>Computer is thinking...</div>
 				<p className='mt-1 text-ivory-dim'>
 					The on-device engine is choosing its move.
