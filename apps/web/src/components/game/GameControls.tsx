@@ -3,10 +3,12 @@ import React from 'react';
 interface GameControlsProps {
 	hasGameStarted: boolean;
 	isGameOver: boolean;
-	aiConfigured: boolean;
+	aiConfigured?: boolean;
 	/** Disable the Start button while the AI config is still loading so the
 	 * game can't start with stale/default config (no API key). */
 	startDisabled?: boolean;
+	startLabel?: React.ReactNode;
+	showLlmTools?: boolean;
 	isDebugMode: boolean;
 	canExport: boolean;
 	onStartOrReset: () => void;
@@ -21,6 +23,8 @@ const GameControls: React.FC<GameControlsProps> = ({
 	isGameOver,
 	aiConfigured,
 	startDisabled = false,
+	startLabel,
+	showLlmTools,
 	isDebugMode,
 	canExport,
 	onStartOrReset,
@@ -28,6 +32,15 @@ const GameControls: React.FC<GameControlsProps> = ({
 	onToggleDebug,
 	onExport,
 }) => {
+	const showTools = showLlmTools ?? aiConfigured ?? false;
+	const buttonContent =
+		startLabel ??
+		(startDisabled
+			? '⏳ Loading AI config…'
+			: hasGameStarted
+				? '🆕 New Game'
+				: '▶️ Start');
+
 	return (
 		<div className='flex gap-4 justify-center flex-wrap'>
 			<button
@@ -35,11 +48,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 				disabled={startDisabled}
 				className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
 			>
-				{startDisabled
-					? '⏳ Loading AI config…'
-					: hasGameStarted
-						? '🆕 New Game'
-						: '▶️ Start'}
+				{buttonContent}
 			</button>
 
 			{isGameOver && (
@@ -51,7 +60,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 				</button>
 			)}
 
-			{aiConfigured && (
+			{showTools && (
 				<>
 					<button
 						onClick={onToggleDebug}
