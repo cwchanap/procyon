@@ -519,9 +519,13 @@ test.describe('Chess rival — configured language-model journey', () => {
 			page.getByText(/Language model · gpt-4o-mini · Computer plays Black/i)
 		).toBeVisible();
 
-		// The LLM opponent surfaces the prompt-oriented debug/export tools.
+		// Enable the prompt-oriented debug path before Start so the frozen
+		// LLM session includes prompt/response interaction metadata for export.
+		const debugButton = page.getByRole('button', { name: /Debug Mode/i });
+		await expect(debugButton).toBeVisible();
+		await debugButton.click();
 		await expect(
-			page.getByRole('button', { name: /Debug Mode/i })
+			page.getByRole('button', { name: /Debug ON/i })
 		).toBeVisible();
 
 		// Start uses the existing LLM path (no engine Worker constructed) and
