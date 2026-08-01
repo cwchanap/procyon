@@ -138,7 +138,8 @@ async function installFakeStockfish(
 					o?: unknown
 				) => unknown)(url, options);
 			} as unknown as typeof Worker;
-			WorkerProxy.prototype = FakeStockfishWorker.prototype;
+			WorkerProxy.prototype =
+				FakeStockfishWorker.prototype as unknown as Worker;
 			window.Worker = WorkerProxy;
 		},
 		{ cfg: config, marker: STOCKFISH_ASSET_MARKER }
