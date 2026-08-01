@@ -95,7 +95,7 @@ function defaultCreateLlmProvider({
 }: {
 	config: AIConfig;
 }): ChessRivalProvider {
-	return createLlmRivalProvider({ config, debug: config.debug ?? false });
+	return createLlmRivalProvider({ config });
 }
 
 function isSetupUsable(input: StartRivalSessionInput): boolean {

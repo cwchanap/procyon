@@ -1162,6 +1162,53 @@ describe('ChessGame — identity policy, history & tools', () => {
 		}
 	});
 
+	test('an active LLM session keeps New Game enabled when the live config becomes unavailable', async () => {
+		const authed = installAuthedEnv(true);
+		const options = {
+			createLlmProvider: () =>
+				new FakeRivalProvider({
+					kind: 'llm',
+					makeMove: async () => ({ ok: true, move: { from: 'e7', to: 'e5' } }),
+				}),
+		};
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startLlm(view);
+
+			const newGame = view.getByRole('button', {
+				name: /New Game/i,
+			}) as HTMLButtonElement;
+			expect(newGame.disabled).toBe(false);
+
+			// The live config becomes unusable mid-game (provider disabled).
+			// The frozen LLM session continues, but Start gating must not
+			// leak into the reset control: New Game stays enabled and keeps
+			// its label instead of flipping to "Loading AI config…".
+			act(() => {
+				setConfig({
+					provider: 'gemini',
+					model: '',
+					apiKey: '',
+					enabled: false,
+				});
+			});
+			await flushEffects();
+
+			expect(
+				(
+					view.getByRole('button', {
+						name: /New Game/i,
+					}) as HTMLButtonElement
+				).disabled
+			).toBe(false);
+			expect(
+				view.queryByRole('button', { name: /Loading AI config/i })
+			).toBeNull();
+		} finally {
+			authed.restore();
+		}
+	});
+
 	test('an active engine session presents the opponent as Unrated', async () => {
 		const { options } = engineOptions();
 		const view = render(<ChessGame rivalSessionOptions={options} />);

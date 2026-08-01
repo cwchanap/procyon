@@ -80,15 +80,12 @@ class Deferred<T> {
 	}
 }
 
-function createHarness(
-	options: { debug?: boolean; service?: FakeLlmService } = {}
-) {
+function createHarness(options: { service?: FakeLlmService } = {}) {
 	const service = options.service ?? new FakeLlmService();
 	const capturedConfigs: AIConfig[] = [];
 	const debugEvents: RivalDebugEvent[] = [];
 	const provider = createLlmRivalProvider({
 		config: baseConfig,
-		debug: options.debug ?? false,
 		onDebugEvent: event => debugEvents.push(event),
 		createService: config => {
 			capturedConfigs.push(config);
@@ -115,7 +112,6 @@ describe('createLlmRivalProvider', () => {
 		const capturedConfigs: AIConfig[] = [];
 		const provider = createLlmRivalProvider({
 			config,
-			debug: true,
 			createService: capturedConfig => {
 				capturedConfigs.push(capturedConfig);
 				return new FakeLlmService();
@@ -129,6 +125,8 @@ describe('createLlmRivalProvider', () => {
 
 		expect(capturedConfigs).toHaveLength(1);
 		expect(capturedConfigs[0]).not.toBe(config);
+		// The service always runs with diagnostics enabled so its debug events
+		// flow continuously (the UI filters them); provider/model/key are frozen.
 		expect(capturedConfigs[0]).toEqual({
 			...baseConfig,
 			debug: true,
@@ -137,7 +135,7 @@ describe('createLlmRivalProvider', () => {
 	});
 
 	test('maps a valid service response and last interaction metadata', async () => {
-		const { provider, service } = createHarness({ debug: true });
+		const { provider, service } = createHarness();
 		const state = createInitialGameState('human-vs-ai', 'white');
 
 		const result = await provider.makeMove(state, 42);
@@ -157,8 +155,10 @@ describe('createLlmRivalProvider', () => {
 		expect(service.moveCalls).toEqual([{ state, requestToken: 42 }]);
 	});
 
-	test('non-debug mode omits interaction metadata', async () => {
-		const { provider, service } = createHarness({ debug: false });
+	// Export metadata is independent of debug mode: a game started with Debug
+	// Mode off must still retain prompt/response/thinking/confidence for export.
+	test('maps interaction metadata even when the config debug flag is off', async () => {
+		const { provider, service } = createHarness();
 		const state = createInitialGameState('human-vs-ai', 'white');
 
 		const result = await provider.makeMove(state, 42);
@@ -166,6 +166,14 @@ describe('createLlmRivalProvider', () => {
 		expect(result).toEqual({
 			ok: true,
 			move: { from: 'e7', to: 'e5' },
+			meta: {
+				thinking: service.nextResponse?.thinking,
+				confidence: service.nextResponse?.confidence,
+				interaction: {
+					prompt: service.lastInteraction?.prompt,
+					response: service.lastInteraction?.rawResponse,
+				},
+			},
 		});
 		expect(service.moveCalls).toEqual([{ state, requestToken: 42 }]);
 	});
@@ -197,7 +205,7 @@ describe('createLlmRivalProvider', () => {
 	});
 
 	test('delivers debug callbacks as typed rival debug events', () => {
-		const { service, debugEvents } = createHarness({ debug: true });
+		const { service, debugEvents } = createHarness();
 
 		service.emitDebug({
 			type: 'ai-debug',
@@ -218,7 +226,7 @@ describe('createLlmRivalProvider', () => {
 		const deferred = new Deferred<AIResponse | null>();
 		const service = new FakeLlmService();
 		service.makeMove = () => deferred.promise;
-		const { provider, debugEvents } = createHarness({ debug: true, service });
+		const { provider, debugEvents } = createHarness({ service });
 
 		const pending = provider.makeMove(createInitialGameState('human-vs-ai'), 4);
 		provider.dispose();
