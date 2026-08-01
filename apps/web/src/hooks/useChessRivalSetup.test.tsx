@@ -193,6 +193,116 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.startBlockedReason).toBeNull();
 	});
 
+	test('blocked storage reads fall back to defaults without hanging hydration', async () => {
+		const throwingStorage: RivalPreferenceStorage = {
+			getItem: () => {
+				throw new Error('storage blocked');
+			},
+			setItem: () => {},
+		};
+
+		const { result } = renderHook(() =>
+			useChessRivalSetup(createOptions({ storage: throwingStorage }))
+		);
+
+		await waitForResolved(result);
+
+		expect(result.current.setup).toEqual({
+			rivalKind: 'engine',
+			humanSide: 'white',
+		});
+		expect(result.current.startBlockedReason).toBeNull();
+	});
+
+	test('blocked storage reads still let a configured signed-in user resolve to LLM', async () => {
+		const throwingStorage: RivalPreferenceStorage = {
+			getItem: () => {
+				throw new Error('storage blocked');
+			},
+			setItem: () => {},
+		};
+
+		const { result } = renderHook(() =>
+			useChessRivalSetup(
+				createOptions({
+					auth: signedInAuth,
+					aiConfig: availableAiConfig,
+					storage: throwingStorage,
+				})
+			)
+		);
+
+		await waitForResolved(result);
+
+		expect(result.current.setup).toEqual({
+			rivalKind: 'llm',
+			humanSide: 'white',
+		});
+	});
+
+	test('corrupt stored preferences are treated as no remembered choice', async () => {
+		const store = new Map<string, string>();
+		store.set(RIVAL_PREFERENCES_STORAGE_KEY, '{not valid json');
+		const storage: RivalPreferenceStorage = {
+			getItem: key => store.get(key) ?? null,
+			setItem: (key, value) => {
+				store.set(key, value);
+			},
+		};
+
+		const { result } = renderHook(() =>
+			useChessRivalSetup(
+				createOptions({
+					auth: signedInAuth,
+					aiConfig: availableAiConfig,
+					storage,
+				})
+			)
+		);
+
+		await waitForResolved(result);
+
+		expect(result.current.setup).toEqual({
+			rivalKind: 'llm',
+			humanSide: 'white',
+		});
+	});
+
+	test('wrong-version stored preferences are treated as no remembered choice', async () => {
+		const store = new Map<string, string>();
+		store.set(
+			RIVAL_PREFERENCES_STORAGE_KEY,
+			JSON.stringify({
+				version: 99,
+				lastRivalKind: 'engine',
+				humanSideByRival: { engine: 'black', llm: 'black' },
+			})
+		);
+		const storage: RivalPreferenceStorage = {
+			getItem: key => store.get(key) ?? null,
+			setItem: (key, value) => {
+				store.set(key, value);
+			},
+		};
+
+		const { result } = renderHook(() =>
+			useChessRivalSetup(
+				createOptions({
+					auth: signedInAuth,
+					aiConfig: availableAiConfig,
+					storage,
+				})
+			)
+		);
+
+		await waitForResolved(result);
+
+		expect(result.current.setup).toEqual({
+			rivalKind: 'llm',
+			humanSide: 'white',
+		});
+	});
+
 	test('resolves signed-in configured users with no preference to LLM before interaction', async () => {
 		const memory = createStorage();
 

@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AIConfig } from '../lib/ai/types';
 import {
 	createDefaultRivalPreferences,
+	parseRivalPreferences,
 	persistHumanSide,
 	persistRivalKind,
-	readRivalPreferences,
 	RIVAL_PREFERENCES_STORAGE_KEY,
 	type RivalPreferenceStorage,
 	type RivalPreferencesV1,
@@ -88,7 +88,13 @@ function getClientStorage(
 	if (typeof window === 'undefined') {
 		return null;
 	}
-	return window.localStorage;
+	try {
+		return window.localStorage;
+	} catch {
+		// Storage access may throw in sandboxed / blocked contexts. Treat it
+		// as unavailable, matching the write path's resilience policy.
+		return null;
+	}
 }
 
 function readPreferencesOnce(storage: RivalPreferenceStorage | null): {
@@ -102,23 +108,38 @@ function readPreferencesOnce(storage: RivalPreferenceStorage | null): {
 		};
 	}
 
-	const raw = storage.getItem(RIVAL_PREFERENCES_STORAGE_KEY);
-	const cachedStorage: RivalPreferenceStorage = {
-		getItem: key => {
-			if (key === RIVAL_PREFERENCES_STORAGE_KEY) {
-				return raw;
-			}
-			return storage.getItem(key);
-		},
-		setItem: (key, value) => {
-			storage.setItem(key, value);
-		},
-	};
+	let raw: string | null;
+	try {
+		raw = storage.getItem(RIVAL_PREFERENCES_STORAGE_KEY);
+	} catch {
+		// Reads can throw in the same blocked contexts as writes. Fall back
+		// to defaults with no remembered opponent so hydration still resolves.
+		return {
+			preferences: createDefaultRivalPreferences(),
+			rememberedKind: null,
+		};
+	}
 
-	const preferences = readRivalPreferences(cachedStorage);
+	if (raw === null) {
+		return {
+			preferences: createDefaultRivalPreferences(),
+			rememberedKind: null,
+		};
+	}
+
+	// A corrupt, partial, or future-version payload is not a deliberate
+	// choice: fail closed to defaults and report no remembered opponent.
+	const parsed = parseRivalPreferences(raw);
+	if (parsed === null) {
+		return {
+			preferences: createDefaultRivalPreferences(),
+			rememberedKind: null,
+		};
+	}
+
 	return {
-		preferences,
-		rememberedKind: raw === null ? null : preferences.lastRivalKind,
+		preferences: parsed,
+		rememberedKind: parsed.lastRivalKind,
 	};
 }
 

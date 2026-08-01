@@ -33,7 +33,7 @@ function isChessSide(value: unknown): value is ChessSide {
 	return value === 'white' || value === 'black';
 }
 
-function parseRivalPreferences(raw: string): RivalPreferencesV1 | null {
+export function parseRivalPreferences(raw: string): RivalPreferencesV1 | null {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);

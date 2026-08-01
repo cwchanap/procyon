@@ -164,7 +164,9 @@ export function useChessRivalSession(
 	// completion checks membership so it does not double-dispose a candidate
 	// reset already cleaned up (provider.dispose is idempotent for the real
 	// providers, but the hook avoids relying on that for teardown accounting).
-	const disposedCandidatesRef = useRef<Set<ChessRivalProvider>>(new Set());
+	const disposedCandidatesRef = useRef<WeakSet<ChessRivalProvider>>(
+		new WeakSet()
+	);
 	const pendingRequestRef = useRef<PendingMoveRequest | null>(null);
 
 	const attemptCounterRef = useRef(0);

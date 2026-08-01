@@ -48,7 +48,11 @@ import {
 import { useAuth } from '../lib/auth';
 import { GameExporter } from '../lib/ai/game-export';
 import type { AIConfig } from '../lib/ai/types';
-import { getRivalSide, type RivalMoveResult } from '../lib/chess/rival/types';
+import {
+	getRivalSide,
+	type LlmUsability,
+	type RivalMoveResult,
+} from '../lib/chess/rival/types';
 import type { ChessRivalProvider } from '../lib/chess/rival/provider';
 import {
 	createLlmRivalProvider,
@@ -121,7 +125,6 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		forcedOutcome?.currentPlayer ?? gameState.currentPlayer;
 	const gameOver = forcedOutcome !== null || isTerminalState(gameState);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
-	const [gameActive, setGameActive] = useState(false);
 	const {
 		user,
 		isAuthenticated,
@@ -133,7 +136,6 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		hydrated,
 		hydrateError,
 		configPending,
-		aiStarting,
 	} = useAIConfigHydration({
 		isAuthenticated,
 		loading: authLoading,
@@ -177,7 +179,12 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 	const activeSession = rivalSession.activeSession;
 
 	// Rival setup drives the Play-mode opponent/side selection and the preview.
-	// It is preference-hydration-safe: `resolved` gates the board reveal.
+	// It is preference-hydration-safe: `resolved` gates the board reveal. The
+	// lifecycle flags freeze the mutable setup for the lifetime of a rival
+	// session: a real Start in flight (`startState === 'starting'`, not AI-config
+	// hydration) and any committed game — active OR terminal, since `activeSession`
+	// and `gameStarted` stay committed until reset. Without this, automatic
+	// resolution could flip the opponent while a Start loads or after the game.
 	const rivalSetup = useChessRivalSetup({
 		auth: { isAuthenticated, loading: authLoading, revalidated },
 		aiConfig: {
@@ -186,8 +193,8 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 			hydrateError,
 			configPending,
 		},
-		isGameActive: gameActive,
-		isStarting: aiStarting,
+		isGameActive: activeSession !== null || gameStarted,
+		isStarting: rivalSession.startState === 'starting',
 		// A pre-Start opponent/side change cancels any in-flight candidate
 		// Start and disposes its provider so a stale readiness can't commit.
 		onSetupChange: rivalSession.reset,
@@ -299,12 +306,11 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 				}
 	);
 
-	// Latch game-ended + clear gameActive when the game finishes (the hook owns
-	// the actual play-history save + dedup).
+	// Latch game-ended when the game finishes (the hook owns the actual
+	// play-history save + dedup).
 	useEffect(() => {
 		if (gameOver && !hasGameEnded) {
 			setHasGameEnded(true);
-			setGameActive(false);
 		}
 	}, [gameOver, hasGameEnded]);
 
@@ -573,7 +579,6 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 			setIsAiPaused(false);
 			setAiDebugMoves([]);
 			setHasGameEnded(false);
-			setGameActive(false);
 			setForcedOutcome(null);
 
 			if (newMode === 'tutorial') {
@@ -652,7 +657,6 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		setIsAiPaused(false);
 		setAiError(null);
 		setHasGameEnded(false);
-		setGameActive(false);
 		setForcedOutcome(null);
 	}, [previewRivalSide, invalidate, rivalSession]);
 
@@ -734,7 +738,6 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		setIsAiPaused(false);
 		setAiError(null);
 		setHasGameEnded(false);
-		setGameActive(true);
 		setGameStarted(true);
 
 		gameExporterRef.current =
@@ -840,6 +843,20 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 			: rivalSetup.setup.rivalKind === 'llm';
 	const showLlmTools = rivalIsLlm && aiConfigured;
 
+	// The LLM details block renders only for a language-model rival. Its
+	// provider/model copy is frozen to the active session once a game is
+	// committed, so an account switch or config change mid-game cannot swap
+	// the shown identity from the one actually playing.
+	const sessionLlm =
+		activeSession?.opponent.kind === 'llm' ? activeSession.opponent : null;
+	const llmUsabilityForDetails: LlmUsability = sessionLlm
+		? {
+				status: 'available',
+				provider: sessionLlm.provider,
+				model: sessionLlm.model,
+			}
+		: rivalSetup.llmUsability;
+
 	const title =
 		gameMode === 'tutorial' ? 'Chess Logic & Tutorials' : 'Chess Game';
 	const subtitle =
@@ -939,6 +956,7 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 									setup={rivalSetup.setup}
 									enginePreflight={rivalSetup.enginePreflight}
 									llmUsability={rivalSetup.llmUsability}
+									activeSession={activeSession}
 									disabled={selectorsLocked}
 									lockReason={
 										selectorsLocked
@@ -963,16 +981,18 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 									onRetry={() => void startRivalGame()}
 								/>
 							) : null}
-							<LlmRivalDetails
-								llmUsability={rivalSetup.llmUsability}
-								hasGameStarted={gameStarted}
-								isAIThinking={gameState.isAiThinking ?? false}
-								isAIPaused={isAiPaused}
-								aiError={aiError}
-								aiDebugMoves={aiDebugMoves}
-								isDebugMode={isDebugMode}
-								onRetry={retryAIMove}
-							/>
+							{rivalIsLlm ? (
+								<LlmRivalDetails
+									llmUsability={llmUsabilityForDetails}
+									hasGameStarted={gameStarted}
+									isAIThinking={gameState.isAiThinking ?? false}
+									isAIPaused={isAiPaused}
+									aiError={aiError}
+									aiDebugMoves={aiDebugMoves}
+									isDebugMode={isDebugMode}
+									onRetry={retryAIMove}
+								/>
+							) : null}
 						</>
 					) : (
 						<>
