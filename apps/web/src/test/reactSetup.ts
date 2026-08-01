@@ -3,9 +3,29 @@ import { cleanup } from '@testing-library/react';
 import { Window } from 'happy-dom';
 
 let happyWindow: Window;
+let timerCleanupInstalled = false;
+
+function clearFakeTimerMarker(): void {
+	delete (
+		globalThis.setTimeout as typeof setTimeout & { clock?: unknown }
+	).clock;
+}
+
+function installTimerCleanup(): void {
+	if (timerCleanupInstalled) return;
+
+	const useRealTimers = jest.useRealTimers.bind(jest);
+	jest.useRealTimers = (() => {
+		const result = useRealTimers();
+		clearFakeTimerMarker();
+		return result;
+	}) as typeof jest.useRealTimers;
+	timerCleanupInstalled = true;
+}
 
 export function setupReactDom() {
 	beforeAll(() => {
+		installTimerCleanup();
 		happyWindow = new Window();
 		const g = globalThis as unknown as Record<string, unknown>;
 		g.document = happyWindow.document;
@@ -34,9 +54,6 @@ export function setupReactDom() {
 		// to advance an inactive clock. Normalize both pieces of state between
 		// tests so one timer-focused suite cannot poison every later render.
 		jest.useRealTimers();
-		delete (
-			globalThis.setTimeout as typeof setTimeout & { clock?: unknown }
-		).clock;
 	});
 
 	afterAll(() => {
