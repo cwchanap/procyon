@@ -73,7 +73,16 @@ export function parseRivalPreferences(raw: string): RivalPreferencesV1 | null {
 export function readRivalPreferences(
 	storage: RivalPreferenceStorage
 ): RivalPreferencesV1 {
-	const raw = storage.getItem(RIVAL_PREFERENCES_STORAGE_KEY);
+	let raw: string | null;
+	try {
+		raw = storage.getItem(RIVAL_PREFERENCES_STORAGE_KEY);
+	} catch {
+		// Reads can throw in the same blocked contexts as writes (private
+		// mode, disabled cookies). Fall back to defaults so a subsequent
+		// persist still works from that default state instead of throwing
+		// before the caller can update its in-memory state.
+		return createDefaultRivalPreferences();
+	}
 	if (raw === null) {
 		return createDefaultRivalPreferences();
 	}

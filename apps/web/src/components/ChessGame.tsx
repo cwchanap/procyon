@@ -828,6 +828,7 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 	// Try-again affordance via EngineRivalDetails. LLM rival keeps the existing
 	// AIStatusPanel pause/retry UI.
 	const showEngineDetails =
+		rivalSetup.resolved &&
 		rivalSetup.setup.rivalKind === 'engine' &&
 		activeSession?.opponent.kind !== 'llm';
 
@@ -955,7 +956,7 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 								<ChessRivalSetup
 									setup={rivalSetup.setup}
 									enginePreflight={rivalSetup.enginePreflight}
-									llmUsability={rivalSetup.llmUsability}
+									llmUsability={llmUsabilityForDetails}
 									activeSession={activeSession}
 									disabled={selectorsLocked}
 									lockReason={

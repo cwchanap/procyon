@@ -85,6 +85,9 @@ describe('ChessGame — rival setup & preview', () => {
 		expect(view.queryByRole('status')).toBeNull();
 		expect(squareButtons(view)).toHaveLength(0);
 		expect(view.queryByTestId('board-loading-skeleton')).toBeTruthy();
+		// The engine details panel must not announce "Ready to load" before the
+		// remembered/configured setup is known.
+		expect(view.queryByText(/Ready to load/i)).toBeNull();
 
 		// After resolution the setup and board appear.
 		await waitForSetupResolved(view);
@@ -104,6 +107,8 @@ describe('ChessGame — rival setup & preview', () => {
 		expect(
 			view.getByText(/On-device computer · Computer plays Black · Unrated/i)
 		).toBeTruthy();
+		// Once the resolved setup is revealed, the engine panel shows its status.
+		expect(view.getByText(/Ready to load/i)).toBeTruthy();
 	});
 
 	test('configured signed-in visitor previews the language model before interacting', async () => {
@@ -1277,6 +1282,11 @@ describe('ChessGame — identity policy, history & tools', () => {
 				view.getByText(/Playing against openai \(gpt-4o-mini\)/i)
 			).toBeTruthy();
 			expect(view.queryByText(/Playing against gemini/i)).toBeNull();
+
+			// The disabled opponent card shows the frozen identity too — the
+			// live config change must not swap the displayed provider/model.
+			expect(view.getByText('openai · gpt-4o-mini')).toBeTruthy();
+			expect(view.queryByText('gemini · gemini-2.5-flash')).toBeNull();
 		} finally {
 			authed.restore();
 		}
