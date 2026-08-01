@@ -363,6 +363,59 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup.rivalKind).toBe('engine');
 	});
 
+	test('initial hydration does not auto-switch while a game is already active', async () => {
+		const memory = createStorage();
+
+		const { result } = renderHook(() =>
+			useChessRivalSetup(
+				createOptions({
+					auth: signedInAuth,
+					aiConfig: availableAiConfig,
+					storage: memory.storage,
+					isGameActive: true,
+				})
+			)
+		);
+
+		await waitForResolved(result);
+
+		expect(result.current.setup).toEqual({
+			rivalKind: 'engine',
+			humanSide: 'white',
+		});
+		expect(result.current.fallbackNotice).toBeNull();
+		expect(memory.setItemCount()).toBe(0);
+	});
+
+	test('initial hydration does not emit fallback notices while a game is already starting', async () => {
+		const memory = createStorage(
+			storedPreferences({
+				lastRivalKind: 'llm',
+				humanSideByRival: { engine: 'white', llm: 'black' },
+			})
+		);
+
+		const { result } = renderHook(() =>
+			useChessRivalSetup(
+				createOptions({
+					aiConfig: unconfiguredAiConfig,
+					storage: memory.storage,
+					isStarting: true,
+				})
+			)
+		);
+
+		await waitForResolved(result);
+
+		expect(result.current.setup).toEqual({
+			rivalKind: 'llm',
+			humanSide: 'black',
+		});
+		expect(result.current.fallbackNotice).toBeNull();
+		expect(result.current.startBlockedReason).toContain('configure');
+		expect(memory.setItemCount()).toBe(0);
+	});
+
 	test('preflight performs no fetch or Worker creation', async () => {
 		const fetchSpy = mock(() =>
 			Promise.resolve(new Response('', { status: 200 }))
