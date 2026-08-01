@@ -4,34 +4,39 @@ import { installRivalTestEnv } from './fakeRival';
 
 setupReactDom();
 
-const authGlobals = window as unknown as Record<string, unknown>;
 const initialAuthUserKey = '__PROCYON_INITIAL_AUTH_USER__';
 
+function authGlobals(): Record<string, unknown> {
+	return window as unknown as Record<string, unknown>;
+}
+
 afterEach(() => {
-	delete authGlobals[initialAuthUserKey];
+	delete authGlobals()[initialAuthUserKey];
 });
 
 describe('installRivalTestEnv', () => {
 	test('removes the seeded auth global when it was previously absent', () => {
-		delete authGlobals[initialAuthUserKey];
+		const globals = authGlobals();
+		delete globals[initialAuthUserKey];
 		const env = installRivalTestEnv();
 
-		expect(authGlobals[initialAuthUserKey]).toBeTruthy();
+		expect(globals[initialAuthUserKey]).toBeTruthy();
 		env.restore();
 
-		expect(initialAuthUserKey in authGlobals).toBe(false);
+		expect(initialAuthUserKey in globals).toBe(false);
 	});
 
 	test('restores a pre-existing auth global value', () => {
+		const globals = authGlobals();
 		const originalUser = { username: 'existing-user' };
-		authGlobals[initialAuthUserKey] = originalUser;
+		globals[initialAuthUserKey] = originalUser;
 		const env = installRivalTestEnv({
 			user: { username: 'temporary-user' },
 		});
 
-		expect(authGlobals[initialAuthUserKey]).not.toBe(originalUser);
+		expect(globals[initialAuthUserKey]).not.toBe(originalUser);
 		env.restore();
 
-		expect(authGlobals[initialAuthUserKey]).toBe(originalUser);
+		expect(globals[initialAuthUserKey]).toBe(originalUser);
 	});
 });
