@@ -703,13 +703,19 @@ describe('ChessGame — atomic Start & rival session', () => {
 		const view = render(<ChessGame rivalSessionOptions={options} />);
 		await waitForSetupResolved(view);
 
-		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		await act(async () => {
+			fireEvent.click(view.getByRole('button', { name: /start/i }));
+		});
 		await waitFor(() =>
 			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy()
 		);
 
-		fireEvent.click(view.getByRole('button', { name: 'Square 6-4' }));
-		fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
+		await act(async () => {
+			fireEvent.click(view.getByRole('button', { name: 'Square 6-4' }));
+		});
+		await act(async () => {
+			fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
+		});
 		await waitFor(() => expect(instances[0]?.makeMoveCount).toBe(1), {
 			timeout: 3000,
 		});
@@ -722,6 +728,67 @@ describe('ChessGame — atomic Start & rival session', () => {
 		});
 
 		expect(instances[0]?.makeMoveCount).toBe(1);
+	});
+
+	test('an illegal successful engine move halts instead of retrying the same position', async () => {
+		const { options, instances } = engineOptions(() => ({
+			makeMove: async () => ({
+				ok: true,
+				move: { from: 'e2', to: 'e4' },
+			}),
+		}));
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
+
+		await act(async () => {
+			fireEvent.click(view.getByRole('button', { name: /start/i }));
+		});
+		await waitFor(() =>
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy()
+		);
+
+		await act(async () => {
+			fireEvent.click(view.getByRole('button', { name: 'Square 6-4' }));
+		});
+		await act(async () => {
+			fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
+		});
+		await waitFor(() => expect(instances[0]?.makeMoveCount).toBe(1), {
+			timeout: 3000,
+		});
+
+		await waitFor(() =>
+			expect(view.getByText(/Start a New Game to reset/i)).toBeTruthy()
+		);
+		await act(async () => {
+			await new Promise(resolve => setTimeout(resolve, 1300));
+		});
+
+		expect(instances[0]?.makeMoveCount).toBe(1);
+		expect(view.getByRole('button', { name: 'Square 6-4' }).textContent).toBe(
+			''
+		);
+		expect(
+			view.getByRole('button', { name: 'Square 4-4' }).textContent
+		).toContain('♙');
+
+		await act(async () => {
+			fireEvent.click(view.getByRole('button', { name: /new game/i }));
+		});
+		await waitFor(() => {
+			expect(view.getByRole('button', { name: /start/i })).toBeTruthy();
+		});
+		expect(instances[0]?.disposeCount).toBe(1);
+		expect(
+			view.getByRole('button', { name: 'Square 6-4' }).textContent
+		).toContain('♙');
+		expect(view.getByRole('button', { name: 'Square 4-4' }).textContent).toBe(
+			''
+		);
+		expect(
+			(view.getByRole('button', { name: 'Square 6-4' }) as HTMLButtonElement)
+				.disabled
+		).toBe(false);
 	});
 
 	test('an LLM Start is blocked until the model is configured', async () => {

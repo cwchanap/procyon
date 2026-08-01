@@ -414,7 +414,9 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		if (!newGameState) {
 			// The provider returned a move the legality gate rejected. Preserve
 			// the board; engine → New Game only, LLM → pause/retry.
-			setAiError('The computer suggested an invalid move.');
+			const message = 'The computer suggested an invalid move.';
+			rivalSession.reportMoveFailure('invalid-move', message);
+			setAiError(message);
 			if (isLlm) setIsAiPaused(true);
 			setGameState(prev => setAIThinking(prev, false));
 			return;
