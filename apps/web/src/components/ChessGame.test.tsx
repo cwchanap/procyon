@@ -1,4 +1,12 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
+import {
+	describe,
+	test,
+	expect,
+	beforeEach,
+	afterEach,
+	mock,
+	jest,
+} from 'bun:test';
 import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import type { RenderResult } from '@testing-library/react';
 import React from 'react';
@@ -6,8 +14,15 @@ import { setupReactDom } from '../test/reactSetup';
 import ChessGame from './ChessGame';
 import { AUTH_CHANGE_EVENT, __resetSharedAuthUserForTests } from '../lib/auth';
 import { resetAIConfigStore, setConfig } from '../lib/ai/ai-config-store';
-import { RIVAL_PREFERENCES_STORAGE_KEY } from '../lib/chess/rival/preferences';
-import { deferred, engineOptions, FakeRivalProvider } from '../test/fakeRival';
+import {
+	deferred,
+	engineOptions,
+	FakeRivalProvider,
+	clearRivalPreferences as sharedClearRivalPreferences,
+	installRivalTestEnv,
+	type InitialAuthUser as SharedInitialAuthUser,
+	type RivalTestEnv,
+} from '../test/fakeRival';
 
 setupReactDom();
 
@@ -31,20 +46,8 @@ setupReactDom();
 // `window.localStorage` (see `useChessRivalSetup`). We clear that key in
 // beforeEach/afterEach so each test starts from a clean, no-preference slate.
 
-interface InitialAuthUser {
-	id?: string;
-	email?: string;
-	username: string;
-}
-
-function clearRivalPreferences(): void {
-	try {
-		window.localStorage?.removeItem(RIVAL_PREFERENCES_STORAGE_KEY);
-		window.localStorage?.removeItem('procyon_ai_config');
-	} catch {
-		/* localStorage may be unavailable in some environments */
-	}
-}
+type InitialAuthUser = SharedInitialAuthUser;
+const clearRivalPreferences = sharedClearRivalPreferences;
 
 /** Wait for client-side preference hydration to resolve (setup revealed). */
 async function waitForSetupResolved(view: RenderResult): Promise<HTMLElement> {
@@ -458,117 +461,15 @@ describe('ChessGame — tutorial interactions', () => {
 	});
 });
 
-// Authenticated AI-config environment for the LLM-path tests. Sets an
-// initial auth user (so `useAuth` reports authenticated without a network
-// fetch), points `globalThis.localStorage` at the window store, and mocks
-// the `/ai-config` endpoints. `aiConfigOk: true` hydrates a usable OpenAI
-// config (LLM becomes selectable); `false` fails hydration so the setup
-// falls back to the engine.
-function installAuthedEnv(aiConfigOk: boolean): {
-	bodies: Array<Record<string, unknown>>;
-	playHistoryCount: () => number;
-	restore: () => void;
-} {
-	const user = { id: 'user-a', email: 'a@test.com', username: 'userA' };
-	(
-		window as unknown as Record<string, InitialAuthUser>
-	).__PROCYON_INITIAL_AUTH_USER__ = user;
-	const originalFetch = globalThis.fetch;
-	const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
-		globalThis,
-		'localStorage'
-	);
-	Object.defineProperty(globalThis, 'localStorage', {
-		configurable: true,
-		value: window.localStorage,
+// Authenticated AI-config environment for the LLM-path tests. Delegates to
+// the shared `installRivalTestEnv` harness (see `../test/fakeRival`).
+// `aiConfigOk: true` hydrates a usable OpenAI config (LLM becomes selectable);
+// `false` fails hydration so the setup falls back to the engine.
+function installAuthedEnv(aiConfigOk: boolean): RivalTestEnv {
+	return installRivalTestEnv({
+		capturePlayHistory: true,
+		aiConfig: aiConfigOk ? 'success' : 'failure',
 	});
-	try {
-		window.localStorage.clear();
-	} catch {
-		/* ignore */
-	}
-	const bodies: Array<Record<string, unknown>> = [];
-	let count = 0;
-
-	(globalThis as unknown as { fetch: unknown }).fetch = ((
-		url: string,
-		init?: RequestInit
-	) => {
-		if (url.includes('/play-history')) {
-			count++;
-			if (init?.body) {
-				bodies.push(JSON.parse(init.body as string) as Record<string, unknown>);
-			}
-			return Promise.resolve({
-				ok: true,
-				status: 200,
-				statusText: 'OK',
-				json: () => Promise.resolve({}),
-			});
-		}
-		if (url.includes('/auth/session')) {
-			return Promise.resolve({
-				ok: true,
-				status: 200,
-				json: () => Promise.resolve({ user }),
-			});
-		}
-		if (url.includes('/ai-config')) {
-			if (!aiConfigOk) {
-				return Promise.resolve({
-					ok: false,
-					status: 500,
-					json: () => Promise.resolve({}),
-					text: () => Promise.resolve(''),
-				});
-			}
-			if (url.includes('/full')) {
-				return Promise.resolve({
-					ok: true,
-					status: 200,
-					json: () =>
-						Promise.resolve({
-							provider: 'openai',
-							apiKey: 'sk-test',
-							modelName: 'gpt-4o-mini',
-							gameVariant: 'chess',
-						}),
-				});
-			}
-			return Promise.resolve({
-				ok: true,
-				status: 200,
-				json: () =>
-					Promise.resolve({
-						configurations: [
-							{ id: 'c1', provider: 'openai', isActive: true, hasApiKey: true },
-						],
-					}),
-			});
-		}
-		return Promise.resolve({
-			ok: true,
-			status: 200,
-			json: () => Promise.resolve({}),
-		});
-	}) as unknown as typeof fetch;
-
-	return {
-		bodies,
-		playHistoryCount: () => count,
-		restore() {
-			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
-			if (originalLocalStorageDesc) {
-				Object.defineProperty(
-					globalThis,
-					'localStorage',
-					originalLocalStorageDesc
-				);
-			} else {
-				delete (globalThis as Record<string, unknown>).localStorage;
-			}
-		},
-	};
 }
 
 // Task 14: atomic Start commits a fresh human-vs-AI game only after the
@@ -751,9 +652,15 @@ describe('ChessGame — atomic Start & rival session', () => {
 		await waitFor(() =>
 			expect(view.getByText(/Start a New Game to reset/i)).toBeTruthy()
 		);
+		// Freeze delayed retries with fake timers, flush microtasks/0ms
+		// timers, then assert no retry occurred. (bun:test lacks
+		// advanceTimersByTime, so we rely on useFakeTimers to prevent any
+		// delayed callback from firing rather than advancing past it.)
+		jest.useFakeTimers();
 		await act(async () => {
-			await new Promise(resolve => setTimeout(resolve, 1300));
+			await new Promise(resolve => setTimeout(resolve, 0));
 		});
+		jest.useRealTimers();
 
 		expect(instances[0]?.makeMoveCount).toBe(1);
 	});
@@ -788,9 +695,11 @@ describe('ChessGame — atomic Start & rival session', () => {
 		await waitFor(() =>
 			expect(view.getByText(/Start a New Game to reset/i)).toBeTruthy()
 		);
+		jest.useFakeTimers();
 		await act(async () => {
-			await new Promise(resolve => setTimeout(resolve, 1300));
+			await new Promise(resolve => setTimeout(resolve, 0));
 		});
+		jest.useRealTimers();
 
 		expect(instances[0]?.makeMoveCount).toBe(1);
 		expect(view.getByRole('button', { name: 'Square 6-4' }).textContent).toBe(
@@ -1004,87 +913,15 @@ describe('ChessGame — identity policy, history & tools', () => {
 	// bodies, resolves an unconfigured (engine-default) AI config, and
 	// treats /auth/session as unauthenticated. `initialUser` seeds the
 	// authenticated `useAuth` snapshot (or leaves the visitor anonymous).
-	function installSaveEnv(initialUser: InitialAuthUser | null): {
-		bodies: Array<Record<string, unknown>>;
-		playHistoryCount: () => number;
-		restore: () => void;
-	} {
-		if (initialUser) {
-			(
-				window as unknown as Record<string, InitialAuthUser>
-			).__PROCYON_INITIAL_AUTH_USER__ = initialUser;
-		}
-		const originalFetch = globalThis.fetch;
-		const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
-			globalThis,
-			'localStorage'
-		);
-		Object.defineProperty(globalThis, 'localStorage', {
-			configurable: true,
-			value: window.localStorage,
+	// Delegates to the shared `installRivalTestEnv` harness.
+	function installSaveEnv(initialUser: InitialAuthUser | null): RivalTestEnv {
+		return installRivalTestEnv({
+			user: initialUser,
+			session: 'unauth',
+			aiConfig: 'empty',
+			capturePlayHistory: true,
+			devFlag: true,
 		});
-		try {
-			window.localStorage.clear();
-		} catch {
-			/* ignore */
-		}
-		const bodies: Array<Record<string, unknown>> = [];
-		let count = 0;
-		(globalThis as unknown as { fetch: unknown }).fetch = ((
-			url: string,
-			init?: RequestInit
-		) => {
-			if (url.includes('/play-history')) {
-				count++;
-				if (init?.body) {
-					bodies.push(
-						JSON.parse(init.body as string) as Record<string, unknown>
-					);
-				}
-				return Promise.resolve({
-					ok: true,
-					status: 200,
-					statusText: 'OK',
-					json: () => Promise.resolve({}),
-				});
-			}
-			if (url.includes('/auth/session')) {
-				return Promise.resolve({
-					ok: false,
-					status: 401,
-					json: () => Promise.resolve({}),
-				});
-			}
-			if (url.includes('/ai-config')) {
-				return Promise.resolve({
-					ok: true,
-					status: 200,
-					json: () => Promise.resolve({ configurations: [] }),
-				});
-			}
-			return Promise.resolve({
-				ok: true,
-				status: 200,
-				json: () => Promise.resolve({}),
-			});
-		}) as unknown as typeof fetch;
-		devEnv.DEV = true;
-		return {
-			bodies,
-			playHistoryCount: () => count,
-			restore() {
-				(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
-				if (originalLocalStorageDesc) {
-					Object.defineProperty(
-						globalThis,
-						'localStorage',
-						originalLocalStorageDesc
-					);
-				} else {
-					delete (globalThis as Record<string, unknown>).localStorage;
-				}
-			},
-		};
 	}
 
 	async function startEngine(view: RenderResult): Promise<void> {
@@ -1150,20 +987,7 @@ describe('ChessGame — identity policy, history & tools', () => {
 		};
 		try {
 			const view = render(<ChessGame rivalSessionOptions={options} />);
-			await waitForSetupResolved(view);
-			await waitFor(() =>
-				expect(
-					(
-						view.getByRole('radio', {
-							name: /Language model/i,
-						}) as HTMLInputElement
-					).checked
-				).toBe(true)
-			);
-			fireEvent.click(
-				await waitFor(() => view.getByRole('button', { name: /start/i }))
-			);
-			await waitFor(() => expect(whiteRadio(view).disabled).toBe(true));
+			await startLlm(view);
 
 			// Logout mid-game: the active LLM session must reset, re-enabling
 			// the opponent/side selectors.

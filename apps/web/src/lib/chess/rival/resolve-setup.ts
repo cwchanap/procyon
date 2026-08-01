@@ -110,10 +110,12 @@ function resolveAutomatic(
 	}
 
 	if (llmAvailable) {
+		// No remembered preference: resolve to the LLM without a fallback
+		// notice. The 'engine-to-llm' notice is reserved for an explicit
+		// remembered 'engine' preference (handled above).
 		return {
 			kind: 'llm',
 			automatic: true,
-			notice: engineSupported ? undefined : 'engine-to-llm',
 		};
 	}
 	if (engineSupported) {

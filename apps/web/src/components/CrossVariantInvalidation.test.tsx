@@ -8,9 +8,14 @@ import ShogiGame from './ShogiGame';
 import JungleGame from './JungleGame';
 import { AUTH_CHANGE_EVENT } from '../lib/auth';
 import { resetAIConfigStore, setConfig } from '../lib/ai/ai-config-store';
-import { RIVAL_PREFERENCES_STORAGE_KEY } from '../lib/chess/rival/preferences';
 import type { RivalMoveResult } from '../lib/chess/rival/types';
-import { deferred, engineOptions } from '../test/fakeRival';
+import {
+	deferred,
+	engineOptions,
+	clearRivalPreferences,
+	installRivalTestEnv,
+	type RivalTestEnv,
+} from '../test/fakeRival';
 
 setupReactDom();
 
@@ -644,15 +649,6 @@ describe.each(LATE_CALLBACK_GAMES)(
 	}
 );
 
-function clearChessRivalPrefs(): void {
-	try {
-		window.localStorage?.removeItem(RIVAL_PREFERENCES_STORAGE_KEY);
-		window.localStorage?.removeItem('procyon_ai_config');
-	} catch {
-		/* localStorage may be unavailable */
-	}
-}
-
 // ChessGame drives its rival through the injected session provider since
 // Task 14. Here we hold the engine's move in-flight across a New Game so
 // makeRivalMoveAsync reaches its stale-generation bail (and the session hook
@@ -661,13 +657,13 @@ describe('ChessGame — mode-switch late callback dropped after invalidate', () 
 	beforeEach(() => {
 		clearInitialAuthUser();
 		resetAIConfigStore();
-		clearChessRivalPrefs();
+		clearRivalPreferences();
 	});
 
 	afterEach(() => {
 		clearInitialAuthUser();
 		resetAIConfigStore();
-		clearChessRivalPrefs();
+		clearRivalPreferences();
 	});
 
 	test('in-flight engine move bails on stale gen after New Game (no board mutation)', async () => {
@@ -718,96 +714,13 @@ describe('ChessGame — mode-switch late callback dropped after invalidate', () 
 });
 
 // Authenticated LLM environment with the generation call held in-flight so a
-// mode switch can race it. Hydrates a usable OpenAI config so the LLM
-// opponent is selectable, and defers the actual model call.
-function installAuthedLlmEnv(): {
-	resolveLLM: (text: string) => void;
-	readonly llmFetchCalled: boolean;
-	restore: () => void;
-} {
-	const user = { id: 'user-a', email: 'a@test.com', username: 'userA' };
-	(window as unknown as Record<string, unknown>).__PROCYON_INITIAL_AUTH_USER__ =
-		user;
-	const originalFetch = globalThis.fetch;
-	const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
-		globalThis,
-		'localStorage'
-	);
-	Object.defineProperty(globalThis, 'localStorage', {
-		configurable: true,
-		value: window.localStorage,
+// mode switch can race it. Delegates to the shared `installRivalTestEnv`
+// harness (see `../test/fakeRival`).
+function installAuthedLlmEnv(): RivalTestEnv {
+	return installRivalTestEnv({
+		aiConfig: 'llm-configured',
+		deferModelGeneration: true,
 	});
-	clearChessRivalPrefs();
-
-	const llm = deferred<string>();
-	let llmFetchCalled = false;
-
-	(globalThis as unknown as { fetch: unknown }).fetch = ((url: string) => {
-		if (url.includes('/auth/session')) {
-			return Promise.resolve({
-				ok: true,
-				status: 200,
-				json: () => Promise.resolve({ user }),
-			});
-		}
-		if (url.includes('/ai-config')) {
-			if (url.includes('/full')) {
-				return Promise.resolve({
-					ok: true,
-					status: 200,
-					json: () =>
-						Promise.resolve({
-							provider: 'openai',
-							apiKey: 'sk-test',
-							modelName: 'gpt-4o-mini',
-							gameVariant: 'chess',
-						}),
-				});
-			}
-			return Promise.resolve({
-				ok: true,
-				status: 200,
-				json: () =>
-					Promise.resolve({
-						configurations: [
-							{ id: 'c1', provider: 'openai', isActive: true, hasApiKey: true },
-						],
-					}),
-			});
-		}
-		// Model generation call — held in-flight.
-		llmFetchCalled = true;
-		return llm.promise.then(text => ({
-			ok: true,
-			status: 200,
-			json: () =>
-				Promise.resolve({
-					choices: [{ message: { content: text } }],
-					candidates: [
-						{ content: { parts: [{ text }] }, finishReason: 'STOP' },
-					],
-				}),
-		}));
-	}) as unknown as typeof fetch;
-
-	return {
-		resolveLLM: (text: string) => llm.resolve(text),
-		get llmFetchCalled() {
-			return llmFetchCalled;
-		},
-		restore() {
-			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
-			if (originalLocalStorageDesc) {
-				Object.defineProperty(
-					globalThis,
-					'localStorage',
-					originalLocalStorageDesc
-				);
-			} else {
-				delete (globalThis as Record<string, unknown>).localStorage;
-			}
-		},
-	};
 }
 
 // ChessGame-only: with debug mode ON the real LLM provider forwards the
@@ -819,13 +732,13 @@ describe('ChessGame — debug callback stale-requestId bail', () => {
 	beforeEach(() => {
 		clearInitialAuthUser();
 		resetAIConfigStore();
-		clearChessRivalPrefs();
+		clearRivalPreferences();
 	});
 
 	afterEach(() => {
 		clearInitialAuthUser();
 		resetAIConfigStore();
-		clearChessRivalPrefs();
+		clearRivalPreferences();
 	});
 
 	test('ai-move debug callback is dropped after mode-switch invalidate (no "AI suggests" entry)', async () => {

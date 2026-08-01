@@ -146,7 +146,14 @@ const ChessRivalSetup: React.FC<ChessRivalSetupProps> = ({
 			</div>
 
 			<div role='radiogroup' aria-label='You play' className='space-y-2'>
-				<div className='text-sm font-medium text-ivory'>You play</div>
+				<div
+					className={cn(
+						'text-sm font-medium',
+						disabled ? 'text-ivory-dim/50' : 'text-ivory'
+					)}
+				>
+					You play
+				</div>
 				<div className='flex gap-2'>
 					{(['white', 'black'] as const).map(side => (
 						<label

@@ -27,14 +27,13 @@ import BoardSidePanel, { type Mode } from './game/BoardSidePanel';
 import BoardColumn from './game/BoardColumn';
 import GamePlayLayout from './game/GamePlayLayout';
 import GameStartOverlay from './game/GameStartOverlay';
-import AIStatusPanel from './game/AIStatusPanel';
 import GameControls from './game/GameControls';
 import DemoSelector from './game/DemoSelector';
 import TutorialInstructions from './game/TutorialInstructions';
-import AIGameInstructions from './game/AIGameInstructions';
 import DebugOutcomeButtons from './game/DebugOutcomeButtons';
 import ChessRivalSetup from './game/ChessRivalSetup';
 import EngineRivalDetails from './game/EngineRivalDetails';
+import LlmRivalDetails from './game/LlmRivalDetails';
 import type { AIMove } from './ai/AIDebugDialog';
 import {
 	usePlayHistory,
@@ -964,8 +963,8 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 									onRetry={() => void startRivalGame()}
 								/>
 							) : null}
-							<AIStatusPanel
-								aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
+							<LlmRivalDetails
+								llmUsability={rivalSetup.llmUsability}
 								hasGameStarted={gameStarted}
 								isAIThinking={gameState.isAiThinking ?? false}
 								isAIPaused={isAiPaused}
@@ -973,12 +972,6 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 								aiDebugMoves={aiDebugMoves}
 								isDebugMode={isDebugMode}
 								onRetry={retryAIMove}
-							/>
-							<AIGameInstructions
-								variant='chess'
-								providerName={aiConfig.provider}
-								modelName={aiConfig.model}
-								aiConfigured={aiConfig.enabled && !!aiConfig.apiKey}
 							/>
 						</>
 					) : (

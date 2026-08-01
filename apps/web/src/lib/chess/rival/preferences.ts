@@ -85,7 +85,12 @@ function writeRivalPreferences(
 	storage: RivalPreferenceStorage,
 	preferences: RivalPreferencesV1
 ): void {
-	storage.setItem(RIVAL_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
+	try {
+		storage.setItem(RIVAL_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
+	} catch {
+		// Storage may be unavailable (private mode, disabled cookies) or
+		// quota-limited. Swallow so rival selection still works in-memory.
+	}
 }
 
 export function persistRivalKind(

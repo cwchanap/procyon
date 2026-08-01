@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
+import { AuthHelper, type TestUser } from './utils/auth-helpers';
 
 /**
  * Mocked-browser journeys for the chess rival selection / opponent session
@@ -39,12 +40,10 @@ interface MockedProviderRequest {
 interface FakeStockfishConfig {
 	/** UCI moves the fake engine returns, consumed in order per `go`. */
 	bestmoves?: string[];
-	/** When true, omit the `option name Skill Level` advertisement. */
+	/** When false, omit the `option name Skill Level` advertisement. */
 	advertiseSkillLevel?: boolean;
 	/** When true, the worker reports an error on the `uci` handshake. */
 	loadError?: boolean;
-	/** When true, the worker never answers `uci` (simulates a hang). */
-	loadTimeout?: boolean;
 }
 
 /**
@@ -90,9 +89,6 @@ async function installFakeStockfish(
 								() => this.onerror?.({ message: 'fake stockfish load error' }),
 								0
 							);
-							return;
-						}
-						if (this.cfg.loadTimeout) {
 							return;
 						}
 						this.emit('id name FakeStockfish');
@@ -245,19 +241,6 @@ async function stopBoardOrientationProbe(
 	});
 }
 
-/** Seed a signed-in user snapshot so auth resolves without a network fetch. */
-async function seedAuthenticatedUser(page: Page): Promise<void> {
-	await page.addInitScript(() => {
-		(
-			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
-		).__PROCYON_INITIAL_AUTH_USER__ = {
-			id: 'rival-e2e-user',
-			email: 'rival-e2e@test.local',
-			username: 'rivalTester',
-		};
-	});
-}
-
 /** Seed a persisted rival-kind preference before the app hydrates. */
 async function seedRememberedRival(
 	page: Page,
@@ -292,19 +275,6 @@ async function forceEngineUnsupported(page: Page): Promise<void> {
 
 /** Mock the AI-config endpoints so the LLM opponent resolves to "available". */
 async function mockConfiguredLlm(page: Page): Promise<void> {
-	await page.route('**/api/auth/session', async route => {
-		await route.fulfill({
-			status: 200,
-			contentType: 'application/json',
-			body: JSON.stringify({
-				user: {
-					id: 'rival-e2e-user',
-					email: 'rival-e2e@test.local',
-					username: 'rivalTester',
-				},
-			}),
-		});
-	});
 	await page.route('**/api/ai-config', async route => {
 		if (route.request().method() !== 'GET') return route.continue();
 		await route.fulfill({
@@ -527,7 +497,13 @@ test.describe('Chess rival — configured language-model journey', () => {
 		page,
 	}) => {
 		await installFakeStockfish(page);
-		await seedAuthenticatedUser(page);
+		const authHelper = new AuthHelper(page);
+		const rivalTestUser: TestUser = {
+			email: 'rival-e2e@test.local',
+			username: 'rivalTester',
+			password: '',
+		};
+		await authHelper.loginViaApi(rivalTestUser);
 		await mockConfiguredLlm(page);
 		const llmProviderRequests = await mockOpenAIChessMove(page);
 		const stockfishRequests = trackStockfishRequests(page);
@@ -677,7 +653,12 @@ test.describe('Chess rival — failure & fallback journeys', () => {
 		page,
 	}) => {
 		await seedRememberedRival(page, 'engine');
-		await seedAuthenticatedUser(page);
+		const authHelper = new AuthHelper(page);
+		await authHelper.loginViaApi({
+			email: 'rival-e2e@test.local',
+			username: 'rivalTester',
+			password: '',
+		});
 		await mockConfiguredLlm(page);
 		await forceEngineUnsupported(page);
 

@@ -231,9 +231,29 @@ export function useChessRivalSetup({
 		() => injectedEnginePreflight ?? runEnginePreflight(engineEnvironment),
 		[injectedEnginePreflight, engineEnvironment]
 	);
+	// Destructure to primitive deps so the memo doesn't recompute when
+	// callers pass inline object literals that change reference every render.
+	const { isAuthenticated, loading: authLoading, revalidated } = auth;
+	const {
+		hydrated: configHydrated,
+		hydrateError,
+		configPending,
+		config: { enabled, apiKey, model, provider },
+	} = aiConfig;
 	const llmUsability = useMemo(
 		() => resolveLlmUsability(auth, aiConfig),
-		[auth, aiConfig]
+		[
+			isAuthenticated,
+			authLoading,
+			revalidated,
+			configHydrated,
+			hydrateError,
+			configPending,
+			enabled,
+			apiKey,
+			model,
+			provider,
+		]
 	);
 
 	useEffect(() => {
@@ -366,11 +386,9 @@ export function useChessRivalSetup({
 	);
 
 	const clearFallbackNotice = useCallback(() => {
-		setFallbackNotice(current => {
-			clearedFallbackNoticeRef.current = current;
-			return null;
-		});
-	}, []);
+		clearedFallbackNoticeRef.current = fallbackNotice;
+		setFallbackNotice(null);
+	}, [fallbackNotice]);
 
 	return {
 		resolved,
