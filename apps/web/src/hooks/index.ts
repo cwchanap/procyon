@@ -8,3 +8,8 @@ export {
 export { useAiMoveGenerationToken } from './useAiMoveGenerationToken';
 export { useGameIdentityReset } from './useGameIdentityReset';
 export { useGameDebugOutcomes } from './useGameDebugOutcomes';
+export {
+	useChessRivalSetup,
+	type UseChessRivalSetupOptions,
+	type UseChessRivalSetupResult,
+} from './useChessRivalSetup';
