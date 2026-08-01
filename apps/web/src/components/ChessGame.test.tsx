@@ -4,7 +4,7 @@ import type { RenderResult } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../test/reactSetup';
 import ChessGame from './ChessGame';
-import { AUTH_CHANGE_EVENT } from '../lib/auth';
+import { AUTH_CHANGE_EVENT, __resetSharedAuthUserForTests } from '../lib/auth';
 import { resetAIConfigStore } from '../lib/ai/ai-config-store';
 import { RIVAL_PREFERENCES_STORAGE_KEY } from '../lib/chess/rival/preferences';
 import { deferred, engineOptions, FakeRivalProvider } from '../test/fakeRival';
@@ -307,7 +307,7 @@ describe('ChessGame — rival setup & preview', () => {
 		).toBe(true);
 	});
 
-	test('re-enables the selectors when auth is lost mid-game (logout resets local game state)', async () => {
+	test('keeps an active engine session locked when auth is lost mid-game (engine continues)', async () => {
 		(
 			window as unknown as Record<string, InitialAuthUser>
 		).__PROCYON_INITIAL_AUTH_USER__ = { username: 'tester' };
@@ -350,12 +350,17 @@ describe('ChessGame — rival setup & preview', () => {
 				})
 			);
 
-			await waitFor(() => {
-				expect(
-					(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
-						.disabled
-				).toBe(false);
+			// A committed engine session is device-local and unrated, so it
+			// continues across the logout — the selectors stay locked.
+			await act(async () => {
+				for (let i = 0; i < 20; i++) {
+					await Promise.resolve();
+				}
 			});
+			expect(
+				(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
+					.disabled
+			).toBe(true);
 		} finally {
 			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
 			if (originalLocalStorageDesc) {
@@ -929,6 +934,376 @@ describe('ChessGame — atomic Start & rival session', () => {
 			);
 			// The LLM session carries prompt/response, so the exporter exists.
 			expect(view.getByRole('button', { name: /Export Game/i })).toBeTruthy();
+		} finally {
+			env.restore();
+		}
+	});
+});
+
+// Task 15: identity-reset policy, engine history eligibility, the Unrated
+// engine rating display, and the debug/export visibility differences between
+// an engine and an LLM session.
+describe('ChessGame — identity policy, history & tools', () => {
+	const devEnv = import.meta.env as unknown as { DEV: boolean };
+	const originalDev = devEnv.DEV;
+
+	beforeEach(() => {
+		delete (window as unknown as Record<string, unknown>)
+			.__PROCYON_INITIAL_AUTH_USER__;
+		__resetSharedAuthUserForTests();
+		resetAIConfigStore();
+		clearRivalPreferences();
+	});
+
+	afterEach(() => {
+		delete (window as unknown as Record<string, unknown>)
+			.__PROCYON_INITIAL_AUTH_USER__;
+		__resetSharedAuthUserForTests();
+		resetAIConfigStore();
+		clearRivalPreferences();
+		devEnv.DEV = originalDev;
+	});
+
+	function whiteRadio(view: RenderResult): HTMLInputElement {
+		return view.getByRole('radio', { name: 'White' }) as HTMLInputElement;
+	}
+
+	async function flushEffects(): Promise<void> {
+		await act(async () => {
+			for (let i = 0; i < 20; i++) {
+				await Promise.resolve();
+			}
+			await new Promise(r => setTimeout(r, 0));
+		});
+	}
+
+	// Installs DEV mode + a fetch mock that captures /play-history POST
+	// bodies, resolves an unconfigured (engine-default) AI config, and
+	// treats /auth/session as unauthenticated. `initialUser` seeds the
+	// authenticated `useAuth` snapshot (or leaves the visitor anonymous).
+	function installSaveEnv(initialUser: InitialAuthUser | null): {
+		bodies: Array<Record<string, unknown>>;
+		playHistoryCount: () => number;
+		restore: () => void;
+	} {
+		if (initialUser) {
+			(
+				window as unknown as Record<string, InitialAuthUser>
+			).__PROCYON_INITIAL_AUTH_USER__ = initialUser;
+		}
+		const originalFetch = globalThis.fetch;
+		const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
+			globalThis,
+			'localStorage'
+		);
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			value: window.localStorage,
+		});
+		try {
+			window.localStorage.clear();
+		} catch {
+			/* ignore */
+		}
+		const bodies: Array<Record<string, unknown>> = [];
+		let count = 0;
+		(globalThis as unknown as { fetch: unknown }).fetch = ((
+			url: string,
+			init?: RequestInit
+		) => {
+			if (url.includes('/play-history')) {
+				count++;
+				if (init?.body) {
+					bodies.push(
+						JSON.parse(init.body as string) as Record<string, unknown>
+					);
+				}
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					statusText: 'OK',
+					json: () => Promise.resolve({}),
+				});
+			}
+			if (url.includes('/auth/session')) {
+				return Promise.resolve({
+					ok: false,
+					status: 401,
+					json: () => Promise.resolve({}),
+				});
+			}
+			if (url.includes('/ai-config')) {
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					json: () => Promise.resolve({ configurations: [] }),
+				});
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({}),
+			});
+		}) as unknown as typeof fetch;
+		devEnv.DEV = true;
+		return {
+			bodies,
+			playHistoryCount: () => count,
+			restore() {
+				(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+				if (originalLocalStorageDesc) {
+					Object.defineProperty(
+						globalThis,
+						'localStorage',
+						originalLocalStorageDesc
+					);
+				} else {
+					delete (globalThis as Record<string, unknown>).localStorage;
+				}
+			},
+		};
+	}
+
+	async function startEngine(view: RenderResult): Promise<void> {
+		await waitForSetupResolved(view);
+		await waitFor(() =>
+			expect(
+				(
+					view.getByRole('radio', {
+						name: /On-device computer/i,
+					}) as HTMLInputElement
+				).checked
+			).toBe(true)
+		);
+		fireEvent.click(
+			await waitFor(() => view.getByRole('button', { name: /start/i }))
+		);
+		await waitFor(() => expect(whiteRadio(view).disabled).toBe(true));
+	}
+
+	// DEV-only: Shift+D reveals the debug outcome buttons; clicking Win forces
+	// a terminal (checkmate) position, which is the save trigger.
+	async function forceWin(view: RenderResult): Promise<void> {
+		const KE = (window as unknown as { KeyboardEvent: typeof KeyboardEvent })
+			.KeyboardEvent;
+		act(() => {
+			window.dispatchEvent(new KE('keydown', { key: 'd', shiftKey: true }));
+		});
+		fireEvent.click(await waitFor(() => view.getByTitle('Debug: Win')));
+		await flushEffects();
+	}
+
+	function signInEvent(user: InitialAuthUser): void {
+		globalThis.dispatchEvent(
+			new CustomEvent(AUTH_CHANGE_EVENT, { detail: { user } })
+		);
+	}
+
+	test('an active LLM session resets local game state when auth is lost (re-enables selectors)', async () => {
+		const authed = installAuthedEnv(true);
+		const options = {
+			createLlmProvider: () =>
+				new FakeRivalProvider({
+					kind: 'llm',
+					makeMove: async () => ({ ok: true, move: { from: 'e7', to: 'e5' } }),
+				}),
+		};
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await waitForSetupResolved(view);
+			await waitFor(() =>
+				expect(
+					(
+						view.getByRole('radio', {
+							name: /Language model/i,
+						}) as HTMLInputElement
+					).checked
+				).toBe(true)
+			);
+			fireEvent.click(
+				await waitFor(() => view.getByRole('button', { name: /start/i }))
+			);
+			await waitFor(() => expect(whiteRadio(view).disabled).toBe(true));
+
+			// Logout mid-game: the active LLM session must reset, re-enabling
+			// the opponent/side selectors.
+			globalThis.dispatchEvent(
+				new CustomEvent(AUTH_CHANGE_EVENT, { detail: { user: null } })
+			);
+			await waitFor(() => expect(whiteRadio(view).disabled).toBe(false));
+		} finally {
+			authed.restore();
+		}
+	});
+
+	test('an active engine session continues (stays locked) when auth is lost mid-game', async () => {
+		const authed = installAuthedEnv(false); // LLM unconfigured -> engine default
+		const { options } = engineOptions();
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startEngine(view);
+
+			globalThis.dispatchEvent(
+				new CustomEvent(AUTH_CHANGE_EVENT, { detail: { user: null } })
+			);
+			await flushEffects();
+
+			// The engine session is unaffected by the logout — still locked.
+			expect(whiteRadio(view).disabled).toBe(true);
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy();
+		} finally {
+			authed.restore();
+		}
+	});
+
+	test('an active engine session continues (stays locked) through an account change', async () => {
+		const authed = installAuthedEnv(false);
+		const { options } = engineOptions();
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startEngine(view);
+
+			signInEvent({ id: 'user-b', email: 'b@test.com', username: 'userB' });
+			await flushEffects();
+
+			expect(whiteRadio(view).disabled).toBe(true);
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy();
+		} finally {
+			authed.restore();
+		}
+	});
+
+	test('an active engine session hides the prompt-oriented debug/export controls', async () => {
+		const authed = installAuthedEnv(true); // LLM configured (tools would show)
+		const { options } = engineOptions();
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await waitForSetupResolved(view);
+
+			// Switch to the engine even though the language model is configured.
+			fireEvent.click(view.getByRole('radio', { name: /On-device computer/i }));
+			await waitFor(() =>
+				expect(
+					(
+						view.getByRole('radio', {
+							name: /On-device computer/i,
+						}) as HTMLInputElement
+					).checked
+				).toBe(true)
+			);
+			fireEvent.click(
+				await waitFor(() => view.getByRole('button', { name: /start/i }))
+			);
+			await waitFor(() => expect(whiteRadio(view).disabled).toBe(true));
+
+			// The engine carries no prompts — no Debug Mode toggle, no export.
+			expect(view.queryByRole('button', { name: /Debug Mode/i })).toBeNull();
+			expect(view.queryByRole('button', { name: /Export Game/i })).toBeNull();
+		} finally {
+			authed.restore();
+		}
+	});
+
+	test('an active LLM session keeps the debug/export controls', async () => {
+		const authed = installAuthedEnv(true);
+		const options = {
+			createLlmProvider: () =>
+				new FakeRivalProvider({
+					kind: 'llm',
+					makeMove: async () => ({ ok: true, move: { from: 'e7', to: 'e5' } }),
+				}),
+		};
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await waitForSetupResolved(view);
+			await waitFor(() =>
+				expect(
+					(
+						view.getByRole('radio', {
+							name: /Language model/i,
+						}) as HTMLInputElement
+					).checked
+				).toBe(true)
+			);
+			fireEvent.click(
+				await waitFor(() => view.getByRole('button', { name: /start/i }))
+			);
+			await waitFor(() => expect(whiteRadio(view).disabled).toBe(true));
+
+			expect(view.getByRole('button', { name: /Debug Mode/i })).toBeTruthy();
+			expect(view.getByRole('button', { name: /Export Game/i })).toBeTruthy();
+		} finally {
+			authed.restore();
+		}
+	});
+
+	test('an active engine session presents the opponent as Unrated', async () => {
+		const { options } = engineOptions();
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await startEngine(view);
+		// The rating summary marks the on-device engine opponent as Unrated.
+		expect(view.getByText(/Computer plays \w+ · Unrated/i)).toBeTruthy();
+	});
+
+	test('a signed-in engine terminal game saves with the engine descriptor (same starting user)', async () => {
+		const env = installSaveEnv({
+			id: 'user-a',
+			email: 'a@test.com',
+			username: 'userA',
+		});
+		const { options } = engineOptions();
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startEngine(view);
+			await forceWin(view);
+
+			expect(env.playHistoryCount()).toBe(1);
+			expect(env.bodies[0]).toHaveProperty('opponentEngineId', 'stockfish');
+			expect(env.bodies[0]).not.toHaveProperty('opponentLlmId');
+			expect(env.bodies[0]).toHaveProperty('chessId', 'chess');
+		} finally {
+			env.restore();
+		}
+	});
+
+	test('an engine game started anonymously never saves after a later sign-in', async () => {
+		const env = installSaveEnv(null); // anonymous visitor
+		const { options } = engineOptions();
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startEngine(view);
+
+			// Sign in AFTER starting anonymously (startedByUserId was null).
+			signInEvent({ id: 'user-a', email: 'a@test.com', username: 'userA' });
+			await flushEffects();
+			expect(whiteRadio(view).disabled).toBe(true); // engine continues
+
+			await forceWin(view);
+			expect(env.playHistoryCount()).toBe(0);
+		} finally {
+			env.restore();
+		}
+	});
+
+	test('an account switch disables the engine save without attributing to the new user', async () => {
+		const env = installSaveEnv({
+			id: 'user-a',
+			email: 'a@test.com',
+			username: 'userA',
+		});
+		const { options } = engineOptions();
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startEngine(view);
+
+			// Account switch A -> B mid-game; the engine session continues but
+			// its save must not be attributed to B.
+			signInEvent({ id: 'user-b', email: 'b@test.com', username: 'userB' });
+			await flushEffects();
+			expect(whiteRadio(view).disabled).toBe(true);
+
+			await forceWin(view);
+			expect(env.playHistoryCount()).toBe(0);
 		} finally {
 			env.restore();
 		}

@@ -247,18 +247,54 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		[effectiveCurrentPlayer]
 	);
 
-	usePlayHistory({
-		gameVariant: 'chess',
-		gameStatus: effectiveStatus,
-		aiPlayer: previewRivalSide,
-		aiConfig,
-		moveCount: gameState.moveHistory.length,
-		getWinnerColor,
-		enabled: gameMode === 'ai' && gameStarted,
-		isAuthenticated,
-		userId: user?.id,
-		debugVariantKey: 'CHESS',
-	});
+	// Engine history is only eligible when the still-signed-in starting user
+	// is the same identity that began the session. An anonymous start
+	// (`startedByUserId === null`) or an account switch after Start makes the
+	// terminal engine result ineligible — it is never attributed to another
+	// user, and an anonymous engine game is never saved.
+	const isSameStartingUser =
+		activeSession != null &&
+		activeSession.startedByUserId !== null &&
+		isAuthenticated &&
+		user?.id === activeSession.startedByUserId;
+
+	// Engine and LLM sessions record play-history through the same hook but
+	// with different opponent metadata: the engine passes the frozen rival
+	// side and the unrated `{ kind: 'engine', id: 'stockfish' }` descriptor
+	// (and omits `aiConfig`), while the LLM keeps the existing rated path
+	// (frozen config, no descriptor). The hook must be called unconditionally,
+	// so the options are branched here rather than the call.
+	usePlayHistory(
+		activeSession?.opponent.kind === 'engine'
+			? {
+					gameVariant: 'chess',
+					gameStatus: effectiveStatus,
+					aiPlayer: activeSession.rivalSide,
+					opponentDescriptor: { kind: 'engine', id: 'stockfish' },
+					moveCount: gameState.moveHistory.length,
+					getWinnerColor,
+					enabled:
+						gameMode === 'ai' &&
+						gameStarted &&
+						activeSession.opponent.kind === 'engine' &&
+						isSameStartingUser,
+					isAuthenticated,
+					userId: user?.id,
+					debugVariantKey: 'CHESS',
+				}
+			: {
+					gameVariant: 'chess',
+					gameStatus: effectiveStatus,
+					aiPlayer: activeSession?.rivalSide ?? previewRivalSide,
+					aiConfig,
+					moveCount: gameState.moveHistory.length,
+					getWinnerColor,
+					enabled: gameMode === 'ai' && gameStarted,
+					isAuthenticated,
+					userId: user?.id,
+					debugVariantKey: 'CHESS',
+				}
+	);
 
 	// Latch game-ended + clear gameActive when the game finishes (the hook owns
 	// the actual play-history save + dedup).
@@ -642,6 +678,11 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		onReset: () => {
 			resetGame();
 		},
+		// A committed engine session is device-local and unrated, so it
+		// continues across logout / account change / config change. Only LLM
+		// ownership (setup, Start, and an active LLM session) resets on an
+		// identity transition — an active engine session opts out.
+		enabled: activeSession?.opponent.kind !== 'engine',
 	});
 
 	const {
@@ -784,6 +825,18 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		rivalSetup.setup.rivalKind === 'engine' &&
 		activeSession?.opponent.kind !== 'llm';
 
+	const aiConfigured = !!aiConfig.enabled && !!aiConfig.apiKey;
+	// The prompt-oriented debug/export tools apply only to a language-model
+	// opponent — the engine carries no prompt/response to inspect or export.
+	// Pre-Start this follows the selected rival; once a game is committed it
+	// follows the frozen session opponent so an active engine session hides
+	// the tools even when an AI provider is configured.
+	const rivalIsLlm =
+		activeSession != null
+			? activeSession.opponent.kind === 'llm'
+			: rivalSetup.setup.rivalKind === 'llm';
+	const showLlmTools = rivalIsLlm && aiConfigured;
+
 	const title =
 		gameMode === 'tutorial' ? 'Chess Logic & Tutorials' : 'Chess Game';
 	const subtitle =
@@ -837,7 +890,8 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 							<GameControls
 								hasGameStarted={gameStarted}
 								isGameOver={gameOver}
-								aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
+								aiConfigured={aiConfigured}
+								showLlmTools={showLlmTools}
 								startDisabled={
 									!rivalSetup.resolved ||
 									rivalStarting ||
