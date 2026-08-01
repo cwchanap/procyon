@@ -167,7 +167,6 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		({ config }: { config: AIConfig }): ChessRivalProvider =>
 			createLlmRivalProvider({
 				config,
-				debug: config.debug ?? false,
 				onDebugEvent: event => rivalDebugHandlerRef.current(event),
 			}),
 		[]
@@ -571,9 +570,12 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 			// Invalidate any in-flight rival move so a stale provider result
 			// from the previous mode cannot overwrite the newly selected game
 			// state, and dispose the active/candidate provider (Tutorial and
-			// every mode switch tears down the rival session).
+			// every mode switch tears down the rival session). Drop the
+			// exporter so the previous session's frozen config (incl. its API
+			// key) and prompts are not retained into the new mode.
 			invalidate();
 			rivalSession.reset();
+			gameExporterRef.current = null;
 			setGameMode(newMode);
 			setGameStarted(false);
 			setIsAiPaused(false);
@@ -648,9 +650,12 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		// Invalidate any in-flight rival move so it cannot apply stale
 		// setGameState/setAiError results after the reset, and dispose the
 		// active/candidate provider so New Game / Play Again / identity reset
-		// never leak a Worker or reuse a committed session.
+		// never leak a Worker or reuse a committed session. The exporter is
+		// dropped too so the previous session's frozen config (incl. its API
+		// key) and recorded prompts are not retained until the next Start.
 		invalidate();
 		rivalSession.reset();
+		gameExporterRef.current = null;
 		setGameState(createInitialGameState('human-vs-ai', previewRivalSide));
 		setGameStarted(false);
 		setAiDebugMoves([]);
@@ -919,9 +924,10 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 								aiConfigured={aiConfigured}
 								showLlmTools={showLlmTools}
 								startDisabled={
-									!rivalSetup.resolved ||
-									rivalStarting ||
-									Boolean(rivalSetup.startBlockedReason)
+									!gameStarted &&
+									(!rivalSetup.resolved ||
+										rivalStarting ||
+										Boolean(rivalSetup.startBlockedReason))
 								}
 								startLabel={startControlLabel}
 								isDebugMode={isDebugMode}

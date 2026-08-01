@@ -25,7 +25,6 @@ export interface LlmAiService {
 
 export interface CreateLlmRivalProviderOptions {
 	config: AIConfig;
-	debug: boolean;
 	onDebugEvent?: (event: RivalDebugEvent) => void;
 	createService?: (config: AIConfig) => LlmAiService;
 }
@@ -34,19 +33,21 @@ class LlmRivalProvider implements ChessRivalProvider {
 	readonly kind = 'llm' as const;
 
 	private readonly service: LlmAiService;
-	private readonly debug: boolean;
 	private disposed = false;
 	private onDebugEvent: ((event: RivalDebugEvent) => void) | undefined;
 
 	constructor(options: CreateLlmRivalProviderOptions) {
 		// Shallow freeze is sufficient — AIConfig has only primitive fields.
+		// The service always runs with diagnostics enabled so debug events
+		// (thinking / suggested move / errors) flow continuously — the UI
+		// filters them through its live Debug Mode toggle. Provider/model/key
+		// stay frozen from the Start snapshot.
 		const config = Object.freeze({
 			...options.config,
-			debug: options.debug,
+			debug: true,
 		});
 		const createService = options.createService ?? createChessAI;
 
-		this.debug = options.debug;
 		this.onDebugEvent = options.onDebugEvent;
 		this.service = createService(config);
 		this.service.setDebugCallback((type, message, data) => {
@@ -78,16 +79,10 @@ class LlmRivalProvider implements ChessRivalProvider {
 			return { ok: false, reason: 'no-move' };
 		}
 
-		// Only attach the interaction meta (thinking, confidence, prompt/
-		// response) when debug mode is on — it's never needed in production
-		// and avoids leaking prompt/response text into non-debug contexts.
-		if (!this.debug) {
-			return {
-				ok: true,
-				move: aiResponse.move as ChessMoveRequest,
-			};
-		}
-
+		// Interaction metadata (thinking, confidence, prompt/response) is
+		// always attached so the game export retains it. The debug flag only
+		// controls whether diagnostic callbacks surface in the UI — never
+		// whether export metadata is recorded.
 		const interaction = this.service.getLastInteraction();
 		return {
 			ok: true,
