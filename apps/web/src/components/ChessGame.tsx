@@ -480,7 +480,8 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 			!gameState.isAiThinking &&
 			!isAiPaused &&
 			!gameState.pendingPromotion &&
-			!rivalSession.rivalThinking
+			!rivalSession.rivalThinking &&
+			!rivalSession.rivalError
 		) {
 			const timer = setTimeout(() => {
 				void makeRivalMoveAsync();
@@ -494,6 +495,7 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		gameStarted,
 		activeSession,
 		rivalSession.rivalThinking,
+		rivalSession.rivalError,
 		makeRivalMoveAsync,
 		isAiPaused,
 		gameOver,
