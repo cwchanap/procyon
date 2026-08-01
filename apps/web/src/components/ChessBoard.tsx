@@ -10,6 +10,7 @@ interface ChessBoardProps {
 	onSquareClick: (position: Position) => void;
 	highlightSquares?: Position[];
 	disabled?: boolean;
+	orientation?: 'white' | 'black';
 }
 
 const ChessBoard: React.FC<ChessBoardProps> = ({
@@ -19,7 +20,11 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 	onSquareClick,
 	highlightSquares = [],
 	disabled = false,
+	orientation = 'white',
 }) => {
+	const indices = Array.from({ length: BOARD_SIZE }, (_, index) => index);
+	const rowOrder = orientation === 'black' ? [...indices].reverse() : indices;
+	const colOrder = orientation === 'black' ? [...indices].reverse() : indices;
 	const isSquareSelected = (row: number, col: number): boolean => {
 		return selectedSquare?.row === row && selectedSquare?.col === col;
 	};
@@ -109,21 +114,11 @@ const ChessBoard: React.FC<ChessBoardProps> = ({
 	};
 
 	const renderBoard = () => {
-		const squares = [];
-
-		for (let row = 0; row < BOARD_SIZE; row++) {
-			const rowSquares = [];
-			for (let col = 0; col < BOARD_SIZE; col++) {
-				rowSquares.push(renderSquare(row, col));
-			}
-			squares.push(
-				<div key={row} className='flex'>
-					{rowSquares}
-				</div>
-			);
-		}
-
-		return squares;
+		return rowOrder.map(row => (
+			<div key={row} className='flex'>
+				{colOrder.map(col => renderSquare(row, col))}
+			</div>
+		));
 	};
 
 	return (
