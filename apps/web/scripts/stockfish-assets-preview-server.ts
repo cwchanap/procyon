@@ -43,7 +43,13 @@ function contentTypeFor(filePath: string): string {
 }
 
 function safeJoinDist(pathname: string): string | null {
-	const relative = decodeURIComponent(pathname.replace(/^\/+/, ''));
+	let relative: string;
+	try {
+		relative = decodeURIComponent(pathname.replace(/^\/+/, ''));
+	} catch {
+		// Malformed percent-encoding (URIError) — reject like traversal.
+		return null;
+	}
 	const filePath = path.resolve(distRoot, relative || 'index.html');
 	if (!filePath.startsWith(distRoot + path.sep) && filePath !== distRoot) {
 		return null;
