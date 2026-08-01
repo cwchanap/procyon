@@ -6,6 +6,7 @@ import {
 	cleanup,
 	act,
 } from '@testing-library/react';
+import type { RenderResult } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../../test/reactSetup';
 import ChessGame from '../ChessGame';
@@ -15,6 +16,7 @@ import JungleGame from '../JungleGame';
 import { resetAIConfigStore } from '../../lib/ai/ai-config-store';
 import { __resetSharedAuthUserForTests } from '../../lib/auth';
 import type { AuthUser } from '../../lib/auth-helpers';
+import { engineOptions } from '../../test/fakeRival';
 
 setupReactDom();
 
@@ -92,12 +94,39 @@ async function assertSameModeGuard(
 	});
 }
 
+// ChessGame drives its rival through an injected session provider (not the
+// shared `AI plays` select) since Task 14, so it gets a chess-specific
+// version of the same-mode guard assertion using the rival-setup selectors.
 describe('ChessGame — same-mode guard', () => {
 	beforeEach(resetUnauthenticatedState);
 	afterEach(cleanupUnauthenticatedState);
 
-	test('re-clicking the active "Play vs AI" mode does not reset the started game', async () => {
-		await assertSameModeGuard(ChessGame, 'chess-ai-side');
+	test('re-clicking the active "Play" mode does not reset the started game', async () => {
+		const { options } = engineOptions();
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitFor(() => view.getByRole('radiogroup', { name: /opponent/i }));
+
+		const startButton = await waitFor(() =>
+			view.getByRole('button', { name: /start/i })
+		);
+		fireEvent.click(startButton);
+		await waitFor(() =>
+			expect(
+				(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
+					.disabled
+			).toBe(true)
+		);
+
+		// Re-click the active "Play" toggle: the same-mode guard must
+		// short-circuit toggleToMode so the game is NOT reset (the setup
+		// selectors stay locked).
+		fireEvent.click(view.getByRole('button', { name: 'Play' }));
+		await waitFor(() =>
+			expect(
+				(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
+					.disabled
+			).toBe(true)
+		);
 	});
 });
 
@@ -269,11 +298,50 @@ async function assertGlobalDebugTrigger(
 	});
 }
 
+// ChessGame commits its game only after an injected rival provider is ready
+// (Task 14), so the Start flow uses `rivalSessionOptions` + the rival-setup
+// selectors rather than the shared `AI plays` select.
 describe('ChessGame — DEV debug outcome buttons', () => {
 	registerDebugLifecycle();
 
+	async function startChessGame(): Promise<RenderResult> {
+		const { options } = engineOptions();
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitFor(() => view.getByRole('radiogroup', { name: /opponent/i }));
+		fireEvent.click(
+			await waitFor(() => view.getByRole('button', { name: /start/i }))
+		);
+		await waitFor(() =>
+			expect(
+				(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
+					.disabled
+			).toBe(true)
+		);
+		return view;
+	}
+
 	test('renders DebugOutcomeButtons after Shift+D + Start, and clicking Win ends the game', async () => {
-		await assertDebugOutcomeButtons(ChessGame);
+		const view = await startChessGame();
+
+		const KE = (window as unknown as { KeyboardEvent: typeof KeyboardEvent })
+			.KeyboardEvent;
+		act(() => {
+			window.dispatchEvent(new KE('keydown', { key: 'd', shiftKey: true }));
+		});
+
+		const winButton = await waitFor(() => view.getByTitle('Debug: Win'));
+		expect(view.getByTitle('Debug: Loss')).toBeTruthy();
+		expect(view.getByTitle('Debug: Draw')).toBeTruthy();
+
+		fireEvent.click(winButton);
+		await waitFor(() => {
+			expect(view.queryByTitle('Debug: Win')).toBeNull();
+		});
+		await act(async () => {
+			for (let i = 0; i < 10; i++) {
+				await Promise.resolve();
+			}
+		});
 	});
 
 	test('global trigger function calls onPrepareTriggerWin -> game starts + win', async () => {
@@ -281,11 +349,7 @@ describe('ChessGame — DEV debug outcome buttons', () => {
 	});
 
 	test('forced win locks chess without changing the rendered position', async () => {
-		const view = render(<ChessGame />);
-		const start = await waitFor(() =>
-			view.getByRole('button', { name: /start/i })
-		);
-		fireEvent.click(start);
+		const view = await startChessGame();
 
 		const KE = (window as unknown as { KeyboardEvent: typeof KeyboardEvent })
 			.KeyboardEvent;

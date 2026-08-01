@@ -6,10 +6,15 @@ import { setupReactDom } from '../test/reactSetup';
 import ChessGame from './ChessGame';
 import { AUTH_CHANGE_EVENT } from '../lib/auth';
 import { resetAIConfigStore } from '../lib/ai/ai-config-store';
-import { defaultAIConfig } from '../lib/ai/storage';
 import { RIVAL_PREFERENCES_STORAGE_KEY } from '../lib/chess/rival/preferences';
+import { deferred, engineOptions, FakeRivalProvider } from '../test/fakeRival';
 
 setupReactDom();
+
+// Injectable fake rival providers (`../test/fakeRival`) let these tests
+// exercise Start, rival moves, and disposal without constructing a real
+// Stockfish Worker or hitting the LLM network. Production renders
+// `<ChessGame />` with no props and uses the real providers.
 
 // NOTE on mocking strategy: Bun's `mock.module` is process-global
 // (oven-sh/bun#12823) and leaks across test files. Mocking `../lib/auth`
@@ -264,7 +269,8 @@ describe('ChessGame — rival setup & preview', () => {
 	});
 
 	test('locks the opponent/side selectors once a game is active', async () => {
-		const view = render(<ChessGame />);
+		const { options } = engineOptions();
+		const view = render(<ChessGame rivalSessionOptions={options} />);
 		await waitForSetupResolved(view);
 
 		const sideWhite = view.getByRole('radio', {
@@ -322,7 +328,8 @@ describe('ChessGame — rival setup & preview', () => {
 		});
 
 		try {
-			const view = render(<ChessGame />);
+			const { options } = engineOptions();
+			const view = render(<ChessGame rivalSessionOptions={options} />);
 			await waitForSetupResolved(view);
 
 			const startButton = await waitFor(() =>
@@ -446,11 +453,101 @@ describe('ChessGame — tutorial interactions', () => {
 	});
 });
 
-// The following AI-move-path tests exercise the live combat/LLM machinery,
-// which still relies on the pre-session preview bridge. Full session
-// integration (Task 14) will replace this bridge; until then these tests
-// drive the AI by choosing the human side (which derives the rival side).
-describe('ChessGame — AI move bridge (pre-session)', () => {
+// Authenticated AI-config environment for the LLM-path tests. Sets an
+// initial auth user (so `useAuth` reports authenticated without a network
+// fetch), points `globalThis.localStorage` at the window store, and mocks
+// the `/ai-config` endpoints. `aiConfigOk: true` hydrates a usable OpenAI
+// config (LLM becomes selectable); `false` fails hydration so the setup
+// falls back to the engine.
+function installAuthedEnv(aiConfigOk: boolean): { restore: () => void } {
+	const user = { id: 'user-a', email: 'a@test.com', username: 'userA' };
+	(
+		window as unknown as Record<string, InitialAuthUser>
+	).__PROCYON_INITIAL_AUTH_USER__ = user;
+	const originalFetch = globalThis.fetch;
+	const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
+		globalThis,
+		'localStorage'
+	);
+	Object.defineProperty(globalThis, 'localStorage', {
+		configurable: true,
+		value: window.localStorage,
+	});
+	try {
+		window.localStorage.clear();
+	} catch {
+		/* ignore */
+	}
+
+	(globalThis as unknown as { fetch: unknown }).fetch = ((url: string) => {
+		if (url.includes('/auth/session')) {
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({ user }),
+			});
+		}
+		if (url.includes('/ai-config')) {
+			if (!aiConfigOk) {
+				return Promise.resolve({
+					ok: false,
+					status: 500,
+					json: () => Promise.resolve({}),
+					text: () => Promise.resolve(''),
+				});
+			}
+			if (url.includes('/full')) {
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					json: () =>
+						Promise.resolve({
+							provider: 'openai',
+							apiKey: 'sk-test',
+							modelName: 'gpt-4o-mini',
+							gameVariant: 'chess',
+						}),
+				});
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () =>
+					Promise.resolve({
+						configurations: [
+							{ id: 'c1', provider: 'openai', isActive: true, hasApiKey: true },
+						],
+					}),
+			});
+		}
+		return Promise.resolve({
+			ok: true,
+			status: 200,
+			json: () => Promise.resolve({}),
+		});
+	}) as unknown as typeof fetch;
+
+	return {
+		restore() {
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			if (originalLocalStorageDesc) {
+				Object.defineProperty(
+					globalThis,
+					'localStorage',
+					originalLocalStorageDesc
+				);
+			} else {
+				delete (globalThis as Record<string, unknown>).localStorage;
+			}
+		},
+	};
+}
+
+// Task 14: atomic Start commits a fresh human-vs-AI game only after the
+// injected rival provider is ready; all turn ownership then reads from the
+// frozen active session. These tests inject deterministic fake providers so
+// they never construct a real Worker or hit the network.
+describe('ChessGame — atomic Start & rival session', () => {
 	beforeEach(() => {
 		delete (window as unknown as Record<string, unknown>)
 			.__PROCYON_INITIAL_AUTH_USER__;
@@ -465,251 +562,276 @@ describe('ChessGame — AI move bridge (pre-session)', () => {
 		clearRivalPreferences();
 	});
 
-	test('AI move catch block handles error when LLM fetch fails', async () => {
-		const originalEnabled = defaultAIConfig.enabled;
-		const originalApiKey = defaultAIConfig.apiKey;
-		defaultAIConfig.enabled = true;
-		defaultAIConfig.apiKey = 'fake-key';
+	test('engine Start shows the loading label and locks selectors while starting', async () => {
+		const init = deferred<void>();
+		const { options, instances } = engineOptions(() => ({
+			initialize: () => init.promise,
+		}));
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
 
-		const originalFetch = globalThis.fetch;
-		const originalError = console.error;
-		const errorCalls: string[] = [];
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
 
-		(globalThis as unknown as { fetch: unknown }).fetch = mock(
-			(url: string) => {
-				if (url.includes('/auth/session')) {
-					return Promise.resolve({
-						ok: false,
-						status: 401,
-						statusText: 'Unauthorized',
-						json: () => Promise.resolve({}),
-					});
-				}
-				return Promise.reject(new Error('Network error'));
+		// The engine load is in flight: the Start control shows the loading
+		// copy and the selectors are locked.
+		await waitFor(() => {
+			expect(
+				view.getByRole('button', { name: /Loading on-device computer/i })
+			).toBeTruthy();
+		});
+		expect(
+			(view.getByRole('radio', { name: 'White' }) as HTMLInputElement).disabled
+		).toBe(true);
+		expect(instances.length).toBe(1);
+		// No session committed yet.
+		expect(view.queryByRole('button', { name: /new game/i })).toBeNull();
+
+		// Completing the load commits the session.
+		await act(async () => {
+			init.resolve();
+			for (let i = 0; i < 20; i++) {
+				await Promise.resolve();
 			}
-		) as unknown as typeof fetch;
+		});
+		await waitFor(() => {
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy();
+		});
+	});
 
-		// eslint-disable-next-line no-console
-		console.error = (...args: unknown[]) => {
-			errorCalls.push(args.join(' '));
+	test('a failed engine Start leaves a clean editable preview and disposes the candidate', async () => {
+		const { options, instances } = engineOptions(() => ({
+			initialize: () => Promise.reject(new Error('engine boom')),
+		}));
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
+
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
+
+		// Load failed → Try again affordance, no committed session, selectors
+		// editable again, and the failed candidate is disposed.
+		await waitFor(() => {
+			expect(view.getByRole('button', { name: /try again/i })).toBeTruthy();
+		});
+		expect(
+			(view.getByRole('radio', { name: 'White' }) as HTMLInputElement).disabled
+		).toBe(false);
+		expect(view.queryByRole('button', { name: /new game/i })).toBeNull();
+		expect(instances[0]?.disposeCount).toBe(1);
+	});
+
+	test('Try again after a failed Start builds a fresh engine provider', async () => {
+		const { options, instances } = engineOptions(index =>
+			index === 0
+				? { initialize: () => Promise.reject(new Error('engine boom')) }
+				: {}
+		);
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
+
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		const retry = await waitFor(() =>
+			view.getByRole('button', { name: /try again/i })
+		);
+		fireEvent.click(retry);
+
+		await waitFor(() => {
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy();
+		});
+		// A second, independent provider was constructed for the retry.
+		expect(instances.length).toBe(2);
+		expect(instances[1]?.disposeCount).toBe(0);
+	});
+
+	test('a successful Start freezes the opponent and side and hides the exporter for the engine', async () => {
+		const { options } = engineOptions();
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
+
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		await waitFor(() => {
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy();
+		});
+
+		expect(
+			(view.getByRole('radio', { name: 'White' }) as HTMLInputElement).disabled
+		).toBe(true);
+		expect(
+			(
+				view.getByRole('radio', {
+					name: /On-device computer/i,
+				}) as HTMLInputElement
+			).disabled
+		).toBe(true);
+		// The engine carries no prompt/response, so no exporter is created.
+		expect(view.queryByRole('button', { name: /Export Game/i })).toBeNull();
+	});
+
+	test('the engine takes its move only after the session commits', async () => {
+		const { options, instances } = engineOptions(() => ({
+			makeMove: async () => ({ ok: true, move: { from: 'e2', to: 'e4' } }),
+		}));
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
+
+		// Human plays Black → the engine (White) moves first, but only after
+		// the session is committed.
+		fireEvent.click(view.getByRole('radio', { name: 'Black' }));
+		await waitFor(() =>
+			expect(
+				(view.getByRole('radio', { name: 'Black' }) as HTMLInputElement).checked
+			).toBe(true)
+		);
+		expect(instances.length).toBe(0); // no provider before Start
+
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		await waitFor(() => expect(instances.length).toBe(1));
+		await waitFor(() => expect(instances[0]?.makeMoveCount).toBe(1), {
+			timeout: 3000,
+		});
+		// The engine's e2→e4 was applied, handing the turn back to the human.
+		await waitFor(() => expect(view.getByText(/Black to move/i)).toBeTruthy());
+	});
+
+	test('an LLM Start is blocked until the model is configured', async () => {
+		const llmCreated = { count: 0 };
+		const options = {
+			createLlmProvider: () => {
+				llmCreated.count += 1;
+				return new FakeRivalProvider({ kind: 'llm' });
+			},
 		};
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
 
+		fireEvent.click(view.getByRole('radio', { name: /Language model/i }));
+		await waitFor(() =>
+			expect(
+				(
+					view.getByRole('radio', {
+						name: /Language model/i,
+					}) as HTMLInputElement
+				).checked
+			).toBe(true)
+		);
+
+		const startButton = view.getByRole('button', {
+			name: /start/i,
+		}) as HTMLButtonElement;
+		expect(startButton.disabled).toBe(true);
+		fireEvent.click(startButton);
+		await act(async () => {
+			for (let i = 0; i < 10; i++) {
+				await Promise.resolve();
+			}
+		});
+		// Blocked: no provider constructed, no committed session.
+		expect(llmCreated.count).toBe(0);
+		expect(view.queryByRole('button', { name: /new game/i })).toBeNull();
+	});
+
+	test('an engine Start ignores an LLM hydration failure', async () => {
+		const env = installAuthedEnv(false);
+		const { options } = engineOptions();
 		try {
-			const view = render(<ChessGame />);
+			const view = render(<ChessGame rivalSessionOptions={options} />);
 			await waitForSetupResolved(view);
 
-			// Human plays Black => the derived rival side is White, which moves
-			// first, so the AI-move effect fires immediately on Start.
-			fireEvent.click(view.getByRole('radio', { name: 'Black' }));
-
-			const startButton = view.getByRole('button', { name: /start/i });
-			fireEvent.click(startButton);
-
-			await waitFor(
-				() => {
-					expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(
-						true
-					);
-				},
-				{ timeout: 3000 }
+			// LLM hydration failed → the setup falls back to the engine.
+			await waitFor(() =>
+				expect(
+					(
+						view.getByRole('radio', {
+							name: /On-device computer/i,
+						}) as HTMLInputElement
+					).checked
+				).toBe(true)
 			);
+			const startButton = (await waitFor(() =>
+				view.getByRole('button', { name: /start/i })
+			)) as HTMLButtonElement;
+			expect(startButton.disabled).toBe(false);
+
+			fireEvent.click(startButton);
+			await waitFor(() => {
+				expect(view.getByRole('button', { name: /new game/i })).toBeTruthy();
+			});
 		} finally {
-			defaultAIConfig.enabled = originalEnabled;
-			defaultAIConfig.apiKey = originalApiKey;
-			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
-			// eslint-disable-next-line no-console
-			console.error = originalError;
+			env.restore();
 		}
 	});
 
-	test('applies the rival promotion selected in a mocked AI response', async () => {
-		const originalEnabled = defaultAIConfig.enabled;
-		const originalApiKey = defaultAIConfig.apiKey;
-		defaultAIConfig.enabled = true;
-		defaultAIConfig.apiKey = 'fake-key';
+	test('New Game disposes the provider and restores an editable preview', async () => {
+		const { options, instances } = engineOptions();
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
 
-		const rivalMoves = [
-			{ from: 'b7', to: 'b5' },
-			{ from: 'b5', to: 'b4' },
-			{ from: 'a7', to: 'a5' },
-			{ from: 'a5', to: 'a4' },
-			{ from: 'a4', to: 'a3' },
-			{ from: 'a3', to: 'a2' },
-			{ from: 'a2', to: 'b1', promotion: 'rook' },
-		];
-		let rivalMoveCount = 0;
-		const originalFetch = globalThis.fetch;
-		(globalThis as unknown as { fetch: unknown }).fetch = mock(
-			(url: string) => {
-				if (url.includes('/auth/session')) {
-					return Promise.resolve({
-						ok: false,
-						status: 401,
-						statusText: 'Unauthorized',
-						json: () => Promise.resolve({}),
-					});
-				}
-				const move = rivalMoves[rivalMoveCount++];
-				return Promise.resolve({
-					ok: true,
-					status: 200,
-					json: () =>
-						Promise.resolve({
-							candidates: [
-								{
-									content: {
-										parts: [
-											{
-												text: JSON.stringify({
-													move,
-													reasoning: 'Advance the passed pawn',
-													confidence: 90,
-												}),
-											},
-										],
-									},
-									finishReason: 'STOP',
-								},
-							],
-						}),
-				});
-			}
-		) as unknown as typeof fetch;
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		await waitFor(() =>
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy()
+		);
 
-		try {
-			const view = render(<ChessGame />);
-			await waitForSetupResolved(view);
-			const { getByLabelText, getByRole, queryByText } = view;
-			const moveHumanPiece = async (
-				from: string,
-				to: string,
-				expectedRivalMoves: number
-			) => {
-				fireEvent.click(getByLabelText(from));
-				fireEvent.click(getByLabelText(to));
-				await waitFor(() => expect(rivalMoveCount).toBe(expectedRivalMoves), {
-					timeout: 3000,
-				});
-				const rivalMove = rivalMoves[expectedRivalMoves - 1]!;
-				const rivalCol = rivalMove.to.charCodeAt(0) - 'a'.charCodeAt(0);
-				const rivalRow = 8 - parseInt(rivalMove.to.slice(1), 10);
-				const rivalSymbol =
-					'promotion' in rivalMove && rivalMove.promotion === 'rook'
-						? '♜'
-						: '♟';
-				await waitFor(
-					() =>
-						expect(
-							getByLabelText(`Square ${rivalRow}-${rivalCol}`).textContent
-						).toBe(rivalSymbol),
-					{ timeout: 3000 }
-				);
-			};
+		fireEvent.click(view.getByRole('button', { name: /new game/i }));
+		await waitFor(() =>
+			expect(
+				(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
+					.disabled
+			).toBe(false)
+		);
+		expect(instances[0]?.disposeCount).toBe(1);
+		expect(view.getByRole('button', { name: /start/i })).toBeTruthy();
+	});
 
-			// Human plays White by default (rival plays Black).
-			fireEvent.click(getByRole('button', { name: /start/i }));
+	test('switching to Tutorial disposes the provider', async () => {
+		const { options, instances } = engineOptions();
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
 
-			await moveHumanPiece('Square 6-0', 'Square 5-0', 1); // a2-a3, b7-b5
-			await moveHumanPiece('Square 7-6', 'Square 5-5', 2); // Ng1-f3, b5-b4
-			await moveHumanPiece('Square 5-0', 'Square 4-1', 3); // a3xb4, a7-a5
-			await moveHumanPiece('Square 5-5', 'Square 3-6', 4); // Nf3-g5, a5-a4
-			await moveHumanPiece('Square 3-6', 'Square 4-4', 5); // Ng5-e4, a4-a3
-			await moveHumanPiece('Square 4-4', 'Square 5-2', 6); // Ne4-c3, a3-a2
-			await moveHumanPiece('Square 5-2', 'Square 3-1', 7); // Nc3-b5, a2xb1=R
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		await waitFor(() =>
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy()
+		);
 
-			expect(getByLabelText('Square 7-1').textContent).toBe('♜');
-			expect(queryByText(/❌ AI Error/i)).toBeNull();
-		} finally {
-			defaultAIConfig.enabled = originalEnabled;
-			defaultAIConfig.apiKey = originalApiKey;
-			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
-		}
-	}, 15_000);
+		fireEvent.click(view.getByRole('button', { name: 'Tutorial' }));
+		await waitFor(() =>
+			expect(view.queryByRole('radiogroup', { name: /opponent/i })).toBeNull()
+		);
+		expect(instances[0]?.disposeCount).toBe(1);
+	});
 
-	test('in-flight makeAIMove bails on stale gen after New Game (no error surfaced)', async () => {
-		const originalEnabled = defaultAIConfig.enabled;
-		const originalApiKey = defaultAIConfig.apiKey;
-		defaultAIConfig.enabled = true;
-		defaultAIConfig.apiKey = 'fake-key';
-
-		let resolveLLM!: (value: string) => void;
-		const llmPromise = new Promise<string>(r => {
-			resolveLLM = r;
-		});
-		let llmFetchCalled = false;
-		const originalFetch = globalThis.fetch;
-
-		(globalThis as unknown as { fetch: unknown }).fetch = mock(
-			(url: string) => {
-				if (url.includes('/auth/session')) {
-					return Promise.resolve({
-						ok: false,
-						status: 401,
-						statusText: 'Unauthorized',
-						json: () => Promise.resolve({}),
-					});
-				}
-				llmFetchCalled = true;
-				return llmPromise.then(text => ({
-					ok: true,
-					status: 200,
-					json: () =>
-						Promise.resolve({
-							candidates: [
-								{
-									content: { parts: [{ text }] },
-									finishReason: 'STOP',
-								},
-							],
-						}),
-				}));
-			}
-		) as unknown as typeof fetch;
-
-		const originalError = console.error;
-		const errorCalls: string[] = [];
-		// eslint-disable-next-line no-console
-		console.error = (...args: unknown[]) => {
-			errorCalls.push(args.join(' '));
+	test('initializes the exporter only for an LLM session', async () => {
+		const env = installAuthedEnv(true);
+		const options = {
+			createLlmProvider: () =>
+				new FakeRivalProvider({
+					kind: 'llm',
+					makeMove: async () => ({ ok: true, move: { from: 'e7', to: 'e5' } }),
+				}),
 		};
-
 		try {
-			const view = render(<ChessGame />);
+			const view = render(<ChessGame rivalSessionOptions={options} />);
 			await waitForSetupResolved(view);
-			const { getByRole, queryByText } = view;
 
-			// Human plays Black => rival (White) moves first.
-			fireEvent.click(getByRole('radio', { name: 'Black' }));
-
-			const startButton = getByRole('button', { name: /start/i });
-			fireEvent.click(startButton);
-
-			await waitFor(() => expect(llmFetchCalled).toBe(true), {
-				timeout: 3000,
-			});
-
-			const newGameButton = getByRole('button', { name: /new game/i });
-			fireEvent.click(newGameButton);
-
-			resolveLLM(
-				'{"move":{"from":"a0","to":"a0"},"thinking":"stale","confidence":0.1}'
+			// Once AI-config hydrates, the untouched setup resolves to the LLM.
+			await waitFor(() =>
+				expect(
+					(
+						view.getByRole('radio', {
+							name: /Language model/i,
+						}) as HTMLInputElement
+					).checked
+				).toBe(true)
 			);
 
-			await act(async () => {
-				await llmPromise;
-				for (let i = 0; i < 40; i++) {
-					await Promise.resolve();
-				}
-			});
-
-			expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(false);
-			expect(queryByText(/❌ AI Error/i)).toBeNull();
+			fireEvent.click(
+				await waitFor(() => view.getByRole('button', { name: /start/i }))
+			);
+			await waitFor(() =>
+				expect(view.getByRole('button', { name: /new game/i })).toBeTruthy()
+			);
+			// The LLM session carries prompt/response, so the exporter exists.
+			expect(view.getByRole('button', { name: /Export Game/i })).toBeTruthy();
 		} finally {
-			defaultAIConfig.enabled = originalEnabled;
-			defaultAIConfig.apiKey = originalApiKey;
-			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
-			// eslint-disable-next-line no-console
-			console.error = originalError;
+			env.restore();
 		}
 	});
 });
