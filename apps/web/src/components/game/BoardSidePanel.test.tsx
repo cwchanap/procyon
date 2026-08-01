@@ -6,7 +6,46 @@ import BoardSidePanel from './BoardSidePanel';
 
 setupReactDom();
 
+function renderDefault() {
+	return render(<BoardSidePanel gameMode='ai' onModeChange={() => {}} />);
+}
+
+function renderWithLabel(aiModeLabel: string) {
+	return render(
+		<BoardSidePanel
+			gameMode='ai'
+			onModeChange={() => {}}
+			aiModeLabel={aiModeLabel}
+		/>
+	);
+}
+
 describe('BoardSidePanel', () => {
+	test('renders default AI mode label', () => {
+		expect(
+			renderDefault().getByRole('button', { name: 'Play vs AI' })
+		).toBeTruthy();
+	});
+
+	test('renders custom AI mode label when provided', () => {
+		expect(
+			renderWithLabel('Play').getByRole('button', { name: 'Play' })
+		).toBeTruthy();
+	});
+
+	test('clicking custom AI mode label still calls onModeChange with ai', () => {
+		const onModeChange = mock();
+		const { getByRole } = render(
+			<BoardSidePanel
+				gameMode='tutorial'
+				onModeChange={onModeChange}
+				aiModeLabel='Play'
+			/>
+		);
+		fireEvent.click(getByRole('button', { name: 'Play' }));
+		expect(onModeChange).toHaveBeenCalledWith('ai');
+	});
+
 	test('renders a Tutorial toggle and an AI toggle', () => {
 		const { getByRole } = render(
 			<BoardSidePanel gameMode='ai' onModeChange={() => {}} />

@@ -7,6 +7,7 @@ export type Mode = 'tutorial' | 'ai';
 interface BoardSidePanelProps {
 	gameMode: Mode;
 	onModeChange: (m: Mode) => void;
+	aiModeLabel?: string;
 	children?: React.ReactNode;
 }
 
@@ -43,6 +44,7 @@ const ModeToggle: React.FC<ModeToggleProps> = ({
 const BoardSidePanel: React.FC<BoardSidePanelProps> = ({
 	gameMode,
 	onModeChange,
+	aiModeLabel = 'Play vs AI',
 	children,
 }) => {
 	return (
@@ -63,7 +65,7 @@ const BoardSidePanel: React.FC<BoardSidePanelProps> = ({
 					aria-pressed={gameMode === 'ai'}
 					active={gameMode === 'ai'}
 				>
-					Play vs AI
+					{aiModeLabel}
 				</ModeToggle>
 			</div>
 			{children}
