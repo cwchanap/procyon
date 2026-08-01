@@ -1,11 +1,13 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { render, fireEvent, waitFor, act } from '@testing-library/react';
+import type { RenderResult } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../test/reactSetup';
 import ChessGame from './ChessGame';
 import { AUTH_CHANGE_EVENT } from '../lib/auth';
 import { resetAIConfigStore } from '../lib/ai/ai-config-store';
 import { defaultAIConfig } from '../lib/ai/storage';
+import { RIVAL_PREFERENCES_STORAGE_KEY } from '../lib/chess/rival/preferences';
 
 setupReactDom();
 
@@ -20,189 +22,85 @@ setupReactDom();
 // unset yields `isAuthenticated: false` (the failed `fetchSession` is
 // try/caught and resolves to null asynchronously, after the assertions).
 //
-// The real AI service, config store, and play-history hook make no network
-// calls during these tests: chess starts on White (the default AI side is
-// Black, so the AI-turn effect never fires) and no game reaches a game-over
-// status, so `usePlayHistory`'s save effect never fetches.
+// Rival setup preference hydration is client-mount-only and reads
+// `window.localStorage` (see `useChessRivalSetup`). We clear that key in
+// beforeEach/afterEach so each test starts from a clean, no-preference slate.
 
 interface InitialAuthUser {
+	id?: string;
+	email?: string;
 	username: string;
 }
 
-describe('ChessGame — inline "AI plays" select', () => {
+function clearRivalPreferences(): void {
+	try {
+		window.localStorage?.removeItem(RIVAL_PREFERENCES_STORAGE_KEY);
+		window.localStorage?.removeItem('procyon_ai_config');
+	} catch {
+		/* localStorage may be unavailable in some environments */
+	}
+}
+
+/** Wait for client-side preference hydration to resolve (setup revealed). */
+async function waitForSetupResolved(view: RenderResult): Promise<HTMLElement> {
+	return waitFor(() => view.getByRole('radiogroup', { name: /opponent/i }));
+}
+
+/** All board square buttons, in DOM (render) order. */
+function squareButtons(view: RenderResult): HTMLElement[] {
+	return view.queryAllByLabelText(/^Square \d+-\d+$/);
+}
+
+describe('ChessGame — rival setup & preview', () => {
 	beforeEach(() => {
-		// Default to an unauthenticated visitor so `aiStarting` is false and
-		// the Start button is enabled (letting tests drive gameActive).
 		delete (window as unknown as Record<string, unknown>)
 			.__PROCYON_INITIAL_AUTH_USER__;
-		// Reset the AI config store so each test starts from a clean slate
-		// (prior tests may have hydrated or set a config).
 		resetAIConfigStore();
+		clearRivalPreferences();
 	});
 
 	afterEach(() => {
 		delete (window as unknown as Record<string, unknown>)
 			.__PROCYON_INITIAL_AUTH_USER__;
 		resetAIConfigStore();
+		clearRivalPreferences();
 	});
 
-	test('renders the AI-plays select with Black and White options, defaulting to Black', async () => {
-		const { getByLabelText } = render(<ChessGame />);
-		const select = (await waitFor(() =>
-			getByLabelText(/AI plays/i)
-		)) as HTMLSelectElement;
+	test('hides the rival setup and interactive board until preference hydration resolves', async () => {
+		const view = render(<ChessGame />);
 
-		expect(select).toBeTruthy();
-		expect(select.id).toBe('chess-ai-side');
-		expect(select.value).toBe('black');
-		expect(select.options).toHaveLength(2);
-		expect(select.options[0]?.value).toBe('black');
-		expect(select.options[0]?.textContent).toBe('Black');
-		expect(select.options[1]?.value).toBe('white');
-		expect(select.options[1]?.textContent).toBe('White');
+		// Synchronously (before the client-mount microtask), the setup is not
+		// revealed and no interactive board is mounted — only a neutral
+		// skeleton — so nothing flashes a White-oriented board or announces
+		// an opponent fallback.
+		expect(view.queryByRole('radiogroup', { name: /opponent/i })).toBeNull();
+		expect(view.queryByRole('status')).toBeNull();
+		expect(squareButtons(view)).toHaveLength(0);
+		expect(view.queryByTestId('board-loading-skeleton')).toBeTruthy();
+
+		// After resolution the setup and board appear.
+		await waitForSetupResolved(view);
+		await waitFor(() => expect(squareButtons(view).length).toBeGreaterThan(0));
+		expect(view.queryByTestId('board-loading-skeleton')).toBeNull();
 	});
 
-	test('select is enabled while no game is active', async () => {
-		const { getByLabelText } = render(<ChessGame />);
-		const select = (await waitFor(() =>
-			getByLabelText(/AI plays/i)
-		)) as HTMLSelectElement;
+	test('signed-out visitor with no preference previews the on-device engine', async () => {
+		const view = render(<ChessGame />);
+		await waitForSetupResolved(view);
 
-		expect(select.disabled).toBe(false);
+		const engine = view.getByRole('radio', {
+			name: /On-device computer/i,
+		}) as HTMLInputElement;
+		expect(engine.checked).toBe(true);
+		// Derived rival side: human plays White, so the computer plays Black.
+		expect(
+			view.getByText(/On-device computer · Computer plays Black · Unrated/i)
+		).toBeTruthy();
 	});
 
-	test('changing the select updates the AI side to White', async () => {
-		const { getByLabelText } = render(<ChessGame />);
-		const select = (await waitFor(() =>
-			getByLabelText(/AI plays/i)
-		)) as HTMLSelectElement;
-
-		fireEvent.change(select, { target: { value: 'white' } });
-		expect(select.value).toBe('white');
-	});
-
-	test('select becomes disabled once a game is started (gameActive true)', async () => {
-		const { getByLabelText, getByRole } = render(<ChessGame />);
-		const select = (await waitFor(() =>
-			getByLabelText(/AI plays/i)
-		)) as HTMLSelectElement;
-
-		// Before starting: enabled.
-		expect(select.disabled).toBe(false);
-
-		// Click Start (unauthenticated => aiStarting is false => Start proceeds
-		// and sets gameActive=true for an AI game).
-		const startButton = getByRole('button', { name: /start/i });
-		fireEvent.click(startButton);
-
-		// After starting: the AI-plays select is locked.
-		await waitFor(() => {
-			expect(select.disabled).toBe(true);
-		});
-	});
-
-	test('select stays enabled pre-game for an authenticated user', async () => {
-		// Authenticated visitor via the real useAuth's initial-user window hook.
-		// The store starts un-hydrated, so aiStarting is true and the Start
-		// button is disabled — but the AI-plays select is gated on
-		// `gameActive` (still false), so it remains enabled pre-game.
+	test('configured signed-in visitor previews the language model before interacting', async () => {
 		(
 			window as unknown as Record<string, InitialAuthUser>
-		).__PROCYON_INITIAL_AUTH_USER__ = { username: 'tester' };
-
-		const { getByLabelText } = render(<ChessGame />);
-		const select = (await waitFor(() =>
-			getByLabelText(/AI plays/i)
-		)) as HTMLSelectElement;
-
-		expect(select.disabled).toBe(false);
-	});
-
-	test('select is re-enabled when auth is lost mid-game (logout resets local game state)', async () => {
-		// Start authenticated so the game can begin, then simulate logout by
-		// dispatching the real AUTH_CHANGE_EVENT with user: null. The local
-		// gameActive/aiPlayer state must reset so the AI-plays select is
-		// re-enabled and the game doesn't continue against the reset default
-		// (no-key) AI config.
-		(
-			window as unknown as Record<string, InitialAuthUser>
-		).__PROCYON_INITIAL_AUTH_USER__ = { username: 'tester' };
-
-		// Hydrate makes a fetch to /ai-config; mock it to return an empty
-		// list so hydrate succeeds (hydrated=true, hydrateError=false) and
-		// aiStarting clears, enabling the Start button. Also point
-		// globalThis.localStorage at window.localStorage so
-		// readLocalConfig/saveAIConfig don't throw (reactSetup only
-		// exposes window.localStorage, not the global slot).
-		const originalFetch = globalThis.fetch;
-		const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
-			globalThis,
-			'localStorage'
-		);
-		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
-			Promise.resolve({
-				ok: true,
-				json: () => Promise.resolve({ configurations: [] }),
-			})) as unknown as typeof fetch;
-		Object.defineProperty(globalThis, 'localStorage', {
-			configurable: true,
-			value: window.localStorage,
-		});
-
-		try {
-			const { getByLabelText, getByRole } = render(<ChessGame />);
-			const select = (await waitFor(() =>
-				getByLabelText(/AI plays/i)
-			)) as HTMLSelectElement;
-
-			// Wait for hydration to finish: aiStarting clears and Start
-			// becomes enabled.
-			const startButton = await waitFor(() =>
-				getByRole('button', { name: /start/i })
-			);
-			fireEvent.click(startButton);
-
-			// After starting: select is locked (gameActive true).
-			await waitFor(() => {
-				expect(select.disabled).toBe(true);
-			});
-
-			// Simulate logout: dispatch the real auth-change event with
-			// null user. The ChessGame effect should reset local game
-			// state (gameActive=false), re-enabling the select.
-			globalThis.dispatchEvent(
-				new CustomEvent(AUTH_CHANGE_EVENT, {
-					detail: { user: null },
-				})
-			);
-
-			await waitFor(() => {
-				expect(select.disabled).toBe(false);
-			});
-		} finally {
-			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
-			if (originalLocalStorageDesc) {
-				Object.defineProperty(
-					globalThis,
-					'localStorage',
-					originalLocalStorageDesc
-				);
-			} else {
-				delete (globalThis as Record<string, unknown>).localStorage;
-			}
-		}
-	});
-
-	test('select is re-enabled when the authenticated user identity changes mid-game (account switch resets local game state)', async () => {
-		// Start authenticated as user A so the game can begin, then
-		// simulate an account switch by dispatching AUTH_CHANGE_EVENT
-		// with a different authenticated user B. isAuthenticated stays
-		// true throughout, so the true→false-only logout guard does not
-		// fire — the identity-change check must reset the game so the old
-		// board is discarded and usePlayHistory cannot record A's result
-		// under B's id.
-		(
-			window as unknown as Record<string, unknown>
 		).__PROCYON_INITIAL_AUTH_USER__ = {
 			id: 'user-a',
 			email: 'a@test.com',
@@ -214,6 +112,205 @@ describe('ChessGame — inline "AI plays" select', () => {
 			globalThis,
 			'localStorage'
 		);
+		(globalThis as unknown as { fetch: unknown }).fetch = ((url: string) => {
+			if (url.includes('/ai-config/') && url.includes('/full')) {
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					json: () =>
+						Promise.resolve({
+							provider: 'openai',
+							apiKey: 'sk-test',
+							modelName: 'gpt-4o-mini',
+							gameVariant: 'chess',
+						}),
+				});
+			}
+			if (url.includes('/ai-config')) {
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+					json: () =>
+						Promise.resolve({
+							configurations: [
+								{
+									id: 'c1',
+									provider: 'openai',
+									isActive: true,
+									hasApiKey: true,
+								},
+							],
+						}),
+				});
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({}),
+			});
+		}) as unknown as typeof fetch;
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			value: window.localStorage,
+		});
+
+		try {
+			const view = render(<ChessGame />);
+			await waitForSetupResolved(view);
+
+			// After AI-config hydration completes, the untouched setup resolves
+			// to the language model.
+			await waitFor(() => {
+				expect(
+					(
+						view.getByRole('radio', {
+							name: /Language model/i,
+						}) as HTMLInputElement
+					).checked
+				).toBe(true);
+			});
+			expect(
+				view.getByText(/gpt-4o-mini · Computer plays Black/i)
+			).toBeTruthy();
+		} finally {
+			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+			if (originalLocalStorageDesc) {
+				Object.defineProperty(
+					globalThis,
+					'localStorage',
+					originalLocalStorageDesc
+				);
+			} else {
+				delete (globalThis as Record<string, unknown>).localStorage;
+			}
+		}
+	});
+
+	test('labels the standard game mode "Play"', async () => {
+		const view = render(<ChessGame />);
+		await waitForSetupResolved(view);
+
+		expect(view.getByRole('button', { name: 'Play' })).toBeTruthy();
+		expect(view.queryByRole('button', { name: /Play vs AI/i })).toBeNull();
+	});
+
+	test('selecting a side flips the board orientation immediately', async () => {
+		const view = render(<ChessGame />);
+		await waitForSetupResolved(view);
+
+		// White-oriented preview renders Square 0-0 first (Black back rank on top).
+		await waitFor(() => expect(squareButtons(view).length).toBeGreaterThan(0));
+		expect(squareButtons(view)[0]?.getAttribute('aria-label')).toBe(
+			'Square 0-0'
+		);
+
+		fireEvent.click(view.getByRole('radio', { name: 'Black' }));
+
+		// Black-oriented preview renders Square 7-7 first (White back rank on top).
+		await waitFor(() =>
+			expect(squareButtons(view)[0]?.getAttribute('aria-label')).toBe(
+				'Square 7-7'
+			)
+		);
+	});
+
+	test('changing the side produces a fresh human-vs-ai preview with the derived rival side', async () => {
+		const view = render(<ChessGame />);
+		await waitForSetupResolved(view);
+
+		// Human plays White by default: computer (rival) plays Black, White (the
+		// human) is to move, so the preview board is interactable.
+		await waitFor(() => expect(squareButtons(view).length).toBeGreaterThan(0));
+		const humanWhiteSquare = view.getByLabelText(
+			'Square 6-0'
+		) as HTMLButtonElement;
+		expect(humanWhiteSquare.disabled).toBe(false);
+
+		// Switch to playing Black: the derived rival side becomes White, which
+		// moves first, so the fresh human-vs-ai preview is not interactable
+		// (it is the AI's turn).
+		fireEvent.click(view.getByRole('radio', { name: 'Black' }));
+		await waitFor(() => {
+			expect(
+				(view.getByLabelText('Square 6-0') as HTMLButtonElement).disabled
+			).toBe(true);
+		});
+		expect(view.getByText(/Computer plays White/i)).toBeTruthy();
+	});
+
+	test('constructs no Worker before the game starts', async () => {
+		const originalWorker = (globalThis as Record<string, unknown>).Worker;
+		const workerSpy = mock(function WorkerSpy() {
+			throw new Error('Worker must not be constructed before Start');
+		});
+		(globalThis as Record<string, unknown>).Worker = workerSpy;
+
+		try {
+			const view = render(<ChessGame />);
+			await waitForSetupResolved(view);
+			// Exercise a preview change (opponent + side) which must remain a
+			// pure preview — no engine Worker / provider construction.
+			fireEvent.click(view.getByRole('radio', { name: /Language model/i }));
+			fireEvent.click(view.getByRole('radio', { name: 'Black' }));
+
+			expect(workerSpy).not.toHaveBeenCalled();
+		} finally {
+			if (originalWorker === undefined) {
+				delete (globalThis as Record<string, unknown>).Worker;
+			} else {
+				(globalThis as Record<string, unknown>).Worker = originalWorker;
+			}
+		}
+	});
+
+	test('locks the opponent/side selectors once a game is active', async () => {
+		const view = render(<ChessGame />);
+		await waitForSetupResolved(view);
+
+		const sideWhite = view.getByRole('radio', {
+			name: 'White',
+		}) as HTMLInputElement;
+		expect(sideWhite.disabled).toBe(false);
+
+		const startButton = view.getByRole('button', { name: /start/i });
+		fireEvent.click(startButton);
+
+		await waitFor(() => {
+			expect(
+				(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
+					.disabled
+			).toBe(true);
+		});
+	});
+
+	test('switching to Tutorial hides the rival setup and restores it (with a clean preview) on return', async () => {
+		const view = render(<ChessGame />);
+		await waitForSetupResolved(view);
+
+		fireEvent.click(view.getByRole('button', { name: 'Tutorial' }));
+		expect(view.queryByRole('radiogroup', { name: /opponent/i })).toBeNull();
+
+		fireEvent.click(view.getByRole('button', { name: 'Play' }));
+		await waitForSetupResolved(view);
+		expect(
+			(
+				view.getByRole('radio', {
+					name: /On-device computer/i,
+				}) as HTMLInputElement
+			).checked
+		).toBe(true);
+	});
+
+	test('re-enables the selectors when auth is lost mid-game (logout resets local game state)', async () => {
+		(
+			window as unknown as Record<string, InitialAuthUser>
+		).__PROCYON_INITIAL_AUTH_USER__ = { username: 'tester' };
+
+		const originalFetch = globalThis.fetch;
+		const originalLocalStorageDesc = Object.getOwnPropertyDescriptor(
+			globalThis,
+			'localStorage'
+		);
 		(globalThis as unknown as { fetch: unknown }).fetch = (() =>
 			Promise.resolve({
 				ok: true,
@@ -225,41 +322,32 @@ describe('ChessGame — inline "AI plays" select', () => {
 		});
 
 		try {
-			const { getByLabelText, getByRole } = render(<ChessGame />);
-			const select = (await waitFor(() =>
-				getByLabelText(/AI plays/i)
-			)) as HTMLSelectElement;
+			const view = render(<ChessGame />);
+			await waitForSetupResolved(view);
 
-			// Wait for hydration to finish: aiStarting clears and Start
-			// becomes enabled.
 			const startButton = await waitFor(() =>
-				getByRole('button', { name: /start/i })
+				view.getByRole('button', { name: /start/i })
 			);
 			fireEvent.click(startButton);
 
-			// After starting: select is locked (gameActive true).
 			await waitFor(() => {
-				expect(select.disabled).toBe(true);
+				expect(
+					(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
+						.disabled
+				).toBe(true);
 			});
 
-			// Simulate account switch: dispatch the real auth-change event
-			// with a different authenticated user. The ChessGame effect
-			// should detect the identity change and reset local game
-			// state (gameActive=false), re-enabling the select.
 			globalThis.dispatchEvent(
 				new CustomEvent(AUTH_CHANGE_EVENT, {
-					detail: {
-						user: {
-							id: 'user-b',
-							email: 'b@test.com',
-							username: 'userB',
-						},
-					},
+					detail: { user: null },
 				})
 			);
 
 			await waitFor(() => {
-				expect(select.disabled).toBe(false);
+				expect(
+					(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
+						.disabled
+				).toBe(false);
 			});
 		} finally {
 			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
@@ -273,6 +361,22 @@ describe('ChessGame — inline "AI plays" select', () => {
 				delete (globalThis as Record<string, unknown>).localStorage;
 			}
 		}
+	});
+});
+
+describe('ChessGame — tutorial interactions', () => {
+	beforeEach(() => {
+		delete (window as unknown as Record<string, unknown>)
+			.__PROCYON_INITIAL_AUTH_USER__;
+		resetAIConfigStore();
+		clearRivalPreferences();
+	});
+
+	afterEach(() => {
+		delete (window as unknown as Record<string, unknown>)
+			.__PROCYON_INITIAL_AUTH_USER__;
+		resetAIConfigStore();
+		clearRivalPreferences();
 	});
 
 	test('completes an underpromotion from the tutorial only after a choice', async () => {
@@ -340,30 +444,34 @@ describe('ChessGame — inline "AI plays" select', () => {
 		fireEvent.click(d5);
 		expect(d2.className).not.toContain('ring-brass');
 	});
+});
 
-	// AI move gen checks: when AI plays white and the game starts,
-	// makeAIMoveAsync fires after the 1-second delay. With defaultAIConfig
-	// (enabled=false, apiKey=''), makeMove returns null — the try block's
-	// gen check (ChessGame.tsx ~line 333) and finally block's gen check
-	// (~lines 417-419) are covered. To cover the catch block's gen check
-	// (~line 402), we mutate defaultAIConfig to enabled=true +
-	// apiKey='fake' and mock fetch to reject for LLM API calls, so
-	// makeMove throws. NOTE: this test exercises the gen-MATCHES path
-	// (no invalidate races the callback) — the error IS surfaced. The
-	// stale-gen bail (invalidate while LLM in-flight) is covered by the
-	// "in-flight makeAIMove bails on stale gen" test below.
+// The following AI-move-path tests exercise the live combat/LLM machinery,
+// which still relies on the pre-session preview bridge. Full session
+// integration (Task 14) will replace this bridge; until then these tests
+// drive the AI by choosing the human side (which derives the rival side).
+describe('ChessGame — AI move bridge (pre-session)', () => {
+	beforeEach(() => {
+		delete (window as unknown as Record<string, unknown>)
+			.__PROCYON_INITIAL_AUTH_USER__;
+		resetAIConfigStore();
+		clearRivalPreferences();
+	});
+
+	afterEach(() => {
+		delete (window as unknown as Record<string, unknown>)
+			.__PROCYON_INITIAL_AUTH_USER__;
+		resetAIConfigStore();
+		clearRivalPreferences();
+	});
+
 	test('AI move catch block handles error when LLM fetch fails', async () => {
-		// Mutate defaultAIConfig so the AI service's makeMove calls callLLM
-		// instead of short-circuiting to null. The service is created with
-		// useState(() => createChessAI(defaultAIConfig)), so mutating
-		// defaultAIConfig before render affects the service's config.
 		const originalEnabled = defaultAIConfig.enabled;
 		const originalApiKey = defaultAIConfig.apiKey;
 		defaultAIConfig.enabled = true;
 		defaultAIConfig.apiKey = 'fake-key';
 
 		const originalFetch = globalThis.fetch;
-
 		const originalError = console.error;
 		const errorCalls: string[] = [];
 
@@ -377,8 +485,6 @@ describe('ChessGame — inline "AI plays" select', () => {
 						json: () => Promise.resolve({}),
 					});
 				}
-				// LLM API call — reject to trigger makeMove's catch,
-				// which re-throws to makeAIMoveAsync's catch (line 393).
 				return Promise.reject(new Error('Network error'));
 			}
 		) as unknown as typeof fetch;
@@ -389,21 +495,16 @@ describe('ChessGame — inline "AI plays" select', () => {
 		};
 
 		try {
-			const { getByLabelText, getByRole } = render(<ChessGame />);
+			const view = render(<ChessGame />);
+			await waitForSetupResolved(view);
 
-			// Set AI to play white so the AI move effect fires immediately
-			// on Start (white moves first).
-			const select = (await waitFor(() =>
-				getByLabelText(/AI plays/i)
-			)) as HTMLSelectElement;
-			fireEvent.change(select, { target: { value: 'white' } });
+			// Human plays Black => the derived rival side is White, which moves
+			// first, so the AI-move effect fires immediately on Start.
+			fireEvent.click(view.getByRole('radio', { name: 'Black' }));
 
-			// Start the game (unauthenticated => aiStarting is false).
-			const startButton = getByRole('button', { name: /start/i });
+			const startButton = view.getByRole('button', { name: /start/i });
 			fireEvent.click(startButton);
 
-			// Wait for the AI move to fire (1-second setTimeout delay)
-			// and fail. The catch block calls console.error('AI move failed:').
 			await waitFor(
 				() => {
 					expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(
@@ -476,7 +577,9 @@ describe('ChessGame — inline "AI plays" select', () => {
 		) as unknown as typeof fetch;
 
 		try {
-			const { getByLabelText, getByRole, queryByText } = render(<ChessGame />);
+			const view = render(<ChessGame />);
+			await waitForSetupResolved(view);
+			const { getByLabelText, getByRole, queryByText } = view;
 			const moveHumanPiece = async (
 				from: string,
 				to: string,
@@ -487,9 +590,6 @@ describe('ChessGame — inline "AI plays" select', () => {
 				await waitFor(() => expect(rivalMoveCount).toBe(expectedRivalMoves), {
 					timeout: 3000,
 				});
-				// Verify the rival piece actually landed on its expected destination
-				// before proceeding — a concrete per-move UI outcome that confirms
-				// game-state propagation completed (replaces a fixed microtask flush).
 				const rivalMove = rivalMoves[expectedRivalMoves - 1]!;
 				const rivalCol = rivalMove.to.charCodeAt(0) - 'a'.charCodeAt(0);
 				const rivalRow = 8 - parseInt(rivalMove.to.slice(1), 10);
@@ -506,6 +606,7 @@ describe('ChessGame — inline "AI plays" select', () => {
 				);
 			};
 
+			// Human plays White by default (rival plays Black).
 			fireEvent.click(getByRole('button', { name: /start/i }));
 
 			await moveHumanPiece('Square 6-0', 'Square 5-0', 1); // a2-a3, b7-b5
@@ -525,22 +626,12 @@ describe('ChessGame — inline "AI plays" select', () => {
 		}
 	}, 15_000);
 
-	// Mid-flight stale-gen bail: hold the LLM fetch in-flight across a
-	// New Game (resetGame → invalidate), then resolve with an invalid
-	// move. The catch block's `if (isStale(gen)) return` must bail
-	// BEFORE console.error('AI move failed:') / setAiError / setIsAiPaused
-	// — otherwise the stale callback resurrects an error on the reset
-	// board. Mirrors the Xiangqi late-callback tests in
-	// CrossVariantInvalidation.test.tsx but for Chess (which uses
-	// defaultAIConfig mutation + AIStatusPanel instead of setConfig +
-	// errorBanner role='alert').
 	test('in-flight makeAIMove bails on stale gen after New Game (no error surfaced)', async () => {
 		const originalEnabled = defaultAIConfig.enabled;
 		const originalApiKey = defaultAIConfig.apiKey;
 		defaultAIConfig.enabled = true;
 		defaultAIConfig.apiKey = 'fake-key';
 
-		// Controllable LLM fetch — held in-flight so invalidate can race it.
 		let resolveLLM!: (value: string) => void;
 		const llmPromise = new Promise<string>(r => {
 			resolveLLM = r;
@@ -558,7 +649,6 @@ describe('ChessGame — inline "AI plays" select', () => {
 						json: () => Promise.resolve({}),
 					});
 				}
-				// LLM call (gemini) — hold in-flight so invalidate can race it.
 				llmFetchCalled = true;
 				return llmPromise.then(text => ({
 					ok: true,
@@ -584,41 +674,27 @@ describe('ChessGame — inline "AI plays" select', () => {
 		};
 
 		try {
-			const { getByLabelText, getByRole, queryByText } = render(<ChessGame />);
+			const view = render(<ChessGame />);
+			await waitForSetupResolved(view);
+			const { getByRole, queryByText } = view;
 
-			// AI plays white (first-moving side) so the AI-turn effect
-			// fires immediately on Start.
-			const select = (await waitFor(() =>
-				getByLabelText(/AI plays/i)
-			)) as HTMLSelectElement;
-			fireEvent.change(select, { target: { value: 'white' } });
+			// Human plays Black => rival (White) moves first.
+			fireEvent.click(getByRole('radio', { name: 'Black' }));
 
 			const startButton = getByRole('button', { name: /start/i });
 			fireEvent.click(startButton);
 
-			// Wait for the 1s setTimeout to fire and makeMove to reach the
-			// LLM fetch — makeAIMoveAsync is now in-flight, past the
-			// effect cleanup's clearTimeout.
 			await waitFor(() => expect(llmFetchCalled).toBe(true), {
 				timeout: 3000,
 			});
 
-			// New Game → resetGame calls invalidate (gen bumps),
-			// setGameState(createInitialGameState()), setGameStarted(false).
 			const newGameButton = getByRole('button', { name: /new game/i });
 			fireEvent.click(newGameButton);
 
-			// Resolve the in-flight LLM fetch with an invalid move. The
-			// rule guardian rejects it → makeMove throws → catch block.
-			// The catch block's `if (isStale(gen)) return` bails BEFORE
-			// console.error / setAiError / setIsAiPaused.
 			resolveLLM(
 				'{"move":{"from":"a0","to":"a0"},"thinking":"stale","confidence":0.1}'
 			);
 
-			// Drain the promise microtask chain so the stale callback
-			// settles (fetch .then → response.json → callLLM → makeMove →
-			// catch → gen check).
 			await act(async () => {
 				await llmPromise;
 				for (let i = 0; i < 40; i++) {
@@ -626,11 +702,7 @@ describe('ChessGame — inline "AI plays" select', () => {
 				}
 			});
 
-			// No 'AI move failed:' logged — the catch block bailed on
-			// stale gen before reaching the console.error line.
 			expect(errorCalls.some(s => s.includes('AI move failed:'))).toBe(false);
-
-			// No AI Error panel rendered — setAiError was never called.
 			expect(queryByText(/❌ AI Error/i)).toBeNull();
 		} finally {
 			defaultAIConfig.enabled = originalEnabled;
