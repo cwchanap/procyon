@@ -258,6 +258,9 @@ export function useChessRivalSession(
 				humanSide: input.setup.humanSide,
 				rivalSide: getRivalSide(input.setup.humanSide),
 				startedByUserId: input.userId,
+				...(input.setup.rivalKind === 'llm'
+					? { startedConfig: frozenConfig }
+					: {}),
 			}) as ActiveRivalSession;
 
 			candidateRef.current = null;

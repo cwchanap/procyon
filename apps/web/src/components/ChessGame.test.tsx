@@ -5,7 +5,7 @@ import React from 'react';
 import { setupReactDom } from '../test/reactSetup';
 import ChessGame from './ChessGame';
 import { AUTH_CHANGE_EVENT, __resetSharedAuthUserForTests } from '../lib/auth';
-import { resetAIConfigStore } from '../lib/ai/ai-config-store';
+import { resetAIConfigStore, setConfig } from '../lib/ai/ai-config-store';
 import { RIVAL_PREFERENCES_STORAGE_KEY } from '../lib/chess/rival/preferences';
 import { deferred, engineOptions, FakeRivalProvider } from '../test/fakeRival';
 
@@ -464,7 +464,11 @@ describe('ChessGame — tutorial interactions', () => {
 // the `/ai-config` endpoints. `aiConfigOk: true` hydrates a usable OpenAI
 // config (LLM becomes selectable); `false` fails hydration so the setup
 // falls back to the engine.
-function installAuthedEnv(aiConfigOk: boolean): { restore: () => void } {
+function installAuthedEnv(aiConfigOk: boolean): {
+	bodies: Array<Record<string, unknown>>;
+	playHistoryCount: () => number;
+	restore: () => void;
+} {
 	const user = { id: 'user-a', email: 'a@test.com', username: 'userA' };
 	(
 		window as unknown as Record<string, InitialAuthUser>
@@ -483,8 +487,25 @@ function installAuthedEnv(aiConfigOk: boolean): { restore: () => void } {
 	} catch {
 		/* ignore */
 	}
+	const bodies: Array<Record<string, unknown>> = [];
+	let count = 0;
 
-	(globalThis as unknown as { fetch: unknown }).fetch = ((url: string) => {
+	(globalThis as unknown as { fetch: unknown }).fetch = ((
+		url: string,
+		init?: RequestInit
+	) => {
+		if (url.includes('/play-history')) {
+			count++;
+			if (init?.body) {
+				bodies.push(JSON.parse(init.body as string) as Record<string, unknown>);
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				statusText: 'OK',
+				json: () => Promise.resolve({}),
+			});
+		}
 		if (url.includes('/auth/session')) {
 			return Promise.resolve({
 				ok: true,
@@ -533,6 +554,8 @@ function installAuthedEnv(aiConfigOk: boolean): { restore: () => void } {
 	}) as unknown as typeof fetch;
 
 	return {
+		bodies,
+		playHistoryCount: () => count,
 		restore() {
 			(globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
 			if (originalLocalStorageDesc) {
@@ -1081,6 +1104,23 @@ describe('ChessGame — identity policy, history & tools', () => {
 		await waitFor(() => expect(whiteRadio(view).disabled).toBe(true));
 	}
 
+	async function startLlm(view: RenderResult): Promise<void> {
+		await waitForSetupResolved(view);
+		await waitFor(() =>
+			expect(
+				(
+					view.getByRole('radio', {
+						name: /Language model/i,
+					}) as HTMLInputElement
+				).checked
+			).toBe(true)
+		);
+		fireEvent.click(
+			await waitFor(() => view.getByRole('button', { name: /start/i }))
+		);
+		await waitFor(() => expect(whiteRadio(view).disabled).toBe(true));
+	}
+
 	// DEV-only: Shift+D reveals the debug outcome buttons; clicking Win forces
 	// a terminal (checkmate) position, which is the save trigger.
 	async function forceWin(view: RenderResult): Promise<void> {
@@ -1130,6 +1170,26 @@ describe('ChessGame — identity policy, history & tools', () => {
 			globalThis.dispatchEvent(
 				new CustomEvent(AUTH_CHANGE_EVENT, { detail: { user: null } })
 			);
+			await waitFor(() => expect(whiteRadio(view).disabled).toBe(false));
+		} finally {
+			authed.restore();
+		}
+	});
+
+	test('an active LLM session resets local game state on account change (re-enables selectors)', async () => {
+		const authed = installAuthedEnv(true);
+		const options = {
+			createLlmProvider: () =>
+				new FakeRivalProvider({
+					kind: 'llm',
+					makeMove: async () => ({ ok: true, move: { from: 'e7', to: 'e5' } }),
+				}),
+		};
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startLlm(view);
+
+			signInEvent({ id: 'user-b', email: 'b@test.com', username: 'userB' });
 			await waitFor(() => expect(whiteRadio(view).disabled).toBe(false));
 		} finally {
 			authed.restore();
@@ -1232,6 +1292,38 @@ describe('ChessGame — identity policy, history & tools', () => {
 
 			expect(view.getByRole('button', { name: /Debug Mode/i })).toBeTruthy();
 			expect(view.getByRole('button', { name: /Export Game/i })).toBeTruthy();
+		} finally {
+			authed.restore();
+		}
+	});
+
+	test('LLM play history uses the config frozen at Start, not the live config after Start', async () => {
+		const authed = installAuthedEnv(true);
+		devEnv.DEV = true;
+		const options = {
+			createLlmProvider: () =>
+				new FakeRivalProvider({
+					kind: 'llm',
+					makeMove: async () => ({ ok: true, move: { from: 'e7', to: 'e5' } }),
+				}),
+		};
+		try {
+			const view = render(<ChessGame rivalSessionOptions={options} />);
+			await startLlm(view);
+
+			act(() => {
+				setConfig({
+					provider: 'gemini',
+					model: 'gemini-2.5-flash',
+					apiKey: 'gem-key',
+					enabled: true,
+				});
+			});
+			await flushEffects();
+
+			await forceWin(view);
+			expect(authed.playHistoryCount()).toBe(1);
+			expect(authed.bodies[0]).toHaveProperty('opponentLlmId', 'gpt-4o');
 		} finally {
 			authed.restore();
 		}

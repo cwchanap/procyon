@@ -262,8 +262,12 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 	// with different opponent metadata: the engine passes the frozen rival
 	// side and the unrated `{ kind: 'engine', id: 'stockfish' }` descriptor
 	// (and omits `aiConfig`), while the LLM keeps the existing rated path
-	// (frozen config, no descriptor). The hook must be called unconditionally,
-	// so the options are branched here rather than the call.
+	// (Start-frozen config, no descriptor). The hook must be called
+	// unconditionally, so the options are branched here rather than the call.
+	const llmHistoryConfig =
+		activeSession?.opponent.kind === 'llm'
+			? (activeSession.startedConfig ?? aiConfig)
+			: aiConfig;
 	usePlayHistory(
 		activeSession?.opponent.kind === 'engine'
 			? {
@@ -286,7 +290,7 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 					gameVariant: 'chess',
 					gameStatus: effectiveStatus,
 					aiPlayer: activeSession?.rivalSide ?? previewRivalSide,
-					aiConfig,
+					aiConfig: llmHistoryConfig,
 					moveCount: gameState.moveHistory.length,
 					getWinnerColor,
 					enabled: gameMode === 'ai' && gameStarted,

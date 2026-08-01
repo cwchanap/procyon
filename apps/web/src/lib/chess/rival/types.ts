@@ -1,3 +1,4 @@
+import type { AIConfig } from '../../ai/types';
 import type { ChessMoveRequest, PieceColor } from '../types';
 
 export type RivalKind = 'engine' | 'llm';
@@ -22,6 +23,8 @@ export interface ActiveRivalSession {
 	humanSide: ChessSide;
 	rivalSide: ChessSide;
 	startedByUserId: string | null;
+	/** Frozen AI config captured at Start for LLM sessions. Engine sessions omit it. */
+	startedConfig?: AIConfig;
 }
 
 export type EnginePreflight =
