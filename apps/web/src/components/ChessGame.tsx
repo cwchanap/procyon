@@ -29,6 +29,7 @@ import DemoSelector from './game/DemoSelector';
 import TutorialInstructions from './game/TutorialInstructions';
 import AIGameInstructions from './game/AIGameInstructions';
 import DebugOutcomeButtons from './game/DebugOutcomeButtons';
+import ChessRivalSetup from './game/ChessRivalSetup';
 import type { AIMove } from './ai/AIDebugDialog';
 import { createChessAI } from '../lib/ai';
 import { defaultAIConfig } from '../lib/ai/storage';
@@ -38,9 +39,11 @@ import {
 	useAiMoveGenerationToken,
 	useGameIdentityReset,
 	useGameDebugOutcomes,
+	useChessRivalSetup,
 } from '../hooks';
 import { useAuth } from '../lib/auth';
 import { GameExporter } from '../lib/ai/game-export';
+import { getRivalSide } from '../lib/chess/rival/types';
 import {
 	CHESS_TUTORIALS,
 	createChessTutorialState,
@@ -68,11 +71,28 @@ const terminalCopy: Record<
 	'insufficient-material': 'Draw by insufficient material',
 };
 
+// Human-readable copy for the automatic opponent fallbacks surfaced by
+// `useChessRivalSetup`. The hook only exposes a code; the preview owns the
+// player-facing wording.
+const fallbackNoticeMessages: Record<
+	'engine-to-llm' | 'llm-to-engine',
+	string
+> = {
+	'engine-to-llm':
+		'The on-device computer is unavailable on this device, so a language-model opponent was selected.',
+	'llm-to-engine':
+		'A language-model opponent is unavailable, so the on-device computer was selected.',
+};
+
 const ChessGame: React.FC = () => {
 	const [gameMode, setGameMode] = useState<ChessGameMode>('ai');
 	const [gameStarted, setGameStarted] = useState(false);
+	// Preview always models a human-vs-AI game; the rival side is derived from
+	// the resolved setup once preference hydration completes (see the preview
+	// effect below). The initial value is never shown — the board stays behind
+	// a neutral skeleton until `rivalSetup.resolved`.
 	const [gameState, setGameState] = useState<GameState>(() =>
-		createInitialGameState()
+		createInitialGameState('human-vs-ai', 'black')
 	);
 	const [forcedOutcome, setForcedOutcome] = useState<ForcedChessOutcome>(null);
 	const effectiveStatus = forcedOutcome?.status ?? gameState.status;
@@ -80,7 +100,6 @@ const ChessGame: React.FC = () => {
 		forcedOutcome?.currentPlayer ?? gameState.currentPlayer;
 	const gameOver = forcedOutcome !== null || isTerminalState(gameState);
 	const [currentDemo, setCurrentDemo] = useState<string>('basic-movement');
-	const [aiPlayer, setAIPlayer] = useState<'white' | 'black'>('black');
 	const [gameActive, setGameActive] = useState(false);
 	const {
 		user,
@@ -90,6 +109,8 @@ const ChessGame: React.FC = () => {
 	} = useAuth();
 	const {
 		config: aiConfig,
+		hydrated,
+		hydrateError,
 		configPending,
 		aiStarting,
 	} = useAIConfigHydration({
@@ -98,6 +119,22 @@ const ChessGame: React.FC = () => {
 		revalidated,
 		isAiMode: gameMode === 'ai',
 	});
+
+	// Rival setup drives the Play-mode opponent/side selection and the preview.
+	// It is preference-hydration-safe: `resolved` gates the board reveal.
+	const rivalSetup = useChessRivalSetup({
+		auth: { isAuthenticated, loading: authLoading, revalidated },
+		aiConfig: {
+			config: aiConfig,
+			hydrated,
+			hydrateError,
+			configPending,
+		},
+		isGameActive: gameActive,
+		isStarting: aiStarting,
+	});
+	const previewRivalSide = getRivalSide(rivalSetup.setup.humanSide);
+
 	const [isDebugMode, setIsDebugMode] = useState(false);
 	const [aiDebugMoves, setAiDebugMoves] = useState<AIMove[]>([]);
 	const [isAiPaused, setIsAiPaused] = useState(false);
@@ -150,7 +187,7 @@ const ChessGame: React.FC = () => {
 	usePlayHistory({
 		gameVariant: 'chess',
 		gameStatus: effectiveStatus,
-		aiPlayer,
+		aiPlayer: previewRivalSide,
 		aiConfig,
 		moveCount: gameState.moveHistory.length,
 		getWinnerColor,
@@ -381,6 +418,18 @@ const ChessGame: React.FC = () => {
 		gameOver,
 	]);
 
+	// Keep the pre-game preview a clean human-vs-AI board using the derived
+	// rival side. Runs on preference resolution and whenever the selected side
+	// (and thus the rival side) changes — but never once a game has started,
+	// so a live board is not clobbered. Setup selection is locked while a game
+	// is active, so `previewRivalSide` is stable during play.
+	useEffect(() => {
+		if (gameMode !== 'ai') return;
+		if (!rivalSetup.resolved) return;
+		if (gameStarted) return;
+		setGameState(createInitialGameState('human-vs-ai', previewRivalSide));
+	}, [gameMode, rivalSetup.resolved, previewRivalSide, gameStarted]);
+
 	// Game mode handlers
 	const toggleToMode = useCallback(
 		(newMode: ChessGameMode) => {
@@ -404,23 +453,13 @@ const ChessGame: React.FC = () => {
 			if (newMode === 'tutorial') {
 				loadTutorial(currentDemo);
 			} else if (newMode === 'ai') {
-				if (aiConfig.enabled && aiConfig.apiKey) {
-					setGameState(createInitialGameState('human-vs-ai', aiPlayer));
-				} else {
-					// AI mode without proper config - default to human vs human
-					setGameState(createInitialGameState('human-vs-human'));
-				}
+				// Every Play preview is human-vs-AI with the derived rival side;
+				// there is no human-vs-human fallback. The preview effect also
+				// refreshes this once setup has resolved.
+				setGameState(createInitialGameState('human-vs-ai', previewRivalSide));
 			}
 		},
-		[
-			loadTutorial,
-			currentDemo,
-			aiPlayer,
-			aiConfig.enabled,
-			aiConfig.apiKey,
-			invalidate,
-			gameMode,
-		]
+		[loadTutorial, currentDemo, previewRivalSide, invalidate, gameMode]
 	);
 
 	const handleSquareClick = useCallback(
@@ -428,7 +467,7 @@ const ChessGame: React.FC = () => {
 			if (
 				gameOver ||
 				gameState.pendingPromotion ||
-				(gameMode === 'ai' && gameState.currentPlayer === aiPlayer) ||
+				(gameMode === 'ai' && gameState.currentPlayer === previewRivalSide) ||
 				gameState.isAiThinking
 			) {
 				return;
@@ -450,7 +489,7 @@ const ChessGame: React.FC = () => {
 
 			setGameState(selectSquare(gameState, position));
 		},
-		[gameMode, gameState, aiPlayer, gameOver, recordCompletedHumanMove]
+		[gameMode, gameState, previewRivalSide, gameOver, recordCompletedHumanMove]
 	);
 
 	const handlePromotionChoice = useCallback(
@@ -471,11 +510,7 @@ const ChessGame: React.FC = () => {
 		// Invalidate any in-flight makeAIMoveAsync callback so it cannot
 		// apply stale setGameState/setAiError results after the reset.
 		invalidate();
-		if (gameMode === 'ai') {
-			setGameState(createInitialGameState('human-vs-ai', aiPlayer));
-		} else {
-			setGameState(createInitialGameState('human-vs-human'));
-		}
+		setGameState(createInitialGameState('human-vs-ai', previewRivalSide));
 		setGameStarted(false);
 		setAiDebugMoves([]);
 		setIsAiPaused(false);
@@ -483,7 +518,7 @@ const ChessGame: React.FC = () => {
 		setHasGameEnded(false);
 		setGameActive(false);
 		setForcedOutcome(null);
-	}, [gameMode, aiPlayer, invalidate]);
+	}, [previewRivalSide, invalidate]);
 
 	const setForcedDebugOutcome = useCallback(
 		(patch: { status: string; currentPlayer?: PieceColor }) => {
@@ -500,14 +535,15 @@ const ChessGame: React.FC = () => {
 	// Reset local game state when authentication is lost (logout) OR when
 	// the authenticated user identity changes (account switch in another
 	// tab). Also invalidates the AI move generation token so any in-flight
-	// makeAIMoveAsync callback skips its setGameState/setAiError calls.
+	// makeAIMoveAsync callback skips its setGameState/setAiError calls. The
+	// rival setup re-resolves its own opponent/side from the fresh auth
+	// snapshot, so no explicit side reset is needed here.
 	useGameIdentityReset({
 		isAuthenticated,
 		userId: user?.id,
 		invalidate,
 		onReset: () => {
 			resetGame();
-			setAIPlayer('black');
 		},
 	});
 
@@ -517,7 +553,7 @@ const ChessGame: React.FC = () => {
 		triggerDebugDraw,
 		showDebugWinButton,
 	} = useGameDebugOutcomes<'white' | 'black'>({
-		aiPlayer,
+		aiPlayer: previewRivalSide,
 		getHumanPlayer: ai => (ai === 'white' ? 'black' : 'white'),
 		setOutcome: setForcedDebugOutcome,
 		debugVariantKey: 'CHESS',
@@ -535,15 +571,12 @@ const ChessGame: React.FC = () => {
 	const handleStartOrReset = useCallback(() => {
 		if (!gameStarted) {
 			if (aiStarting) return; // config still loading; Start is disabled
+			if (!rivalSetup.resolved) return; // preference hydration not ready
 			setForcedOutcome(null);
-			// Starting the game - ensure game state is properly initialized
-			if (gameMode === 'ai') {
-				setGameState(createInitialGameState('human-vs-ai', aiPlayer));
-				setGameActive(true);
-			} else {
-				setGameState(createInitialGameState('human-vs-human'));
-				setGameActive(false);
-			}
+			// Starting the game — always a human-vs-AI game with the derived
+			// rival side.
+			setGameState(createInitialGameState('human-vs-ai', previewRivalSide));
+			setGameActive(true);
 			setGameStarted(true);
 			setHasGameEnded(false);
 
@@ -553,7 +586,14 @@ const ChessGame: React.FC = () => {
 			// Resetting the game
 			resetGame();
 		}
-	}, [gameStarted, resetGame, gameMode, aiPlayer, aiConfig, aiStarting]);
+	}, [
+		gameStarted,
+		resetGame,
+		previewRivalSide,
+		aiConfig,
+		aiStarting,
+		rivalSetup.resolved,
+	]);
 
 	const getStatusText = (): string => {
 		if (forcedOutcome?.status === 'checkmate') return 'Checkmate!';
@@ -570,6 +610,21 @@ const ChessGame: React.FC = () => {
 	const currentBoard = gameState.board;
 	const currentHighlightSquares =
 		gameMode === 'tutorial' ? getCurrentDemo().highlightSquares : undefined;
+
+	const isPlayMode = gameMode === 'ai';
+	// In Play mode the board stays hidden behind a neutral skeleton until
+	// preference hydration resolves, so it never flashes a White-oriented
+	// interactive board or an opponent fallback before the setup is known.
+	const showBoard = !isPlayMode || rivalSetup.resolved;
+	const boardOrientation: PieceColor = isPlayMode
+		? rivalSetup.setup.humanSide
+		: 'white';
+	const boardDisabled =
+		Boolean(gameState.pendingPromotion) ||
+		Boolean(gameState.isAiThinking) ||
+		(isPlayMode && gameState.currentPlayer === previewRivalSide) ||
+		gameOver ||
+		(isPlayMode && !rivalSetup.resolved);
 
 	const title =
 		gameMode === 'tutorial' ? 'Chess Logic & Tutorials' : 'Chess Game';
@@ -591,20 +646,23 @@ const ChessGame: React.FC = () => {
 							<GameStartOverlay
 								active={!gameStarted && gameMode !== 'tutorial'}
 							>
-								<ChessBoard
-									board={currentBoard}
-									selectedSquare={gameState.selectedSquare}
-									possibleMoves={gameState.possibleMoves}
-									onSquareClick={handleSquareClick}
-									highlightSquares={currentHighlightSquares}
-									disabled={
-										Boolean(gameState.pendingPromotion) ||
-										Boolean(gameState.isAiThinking) ||
-										(gameMode === 'ai' &&
-											gameState.currentPlayer === aiPlayer) ||
-										gameOver
-									}
-								/>
+								{showBoard ? (
+									<ChessBoard
+										board={currentBoard}
+										selectedSquare={gameState.selectedSquare}
+										possibleMoves={gameState.possibleMoves}
+										onSquareClick={handleSquareClick}
+										highlightSquares={currentHighlightSquares}
+										orientation={boardOrientation}
+										disabled={boardDisabled}
+									/>
+								) : (
+									<div
+										data-testid='board-loading-skeleton'
+										aria-hidden='true'
+										className='inline-block h-[34rem] w-[34rem] max-w-full animate-pulse rounded-lg border-2 border-line bg-ink-700'
+									/>
+								)}
 							</GameStartOverlay>
 							{gameState.pendingPromotion ? (
 								<ChessPromotionDialog
@@ -622,7 +680,7 @@ const ChessGame: React.FC = () => {
 								hasGameStarted={gameStarted}
 								isGameOver={gameOver}
 								aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
-								startDisabled={aiStarting}
+								startDisabled={aiStarting || !rivalSetup.resolved}
 								isDebugMode={isDebugMode}
 								canExport={gameStarted && !!gameExporterRef.current}
 								onStartOrReset={handleStartOrReset}
@@ -649,29 +707,33 @@ const ChessGame: React.FC = () => {
 				/>
 			}
 			sidePanel={
-				<BoardSidePanel gameMode={gameMode} onModeChange={toggleToMode}>
+				<BoardSidePanel
+					gameMode={gameMode}
+					onModeChange={toggleToMode}
+					aiModeLabel='Play'
+				>
 					{gameMode === 'ai' ? (
 						<>
-							<div className='flex items-center justify-between gap-3'>
-								<label
-									htmlFor='chess-ai-side'
-									className='text-sm font-medium text-ivory-dim'
-								>
-									AI plays
-								</label>
-								<select
-									id='chess-ai-side'
-									value={aiPlayer}
-									onChange={e =>
-										setAIPlayer(e.target.value as 'white' | 'black')
-									}
+							{rivalSetup.resolved ? (
+								<ChessRivalSetup
+									setup={rivalSetup.setup}
+									enginePreflight={rivalSetup.enginePreflight}
+									llmUsability={rivalSetup.llmUsability}
 									disabled={gameActive}
-									className='rounded-md border border-line bg-ink-800 px-2 py-1.5 text-sm text-ivory focus:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-50'
-								>
-									<option value='black'>Black</option>
-									<option value='white'>White</option>
-								</select>
-							</div>
+									lockReason={
+										gameActive
+											? 'Finish or reset the current game to change your opponent.'
+											: null
+									}
+									fallbackNotice={
+										rivalSetup.fallbackNotice
+											? fallbackNoticeMessages[rivalSetup.fallbackNotice]
+											: null
+									}
+									onSelectRival={rivalSetup.selectRival}
+									onSelectHumanSide={rivalSetup.selectHumanSide}
+								/>
+							) : null}
 							<AIStatusPanel
 								aiConfigured={!!aiConfig.enabled && !!aiConfig.apiKey}
 								hasGameStarted={gameStarted}
