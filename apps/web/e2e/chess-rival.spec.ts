@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
 
 /**
@@ -17,6 +18,23 @@ import { test, expect, type Page } from '@playwright/test';
 
 const STOCKFISH_ASSET_MARKER = '/vendor/stockfish/';
 const RIVAL_PREFERENCES_STORAGE_KEY = 'procyon.chess.rival-preferences.v1';
+
+interface BoardOrientationSample {
+	hasBoard: boolean;
+	hasSkeleton: boolean;
+	firstSquareLabel: string | null;
+	firstSquareDisabled: boolean | null;
+}
+
+interface MockedProviderRequest {
+	url: string;
+	method: string;
+	authorization?: string;
+	body: {
+		model?: string;
+		messages?: Array<{ role?: string; content?: string }>;
+	};
+}
 
 interface FakeStockfishConfig {
 	/** UCI moves the fake engine returns, consumed in order per `go`. */
@@ -138,6 +156,94 @@ function trackStockfishRequests(page: Page): string[] {
 	return requests;
 }
 
+async function readBoardOrientationSample(
+	page: Page
+): Promise<BoardOrientationSample> {
+	return page.evaluate(() => {
+		const board = document.querySelector('[data-testid="chess-board"]');
+		const skeleton = document.querySelector(
+			'[data-testid="board-loading-skeleton"]'
+		);
+		const firstSquare = board?.querySelector('button') ?? null;
+
+		return {
+			hasBoard: board != null,
+			hasSkeleton: skeleton != null,
+			firstSquareLabel: firstSquare?.getAttribute('aria-label') ?? null,
+			firstSquareDisabled:
+				firstSquare instanceof HTMLButtonElement ? firstSquare.disabled : null,
+		};
+	});
+}
+
+async function startBoardOrientationProbe(page: Page): Promise<void> {
+	await page.evaluate(() => {
+		type Probe = {
+			samples: BoardOrientationSample[];
+			observer: MutationObserver | null;
+			sample: () => void;
+		};
+		const win = window as unknown as {
+			__CHESS_BOARD_ORIENTATION_PROBE__?: Probe;
+		};
+		win.__CHESS_BOARD_ORIENTATION_PROBE__?.observer?.disconnect();
+
+		const samples: BoardOrientationSample[] = [];
+		const sample = () => {
+			const board = document.querySelector('[data-testid="chess-board"]');
+			const skeleton = document.querySelector(
+				'[data-testid="board-loading-skeleton"]'
+			);
+			const firstSquare = board?.querySelector('button') ?? null;
+			samples.push({
+				hasBoard: board != null,
+				hasSkeleton: skeleton != null,
+				firstSquareLabel: firstSquare?.getAttribute('aria-label') ?? null,
+				firstSquareDisabled:
+					firstSquare instanceof HTMLButtonElement
+						? firstSquare.disabled
+						: null,
+			});
+		};
+
+		const board = document.querySelector('[data-testid="chess-board"]');
+		const observer = board ? new MutationObserver(sample) : null;
+		observer?.observe(board!, {
+			attributes: true,
+			attributeFilter: ['aria-label', 'disabled'],
+			childList: true,
+			subtree: true,
+		});
+
+		win.__CHESS_BOARD_ORIENTATION_PROBE__ = {
+			samples,
+			observer,
+			sample,
+		};
+	});
+}
+
+async function stopBoardOrientationProbe(
+	page: Page
+): Promise<BoardOrientationSample[]> {
+	return page.evaluate(() => {
+		const win = window as unknown as {
+			__CHESS_BOARD_ORIENTATION_PROBE__?: {
+				samples: BoardOrientationSample[];
+				observer: MutationObserver | null;
+				sample: () => void;
+			};
+		};
+		const probe = win.__CHESS_BOARD_ORIENTATION_PROBE__;
+		if (!probe) return [];
+
+		probe.sample();
+		probe.observer?.disconnect();
+		delete win.__CHESS_BOARD_ORIENTATION_PROBE__;
+		return probe.samples;
+	});
+}
+
 /** Seed a signed-in user snapshot so auth resolves without a network fetch. */
 async function seedAuthenticatedUser(page: Page): Promise<void> {
 	await page.addInitScript(() => {
@@ -231,6 +337,45 @@ async function mockConfiguredLlm(page: Page): Promise<void> {
 	});
 }
 
+async function mockOpenAIChessMove(
+	page: Page
+): Promise<MockedProviderRequest[]> {
+	const requests: MockedProviderRequest[] = [];
+	await page.route(
+		'https://api.openai.com/v1/chat/completions',
+		async route => {
+			const request = route.request();
+			const body = request.postDataJSON() as MockedProviderRequest['body'];
+			requests.push({
+				url: request.url(),
+				method: request.method(),
+				authorization: request.headers().authorization,
+				body,
+			});
+
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					choices: [
+						{
+							message: {
+								content: JSON.stringify({
+									move: { from: 'e7', to: 'e5' },
+									reasoning: 'Mirror White in the center.',
+									confidence: 87,
+								}),
+							},
+						},
+					],
+				}),
+			});
+		}
+	);
+
+	return requests;
+}
+
 /** Locators shared across the journeys. */
 const opponentRadio = (page: Page, name: RegExp | string) =>
 	page.getByRole('radio', { name });
@@ -259,7 +404,12 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 		const stockfishRequests = trackStockfishRequests(page);
 
 		await page.goto('/chess');
+		const initialBoardSample = await readBoardOrientationSample(page);
+		if (!initialBoardSample.hasBoard) {
+			await expect(page.getByTestId('board-loading-skeleton')).toBeVisible();
+		}
 		await waitForSetupResolved(page);
+		await expect(page.getByTestId('board-loading-skeleton')).toHaveCount(0);
 
 		// (3) Engine is the default opponent for a signed-out visitor.
 		const engine = opponentRadio(page, /On-device computer/i);
@@ -276,6 +426,7 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 		).toBe(0);
 
 		// (4) Choose to play Black — the rival (White) then moves first.
+		await startBoardOrientationProbe(page);
 		await opponentRadio(page, 'Black').click();
 		await expect(opponentRadio(page, 'Black')).toBeChecked();
 		await expect(
@@ -294,6 +445,19 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 					.getAttribute('aria-label')
 			)
 			.toBe('Square 7-7');
+		const blackSelectionSamples = await stopBoardOrientationProbe(page);
+		expect(
+			blackSelectionSamples.filter(
+				sample =>
+					sample.hasBoard &&
+					sample.firstSquareLabel === 'Square 0-0' &&
+					sample.firstSquareDisabled === false
+			),
+			`Black-side selection samples: ${JSON.stringify(blackSelectionSamples)}`
+		).toHaveLength(0);
+		expect(
+			blackSelectionSamples.find(sample => sample.hasBoard)?.firstSquareLabel
+		).toBe('Square 7-7');
 
 		// Still nothing downloaded / constructed right before Start.
 		expect(stockfishRequests).toHaveLength(0);
@@ -364,6 +528,7 @@ test.describe('Chess rival — configured language-model journey', () => {
 		await installFakeStockfish(page);
 		await seedAuthenticatedUser(page);
 		await mockConfiguredLlm(page);
+		const llmProviderRequests = await mockOpenAIChessMove(page);
 		const stockfishRequests = trackStockfishRequests(page);
 
 		await page.goto('/chess');
@@ -386,6 +551,8 @@ test.describe('Chess rival — configured language-model journey', () => {
 		// commits the session (human White → human to move first).
 		await startButton(page).click();
 		await expect(newGameButton(page)).toBeVisible({ timeout: 15000 });
+		const exportButton = page.getByRole('button', { name: /Export Game/i });
+		await expect(exportButton).toBeVisible();
 		await expect(opponentRadio(page, /Language model/i)).toBeDisabled();
 		expect(
 			await page.evaluate(
@@ -394,6 +561,41 @@ test.describe('Chess rival — configured language-model journey', () => {
 						.__FAKE_STOCKFISH_CONSTRUCTED__
 			)
 		).toBe(0);
+
+		// Exercise the real LLM provider request path after Start: the human
+		// opens 1.e4, then the mocked OpenAI response returns ...e5.
+		await square(page, 'Square 6-4').click();
+		await square(page, 'Square 4-4').click();
+		await expect(square(page, 'Square 4-4')).toContainText('♙');
+		await expect
+			.poll(() => llmProviderRequests.length, { timeout: 15000 })
+			.toBe(1);
+		await expect(square(page, 'Square 3-4')).toContainText('♟', {
+			timeout: 15000,
+		});
+		const [llmRequest] = llmProviderRequests;
+		expect(llmRequest?.url).toBe('https://api.openai.com/v1/chat/completions');
+		expect(llmRequest?.method).toBe('POST');
+		expect(llmRequest?.authorization).toBe('Bearer sk-rival-e2e');
+		expect(llmRequest?.body.model).toBe('gpt-4o-mini');
+		expect(llmRequest?.body.messages?.[0]?.content).toContain(
+			'You are the chess-playing AI for black'
+		);
+		await expect(exportButton).toBeVisible();
+
+		const downloadPromise = page.waitForEvent('download');
+		await exportButton.click();
+		const download = await downloadPromise;
+		expect(download.suggestedFilename()).toMatch(
+			/^chess-game-\d{4}-\d{2}-\d{2}\.txt$/
+		);
+		const downloadPath = await download.path();
+		expect(downloadPath).toBeTruthy();
+		const exportText = await readFile(downloadPath!, 'utf8');
+		expect(exportText).toContain('Provider: openai');
+		expect(exportText).toContain('Model: gpt-4o-mini');
+		expect(exportText).toContain('Move: e7 → e5');
+		expect(exportText).toContain('AI RAW RESPONSE:');
 
 		// Reset and switch to the engine before Start — a clean, interactive
 		// human-vs-AI preview appears (human White → human to move).
