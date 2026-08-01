@@ -1,8 +1,19 @@
 import type { EnginePreflight } from './types';
 
+/** Minimal Worker presence probe — preflight never constructs one. */
+export type EngineWorkerCapability = new (
+	scriptURL: string | URL,
+	options?: WorkerOptions
+) => unknown;
+
+/** Minimal WebAssembly probe — only `validate` is exercised. */
+export interface EngineWebAssemblyCapability {
+	validate: (bytes: BufferSource) => boolean;
+}
+
 export interface EngineCapabilityEnvironment {
-	Worker?: typeof Worker;
-	WebAssembly?: typeof WebAssembly;
+	Worker?: EngineWorkerCapability;
+	WebAssembly?: EngineWebAssemblyCapability;
 }
 
 /** Minimal valid WASM module used only for capability probing. */

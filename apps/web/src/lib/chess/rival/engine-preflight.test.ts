@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import {
 	runEnginePreflight,
 	type EngineCapabilityEnvironment,
+	type EngineWorkerCapability,
 } from './engine-preflight';
 import {
 	STOCKFISH_JS_FILENAME,
@@ -14,10 +15,10 @@ const stockfishWasmUrl = `/${STOCKFISH_PUBLIC_DIRECTORY}/${STOCKFISH_WASM_FILENA
 
 function createPassingEnvironment(): EngineCapabilityEnvironment {
 	return {
-		Worker: class MockWorker {} as typeof Worker,
+		Worker: class MockWorker {},
 		WebAssembly: {
 			validate: () => true,
-		} as typeof WebAssembly,
+		},
 	};
 }
 
@@ -34,7 +35,7 @@ describe('runEnginePreflight', () => {
 		const result = runEnginePreflight({
 			WebAssembly: {
 				validate: () => true,
-			} as typeof WebAssembly,
+			},
 		});
 
 		expect(result).toEqual({
@@ -45,7 +46,7 @@ describe('runEnginePreflight', () => {
 
 	test('missing WebAssembly returns unsupported', () => {
 		const result = runEnginePreflight({
-			Worker: class MockWorker {} as typeof Worker,
+			Worker: class MockWorker {},
 		});
 
 		expect(result).toEqual({
@@ -56,10 +57,10 @@ describe('runEnginePreflight', () => {
 
 	test('WebAssembly.validate returning false returns unsupported', () => {
 		const result = runEnginePreflight({
-			Worker: class MockWorker {} as typeof Worker,
+			Worker: class MockWorker {},
 			WebAssembly: {
 				validate: () => false,
-			} as typeof WebAssembly,
+			},
 		});
 
 		expect(result).toEqual({
@@ -70,12 +71,12 @@ describe('runEnginePreflight', () => {
 
 	test('WebAssembly.validate throwing returns unsupported', () => {
 		const result = runEnginePreflight({
-			Worker: class MockWorker {} as typeof Worker,
+			Worker: class MockWorker {},
 			WebAssembly: {
 				validate: () => {
 					throw new Error('wasm unavailable');
 				},
-			} as typeof WebAssembly,
+			},
 		});
 
 		expect(result).toEqual({
@@ -94,13 +95,13 @@ describe('runEnginePreflight', () => {
 		workerSpy = mock(() => {
 			throw new Error('Worker must not be constructed during preflight');
 		});
-		const WorkerClass = workerSpy as unknown as typeof Worker;
+		const WorkerClass = workerSpy as unknown as EngineWorkerCapability;
 
 		const result = runEnginePreflight({
 			Worker: WorkerClass,
 			WebAssembly: {
 				validate: () => true,
-			} as typeof WebAssembly,
+			},
 		});
 
 		expect(result).toEqual({ status: 'supported' });
@@ -109,7 +110,7 @@ describe('runEnginePreflight', () => {
 
 	test('does not call fetch when supported', () => {
 		fetchSpy = mock(() => Promise.resolve(new Response('', { status: 200 })));
-		globalThis.fetch = fetchSpy as typeof fetch;
+		globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
 		const result = runEnginePreflight(createPassingEnvironment());
 
@@ -125,7 +126,7 @@ describe('runEnginePreflight', () => {
 			}
 			return Promise.resolve(new Response('', { status: 200 }));
 		});
-		globalThis.fetch = fetchSpy as typeof fetch;
+		globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
 		const result = runEnginePreflight(createPassingEnvironment());
 
