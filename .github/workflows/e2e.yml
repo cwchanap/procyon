@@ -5,9 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   e2e-web:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     env:
       E2E_TEST_USER_EMAIL: test-procyon@cwchanap.dev
