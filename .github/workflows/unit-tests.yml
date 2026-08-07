@@ -5,12 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
 
 jobs:
   test-web:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,6 +52,7 @@ jobs:
           fail_ci_if_error: false
 
   test-api:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -90,6 +93,7 @@ jobs:
           fail_ci_if_error: false
 
   test-game-core:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
