@@ -1,7 +1,7 @@
 # HPA-391 — Aeroplane Chess Design
 
-**Status:** Product-approved design, reconciled with current `main`
-**PR state:** Draft, pending repository review
+**Status:** Product-approved design, amended after review
+**PR state:** Draft
 **Date:** 2026-08-08
 **Linear:** [HPA-391 — Add Aeroplane Chess with one human and three personality AIs](https://linear.app/cwchanap/issue/HPA-391/add-aeroplane-chess-with-one-human-and-three-personality-ais)
 
@@ -17,6 +17,18 @@ Two parts of the original HPA-391 architecture sketch are adjusted to match code
 2. The existing `GameVariant` name remains strategy-only instead of being mass-renamed. A new `GameId = GameVariant | 'aeroplane'` carries navigation, visual-accent, and play-history identity.
 
 The first delivery includes local personality chatter only. Provider-generated chatter is deliberately deferred: HPA-391 describes it as optional, the current provider transport is coupled to move-oriented `UniversalAIService`, and no core acceptance criterion requires remote generation.
+
+## Review amendments
+
+The external review was directionally correct but two proposed cuts conflict with HPA-391 itself. This revision applies the useful simplifications without dropping ticket requirements:
+
+- **Replay stays, but it is not part of recovery.** HPA-391 explicitly requires persisted action history, state checksums, and replay diagnostics. Restore trusts a validated authoritative snapshot and exact RNG states; replay is an explicit developer diagnostic/test path only.
+- **History metadata stays, but is slimmer.** HPA-391 explicitly requires rule preset, victory mode, dice mode, duration, planes finished, captures made/suffered, and AI personalities. The API stores those fields plus `humanColor`; it drops duplicate rule knobs that are not needed by history UI.
+- AI seating and first-player behavior are now normative.
+- Capture timing across jump/flight chains is now explicit.
+- Aeroplane has only `win | loss` terminal results; `draw` is rejected by the history API.
+- The history work is split into three reviewable implementation slices.
+- DEV/E2E seed and fixture hooks have a concrete contract.
 
 ## Current repository state
 
@@ -38,9 +50,10 @@ The first delivery includes local personality chatter only. Provider-generated c
 5. Cautious, Aggressive, and Unpredictable always choose legal moves and are deterministic for identical state plus seed.
 6. Dice and AI choice use separate serializable RNG streams; presentation consumes neither.
 7. Reload recovery preserves exact authoritative state and next RNG outcomes.
-8. Animation, chatter, storage, and history failures cannot roll back or re-apply an already resolved move.
-9. Signed-in results are stored as unrated `aeroplane-trio-v1` games and never create rating rows.
-10. The feature integrates with selector/navigation/history without broadening strategy AI abstractions.
+8. Replay diagnostics can reproduce recorded rolls/moves/events/checksums without becoming a recovery dependency.
+9. Animation, chatter, storage, and history failures cannot roll back or re-apply an already resolved move.
+10. Signed-in results are stored as unrated `aeroplane-trio-v1` games and never create rating rows.
+11. The feature integrates with selector/navigation/history without broadening strategy AI abstractions.
 
 ## Non-goals
 
@@ -53,6 +66,7 @@ The first delivery includes local personality chatter only. Provider-generated c
 - Provider-generated chatter in the first delivery.
 - Cosmetics, progression, currencies, unlocks, multiple layouts, or extra house rules.
 - Three-consecutive-six penalties.
+- Cryptographic save integrity or anti-tamper guarantees; replay checksums are diagnostics only.
 
 ## Architecture approaches
 
@@ -103,16 +117,21 @@ export enum GameId {
 }
 ```
 
-Keep `ChessVariantId` as the existing four-value type used by rating tables/services. Because separate enums should not be coupled with an unsafe type predicate, use an explicit conversion:
+Keep `ChessVariantId` as the existing four-value type used by rating tables/services. Separate enums should not be coupled with an unsafe type predicate, so use an explicit conversion:
 
 ```ts
 export function getRatedVariantId(gameId: GameId): ChessVariantId | null {
   switch (gameId) {
-    case GameId.Chess: return ChessVariantId.Chess;
-    case GameId.Xiangqi: return ChessVariantId.Xiangqi;
-    case GameId.Shogi: return ChessVariantId.Shogi;
-    case GameId.Jungle: return ChessVariantId.Jungle;
-    case GameId.Aeroplane: return null;
+    case GameId.Chess:
+      return ChessVariantId.Chess;
+    case GameId.Xiangqi:
+      return ChessVariantId.Xiangqi;
+    case GameId.Shogi:
+      return ChessVariantId.Shogi;
+    case GameId.Jungle:
+      return ChessVariantId.Jungle;
+    case GameId.Aeroplane:
+      return null;
   }
 }
 ```
@@ -153,19 +172,18 @@ const shouldRate = kind === 'llm' && ratedVariantId !== null;
 
 Only `shouldRate` calls `updatePlayerRating`, using `ratedVariantId`. Aeroplane always returns `ratingUpdate: null` and creates no rating rows.
 
+Aeroplane has no draw mechanic. A completed Aeroplane match is `win` or `loss` from the human perspective; `gameId: 'aeroplane'` with `status: 'draw'` is a `400` validation error.
+
 ## Play-history details
 
-Add nullable JSON `details` to `play_history`. Existing strategy rows use `null`; Aeroplane requires:
+Add nullable JSON `details` to `play_history`. Existing strategy rows use `null`; Aeroplane requires only the metadata explicitly useful for HPA-391 history/analytics:
 
 ```ts
 interface AeroplaneHistoryDetails {
   rulePreset: 'classic' | 'quick-chill' | 'custom';
   victoryTarget: 2 | 4;
   diceMode: 'fair' | 'relaxed';
-  launchRule: 'six' | 'five-or-six';
-  finishRule: 'exact' | 'bounce';
-  stacking: boolean;
-  blockades: boolean;
+  humanColor: 'red' | 'yellow' | 'blue' | 'green';
   durationSeconds: number;
   planesFinished: number;
   capturesMade: number;
@@ -177,16 +195,59 @@ interface AeroplaneHistoryDetails {
 }
 ```
 
-The API validates non-negative finite numbers, exactly three AI players, unique AI colours, and one of each personality. History UI displays game/result/opponent/unrated state only; structured details are retained for diagnostics without adding a details screen.
+`planesFinished`, `capturesMade`, and `capturesSuffered` are from the human player's perspective. The API validates non-negative finite numbers, exactly three AI players, unique AI colours, one of each personality, and that `humanColor` is not one of the AI colours.
+
+This JSON is **history metadata, not a recovery or replay format**. A `custom` rule preset intentionally does not reconstruct every setup knob; the versioned active-match snapshot owns exact recovery. The history UI displays game/result/opponent/unrated state only in this slice.
 
 ## Canonical engine model
 
-### Colours and progress
+### Colours, seats, and first player
 
 ```ts
-type AeroplaneColor = 'red' | 'yellow' | 'blue' | 'green';
-const TURN_ORDER = ['red', 'yellow', 'blue', 'green'] as const;
+export type AeroplaneColor = 'red' | 'yellow' | 'blue' | 'green';
+export type Personality = 'cautious' | 'aggressive' | 'unpredictable';
 
+export const TURN_ORDER = ['red', 'yellow', 'blue', 'green'] as const;
+export const PERSONALITY_ORDER = [
+  'cautious',
+  'aggressive',
+  'unpredictable',
+] as const;
+
+export interface AiSeat {
+  color: AeroplaneColor;
+  personality: Personality;
+}
+```
+
+AI seats are assigned clockwise after the human in fixed personality order:
+
+```ts
+export function seatAIs(humanColor: AeroplaneColor): AiSeat[] {
+  const humanIndex = TURN_ORDER.indexOf(humanColor);
+  return PERSONALITY_ORDER.map((personality, index) => ({
+    color: TURN_ORDER[(humanIndex + index + 1) % TURN_ORDER.length],
+    personality,
+  }));
+}
+```
+
+Examples:
+
+| Human | Cautious | Aggressive | Unpredictable |
+| --- | --- | --- | --- |
+| red | yellow | blue | green |
+| yellow | blue | green | red |
+| blue | green | red | yellow |
+| green | red | yellow | blue |
+
+**Red always starts a new match.** Turn order is always red → yellow → blue → green. If the human chooses another colour, any AI turns before the human's first turn run automatically with the normal skippable presentation delay. This keeps first-player and round-completion accounting independent of the selected human colour.
+
+The three resolved AI seats are persisted in the save blob and history metadata. Restore uses the persisted seats rather than re-deriving them.
+
+### Plane progress
+
+```ts
 interface PlaneState {
   id: string;
   color: AeroplaneColor;
@@ -209,20 +270,22 @@ const START_OFFSET = { red: 0, yellow: 13, blue: 26, green: 39 } as const;
 const globalIndex = (START_OFFSET[color] + progress - 1) % 52;
 ```
 
-### Jump and flight topology
+### Jump, flight, and capture topology
 
 Normal matching-colour jumps repeat every four shared steps. The long-flight entrance is logical progress `18` for every colour and exits at `30`.
 
 Resolution order:
 
-1. calculate base endpoint;
+1. calculate the base endpoint;
 2. if it is a normal matching-colour jump square, +4;
 3. if the current endpoint is flight entrance `18`, +12 to `30`;
-4. resolve captures at final shared endpoint;
+4. resolve captures at the final shared endpoint;
 5. derive stack/blockade occupancy;
 6. check finish/victory.
 
 The flight entrance is a dedicated special square rather than a normal +4 square. Thus direct `18` and jump `14 → 18` both fly to `30`. No extra jump occurs after flight. Jumps/flights never run in private home lanes.
+
+**Capture is final-endpoint-only.** A move captures enemy planes only on the final shared-track endpoint after the entire automatic jump/flight chain resolves. Intermediate base endpoints, jump entrances, and the flight entrance do not capture. If no jump/flight occurs, the base endpoint is also the final endpoint and captures normally.
 
 ### Private occupancy
 
@@ -248,9 +311,21 @@ interface ResolvedMove {
   capturedPlaneIds: string[];
 }
 
-function resolveLegalMove(state: AeroplaneState, planeId: string, roll: number): ResolvedMove | null;
-function getLegalMoves(state: AeroplaneState, roll: number): ResolvedMove[];
-function applyResolvedMove(state: AeroplaneState, move: ResolvedMove): AeroplaneTransition;
+function resolveLegalMove(
+  state: AeroplaneState,
+  planeId: string,
+  roll: number
+): ResolvedMove | null;
+
+function getLegalMoves(
+  state: AeroplaneState,
+  roll: number
+): ResolvedMove[];
+
+function applyResolvedMove(
+  state: AeroplaneState,
+  move: ResolvedMove
+): AeroplaneTransition;
 ```
 
 The controller never recalculates movement.
@@ -282,29 +357,31 @@ interface AeroplaneState {
 
 Flow:
 
-1. `rollTurn` consumes dice RNG.
-2. derive legal moves.
-3. zero moves: record skip and complete turn automatically.
-4. one move: controller briefly highlights then applies automatically.
-5. multiple moves: human chooses or AI scores them.
-6. apply `ResolvedMove` atomically.
-7. check victory.
-8. six keeps same player; otherwise advance clockwise.
+1. `rollTurn` consumes the dice RNG.
+2. Derive legal moves.
+3. Zero moves: emit the skip event and complete the turn automatically.
+4. One move: controller briefly highlights then applies automatically.
+5. Multiple moves: human chooses or AI scores them.
+6. Apply the `ResolvedMove` atomically.
+7. Check victory.
+8. A six keeps the same player; otherwise advance clockwise.
 
-A six still grants another turn after a no-move roll.
+A six still grants another turn after a no-move roll. A complete round is counted when a non-extra turn advances green → red.
 
-## Finishing
+## Finishing and terminal result
 
 - Exact: `progress + roll > 56` is illegal.
 - Bounce: overflow reflects inside the private end sequence: `56 - (progress + roll - 56)`.
 - Finished progress `56` never moves again.
 - Quick target is two finished planes; Classic target is four.
+- The engine has no draw state. It finishes only when one colour reaches the configured target.
+- History maps `winner === humanColor` to `win`; every other winner maps to `loss`.
 
 ## Deterministic RNG and Relaxed Dice
 
-Use a serializable xorshift32 state. A root `uint32` seed derives fixed, separate dice and AI streams. No animation/chatter/timing consumes either.
+Use a serializable immutable xorshift32 state. A root `uint32` seed derives fixed, separate dice and AI streams. `nextUint32` returns `{ value, rng }` and never mutates the input RNG object. No animation/chatter/timing consumes either gameplay stream.
 
-Fair Dice consumes one sample per roll.
+Fair Dice consumes exactly one seeded sample per roll. Mapping a 32-bit integer to six faces has a negligible mathematical bias because `2^32` is not divisible by six; “Fair” here means no gameplay-aware weighting or protection. Do not add rejection sampling because it would violate HPA-391's one-sample-per-Fair-roll consumption contract.
 
 Relaxed Dice activates for the current player when `noMoveStreak >= 3` or `lastPlaceRounds >= 3`. Active protection always consumes exactly two die samples. Prefer candidate one if it has a legal move; otherwise candidate two if it does; otherwise candidate one. No future samples are inspected.
 
@@ -334,7 +411,7 @@ Unpredictable adds seeded jitter `[-120, 120]`; the other two use seeded randomn
 
 Exposure is computed from the resulting public state by checking whether any opponent plane can legally capture the moved plane with a die 1–6; it never inspects future RNG.
 
-## Persistence and replay
+## Persistence and replay diagnostics
 
 Storage key:
 
@@ -342,19 +419,51 @@ Storage key:
 procyon:aeroplane:active-match:v1
 ```
 
-Persist schema version/timestamp, normalized config, authoritative state, root seed, both RNG states, balance counters/stats, and deterministic action history. Never persist derived legal moves, animation state, timers, provider config, or chatter work.
+Persist:
 
-Manual runtime validation is sufficient; do not add Zod to the web package solely for saves. Corrupt/unknown payloads are copied to session-scoped diagnostics, removed from the active key, and replaced only when the player starts cleanly.
+- schema version and timestamp;
+- normalized config;
+- authoritative state;
+- resolved AI seats;
+- root seed;
+- dice RNG state;
+- AI RNG state;
+- balance counters/stats already contained by state;
+- deterministic action history required by HPA-391.
 
-Action log:
+Never persist derived legal moves, animation state, timers, provider config, or pending chatter work.
+
+Manual runtime validation is sufficient; do not add Zod to the web package solely for saves. Corrupt/unknown authoritative snapshot data is copied to session-scoped diagnostics, removed from the active key, and replaced only when the player starts cleanly.
+
+Action history is deliberately small:
 
 ```ts
-type AeroplaneAction =
-  | { kind: 'roll'; player: AeroplaneColor; roll: number; checksum: string }
-  | { kind: 'move'; actor: 'human' | 'ai'; player: AeroplaneColor; planeId: string; checksum: string };
+type AeroplaneActionRecord =
+  | {
+      kind: 'roll';
+      player: AeroplaneColor;
+      roll: number;
+      events: AeroplaneEvent[];
+      checksum: string;
+    }
+  | {
+      kind: 'move';
+      actor: 'human' | 'ai';
+      player: AeroplaneColor;
+      roll: number;
+      selectedPlaneId: string;
+      events: AeroplaneEvent[];
+      checksum: string;
+    };
 ```
 
-A zero-move roll action represents the post-skip state. Replay starts from config/root seed and re-executes real dice/rules/AI. Each action must reproduce its value/choice and FNV-1a checksum over canonical authoritative state.
+A zero-move roll stores the roll/skip events and checksum of the post-skip authoritative state. A move stores the emitted movement/capture/finish events and checksum after the move/turn transition.
+
+`checksumState` uses canonical authoritative-state serialization plus a small deterministic 32-bit checksum such as FNV-1a. It is **not** a security or tamper-proofing feature.
+
+`replayMatch` starts from config/root seed/seats and re-executes the real dice/rules/AI path. It verifies the recorded roll, selected plane, emitted events, and checksum at each step. A mismatch is a diagnostic result, not a save rejection.
+
+**Restore does not replay the match.** `restoreActiveMatch` validates the authoritative snapshot/invariants and restores the persisted RNG/seats directly. This keeps reload fast and prevents replay implementation details from becoming a second recovery engine. Replay is invoked only by unit tests or explicit DEV diagnostics.
 
 ## UI architecture
 
@@ -372,7 +481,7 @@ apps/web/src/components/aeroplane/
 apps/web/src/hooks/useAeroplaneMatch.ts
 ```
 
-`useAeroplaneMatch` owns setup snapshot, restore/new match, timers, AI scheduling, presentation queue, persistence, and one-shot history submission. Rules/dice/AI remain pure.
+`useAeroplaneMatch` owns setup snapshot, resolved seats, restore/new match, timers, AI scheduling, presentation queue, persistence, and one-shot history submission. Rules/dice/AI remain pure.
 
 `layout.ts` contains render-only SVG anchors for track, launch, hangars, homes, flights, and stack offsets. Domain modules never import it.
 
@@ -381,7 +490,7 @@ Interaction:
 - zero moves skip automatically;
 - one legal move auto-applies after a brief highlight;
 - multiple legal human planes pulse;
-- hover/focus previews full resolved route;
+- hover/focus previews the full resolved route;
 - coarse pointer first tap previews, second tap applies;
 - keyboard plane controls use visible focus and accessible move labels.
 
@@ -407,6 +516,44 @@ Classic: 6 launch, exact, target 4, Fair, stacking/blockades off.
 Quick & Chill: 5/6 launch, bounce, target 2, Relaxed, stacking/blockades off.
 Manual edits mark Custom. Normalization changes only stacking/blockade dependency.
 
+## DEV/E2E deterministic fixture contract
+
+Aeroplane needs deterministic hard-path fixtures for Playwright without adding production-only test branches throughout the controller.
+
+`useAeroplaneMatch` reads these hooks **only when `import.meta.env.DEV` is true**. Production builds ignore them.
+
+Simple seed override:
+
+```text
+/aeroplane?e2eSeed=39101
+```
+
+When present in DEV, `e2eSeed` is parsed as a uint32 root seed. Invalid values are ignored. If a full fixture supplies a seed, the fixture wins over the query parameter.
+
+Hard-path injection uses the same window-injection pattern already used by Procyon tests:
+
+```ts
+interface AeroplaneE2EFixture {
+  seed?: number;
+  config?: AeroplaneConfig;
+  state?: AeroplaneState;
+  seats?: AiSeat[];
+  diceRng?: RngState;
+  aiRng?: RngState;
+  skipAnimations?: boolean;
+}
+
+declare global {
+  interface Window {
+    __PROCYON_AEROPLANE_FIXTURE__?: AeroplaneE2EFixture;
+  }
+}
+```
+
+Playwright installs the fixture with `page.addInitScript()` before navigation. The fixture is validated with the same lightweight invariant helpers used by persistence before it is accepted. When either `e2eSeed` or a fixture is active, animation skipping defaults to true unless the fixture explicitly sets `skipAnimations: false`.
+
+Use a fixture for jump/flight/capture/stack/blockade/near-victory scenarios instead of relying on long random play. The hook is test scaffolding only and must not change normal save format or gameplay semantics.
+
 ## Chatter
 
 Ship local personality lines for capture/flight/finish/win/loss. Line selection uses a presentation-only stable index/hash, not gameplay RNG. Generate/enqueue only after authoritative action completion. Chatter failure is ignored.
@@ -423,6 +570,7 @@ Aeroplane history failure is non-blocking. As with current behavior, ambiguous n
 
 - Illegal action: resolver returns `null`; UI cannot submit it.
 - Storage unavailable/corrupt: current in-memory play continues; corrupt restore offers clean restart.
+- Replay mismatch: DEV diagnostic only; it does not invalidate an otherwise valid restored snapshot.
 - Animation error: clear presentation and render authoritative final state.
 - AI invariant failure: development diagnostic + deterministic first-legal fallback; tests should make this unreachable.
 - History failure: optional non-blocking “result not saved” notice.
@@ -431,33 +579,36 @@ Aeroplane history failure is non-blocking. As with current behavior, ambiguous n
 
 ## Test strategy
 
-- **Engine:** four-colour routes/wraparound, launch, exact/bounce, direct flight, jump→flight, captures, private occupancy, stacks, blockade path/landing/splitting, extra-six, zero/one/many moves, Quick/Classic victory.
-- **RNG/AI:** exact seeds, Fair consumption, Relaxed activation/two-sample/reset, restore continuation, personality scenarios, legal-only selection under advanced rules.
-- **Persistence/replay:** full round-trip, pending-choice restore, invalid versions/invariants, exact next RNG, checksum reproduction and tamper detection.
-- **Components:** presets/normalization, resume/new match, auto move, human choice, keyboard/touch, route preview, animation skip idempotence, stale timer cancellation, chatter isolation.
-- **API/history:** `gameId` rename, details validation, opponent pairing, Aeroplane unrated insertion/no rating rows, existing LLM rating and Stockfish behavior unchanged.
-- **E2E:** deterministic seeds/fixtures for four human colours, all AI turns, jump/flight/capture, stacking/blockades, reload awaiting choice, Quick victory, exactly one history submission, no provider configured.
+- **Engine:** four-colour routes/wraparound, AI seat table, red-first initialization, launch, exact/bounce, direct flight, jump→flight, final-endpoint-only captures, private occupancy, stacks, blockade path/landing/splitting, extra-six, zero/one/many moves, Quick/Classic victory, no draw path.
+- **RNG/AI:** immutable RNG transition, exact seeds, Fair one-sample consumption, Relaxed activation/two-sample/reset, restore continuation, personality scenarios, legal-only selection under advanced rules.
+- **Persistence/replay:** full snapshot round-trip, persisted seats, pending-choice restore, invalid versions/invariants, exact next RNG, replay checksum/event reproduction, replay mismatch diagnostic, and proof that restore is not gated on replay.
+- **Components:** presets/normalization, resume/new match, red-first auto-AI when needed, auto move, human choice, keyboard/touch, route preview, animation skip idempotence, stale timer cancellation, chatter isolation, DEV fixture validation.
+- **API/history:** `gameId` rename, minimal HPA-required details validation, opponent pairing, Aeroplane win/loss-only validation, Aeroplane unrated insertion/no rating rows, existing LLM rating and Stockfish behavior unchanged.
+- **E2E:** `e2eSeed` plus injected fixtures for four human colours, all AI personalities, jump/flight/capture, stacking/blockades, reload awaiting choice, Quick victory, exactly one history submission, no provider configured.
 
 ## Implementation order
 
 1. `GameId`, selector/card navigation, page accent.
 2. Logical types/topology/rules.
-3. Turn state + seeded dice + Relaxed counters.
+3. Match initialization/seats + turn state + seeded dice + Relaxed counters.
 4. Personality AI.
-5. Persistence + replay.
-6. Match controller + setup/board/status/feed/animations.
-7. General play-history identity/details + `aeroplane-trio-v1` unrated recording.
-8. Local chatter + final component/API/E2E coverage.
+5. Versioned snapshot recovery + isolated replay diagnostics.
+6. Match controller + setup/board/status/feed/animations + DEV/E2E hook.
+7. Generic play-history `gameId` rename + explicit rated conversion, preserving existing behavior.
+8. Aeroplane API history contract: `aeroplane-trio-v1`, minimal details, pairing, win/loss-only.
+9. Web Aeroplane history submission + history labels.
+10. Local chatter + deterministic E2E coverage.
 
 ## Acceptance mapping
 
 - Local visitor play → dedicated rules/dice/AI, no provider call.
 - Exact presets/advanced rules → normalized config + one move resolver.
 - No unnecessary human choice → legal-move-count controller branch.
-- Distinct deterministic AI → fixed score tables + separate AI stream.
-- Exact reload → authoritative save + both RNG states + replay checksum.
+- Distinct deterministic AI → fixed seat assignment + score tables + separate AI stream.
+- Exact reload → validated authoritative save + seats + both RNG states; no replay dependency.
+- Replay diagnostics → required action/events/checksums verified explicitly in DEV/tests.
 - Responsive accessible play → SVG board + pointer/touch/keyboard controls.
-- Unrated signed-in history → existing engine opponent kind + explicit rated game conversion.
+- Unrated signed-in history → existing engine opponent kind + explicit rated game conversion + win/loss-only Aeroplane result.
 - Failure isolation → rule state commits before animation/chatter/history side effects.
 
 ## Rule references
