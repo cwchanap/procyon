@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a complete deterministic Aeroplane Chess mode with one human, three local personality AIs, reload recovery, unrated history, and responsive accessible gameplay.
+**Goal:** Add a complete deterministic Aeroplane Chess mode with one human, three local personality AIs, exact reload recovery, replay diagnostics, unrated history, and responsive accessible gameplay.
 
-**Architecture:** Keep Chess/Xiangqi/Shogi/Jungle inside the existing rectangular `GameVariant`/AI abstractions. Aeroplane uses a dedicated logical path engine under `apps/web/src/lib/aeroplane/`; a new `GameId` handles app/history identity, and the existing `opponentEngineId` path records `aeroplane-trio-v1` as unrated.
+**Architecture:** Keep Chess/Xiangqi/Shogi/Jungle inside the existing rectangular `GameVariant`/AI abstractions. Aeroplane uses a dedicated logical path engine under `apps/web/src/lib/aeroplane/`; a new `GameId` handles app/history identity, and the existing `opponentEngineId` path records `aeroplane-trio-v1` as unrated. Recovery restores validated authoritative snapshots directly; action-log replay is an isolated developer diagnostic required by HPA-391, not a recovery gate.
 
 **Tech Stack:** TypeScript 5.9, Bun 1.3.6, Astro 4, React 18, Tailwind CSS, Bun test, Hono, Zod 4, Drizzle ORM/SQLite/D1, Playwright.
 
@@ -14,14 +14,31 @@
 - Do not add Aeroplane to `GAME_CONFIGS`, strategy state/piece maps, LLM move adapters, rule guardians, or `@procyon/game-core`.
 - Do not create a generic race-game/Ludo framework.
 - Gameplay/dice/AI/recovery must work without sign-in, provider configuration, or network access.
-- Use separate serializable RNG streams for dice and AI. UI timing/chatter consumes neither.
+- Use separate serializable immutable RNG streams for dice and AI. UI timing/chatter consumes neither.
 - Rules use logical positions only; render coordinates never determine legality.
 - Apply each move to authoritative state exactly once before animation/chatter/history presentation.
 - Classic: launch 6, extra turn 6, exact finish, target 4, Fair Dice, stacking/blockades off.
 - Quick & Chill: launch 5/6, extra turn 6, bounce finish, target 2, Relaxed Dice, stacking/blockades off.
 - Enabling blockades forces stacking on; disabling stacking forces blockades off.
+- Red always starts. Turn order is red → yellow → blue → green.
+- AI seats are assigned clockwise after the human as Cautious → Aggressive → Unpredictable and persisted once the match starts.
+- Captures occur only at the final shared endpoint after the full automatic jump/flight chain.
+- Aeroplane terminal history status is `win | loss`; `draw` is invalid.
 - Provider-generated chatter is deferred; local personality lines satisfy this slice.
 - Existing rated LLM strategy games and unrated Stockfish games must remain behaviorally unchanged.
+- Replay/checksum is diagnostic only. Restore never replays a match to decide whether a valid snapshot can load.
+
+## Risks and gates
+
+| Risk | Why it matters | Gate |
+| --- | --- | --- |
+| Rating-path regression during `chessId → gameId` rename | Existing LLM games are rated and Stockfish is deliberately unrated | Task 7 must keep all existing API/hook/rating tests green before any Aeroplane API support lands |
+| Duplicate non-idempotent history POST | A network ambiguity can create duplicate rows if retried blindly | Task 9 uses one-shot per-match save state; unit test and E2E assert exactly one POST |
+| Blockade path semantics | Crossing/landing rules affect engine, AI, preview, and E2E | Task 2 table tests cover base path, +4 jump path, flight entrance/exit, stack split, and third-plane rejection before UI work |
+| Seating/first-player drift | AI identity/history/E2E must agree for all human colours | Task 3 table locks all four seat assignments and red-first initialization |
+| Replay becoming a second recovery engine | Doubles state reconstruction logic and failure modes | Task 5 test proves valid snapshot restore succeeds without invoking replay; replay has its own explicit API/tests |
+| DEV fixture leaking into production | Test-only state injection must never be a product feature | Task 6 reads query/global fixture only behind `import.meta.env.DEV`; normal production path ignores both |
+| Hard E2E paths depending on random play | Jump/blockade/near-win scenarios become slow/flaky | Task 6 defines one fixture contract; Task 10 uses injected fixtures rather than long random games |
 
 ---
 
@@ -46,9 +63,7 @@ apps/web/src/lib/aeroplane/chatter.ts
 apps/web/src/lib/aeroplane/layout.ts
 ```
 
-Each domain file gets a colocated `*.test.ts` where named in its task.
-
-### New UI files
+### New UI/test files
 
 ```text
 apps/web/src/pages/aeroplane.astro
@@ -94,14 +109,14 @@ apps/api/src/routes/play-history.test.ts
 apps/api/src/routes/play-history.pvp-security.test.ts
 ```
 
-Generate the next migration with:
+History changes are intentionally split into two migrations:
 
-```bash
-cd apps/api
-bunx drizzle-kit generate --config=drizzle.config.dev.ts --name hpa391_aeroplane_history
+```text
+apps/api/drizzle/0011_hpa391_game_id.sql
+apps/api/drizzle/0012_hpa391_aeroplane_history.sql
 ```
 
-Because `0010_noisy_madame_web.sql` is current on `main`, the expected generated files are `apps/api/drizzle/0011_hpa391_aeroplane_history.sql`, `apps/api/drizzle/meta/0011_snapshot.json`, plus `_journal.json` changes.
+Drizzle also updates the corresponding `meta/*_snapshot.json` and `meta/_journal.json` files. The exact generated filenames may include Drizzle's suffix; inspect generated SQL rather than hand-writing a parallel migration.
 
 ---
 
@@ -122,13 +137,11 @@ Because `0010_noisy_madame_web.sql` is current on `main`, the expected generated
 - Create shell: `apps/web/src/components/AeroplaneGame.tsx`
 
 **Interfaces:**
-- Produces `GameId = GameVariant | 'aeroplane'`, `Accent = GameId | 'brass'`.
+- Produces `GameId = GameVariant | 'aeroplane'` and `Accent = GameId | 'brass'`.
 - Preserves four-value `GameVariant` as the only key accepted by `GAME_CONFIGS` and strategy AI maps.
 - Selector models own explicit `href`; display text never controls routing.
 
 - [ ] **Step 1: Write the selector test first**
-
-Use the repository DOM helper rather than custom globals:
 
 ```ts
 import { describe, expect, test } from 'bun:test';
@@ -141,16 +154,27 @@ setupReactDom();
 describe('ChessGameSelector', () => {
   test('links all five games explicitly', () => {
     const { getByRole } = render(<ChessGameSelector />);
-    expect(getByRole('link', { name: /play standard chess/i }).getAttribute('href')).toBe('/chess');
-    expect(getByRole('link', { name: /play chinese chess/i }).getAttribute('href')).toBe('/xiangqi');
-    expect(getByRole('link', { name: /play japanese chess/i }).getAttribute('href')).toBe('/shogi');
-    expect(getByRole('link', { name: /play jungle chess/i }).getAttribute('href')).toBe('/jungle');
-    expect(getByRole('link', { name: /play aeroplane chess/i }).getAttribute('href')).toBe('/aeroplane');
+
+    expect(
+      getByRole('link', { name: /play standard chess/i }).getAttribute('href')
+    ).toBe('/chess');
+    expect(
+      getByRole('link', { name: /play chinese chess/i }).getAttribute('href')
+    ).toBe('/xiangqi');
+    expect(
+      getByRole('link', { name: /play japanese chess/i }).getAttribute('href')
+    ).toBe('/shogi');
+    expect(
+      getByRole('link', { name: /play jungle chess/i }).getAttribute('href')
+    ).toBe('/jungle');
+    expect(
+      getByRole('link', { name: /play aeroplane chess/i }).getAttribute('href')
+    ).toBe('/aeroplane');
   });
 });
 ```
 
-- [ ] **Step 2: Verify the test fails**
+- [ ] **Step 2: Run the failing test**
 
 ```bash
 cd apps/web
@@ -161,8 +185,6 @@ Expected: FAIL because Aeroplane and link-based routing do not exist.
 
 - [ ] **Step 3: Add `GameId` without widening `GameVariant`**
 
-Create:
-
 ```ts
 // apps/web/src/lib/game-id.ts
 import type { GameVariant } from './ai/game-variant-types';
@@ -171,7 +193,7 @@ export type GameId = GameVariant | 'aeroplane';
 export type Accent = GameId | 'brass';
 ```
 
-Remove only `Accent` from `game-variant-types.ts`. Update `Panel`/`PageHeader` to import the new `Accent`. Keep all strategy unions/maps unchanged.
+Remove only `Accent` from `game-variant-types.ts`. Update `Panel` and `PageHeader` to import `Accent` from `game-id.ts`. Keep all strategy unions/maps unchanged.
 
 - [ ] **Step 4: Generalize the card and selector**
 
@@ -179,7 +201,7 @@ Remove only `Accent` from `game-variant-types.ts`. Update `Panel`/`PageHeader` t
 git mv apps/web/src/components/ChessGameCard.tsx apps/web/src/components/GameCard.tsx
 ```
 
-Use:
+Use this card contract:
 
 ```ts
 interface GameCardProps {
@@ -191,17 +213,17 @@ interface GameCardProps {
 }
 ```
 
-Render an `<a>` using the already-exported `buttonVariants` classes from `ui/Button.tsx`; do **not** nest a `<button>` inside an anchor. `ChessGameSelector` becomes a typed five-entry data array. Existing four previews remain `ChessBoardPreview`; Aeroplane uses `AeroplaneBoardPreview`.
+Render an `<a>` styled with the already-exported `buttonVariants` from `ui/Button.tsx`; do not nest a `<button>` inside an anchor. `ChessGameSelector` becomes a typed five-entry data array. Existing four entries render `ChessBoardPreview`; Aeroplane renders `AeroplaneBoardPreview`.
 
 - [ ] **Step 5: Add page-level accent/route plumbing**
 
-Broaden only page/UI accent consumers to `GameId`; add Tailwind token:
+Add Tailwind:
 
 ```js
-aeroplane: { DEFAULT: '#4F8FD8' }
+aeroplane: { DEFAULT: '#4F8FD8' },
 ```
 
-Create page:
+Create:
 
 ```astro
 ---
@@ -217,7 +239,7 @@ import AeroplaneGame from '../components/AeroplaneGame.tsx';
 </Layout>
 ```
 
-The temporary `AeroplaneGame` shell only renders the title; Task 6 replaces it.
+The temporary `AeroplaneGame` shell renders the page title only; Task 6 replaces it.
 
 - [ ] **Step 6: Verify**
 
@@ -227,7 +249,7 @@ bun test src/components/ChessGameSelector.test.tsx
 bun run typecheck
 ```
 
-Expected: PASS, while `GAME_CONFIGS.aeroplane` remains a TypeScript error.
+Expected: PASS. A deliberate `GAME_CONFIGS.aeroplane` access must still fail TypeScript compilation.
 
 - [ ] **Step 7: Commit**
 
@@ -248,13 +270,12 @@ git commit -m "feat(aeroplane): add game identity and route"
 - Create: `apps/web/src/lib/aeroplane/rules.test.ts`
 
 **Interfaces:**
-- Produces `AeroplaneConfig`, `AeroplaneState`, `PlaneState`, `AeroplanePosition`, `AeroplaneEvent`, `ResolvedMove`.
+- Produces `AeroplaneConfig`, `PlaneState`, `AeroplanePosition`, `AeroplaneEvent`, `ResolvedMove`.
 - Produces `toGlobalTrackIndex`, `toPosition`, `resolveLegalMove`, `getLegalMoves`, `applyResolvedMove`.
 - Rule modules import no React or render-coordinate module.
+- Captures are final-endpoint-only.
 
-- [ ] **Step 1: Define the base types and failing topology tests**
-
-Core types:
+- [ ] **Step 1: Define base types and failing topology tests**
 
 ```ts
 export type AeroplaneColor = 'red' | 'yellow' | 'blue' | 'green';
@@ -271,7 +292,7 @@ export interface PlaneState {
 }
 ```
 
-Topology assertions:
+Test:
 
 ```ts
 expect(toGlobalTrackIndex('red', 1)).toBe(0);
@@ -282,71 +303,150 @@ expect(toGlobalTrackIndex('green', 14)).toBe(0);
 expect(isFlightEntrance(18)).toBe(true);
 expect(isNormalJumpSquare(14)).toBe(true);
 expect(isNormalJumpSquare(18)).toBe(false);
-expect(toPosition('red', 51)).toEqual({ kind: 'home', color: 'red', progress: 51, homeIndex: 0 });
+expect(toPosition('red', 51)).toEqual({
+  kind: 'home',
+  color: 'red',
+  progress: 51,
+  homeIndex: 0,
+});
 expect(toPosition('red', 56)).toEqual({ kind: 'finished', color: 'red' });
 ```
 
-- [ ] **Step 2: Run and see the expected failure**
+- [ ] **Step 2: Verify topology test fails**
 
 ```bash
 cd apps/web
 bun test src/lib/aeroplane/topology.test.ts
 ```
 
-Expected: module/functions missing.
+Expected: FAIL because the module/functions do not exist.
 
 - [ ] **Step 3: Implement colour-symmetric topology**
 
 ```ts
 export const TURN_ORDER = ['red', 'yellow', 'blue', 'green'] as const;
-export const START_OFFSET = { red: 0, yellow: 13, blue: 26, green: 39 } as const;
+export const START_OFFSET = {
+  red: 0,
+  yellow: 13,
+  blue: 26,
+  green: 39,
+} as const;
 export const SHARED_PROGRESS_MAX = 50;
 export const FINISH_PROGRESS = 56;
 export const FLIGHT_ENTRANCE_PROGRESS = 18;
 export const FLIGHT_EXIT_PROGRESS = 30;
 ```
 
-Normal jump square rule: shared progress where `progress % 4 === 2`, `progress + 4 <= 50`, excluding `18`.
+Normal jump rule: shared progress where `progress % 4 === 2`, `progress + 4 <= 50`, excluding progress `18` because that node is the dedicated flight entrance.
 
-- [ ] **Step 4: Write move-rule scenarios before implementation**
-
-At minimum:
+- [ ] **Step 4: Write movement-chain tests before implementation**
 
 ```ts
 test('launch requires allowed roll and empty launch pad', () => {
   const state = stateWithPlane('red-0', null);
   expect(resolveLegalMove(state, 'red-0', 5)).toBeNull();
-  expect(resolveLegalMove(state, 'red-0', 6)?.finalEndpoint).toEqual({ kind: 'launch', color: 'red' });
+  expect(resolveLegalMove(state, 'red-0', 6)?.finalEndpoint).toEqual({
+    kind: 'launch',
+    color: 'red',
+  });
+
+  const occupied = stateWithPlanes([
+    ['red-0', null],
+    ['red-1', 0],
+  ]);
+  expect(resolveLegalMove(occupied, 'red-0', 6)).toBeNull();
 });
 
 test('normal jump can feed the long flight', () => {
   const move = resolveLegalMove(stateWithPlane('red-0', 12), 'red-0', 2);
   expect(move?.baseEndpoint).toMatchObject({ kind: 'track', progress: 14 });
   expect(move?.finalEndpoint).toMatchObject({ kind: 'track', progress: 30 });
-  expect(move?.events.map(event => event.type)).toEqual(['move', 'jump', 'flight']);
+  expect(move?.events.map(event => event.type)).toEqual([
+    'move',
+    'jump',
+    'flight',
+  ]);
 });
 
 test('direct flight entrance also flies', () => {
-  expect(resolveLegalMove(stateWithPlane('red-0', 16), 'red-0', 2)?.finalEndpoint)
-    .toMatchObject({ kind: 'track', progress: 30 });
+  expect(
+    resolveLegalMove(stateWithPlane('red-0', 16), 'red-0', 2)?.finalEndpoint
+  ).toMatchObject({ kind: 'track', progress: 30 });
 });
 
 test('exact rejects overshoot and bounce reflects it', () => {
-  expect(resolveLegalMove(stateWithPlane('red-0', 54, { finishRule: 'exact' }), 'red-0', 3)).toBeNull();
-  expect(resolveLegalMove(stateWithPlane('red-0', 54, { finishRule: 'bounce' }), 'red-0', 3)?.finalEndpoint)
-    .toMatchObject({ kind: 'home', progress: 55 });
+  expect(
+    resolveLegalMove(
+      stateWithPlane('red-0', 54, { finishRule: 'exact' }),
+      'red-0',
+      3
+    )
+  ).toBeNull();
+  expect(
+    resolveLegalMove(
+      stateWithPlane('red-0', 54, { finishRule: 'bounce' }),
+      'red-0',
+      3
+    )?.finalEndpoint
+  ).toMatchObject({ kind: 'home', progress: 55 });
 });
 ```
 
-Add tables for all colours/wraparound, friendly collision, stack create/split, multi-plane capture, launch/home non-capture, blockade crossing/landing, +4 jump crossing, long-flight exit blockade, and private-home collision.
+- [ ] **Step 5: Lock final-endpoint-only capture semantics**
 
-- [ ] **Step 5: Implement one resolver**
+```ts
+test('jump-flight chain captures only at final endpoint', () => {
+  const state = stateWithPlanes([
+    ['red-0', 12],
+    ['yellow-0', globalTrackProgressFor('yellow', globalIndexOf('red', 14))],
+    ['blue-0', globalTrackProgressFor('blue', globalIndexOf('red', 18))],
+    ['green-0', globalTrackProgressFor('green', globalIndexOf('red', 30))],
+  ]);
 
-`resolveLegalMove` performs in order: ownership/finished guard → launch case → exact/bounce base progress → base blockade traversal → +4 normal jump → flight at progress 18 → final occupancy → captured ids/events. It never mutates input.
+  const move = resolveLegalMove(state, 'red-0', 2)!;
+  expect(move.finalEndpoint).toMatchObject({ kind: 'track', progress: 30 });
+  expect(move.capturedPlaneIds).toEqual(['green-0']);
+});
 
-`getLegalMoves` calls it for every current-player plane. `applyResolvedMove` consumes the analyzed move and immutably updates affected planes/stats; no UI/controller movement math is allowed.
+test('plain landing captures every enemy plane on the final shared node', () => {
+  const state = sharedCaptureFixture({ enemyCount: 2, stacking: true });
+  const move = resolveLegalMove(state, 'red-0', 3)!;
+  expect(move.capturedPlaneIds.sort()).toEqual(['blue-0', 'blue-1']);
+});
+```
 
-- [ ] **Step 6: Verify and commit**
+Helper fixtures should construct equivalent global nodes through topology helpers; do not hand-code screen coordinates.
+
+- [ ] **Step 6: Lock stacking/blockade path cases**
+
+Use table-driven tests:
+
+```ts
+for (const scenario of [
+  { name: 'stacking off rejects friendly final occupancy', kind: 'friendly-end' },
+  { name: 'stacking on allows second plane', kind: 'friendly-stack' },
+  { name: 'blockade rejects crossing on base path', kind: 'base-cross' },
+  { name: 'blockade rejects landing', kind: 'blockade-end' },
+  { name: 'jump segment cannot cross blockade', kind: 'jump-cross' },
+  { name: 'flight checks entrance and exit but not skipped ring nodes', kind: 'flight' },
+  { name: 'plane may leave its own blockade', kind: 'leave-own' },
+  { name: 'existing two-plane blockade rejects a third friendly plane', kind: 'third-plane' },
+] as const) {
+  test(scenario.name, () => {
+    expect(runBlockadeScenario(scenario.kind)).toBe(true);
+  });
+}
+```
+
+Add private-home collision and launch/home non-capture cases in the same test file.
+
+- [ ] **Step 7: Implement one resolver**
+
+`resolveLegalMove` performs, in order: ownership/finished guard → launch case → exact/bounce base progress → base blockade traversal → +4 normal jump → flight at progress 18 → final occupancy → captured ids/events. It never mutates input.
+
+`getLegalMoves` calls the resolver for every current-player plane. `applyResolvedMove` consumes an analyzer-produced move and immutably updates affected planes/stats. The UI/controller must not reproduce movement math.
+
+- [ ] **Step 8: Verify and commit**
 
 ```bash
 cd apps/web
@@ -358,103 +458,171 @@ git commit -m "feat(aeroplane): add path rules engine"
 
 ---
 
-## Task 3: Add deterministic dice and turn-state transitions
+## Task 3: Add deterministic seats, match initialization, turns, and dice
 
 **Files:**
 - Create: `apps/web/src/lib/aeroplane/rng.ts`
 - Create: `apps/web/src/lib/aeroplane/dice.ts`
 - Create: `apps/web/src/lib/aeroplane/game.ts`
+- Create: `apps/web/src/lib/aeroplane/rng.test.ts`
 - Create: `apps/web/src/lib/aeroplane/dice.test.ts`
 - Create: `apps/web/src/lib/aeroplane/game.test.ts`
 - Modify: `apps/web/src/lib/aeroplane/types.ts`
 
 **Interfaces:**
-- Produces `RngState`, `nextUint32`, `nextDie`, `deriveRngStreams`.
-- Produces `CLASSIC_CONFIG`, `QUICK_CONFIG`, `normalizeConfig`, `createAeroplaneMatch`, `rollTurn`, `playResolvedMove`, `skipTurn`.
-- `rollTurn` consumes dice only; it never chooses an AI move.
+- Produces immutable `RngState`, `nextUint32`, `deriveRngStreams`.
+- Produces `seatAIs`, `createAeroplaneMatch`, `normalizeConfig`, `rollTurn`, `playResolvedMove`.
+- New matches always start with red.
+- Resolved seats are part of the active match model and later persistence.
 
-- [ ] **Step 1: Write RNG/dice tests**
+- [ ] **Step 1: Write immutable RNG tests**
 
 ```ts
-test('same seed produces identical Fair Dice sequence', () => {
-  const a = takeFairRolls({ value: 0x12345678 }, 8);
-  const b = takeFairRolls({ value: 0x12345678 }, 8);
-  expect(a).toEqual(b);
-  expect(a.every(value => value >= 1 && value <= 6)).toBe(true);
+test('nextUint32 is deterministic and does not mutate input', () => {
+  const input = { value: 123456789 };
+  const before = structuredClone(input);
+  const first = nextUint32(input);
+  const second = nextUint32({ value: 123456789 });
+
+  expect(first).toEqual(second);
+  expect(input).toEqual(before);
+  expect(first.rng).not.toBe(input);
 });
 
-test('dice and AI streams start independently', () => {
-  const streams = deriveRngStreams(0x12345678);
-  expect(streams.dice.value).not.toBe(streams.ai.value);
+test('dice and AI streams are distinct for the same root seed', () => {
+  const streams = deriveRngStreams(39101);
+  expect(streams.dice).not.toEqual(streams.ai);
 });
 ```
 
-For Relaxed mode, assert inactive protection consumes one sample; active protection consumes exactly two samples even when candidate one is selected; candidate two is used only when candidate one has no legal move and candidate two does.
-
-- [ ] **Step 2: Implement serializable xorshift32**
+Implement a zero-state guard because xorshift32 cannot advance from zero:
 
 ```ts
-export interface RngState { value: number }
-
-export function nextUint32(state: RngState): [number, RngState] {
-  let x = state.value >>> 0;
-  if (x === 0) x = 0x6d2b79f5;
-  x ^= x << 13;
-  x ^= x >>> 17;
-  x ^= x << 5;
-  const value = x >>> 0;
-  return [value, { value }];
-}
-
-export function uint32ToDie(value: number): 1 | 2 | 3 | 4 | 5 | 6 {
-  return ((value % 6) + 1) as 1 | 2 | 3 | 4 | 5 | 6;
+function normalizeRngValue(value: number): number {
+  const normalized = value >>> 0;
+  return normalized === 0 ? 0x6d2b79f5 : normalized;
 }
 ```
 
-Derive dice/AI streams by mixing the root seed with two fixed non-zero salts. `Math.random()` is allowed only to choose a new root seed fallback when crypto is unavailable, never during an active match.
-
-- [ ] **Step 3: Write turn tests**
+- [ ] **Step 2: Lock seat assignment and first player**
 
 ```ts
-test('six keeps player even when no legal move exists', () => {
-  const skipped = skipTurn(stateAwaitingChoice('red', 6));
-  expect(skipped.currentPlayer).toBe('red');
-  expect(skipped.phase).toBe('awaiting-roll');
+const seatCases = [
+  ['red', [['yellow', 'cautious'], ['blue', 'aggressive'], ['green', 'unpredictable']]],
+  ['yellow', [['blue', 'cautious'], ['green', 'aggressive'], ['red', 'unpredictable']]],
+  ['blue', [['green', 'cautious'], ['red', 'aggressive'], ['yellow', 'unpredictable']]],
+  ['green', [['red', 'cautious'], ['yellow', 'aggressive'], ['blue', 'unpredictable']]],
+] as const;
+
+for (const [humanColor, expected] of seatCases) {
+  test(`seats AIs clockwise when human is ${humanColor}`, () => {
+    expect(seatAIs(humanColor).map(seat => [seat.color, seat.personality]))
+      .toEqual(expected);
+  });
+}
+
+test('red always starts regardless of human colour', () => {
+  for (const humanColor of TURN_ORDER) {
+    expect(createAeroplaneMatch({ ...CLASSIC_CONFIG, humanColor }, 39101).state.currentPlayer)
+      .toBe('red');
+  }
+});
+```
+
+- [ ] **Step 3: Write Fair/Relaxed dice consumption tests**
+
+```ts
+test('fair dice consumes exactly one sample', () => {
+  const rng = { value: 123 };
+  const result = rollFair(rng);
+  expect(result.rng).toEqual(nextUint32(rng).rng);
+  expect(result.roll).toBeGreaterThanOrEqual(1);
+  expect(result.roll).toBeLessThanOrEqual(6);
 });
 
-test('non-six advances clockwise including green to red', () => {
-  expect(skipTurn(stateAwaitingChoice('green', 3)).currentPlayer).toBe('red');
+test('relaxed protection consumes exactly two samples when active', () => {
+  const rng = { value: 456 };
+  const result = rollRelaxed(relaxedFixtureState(), rng);
+  const first = nextUint32(rng);
+  const second = nextUint32(first.rng);
+  expect(result.rng).toEqual(second.rng);
 });
 
-test('Quick ends immediately on second finished plane', () => {
+test('relaxed prefers the first candidate with a legal move', () => {
+  const result = rollRelaxed(relaxedCandidateFixture(), { value: 789 });
+  expect(result.roll).toBe(result.candidates.find(candidate => candidate.hasLegalMove)!.roll);
+});
+```
+
+Fair mapping uses `(sample % 6) + 1`. The tiny modulo bias is accepted; do not add variable-consumption rejection sampling.
+
+- [ ] **Step 4: Write turn/victory tests**
+
+```ts
+test('six grants another turn even when there is no legal move', () => {
+  const result = rollTurn(noLegalMoveState('red'), fixedDie(6));
+  expect(result.state.currentPlayer).toBe('red');
+  expect(result.state.phase).toBe('awaiting-roll');
+});
+
+test('non-six advances clockwise', () => {
+  const result = completeSingleMoveTurn(singleMoveState('red'), 3);
+  expect(result.state.currentPlayer).toBe('yellow');
+});
+
+test('complete round increments only on green to red transition', () => {
+  const state = stateAwaitingCompletion('green', { roundNumber: 2 });
+  const result = completeSingleMoveTurn(state, 4);
+  expect(result.state.currentPlayer).toBe('red');
+  expect(result.state.roundNumber).toBe(3);
+});
+
+test('quick match finishes at two planes and has no draw path', () => {
   const result = finishSecondPlaneForRed(QUICK_CONFIG);
   expect(result.state.phase).toBe('finished');
   expect(result.state.winner).toBe('red');
 });
 ```
 
-Also cover preset values/normalization, zero/one/many legal moves, no-move streak reset/increment, and last-place counters only on round completion.
+Also write explicit config normalization assertions:
 
-- [ ] **Step 4: Implement turn/preset logic**
+```ts
+expect(normalizeConfig({ ...CLASSIC_CONFIG, blockades: true })).toMatchObject({
+  stacking: true,
+  blockades: true,
+});
+expect(normalizeConfig({ ...CLASSIC_CONFIG, stacking: false, blockades: true })).toMatchObject({
+  stacking: true,
+  blockades: true,
+});
+expect(normalizeConfig({ ...CLASSIC_CONFIG, stacking: false, blockades: false })).toMatchObject({
+  stacking: false,
+  blockades: false,
+});
+```
 
-`normalizeConfig` enforces only stacking/blockade dependency. A UI helper marks `rulePreset = 'custom'` when any individual rule changes.
+When the UI turns stacking off after blockades were on, the UI update sets both `stacking=false` and `blockades=false` before normalization.
 
-`rollTurn` consumes the dice policy and derives legal moves. Zero legal moves complete the skip inside the roll action; one-or-more leave `phase = 'awaiting-choice'`. Update no-move streak from that legal count. Update last-place rounds only when a non-six turn advances green→red.
+- [ ] **Step 5: Implement turn/preset logic**
 
-Progress score for Relaxed protection:
+`createAeroplaneMatch` normalizes config, creates 16 hangar planes, calls `seatAIs`, derives both RNG streams, sets `currentPlayer='red'`, and initializes counters.
+
+`rollTurn` consumes the configured dice policy and derives legal moves. Zero legal moves complete the skip inside the roll action; one-or-more leave `phase='awaiting-choice'`. Update `noMoveStreak` from the legal count. Update `lastPlaceRounds` only when a non-six turn advances green→red.
+
+Progress score:
 
 ```ts
 finishedPlanes * 1000 + sum(activePlaneProgress)
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [ ] **Step 6: Verify and commit**
 
 ```bash
 cd apps/web
-bun test src/lib/aeroplane/dice.test.ts src/lib/aeroplane/game.test.ts src/lib/aeroplane/rules.test.ts
+bun test src/lib/aeroplane/rng.test.ts src/lib/aeroplane/dice.test.ts src/lib/aeroplane/game.test.ts src/lib/aeroplane/rules.test.ts
 
-git add src/lib/aeroplane/rng.ts src/lib/aeroplane/dice.ts src/lib/aeroplane/game.ts src/lib/aeroplane/dice.test.ts src/lib/aeroplane/game.test.ts src/lib/aeroplane/types.ts
-git commit -m "feat(aeroplane): add deterministic turns and dice"
+git add src/lib/aeroplane/rng.ts src/lib/aeroplane/dice.ts src/lib/aeroplane/game.ts src/lib/aeroplane/rng.test.ts src/lib/aeroplane/dice.test.ts src/lib/aeroplane/game.test.ts src/lib/aeroplane/types.ts
+git commit -m "feat(aeroplane): add deterministic seats turns and dice"
 ```
 
 ---
@@ -469,39 +637,71 @@ git commit -m "feat(aeroplane): add deterministic turns and dice"
 **Interfaces:**
 - Consumes public state + `ResolvedMove[]` + personality + AI RNG.
 - Produces `chooseAiMove(state, legalMoves, personality, rng): { move; rng }`.
+- Uses the persisted seat personality; it never derives personality from colour.
 
 - [ ] **Step 1: Write representative scenario tests**
 
 ```ts
 test('cautious prefers home entry over an exposed minor capture', () => {
-  const result = chooseAiMove(cautiousFixture.state, cautiousFixture.moves, 'cautious', { value: 7 });
+  const result = chooseAiMove(
+    cautiousFixture.state,
+    cautiousFixture.moves,
+    'cautious',
+    { value: 7 }
+  );
   expect(result.move.planeId).toBe('red-home-runner');
 });
 
 test('aggressive prefers a multi-plane capture over quiet progress', () => {
-  const result = chooseAiMove(aggressiveFixture.state, aggressiveFixture.moves, 'aggressive', { value: 7 });
+  const result = chooseAiMove(
+    aggressiveFixture.state,
+    aggressiveFixture.moves,
+    'aggressive',
+    { value: 7 }
+  );
   expect(result.move.planeId).toBe('red-capturer');
 });
 
 test('all personalities take a guaranteed finish', () => {
   for (const personality of ['cautious', 'aggressive', 'unpredictable'] as const) {
-    expect(chooseAiMove(finishFixture.state, finishFixture.moves, personality, { value: 7 }).move.planeId)
-      .toBe('red-finisher');
+    expect(
+      chooseAiMove(finishFixture.state, finishFixture.moves, personality, { value: 7 }).move.planeId
+    ).toBe('red-finisher');
   }
+});
+
+test('same state and seed repeats exactly', () => {
+  const first = chooseAiMove(unpredictableFixture.state, unpredictableFixture.moves, 'unpredictable', { value: 391 });
+  const second = chooseAiMove(unpredictableFixture.state, unpredictableFixture.moves, 'unpredictable', { value: 391 });
+  expect(first).toEqual(second);
 });
 ```
 
-Add same-state/seed repeatability and advanced stacking/blockade fixtures asserting the selected `planeId` is always in legal moves.
+- [ ] **Step 2: Test legal-only behavior with advanced rules**
 
-- [ ] **Step 2: Implement fixed feature weights from the design**
+```ts
+for (const fixture of advancedRuleFixtures) {
+  for (const personality of ['cautious', 'aggressive', 'unpredictable'] as const) {
+    test(`${personality} selects legal move in ${fixture.name}`, () => {
+      const legalIds = new Set(fixture.moves.map(move => move.planeId));
+      const result = chooseAiMove(fixture.state, fixture.moves, personality, { value: 99 });
+      expect(legalIds.has(result.move.planeId)).toBe(true);
+    });
+  }
+}
+```
 
-Features: finish, home entry, capture count, jump, flight, launch, formed blockade, progress gain, immediate capture exposure.
+Fixtures include stacking off, stacking on, blockade exit, home collision, direct flight, and jump→flight.
 
-Exposure is calculated from the resulting public position by trying opponent plane + die values 1–6 through `resolveLegalMove`; count threats that would capture the moved plane. It does not consume RNG.
+- [ ] **Step 3: Implement fixed feature weights**
 
-Cautious/Aggressive consume AI RNG only to break a top-score tie. Unpredictable consumes one sample per legal move for jitter `[-120, 120]`, plus one sample only if a final tie remains. Tests lock this consumption contract for replay.
+Use the design table verbatim. Features: finish, home entry, capture count, jump, flight, launch, formed blockade, progress gain, immediate capture exposure.
 
-- [ ] **Step 3: Verify and commit**
+Exposure is calculated from the resulting public position by trying opponent plane + die values 1–6 through `resolveLegalMove`; count threats whose `capturedPlaneIds` contains the moved plane. It consumes no RNG.
+
+Cautious/Aggressive consume AI RNG only to break a top-score tie. Unpredictable consumes one sample per legal move for jitter `[-120, 120]`, plus one sample only if a final tie remains.
+
+- [ ] **Step 4: Verify and commit**
 
 ```bash
 cd apps/web
@@ -513,71 +713,151 @@ git commit -m "feat(aeroplane): add personality opponents"
 
 ---
 
-## Task 5: Add checksums, replay, and versioned recovery
+## Task 5: Add versioned recovery and isolated replay diagnostics
 
 **Files:**
 - Create: `apps/web/src/lib/aeroplane/checksum.ts`
-- Create: `apps/web/src/lib/aeroplane/replay.ts`
 - Create: `apps/web/src/lib/aeroplane/persistence.ts`
-- Create: `apps/web/src/lib/aeroplane/replay.test.ts`
+- Create: `apps/web/src/lib/aeroplane/replay.ts`
 - Create: `apps/web/src/lib/aeroplane/persistence.test.ts`
+- Create: `apps/web/src/lib/aeroplane/replay.test.ts`
 - Modify: `apps/web/src/lib/aeroplane/types.ts`
 
 **Interfaces:**
-- `checksumState(state): string`: canonical serialize + FNV-1a.
-- `replayMatch(persisted): ReplayResult`: re-executes dice/rules/AI.
-- `saveActiveMatch`, `restoreActiveMatch`, `clearActiveMatch`.
+- `saveActiveMatch`, `restoreActiveMatch`, `clearActiveMatch` restore authoritative snapshots directly.
+- `checksumState(state): string` is deterministic but non-cryptographic.
+- `replayMatch(persisted): ReplayResult` is called only by DEV/tests, never by restore.
 - Key: `procyon:aeroplane:active-match:v1`.
 
-- [ ] **Step 1: Write replay/tamper tests**
+- [ ] **Step 1: Define the minimal persisted shape**
 
 ```ts
-test('replay reproduces final checksum', () => {
-  const result = replayMatch(recordedMatch);
-  expect(result).toEqual({ kind: 'ok', finalChecksum: recordedMatch.actions.at(-1)!.checksum });
+export interface PersistedAeroplaneMatchV1 {
+  version: 1;
+  savedAt: string;
+  rootSeed: number;
+  config: AeroplaneConfig;
+  state: AeroplaneState;
+  seats: AiSeat[];
+  diceRng: RngState;
+  aiRng: RngState;
+  actions: AeroplaneActionRecord[];
+}
+
+export type AeroplaneActionRecord =
+  | {
+      kind: 'roll';
+      player: AeroplaneColor;
+      roll: number;
+      events: AeroplaneEvent[];
+      checksum: string;
+    }
+  | {
+      kind: 'move';
+      actor: 'human' | 'ai';
+      player: AeroplaneColor;
+      roll: number;
+      selectedPlaneId: string;
+      events: AeroplaneEvent[];
+      checksum: string;
+    };
+```
+
+Do not add per-action state snapshots, cryptographic signatures, or replay caches.
+
+- [ ] **Step 2: Write snapshot recovery tests first**
+
+```ts
+test('valid pending-choice snapshot restores exact state seats and RNG', () => {
+  const saved = validPendingChoiceSave();
+  storage.setItem(ACTIVE_MATCH_KEY, JSON.stringify(saved));
+
+  const restored = restoreActiveMatch(storage, sessionStorageStub);
+  expect(restored.kind).toBe('ok');
+  if (restored.kind !== 'ok') throw new Error('expected ok restore');
+  expect(restored.match.state).toEqual(saved.state);
+  expect(restored.match.seats).toEqual(saved.seats);
+  expect(restored.match.diceRng).toEqual(saved.diceRng);
+  expect(restored.match.aiRng).toEqual(saved.aiRng);
 });
 
-test('changed roll is rejected', () => {
-  const changed = structuredClone(recordedMatch);
-  changed.actions[0] = { ...changed.actions[0], roll: 1 };
-  expect(replayMatch(changed).kind).toBe('mismatch');
+test('restore continues the exact next die and AI sample', () => {
+  const saved = validPendingChoiceSave();
+  const restored = restoreFixture(saved);
+  expect(nextUint32(restored.diceRng)).toEqual(nextUint32(saved.diceRng));
+  expect(nextUint32(restored.aiRng)).toEqual(nextUint32(saved.aiRng));
 });
 
-test('changed AI choice is rejected', () => {
-  const changed = structuredClone(recordedMatch);
-  const index = changed.actions.findIndex(action => action.kind === 'move' && action.actor === 'ai');
-  changed.actions[index] = { ...changed.actions[index], planeId: 'red-0' };
-  expect(replayMatch(changed).kind).toBe('mismatch');
+test('unknown version is preserved for session diagnostics and cleared', () => {
+  const raw = JSON.stringify({ version: 99 });
+  storage.setItem(ACTIVE_MATCH_KEY, raw);
+  const result = restoreActiveMatch(storage, sessionStorageStub);
+  expect(result.kind).toBe('corrupt');
+  expect(sessionStorageStub.getItem(CORRUPT_SAVE_KEY)).toBe(raw);
+  expect(storage.getItem(ACTIVE_MATCH_KEY)).toBeNull();
 });
 ```
 
-- [ ] **Step 2: Implement checksum/replay**
+Write explicit invalid invariant cases for 15/17 planes, duplicate plane ids, progress outside `null | 0..56`, duplicate/missing personality seat, invalid pending roll, winner/phase mismatch, and zero/out-of-range RNG state.
 
-Canonical state serialization sorts record keys and planes by id; excludes timestamp/presentation state. Replay starts from root seed/config and calls the real `rollTurn`, `chooseAiMove`, and `playResolvedMove`. A zero-move roll’s checksum is the post-skip state, so no unlogged skip mutation exists.
+- [ ] **Step 3: Implement lightweight runtime validation**
 
-- [ ] **Step 3: Write persistence tests**
+Validation checks only the authoritative snapshot and action-record shapes. It does **not** re-execute action history. Storage exceptions return a non-fatal error result.
 
-Cover empty, valid round-trip, pending-choice round-trip, exact next die/AI after restore, unknown version, bad player/plane counts, duplicate ids, out-of-range progress, invalid winner/phase, invalid RNG, storage exceptions.
+Corrupt payload behavior:
 
-- [ ] **Step 4: Implement manual save validation**
+```ts
+sessionStorage.setItem('procyon:aeroplane:corrupt-save', raw);
+localStorage.removeItem('procyon:aeroplane:active-match:v1');
+return { kind: 'corrupt', reason };
+```
 
-Validate schema version 1; four colours × four unique planes; progress `null` or integer 0–56; phase/current-player/pending-roll invariants; winner iff finished; normalized config; exactly three AI seats with unique personalities; uint32 RNG states; valid action/checksum shapes.
+- [ ] **Step 4: Write replay diagnostic tests**
 
-Corrupt payload: copy raw text to `sessionStorage['procyon:aeroplane:corrupt-save']`, remove active key, return `{ kind: 'corrupt', reason }`. Storage errors remain non-fatal.
+```ts
+test('replay reproduces rolls choices events and final checksum', () => {
+  const result = replayMatch(recordedMatch);
+  expect(result.kind).toBe('ok');
+  if (result.kind !== 'ok') throw new Error('expected ok replay');
+  expect(result.finalChecksum).toBe(recordedMatch.actions.at(-1)!.checksum);
+});
 
-- [ ] **Step 5: Verify and commit**
+test('replay reports mismatch when a recorded action changes', () => {
+  const changed = structuredClone(recordedMatch);
+  const moveIndex = changed.actions.findIndex(action => action.kind === 'move');
+  const move = changed.actions[moveIndex];
+  if (!move || move.kind !== 'move') throw new Error('move fixture missing');
+  changed.actions[moveIndex] = { ...move, selectedPlaneId: 'red-0' };
+  expect(replayMatch(changed).kind).toBe('mismatch');
+});
+
+test('valid snapshot restore is not gated by replay checksum mismatch', () => {
+  const changed = structuredClone(recordedMatch);
+  changed.actions[0] = { ...changed.actions[0], checksum: '00000000' };
+  const result = restoreFixture(changed);
+  expect(result.kind).toBe('ok');
+});
+```
+
+- [ ] **Step 5: Implement checksum/replay**
+
+Canonical serialization sorts record keys and planes by id and excludes timestamps/presentation state. Use a small FNV-1a helper for a stable 32-bit hexadecimal checksum; document that it is diagnostics only.
+
+Replay starts from persisted root seed/config/seats and calls the real `rollTurn`, `chooseAiMove`, and `playResolvedMove`. At each action compare recorded roll, selected plane when present, events, and resulting checksum. Return the first mismatch with action index/reason; never mutate the persisted object.
+
+- [ ] **Step 6: Verify and commit**
 
 ```bash
 cd apps/web
-bun test src/lib/aeroplane/replay.test.ts src/lib/aeroplane/persistence.test.ts src/lib/aeroplane/dice.test.ts src/lib/aeroplane/ai.test.ts
+bun test src/lib/aeroplane/persistence.test.ts src/lib/aeroplane/replay.test.ts src/lib/aeroplane/dice.test.ts src/lib/aeroplane/ai.test.ts
 
-git add src/lib/aeroplane/checksum.ts src/lib/aeroplane/replay.ts src/lib/aeroplane/persistence.ts src/lib/aeroplane/replay.test.ts src/lib/aeroplane/persistence.test.ts src/lib/aeroplane/types.ts
-git commit -m "feat(aeroplane): add recovery and replay"
+git add src/lib/aeroplane/checksum.ts src/lib/aeroplane/persistence.ts src/lib/aeroplane/replay.ts src/lib/aeroplane/persistence.test.ts src/lib/aeroplane/replay.test.ts src/lib/aeroplane/types.ts
+git commit -m "feat(aeroplane): add recovery and replay diagnostics"
 ```
 
 ---
 
-## Task 6: Build the match controller and accessible board UI
+## Task 6: Build the match controller, accessible board UI, and DEV/E2E fixture hook
 
 **Files:**
 - Create: `apps/web/src/lib/aeroplane/layout.ts`
@@ -592,56 +872,144 @@ git commit -m "feat(aeroplane): add recovery and replay"
 - Create: `apps/web/src/components/aeroplane/AeroplaneGame.test.tsx`
 
 **Interfaces:**
-- Hook exposes authoritative match state + derived legal moves + presentation state/actions.
+- Hook exposes authoritative state + seats + derived legal moves + presentation actions.
 - Board receives logical state/`ResolvedMove` preview and callbacks; no dice/AI/storage imports.
 - `layout.ts` is render-only and no domain rule module imports it.
+- DEV overrides are read once during match initialization and ignored outside `import.meta.env.DEV`.
 
 - [ ] **Step 1: Write controller tests with fake timers/injected storage**
 
-Cover one legal human move auto-apply, multiple-choice wait, AI delay not consuming RNG, stale AI timer cancellation on reset/unmount, save after pending-choice roll, resume/new match, repeated Skip Animations idempotence.
-
-Representative assertions:
-
 ```ts
-expect(match.state().phase).toBe('awaiting-choice');
-expect(match.legalMoves()).toHaveLength(2);
+test('one legal human move auto-applies without prompting', async () => {
+  const match = createHookHarness(oneLegalHumanMoveFixture());
+  match.roll();
+  await match.flushPresentation();
+  expect(match.state().phase).toBe('awaiting-roll');
+  expect(match.state().planes.find(p => p.id === 'red-0')?.progress).toBe(1);
+});
 
-const before = match.aiRng();
-match.advanceTime(400);
-expect(match.aiRng()).toEqual(before);
+test('multiple legal human moves wait for selection', () => {
+  const match = createHookHarness(twoLegalHumanMovesFixture());
+  match.roll();
+  expect(match.state().phase).toBe('awaiting-choice');
+  expect(match.legalMoves()).toHaveLength(2);
+});
+
+test('AI presentation delay consumes no gameplay RNG', () => {
+  const match = createHookHarness(aiTurnFixture());
+  const before = match.aiRng();
+  match.advanceTime(400);
+  expect(match.aiRng()).toEqual(before);
+});
+
+test('skip animations is idempotent', () => {
+  const match = createHookHarness(animatedMoveFixture());
+  match.skipAnimations();
+  const once = match.state();
+  match.skipAnimations();
+  expect(match.state()).toEqual(once);
+});
 ```
+
+Also test stale AI timer cancellation on reset/unmount, save after pending-choice roll, resume/new match, red-first AI turn when human is not red, and persisted seats unchanged on resume.
 
 - [ ] **Step 2: Implement render-only anchors**
 
-`layout.ts` provides normalized `{x,y}` anchors for 52 track nodes, four launch pads, 16 hangar slots, four six-position home paths (last anchor is finish), flight guides, and stack offsets. Generate rotations from one quadrant or declare constants; unit assertions check counts/symmetry only.
+`layout.ts` provides normalized `{x,y}` anchors for 52 track nodes, four launch pads, 16 hangar slots, four six-position home paths, flight guides, and stack offsets. Generate rotations from one quadrant or declare constants; tests assert counts/symmetry only.
 
-- [ ] **Step 3: Implement `useAeroplaneMatch` orchestration**
+- [ ] **Step 3: Define and test the DEV fixture contract before using it**
 
-Own only editable setup, frozen active config/personality seats/root seed, restore prompt, calls to pure engine/dice/AI, 650 ms skippable AI presentation delay, animation overlay queue, event feed, persistence, and timer generation token.
+Inside `useAeroplaneMatch.ts`, export the type but read it only behind DEV:
 
-Commit authoritative move state before starting visual route animation. `skipAnimations()` clears timers/overlay only.
+```ts
+export interface AeroplaneE2EFixture {
+  seed?: number;
+  config?: AeroplaneConfig;
+  state?: AeroplaneState;
+  seats?: AiSeat[];
+  diceRng?: RngState;
+  aiRng?: RngState;
+  skipAnimations?: boolean;
+}
+```
 
-- [ ] **Step 4: Write component interaction tests**
+Resolution precedence in DEV:
 
-Assert Classic default; exact Quick config; blockades→stacking; stacking-off→blockades-off; manual edit→Custom; one legal auto; multiple legal only actionable; keyboard Enter/Space; touch two-activation preview; mobile event-feed collapse control; repeated animation skip does not change final plane location.
+```text
+window.__PROCYON_AEROPLANE_FIXTURE__.seed
+→ ?e2eSeed=<uint32>
+→ normal generated seed
+```
 
-- [ ] **Step 5: Build components**
+A supplied fixture state/seats/RNG must pass the same invariant helpers as persistence. Invalid fixtures are ignored with a DEV console warning. When a fixture or `e2eSeed` is active, `skipAnimations` defaults to `true` unless the fixture explicitly supplies `false`.
+
+Test:
+
+```ts
+test('DEV fixture wins over e2eSeed and defaults animations skipped', () => {
+  const overrides = readDevOverrides({
+    dev: true,
+    search: '?e2eSeed=12',
+    fixture: { seed: 34 },
+  });
+  expect(overrides.seed).toBe(34);
+  expect(overrides.skipAnimations).toBe(true);
+});
+
+test('non-DEV ignores query and window fixture', () => {
+  expect(readDevOverrides({
+    dev: false,
+    search: '?e2eSeed=12',
+    fixture: { seed: 34 },
+  })).toEqual({});
+});
+```
+
+- [ ] **Step 4: Implement `useAeroplaneMatch` orchestration**
+
+Own only editable setup, frozen active config/seats/root seed, restore prompt, calls to pure engine/dice/AI, 650 ms skippable AI presentation delay, animation overlay queue, event feed, persistence, DEV fixture read, and timer generation token.
+
+Commit authoritative move state and action-history record before starting visual route animation. `skipAnimations()` clears timers/overlay only.
+
+- [ ] **Step 5: Write component interaction tests**
+
+```ts
+test('Classic is default and Quick applies exact preset', async () => {
+  const ui = renderAeroplaneGame();
+  expect(ui.getByText(/classic match/i)).toBeDefined();
+  await ui.click(ui.getByRole('button', { name: /quick & chill/i }));
+  expect(ui.getByLabelText(/victory/i)).toHaveValue('2');
+  expect(ui.getByLabelText(/dice/i)).toHaveValue('relaxed');
+});
+
+test('turning blockades on enables stacking and turning stacking off disables blockades', async () => {
+  const ui = renderAeroplaneGame();
+  await ui.click(ui.getByLabelText(/blockades/i));
+  expect(ui.getByLabelText(/stacking/i)).toBeChecked();
+  await ui.click(ui.getByLabelText(/stacking/i));
+  expect(ui.getByLabelText(/blockades/i)).not.toBeChecked();
+});
+```
+
+Add keyboard Enter/Space selection, coarse-pointer two-activation preview, mobile event-feed collapse control, legal-plane pulse only during human multi-choice, and repeated animation skip leaving final plane location unchanged.
+
+- [ ] **Step 6: Build components**
 
 `AeroplaneSetup`: presets, victory, dice, launch, finish, stacking, blockades, human colour, chatter.
 
-`AeroplaneBoard`: SVG from `layout.ts`, plane controls with visible focus and labels such as:
+`AeroplaneBoard`: SVG from `layout.ts`, plane controls with visible focus and accessible labels such as:
 
 ```text
 Red plane 2, track position 14. Legal move: jump and long flight to position 30.
 ```
 
-Hover/focus draws the full resolved route. Coarse pointer first activation previews and second activation on same legal plane applies.
+Hover/focus draws the full resolved route. Coarse pointer first activation previews and second activation on the same legal plane applies.
 
 `AeroplaneStatus`: current turn/die below board; compact sticky strip on narrow screens.
 
 `AeroplaneEventFeed`: compact event list; collapsible on narrow screens.
 
-- [ ] **Step 6: Verify and commit**
+- [ ] **Step 7: Verify and commit**
 
 ```bash
 cd apps/web
@@ -654,10 +1022,9 @@ git commit -m "feat(aeroplane): add playable local match UI"
 
 ---
 
-## Task 7: Generalize play history and record Aeroplane as unrated
+## Task 7: Rename generic play history to `gameId` without changing existing rating behavior
 
 **Files:**
-- Create: `apps/api/src/types/play-history.ts`
 - Modify: `apps/api/src/constants/game.ts`
 - Modify: `apps/api/src/constants/game.test.ts`
 - Modify: `apps/api/src/db/schema.ts`
@@ -665,38 +1032,203 @@ git commit -m "feat(aeroplane): add playable local match UI"
 - Modify: `apps/api/src/routes/play-history.ts`
 - Modify: `apps/api/src/routes/play-history.test.ts`
 - Modify: `apps/api/src/routes/play-history.pvp-security.test.ts`
-- Generate: `apps/api/drizzle/0011_hpa391_aeroplane_history.sql`
-- Generate: `apps/api/drizzle/meta/0011_snapshot.json`
-- Modify: `apps/api/drizzle/meta/_journal.json`
+- Generate: next Drizzle migration for `chess_id` → `game_id`
 - Create: `apps/web/src/lib/play-history.ts`
-- Modify: `apps/web/src/lib/ai/opponent.ts`
 - Modify: `apps/web/src/hooks/usePlayHistory.ts`
 - Modify: `apps/web/src/hooks/usePlayHistory.test.ts`
-- Modify: `apps/web/src/hooks/useAeroplaneMatch.ts`
-- Modify: `apps/web/src/hooks/useAeroplaneMatch.test.ts`
 - Modify: `apps/web/src/components/PlayHistoryPage.tsx`
 - Modify: `apps/web/src/components/PlayHistoryPage.test.tsx`
 
 **Interfaces:**
-- API `GameId` has five values; `ChessVariantId` stays the rating-service type.
-- `getRatedVariantId(gameId): ChessVariantId | null` explicitly converts the rated subset; do not use a cross-enum type predicate.
-- `POST /play-history` accepts `gameId` rather than `chessId`.
+- This task does **not** accept Aeroplane in the API yet.
+- API payload/response field becomes `gameId` for existing four strategy games.
+- `getRatedVariantId` makes the rating conversion explicit.
+- Web `submitPlayHistory` centralizes request construction while lifecycle retry policy stays in `usePlayHistory`.
+
+- [ ] **Step 1: Write regression tests for the rename before changing implementation**
+
+Update existing request fixtures from `chessId` to `gameId` and add:
+
+```ts
+test('LLM strategy game still receives a rating update after gameId rename', async () => {
+  const response = await postHistory({
+    gameId: 'chess',
+    status: 'win',
+    date: NOW,
+    opponentLlmId: 'gpt-4o',
+  });
+  expect(response.status).toBe(201);
+  expect((await response.json()).ratingUpdate).not.toBeNull();
+});
+
+test('Stockfish strategy game remains unrated after gameId rename', async () => {
+  const response = await postHistory({
+    gameId: 'chess',
+    status: 'win',
+    date: NOW,
+    opponentEngineId: 'stockfish',
+  });
+  expect(response.status).toBe(201);
+  expect((await response.json()).ratingUpdate).toBeNull();
+});
+```
+
+At this stage `gameId: 'aeroplane'` must still fail validation.
+
+- [ ] **Step 2: Verify tests fail on the old contract**
+
+```bash
+cd apps/api
+bun test src/routes/play-history.test.ts src/routes/play-history.pvp-security.test.ts src/constants/game.test.ts src/db/schema.test.ts
+```
+
+Expected: FAIL because API still expects `chessId`.
+
+- [ ] **Step 3: Add generic identity and explicit rated conversion for existing games**
+
+Start `GameId` with the existing four API-supported values in this task:
+
+```ts
+export enum GameId {
+  Chess = 'chess',
+  Xiangqi = 'xiangqi',
+  Shogi = 'shogi',
+  Jungle = 'jungle',
+}
+
+export function getRatedVariantId(gameId: GameId): ChessVariantId {
+  switch (gameId) {
+    case GameId.Chess:
+      return ChessVariantId.Chess;
+    case GameId.Xiangqi:
+      return ChessVariantId.Xiangqi;
+    case GameId.Shogi:
+      return ChessVariantId.Shogi;
+    case GameId.Jungle:
+      return ChessVariantId.Jungle;
+  }
+}
+```
+
+The function becomes nullable when Task 8 adds Aeroplane.
+
+- [ ] **Step 4: Rename DB/API field and generate the first migration**
+
+Schema:
+
+```ts
+gameId: text('game_id').$type<GameId>().notNull(),
+```
+
+Route request:
+
+```ts
+gameId: z.nativeEnum(GameId),
+```
+
+Use `body.gameId` everywhere play history previously used `body.chessId`. Convert rating input only through:
+
+```ts
+variantId: getRatedVariantId(body.gameId),
+```
+
+Generate:
+
+```bash
+cd apps/api
+bunx drizzle-kit generate --config=drizzle.config.dev.ts --name hpa391_game_id
+```
+
+Inspect generated SQL. The intended data change is the column rename only:
+
+```sql
+ALTER TABLE `play_history` RENAME COLUMN `chess_id` TO `game_id`;
+```
+
+Do not hand-write a second migration if Drizzle already generated the rename.
+
+- [ ] **Step 5: Extract the web POST helper and update strategy callers**
+
+```ts
+// apps/web/src/lib/play-history.ts
+export interface SubmitPlayHistoryInput {
+  gameId: GameId;
+  status: 'win' | 'loss' | 'draw';
+  date: string;
+  opponentLlmId?: OpponentLlmId;
+  opponentEngineId?: OpponentEngineId;
+  details?: unknown;
+}
+
+export async function submitPlayHistory(
+  input: SubmitPlayHistoryInput,
+  fetchImpl: typeof fetch = fetch
+): Promise<Response> {
+  return fetchImpl(`${env.PUBLIC_API_URL}/play-history`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    signal: AbortSignal.timeout(10_000),
+    body: JSON.stringify(input),
+  });
+}
+```
+
+`usePlayHistory` keeps its existing savedRef/snapshot/401-retry semantics and calls `submitPlayHistory` with `gameId: snapshotGameVariant`.
+
+Update `PlayHistoryPage` response field/label lookup from `chessId` to `gameId`; only the existing four labels are reachable in this task.
+
+- [ ] **Step 6: Run the rating regression gate**
+
+```bash
+cd apps/api
+bun test src/routes/play-history.test.ts src/routes/play-history.pvp-security.test.ts src/constants/game.test.ts src/db/schema.test.ts src/services/rating-service.db.test.ts src/routes/ratings.db.test.ts
+
+cd ../web
+bun test src/hooks/usePlayHistory.test.ts src/components/PlayHistoryPage.test.tsx
+bun run typecheck
+```
+
+Expected: all existing LLM rating and Stockfish unrated behavior passes with the renamed field. Do not start Task 8 until this gate is green.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/api/src apps/api/drizzle apps/web/src/lib/play-history.ts apps/web/src/hooks/usePlayHistory.ts apps/web/src/hooks/usePlayHistory.test.ts apps/web/src/components/PlayHistoryPage.tsx apps/web/src/components/PlayHistoryPage.test.tsx
+git commit -m "refactor(history): rename chess history identity to game id"
+```
+
+---
+
+## Task 8: Add the Aeroplane server history contract as an unrated engine game
+
+**Files:**
+- Modify: `apps/api/src/constants/game.ts`
+- Modify: `apps/api/src/constants/game.test.ts`
+- Create: `apps/api/src/types/play-history.ts`
+- Modify: `apps/api/src/db/schema.ts`
+- Modify: `apps/api/src/db/schema.test.ts`
+- Modify: `apps/api/src/routes/play-history.ts`
+- Modify: `apps/api/src/routes/play-history.test.ts`
+- Generate: next Drizzle migration adding `details`
+
+**Interfaces:**
+- Final API `GameId` has five values.
+- Final `getRatedVariantId(gameId): ChessVariantId | null` returns null only for Aeroplane.
 - `OpponentEngineId` adds `aeroplane-trio-v1`.
-- Web `submitPlayHistory` centralizes request construction; retry policy stays with lifecycle callers.
+- Aeroplane requires matching engine opponent, required details, and `win | loss` status.
+- Existing strategy rows keep `details = null`.
 
-- [ ] **Step 1: Write API contract tests first**
+- [ ] **Step 1: Write final Aeroplane API tests first**
 
-Add a reusable valid details fixture and tests:
+Use:
 
 ```ts
 const validAeroplaneDetails = {
   rulePreset: 'quick-chill',
   victoryTarget: 2,
   diceMode: 'relaxed',
-  launchRule: 'five-or-six',
-  finishRule: 'bounce',
-  stacking: false,
-  blockades: false,
+  humanColor: 'red',
   durationSeconds: 240,
   planesFinished: 2,
   capturesMade: 3,
@@ -709,18 +1241,68 @@ const validAeroplaneDetails = {
 } as const;
 ```
 
-Test: valid Aeroplane insert returns 201/null rating/zero rating rows; Aeroplane+LLM 400; Aeroplane+Stockfish 400; chess+AeroplaneTrio 400; Aeroplane draw 400; missing/invalid details 400; duplicate AI colour/personality 400; existing chess+LLM still rated; stockfish remains unrated.
+Tests:
 
-- [ ] **Step 2: Verify API tests fail**
+```ts
+test('Aeroplane trio result inserts history and never rates', async () => {
+  const response = await postHistory({
+    gameId: 'aeroplane',
+    status: 'win',
+    date: NOW,
+    opponentEngineId: 'aeroplane-trio-v1',
+    details: validAeroplaneDetails,
+  });
+  expect(response.status).toBe(201);
+  expect((await response.json()).ratingUpdate).toBeNull();
+  expect(await countRatingRows()).toBe(0);
+});
+
+test.each([
+  ['LLM', { opponentLlmId: 'gpt-4o' }],
+  ['Stockfish', { opponentEngineId: 'stockfish' }],
+])('Aeroplane rejects %s opponent pairing', async (_name, opponent) => {
+  const response = await postHistory({
+    gameId: 'aeroplane',
+    status: 'win',
+    date: NOW,
+    details: validAeroplaneDetails,
+    ...opponent,
+  });
+  expect(response.status).toBe(400);
+});
+
+test('Aeroplane trio id is invalid for strategy game', async () => {
+  const response = await postHistory({
+    gameId: 'chess',
+    status: 'win',
+    date: NOW,
+    opponentEngineId: 'aeroplane-trio-v1',
+  });
+  expect(response.status).toBe(400);
+});
+
+test('Aeroplane draw is invalid', async () => {
+  const response = await postHistory({
+    gameId: 'aeroplane',
+    status: 'draw',
+    date: NOW,
+    opponentEngineId: 'aeroplane-trio-v1',
+    details: validAeroplaneDetails,
+  });
+  expect(response.status).toBe(400);
+});
+```
+
+Add explicit 400 tests for missing details, negative/non-integer counters, duplicate AI colour, duplicate personality, AI colour equal to human colour, and only two AI seats.
+
+- [ ] **Step 2: Verify Aeroplane tests fail**
 
 ```bash
 cd apps/api
 bun test src/routes/play-history.test.ts src/constants/game.test.ts src/db/schema.test.ts
 ```
 
-- [ ] **Step 3: Add ids, explicit rated conversion, and shared history detail type**
-
-`constants/game.ts`:
+- [ ] **Step 3: Extend final ids/rated conversion**
 
 ```ts
 export enum GameId {
@@ -731,28 +1313,72 @@ export enum GameId {
   Aeroplane = 'aeroplane',
 }
 
+export enum OpponentEngineId {
+  Stockfish = 'stockfish',
+  AeroplaneTrioV1 = 'aeroplane-trio-v1',
+}
+
 export function getRatedVariantId(gameId: GameId): ChessVariantId | null {
   switch (gameId) {
-    case GameId.Chess: return ChessVariantId.Chess;
-    case GameId.Xiangqi: return ChessVariantId.Xiangqi;
-    case GameId.Shogi: return ChessVariantId.Shogi;
-    case GameId.Jungle: return ChessVariantId.Jungle;
-    case GameId.Aeroplane: return null;
+    case GameId.Chess:
+      return ChessVariantId.Chess;
+    case GameId.Xiangqi:
+      return ChessVariantId.Xiangqi;
+    case GameId.Shogi:
+      return ChessVariantId.Shogi;
+    case GameId.Jungle:
+      return ChessVariantId.Jungle;
+    case GameId.Aeroplane:
+      return null;
   }
 }
 ```
 
-Add `AeroplaneTrioV1 = 'aeroplane-trio-v1'` to `OpponentEngineId`.
-
-`apps/api/src/types/play-history.ts` owns the TypeScript `AeroplaneHistoryDetails` interface from the design so both Drizzle schema and route validation share one type without importing route code into DB code.
-
-- [ ] **Step 4: Rename the history game field and add JSON details**
-
-Schema:
+- [ ] **Step 4: Add minimal HPA-required details type/schema**
 
 ```ts
-gameId: text('game_id').$type<GameId>().notNull(),
-details: text('details', { mode: 'json' }).$type<AeroplaneHistoryDetails | null>(),
+export interface AeroplaneHistoryDetails {
+  rulePreset: 'classic' | 'quick-chill' | 'custom';
+  victoryTarget: 2 | 4;
+  diceMode: 'fair' | 'relaxed';
+  humanColor: 'red' | 'yellow' | 'blue' | 'green';
+  durationSeconds: number;
+  planesFinished: number;
+  capturesMade: number;
+  capturesSuffered: number;
+  aiPlayers: Array<{
+    color: 'red' | 'yellow' | 'blue' | 'green';
+    personality: 'cautious' | 'aggressive' | 'unpredictable';
+  }>;
+}
+```
+
+Zod base schema:
+
+```ts
+const aeroplaneHistoryDetailsSchema = z.object({
+  rulePreset: z.enum(['classic', 'quick-chill', 'custom']),
+  victoryTarget: z.union([z.literal(2), z.literal(4)]),
+  diceMode: z.enum(['fair', 'relaxed']),
+  humanColor: z.enum(['red', 'yellow', 'blue', 'green']),
+  durationSeconds: z.number().finite().int().nonnegative(),
+  planesFinished: z.number().int().min(0).max(4),
+  capturesMade: z.number().int().nonnegative(),
+  capturesSuffered: z.number().int().nonnegative(),
+  aiPlayers: z.array(z.object({
+    color: z.enum(['red', 'yellow', 'blue', 'green']),
+    personality: z.enum(['cautious', 'aggressive', 'unpredictable']),
+  })).length(3),
+});
+```
+
+Add a `superRefine` that requires three unique AI colours, three unique personalities, and no AI colour equal to `humanColor`.
+
+- [ ] **Step 5: Add `details` column and second migration**
+
+```ts
+details: text('details', { mode: 'json' })
+  .$type<AeroplaneHistoryDetails | null>(),
 ```
 
 Generate:
@@ -762,87 +1388,197 @@ cd apps/api
 bunx drizzle-kit generate --config=drizzle.config.dev.ts --name hpa391_aeroplane_history
 ```
 
-Inspect `0011_hpa391_aeroplane_history.sql`: existing rows must be preserved, `chess_id` becomes `game_id`, and nullable `details` is added. Use this same migration for local SQLite and D1.
+The intended new data column is nullable JSON text so existing strategy rows remain valid without backfill.
 
-- [ ] **Step 5: Update route validation and rating branch**
+- [ ] **Step 6: Add pairing/outcome validation and rating guard**
 
-Define `aeroplaneHistoryDetailsSchema` as `z.ZodType<AeroplaneHistoryDetails>` with exact enums, non-negative finite numeric constraints, array length 3, and `superRefine` uniqueness checks.
+After exactly-one-opponent validation:
 
-Extend request `superRefine` with pairing rules. Use `z.ZodIssueCode.custom` as existing code does.
+```ts
+if (data.gameId === GameId.Aeroplane) {
+  if (data.opponentEngineId !== OpponentEngineId.AeroplaneTrioV1) {
+    addIssue(ctx, 'Aeroplane requires opponentEngineId=aeroplane-trio-v1');
+  }
+  if (data.status === GameResultStatus.Draw) {
+    addIssue(ctx, 'Aeroplane result must be win or loss');
+  }
+  if (!data.details) {
+    addIssue(ctx, 'Aeroplane history details are required');
+  }
+} else if (data.opponentEngineId === OpponentEngineId.AeroplaneTrioV1) {
+  addIssue(ctx, 'aeroplane-trio-v1 is only valid for Aeroplane');
+}
+```
 
-Derive:
+Use a nested/union Zod schema if that produces cleaner typing; behavior above is normative.
+
+Rating branch:
 
 ```ts
 const ratedVariantId = getRatedVariantId(body.gameId);
 const shouldRate = kind === 'llm' && ratedVariantId !== null;
-```
 
-Only `shouldRate` calls `updatePlayerRating({ variantId: ratedVariantId, ... })`. GET returns `gameId` + `details`.
-
-- [ ] **Step 6: Add the web request helper and preserve strategy retry semantics**
-
-Extend web `OpponentEngineId` to `'stockfish' | 'aeroplane-trio-v1'`.
-
-```ts
-export interface PlayHistorySubmission {
-  gameId: GameId;
-  status: 'win' | 'loss' | 'draw';
-  date: string;
-  opponent: OpponentDescriptor;
-  details?: AeroplaneHistoryDetails;
-}
-
-export async function submitPlayHistory(
-  input: PlayHistorySubmission,
-  signal: AbortSignal,
-): Promise<Response> {
-  return fetch(`${env.PUBLIC_API_URL}/play-history`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    signal,
-    body: JSON.stringify({
-      gameId: input.gameId,
-      status: input.status,
-      date: input.date,
-      ...(input.opponent.kind === 'llm'
-        ? { opponentLlmId: input.opponent.id }
-        : { opponentEngineId: input.opponent.id }),
-      ...(input.details ? { details: input.details } : {}),
-    }),
-  });
+if (shouldRate) {
+  await updatePlayerRating({
+    userId: user.userId,
+    variantId: ratedVariantId,
+    playHistoryId: record.id,
+    gameResult: body.status,
+    opponentLlmId: body.opponentLlmId ?? null,
+    opponentUserId: null,
+  }, tx);
 }
 ```
 
-Existing `usePlayHistory` keeps snapshot/generation/timeout/401-only-retry/no-ambiguous-retry logic; replace only its raw fetch construction with this helper and `gameId` field.
+Store `details` only for Aeroplane; strategy inserts use null.
 
-- [ ] **Step 7: Submit one terminal Aeroplane result**
-
-On first transition to finished, if the controller’s auth snapshot is authenticated, submit human-perspective win/loss with `opponent: { kind: 'engine', id: 'aeroplane-trio-v1' }` and built details. Guard with per-match generation/saved ref. Use a 10-second abort signal and do not retry 5xx/network errors.
-
-- [ ] **Step 8: Update history UI**
-
-Change response field to `gameId`, add `aeroplane: 'Aeroplane Chess'`, label Aeroplane engine as `Three local rivals`, and show it as `Unrated`. Do not build a details panel.
-
-- [ ] **Step 9: Verify and commit**
+- [ ] **Step 7: Run final API gate and commit**
 
 ```bash
 cd apps/api
-bun test src/routes/play-history.test.ts src/routes/play-history.pvp-security.test.ts src/constants/game.test.ts src/db/schema.test.ts
+bun test src/routes/play-history.test.ts src/routes/play-history.pvp-security.test.ts src/constants/game.test.ts src/db/schema.test.ts src/services/rating-service.db.test.ts src/routes/ratings.db.test.ts
 bun run typecheck
 
-cd ../web
-bun test src/hooks/usePlayHistory.test.ts src/hooks/useAeroplaneMatch.test.ts src/components/PlayHistoryPage.test.tsx
-bun run typecheck
-
-cd ../..
-git add apps/api apps/web/src/lib/play-history.ts apps/web/src/lib/ai/opponent.ts apps/web/src/hooks/usePlayHistory.ts apps/web/src/hooks/usePlayHistory.test.ts apps/web/src/hooks/useAeroplaneMatch.ts apps/web/src/hooks/useAeroplaneMatch.test.ts apps/web/src/components/PlayHistoryPage.tsx apps/web/src/components/PlayHistoryPage.test.tsx
-git commit -m "feat(aeroplane): record unrated match history"
+git add src drizzle
+git commit -m "feat(history): record Aeroplane as unrated local game"
 ```
 
 ---
 
-## Task 8: Add local chatter and deterministic E2E coverage
+## Task 9: Submit Aeroplane history once and render it in the history UI
+
+**Files:**
+- Modify: `apps/web/src/lib/ai/opponent.ts`
+- Modify: `apps/web/src/lib/play-history.ts`
+- Modify: `apps/web/src/hooks/useAeroplaneMatch.ts`
+- Modify: `apps/web/src/hooks/useAeroplaneMatch.test.ts`
+- Modify: `apps/web/src/components/PlayHistoryPage.tsx`
+- Modify: `apps/web/src/components/PlayHistoryPage.test.tsx`
+
+**Interfaces:**
+- Web `OpponentEngineId` adds `'aeroplane-trio-v1'`.
+- Controller maps terminal winner to human `win | loss` and never submits draw.
+- History submission is one-shot per active match; 5xx/network ambiguity is not retried automatically.
+
+- [ ] **Step 1: Extend web types and helper input**
+
+```ts
+export type OpponentEngineId = 'stockfish' | 'aeroplane-trio-v1';
+```
+
+Give the helper a typed details union:
+
+```ts
+export type PlayHistoryDetails = AeroplaneHistoryDetails | null;
+```
+
+Strategy callers omit details. Aeroplane passes the exact Task 8 shape.
+
+- [ ] **Step 2: Write one-shot save tests before wiring the controller**
+
+```ts
+test('terminal Aeroplane win submits once with trio opponent and details', async () => {
+  const submissions: SubmitPlayHistoryInput[] = [];
+  const match = createHookHarness(nearHumanWinFixture(), {
+    isAuthenticated: true,
+    submitHistory: async input => {
+      submissions.push(input);
+      return new Response('{}', { status: 201 });
+    },
+  });
+
+  match.finishHumanMove();
+  await match.flushEffects();
+  await match.flushEffects();
+
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0]).toMatchObject({
+    gameId: 'aeroplane',
+    status: 'win',
+    opponentEngineId: 'aeroplane-trio-v1',
+  });
+});
+
+test('AI victory submits loss and never draw', async () => {
+  const submission = await finishAiVictoryAndCaptureSubmission();
+  expect(submission.status).toBe('loss');
+});
+
+test('history network failure does not retry or change terminal game state', async () => {
+  const match = createFailingHistoryHarness();
+  match.finishHumanMove();
+  await match.flushEffects();
+  expect(match.historyCalls()).toBe(1);
+  expect(match.state().phase).toBe('finished');
+});
+```
+
+- [ ] **Step 3: Build history details from authoritative final state**
+
+```ts
+function buildAeroplaneHistoryDetails(
+  match: ActiveAeroplaneMatch,
+  durationSeconds: number
+): AeroplaneHistoryDetails {
+  const human = match.config.humanColor;
+  return {
+    rulePreset: match.config.rulePreset,
+    victoryTarget: match.config.victoryTarget,
+    diceMode: match.config.diceMode,
+    humanColor: human,
+    durationSeconds,
+    planesFinished: countFinished(match.state, human),
+    capturesMade: match.state.stats[human].capturesMade,
+    capturesSuffered: match.state.stats[human].capturesSuffered,
+    aiPlayers: match.seats,
+  };
+}
+```
+
+Freeze `startedAt` when the active match begins/resumes. Duration uses wall-clock presentation time and is not part of gameplay determinism.
+
+Use a per-match generation/saved ref so rerenders, animation completion, chatter, or auth changes cannot send the same terminal result twice.
+
+- [ ] **Step 4: Add history-page label tests**
+
+```ts
+test('renders Aeroplane trio as unrated Aeroplane Chess', async () => {
+  mockHistoryResponse([{
+    id: 3,
+    gameId: 'aeroplane',
+    date: new Date().toISOString(),
+    status: 'win',
+    opponentUserId: null,
+    opponentLlmId: null,
+    opponentEngineId: 'aeroplane-trio-v1',
+    details: validAeroplaneDetails,
+    ratingChange: null,
+    newRating: null,
+  }]);
+
+  const { getByText } = render(<PlayHistoryPage />);
+  await waitFor(() => expect(getByText('Aeroplane Chess')).toBeDefined());
+  expect(getByText('Aeroplane AI trio')).toBeDefined();
+  expect(getByText('Unrated')).toBeDefined();
+});
+```
+
+Stockfish continues to render `On-device rival`; legacy/rated LLM rows keep existing labels.
+
+- [ ] **Step 5: Verify and commit**
+
+```bash
+cd apps/web
+bun test src/hooks/useAeroplaneMatch.test.ts src/hooks/usePlayHistory.test.ts src/components/PlayHistoryPage.test.tsx
+bun run typecheck
+
+git add src/lib/ai/opponent.ts src/lib/play-history.ts src/hooks/useAeroplaneMatch.ts src/hooks/useAeroplaneMatch.test.ts src/components/PlayHistoryPage.tsx src/components/PlayHistoryPage.test.tsx
+git commit -m "feat(aeroplane): save unrated play history"
+```
+
+---
+
+## Task 10: Add local chatter and deterministic E2E coverage
 
 **Files:**
 - Create: `apps/web/src/lib/aeroplane/chatter.ts`
@@ -853,96 +1589,162 @@ git commit -m "feat(aeroplane): record unrated match history"
 - Create: `apps/web/e2e/aeroplane.spec.ts`
 
 **Interfaces:**
-- `getLocalChatter(personality, event, stableIndex): string | null` is presentation-only.
-- E2E uses deterministic DEV/test seed/fixture hooks; production behavior is unaffected unless `import.meta.env.DEV`.
+- Chatter is local/presentation-only and consumes neither gameplay RNG stream.
+- E2E uses `?e2eSeed=` for normal deterministic runs and `window.__PROCYON_AEROPLANE_FIXTURE__` for hard-path state.
 
-- [ ] **Step 1: Test chatter isolation**
+- [ ] **Step 1: Write chatter determinism/isolation tests**
 
 ```ts
-test('local chatter does not consume gameplay RNG', () => {
-  const before = structuredClone(rngStreams);
-  const line = getLocalChatter('aggressive', { type: 'capture', count: 2 }, 4);
-  expect(typeof line).toBe('string');
-  expect(rngStreams).toEqual(before);
+test('same event/personality chooses same local line without gameplay RNG', () => {
+  expect(localReaction('cautious', captureEvent, 7))
+    .toBe(localReaction('cautious', captureEvent, 7));
+});
+
+test('chatter failure cannot change authoritative state', () => {
+  const before = terminalFixture.state;
+  const after = enqueueReactionWithThrowingSink(terminalFixture);
+  expect(after).toEqual(before);
 });
 ```
 
-Add at least three lines per personality across capture/flight/finish/win/loss. Select via stable event index/hash, not dice/AI RNG.
+Use a presentation-only hash/index derived from personality + event type + turn number. Do not import `rng.ts` in `chatter.ts`.
 
-- [ ] **Step 2: Integrate chatter only after state commit**
+- [ ] **Step 2: Implement local lines only**
 
-Enqueue a line after authoritative transition completes. Catch/ignore presentation failure. Do not import `UniversalAIService`, provider adapters, or API-key configuration.
+Provide small fixed line pools for capture, flight, finish, win, and loss for each personality. Enqueue only after authoritative action completion. When chatter is disabled, do no work.
 
-- [ ] **Step 3: Add Playwright flows**
+Do not call `UniversalAIService`, provider configuration, or network APIs.
 
-Base flow:
+- [ ] **Step 3: Build Playwright fixture helpers**
+
+In the E2E file:
 
 ```ts
-test('Quick & Chill restores after reload', async ({ page }) => {
-  await page.goto('/aeroplane?e2eSeed=39101');
-  await page.getByRole('button', { name: /quick & chill/i }).click();
-  await page.getByRole('button', { name: /^start match$/i }).click();
-  await page.getByRole('button', { name: /roll dice/i }).click();
-  await expect(page.getByTestId('aeroplane-event-feed')).toContainText(/rolled/i);
+async function installFixture(
+  page: Page,
+  fixture: AeroplaneE2EFixture
+): Promise<void> {
+  await page.addInitScript(value => {
+    (window as Window & {
+      __PROCYON_AEROPLANE_FIXTURE__?: AeroplaneE2EFixture;
+    }).__PROCYON_AEROPLANE_FIXTURE__ = value;
+  }, fixture);
+}
+```
+
+Use `page.goto('/aeroplane?e2eSeed=39101')` for ordinary seeded matches. Use `installFixture` before `goto` for exact jump/flight/capture/blockade/near-win positions.
+
+- [ ] **Step 4: E2E each human colour/seat assignment without playing full matches**
+
+```ts
+for (const humanColor of ['red', 'yellow', 'blue', 'green'] as const) {
+  test(`starts with deterministic seats when human is ${humanColor}`, async ({ page }) => {
+    await installFixture(page, setupFixtureFor(humanColor));
+    await page.goto('/aeroplane');
+    await expect(page.getByTestId('human-color')).toHaveText(humanColor);
+    await expect(page.getByTestId('ai-seats')).toContainText(expectedSeatText(humanColor));
+    await expect(page.getByTestId('current-player')).toContainText('Red');
+  });
+}
+```
+
+This verifies red-first behavior including automatic AI-first flow for non-red humans.
+
+- [ ] **Step 5: E2E forced rule chains**
+
+Create fixtures whose next human action proves each path directly:
+
+```ts
+test('jump into flight captures only at final endpoint', async ({ page }) => {
+  await installFixture(page, jumpFlightCaptureFixture());
+  await page.goto('/aeroplane');
+  await page.getByRole('button', { name: /red plane 1/i }).click();
+  await expect(page.getByTestId('red-0')).toHaveAttribute('data-progress', '30');
+  await expect(page.getByTestId('intermediate-enemy')).toHaveAttribute('data-location', 'track');
+  await expect(page.getByTestId('final-enemy')).toHaveAttribute('data-location', 'hangar');
+});
+
+test('blockade blocks base and jump paths', async ({ page }) => {
+  await installFixture(page, blockadeFixture());
+  await page.goto('/aeroplane');
+  await expect(page.getByTestId('blocked-plane')).not.toHaveAttribute('data-legal', 'true');
+});
+```
+
+Add direct flight, stack split, third-plane blockade rejection, and private-home collision fixtures.
+
+- [ ] **Step 6: E2E reload and deterministic Quick victory**
+
+```ts
+test('reload resumes pending choice with same next RNG sequence', async ({ page }) => {
+  await installFixture(page, pendingChoiceFixture());
+  await page.goto('/aeroplane');
+  const before = await page.getByTestId('pending-roll').textContent();
   await page.reload();
   await page.getByRole('button', { name: /resume match/i }).click();
-  await expect(page.getByTestId('aeroplane-board')).toBeVisible();
+  await expect(page.getByTestId('pending-roll')).toHaveText(before ?? '');
+});
+
+test('Quick victory submits exactly one unrated result', async ({ page }) => {
+  let historyPosts = 0;
+  await page.route('**/api/play-history', async route => {
+    if (route.request().method() === 'POST') historyPosts += 1;
+    await route.fulfill({ status: 201, body: JSON.stringify({ ratingUpdate: null }) });
+  });
+  await installFixture(page, quickNearVictoryFixture());
+  await page.goto('/aeroplane');
+  await page.getByRole('button', { name: /red plane 2/i }).click();
+  await expect(page.getByText(/you win/i)).toBeVisible();
+  expect(historyPosts).toBe(1);
 });
 ```
 
-Add deterministic fixture tests for: four human colours; one turn from every AI personality; launch→jump→flight→capture; stacking/blockade restrictions; reload in `awaiting-choice`; two-plane Quick victory; no provider configured; authenticated interception sees exactly one POST with `gameId:'aeroplane'` + `opponentEngineId:'aeroplane-trio-v1'`.
+Also run one anonymous/no-provider seeded match far enough to complete one human turn and all three personality AI turns; assert no provider/network move endpoint is called.
 
-- [ ] **Step 4: Run feature and repository gates**
+- [ ] **Step 7: Full verification**
 
 ```bash
-cd apps/web
-bun test src/lib/aeroplane src/hooks/useAeroplaneMatch.test.ts src/components/aeroplane/AeroplaneGame.test.tsx src/components/ChessGameSelector.test.tsx
-bun run typecheck
-bun run lint
-bun run test:e2e -- e2e/aeroplane.spec.ts
-
-cd ../api
-bun test src/routes/play-history.test.ts src/routes/play-history.pvp-security.test.ts src/constants/game.test.ts src/db/schema.test.ts
-bun run typecheck
-bun run lint
-
-cd ../..
 bun run test
 bun run typecheck
 bun run lint
-bun run build
+bun run test:e2e -- --grep "Aeroplane"
 ```
 
-Expected: PASS. If full-repository gates expose unrelated pre-existing failures, record exact command/output in the implementation PR rather than weakening Aeroplane coverage.
+Expected: all commands exit 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-cd apps/web
-git add src/lib/aeroplane/chatter.ts src/lib/aeroplane/chatter.test.ts src/hooks/useAeroplaneMatch.ts src/hooks/useAeroplaneMatch.test.ts src/components/aeroplane/AeroplaneEventFeed.tsx e2e/aeroplane.spec.ts
-git commit -m "test(aeroplane): finish local match coverage"
+git add apps/web/src/lib/aeroplane/chatter.ts apps/web/src/lib/aeroplane/chatter.test.ts apps/web/src/hooks/useAeroplaneMatch.ts apps/web/src/hooks/useAeroplaneMatch.test.ts apps/web/src/components/aeroplane/AeroplaneEventFeed.tsx apps/web/e2e/aeroplane.spec.ts
+git commit -m "test(aeroplane): add chatter and deterministic e2e coverage"
 ```
 
 ---
 
-## Final implementation review checklist
+## Final implementation verification checklist
 
-- [ ] `GameVariant` still contains only Chess/Xiangqi/Shogi/Jungle.
-- [ ] No Aeroplane import appears in AI factory/move adapters/rule guardian or `game-core`.
-- [ ] Every preview/AI score/applied move comes from `ResolvedMove` produced by the rule resolver.
-- [ ] Presets exactly match HPA-391.
-- [ ] Six grants another turn after a no-move roll.
-- [ ] Exact/bounce and both victory targets are tested.
-- [ ] Direct flight and jump→flight are tested.
-- [ ] Blockade origin split, path/jump crossing, landing, and flight-exit behavior are tested.
-- [ ] Same root seed reproduces dice + AI across reload and replay.
-- [ ] Relaxed protection consumes two dice samples whenever active.
-- [ ] Presentation timing/chatter never consumes gameplay RNG.
-- [ ] Reload while awaiting human choice preserves pending roll and choices.
-- [ ] Skip Animations cannot apply a move twice.
-- [ ] Signed-out/no-provider play completes normally.
-- [ ] Aeroplane uses `opponentEngineId = 'aeroplane-trio-v1'`; no new local-opponent column exists.
-- [ ] Aeroplane history returns `ratingUpdate:null` and creates no rating row.
-- [ ] Existing LLM strategy rating and Stockfish unrated tests remain green.
-- [ ] Play history uses `gameId`; rating tables stay on four strategy variants.
-- [ ] Local chatter cannot block or mutate gameplay.
+Before marking HPA-391 implemented, run all of these from repository root:
+
+```bash
+bun run test
+bun run typecheck
+bun run lint
+bun run build
+bun run test:e2e
+```
+
+Then verify the acceptance criteria explicitly:
+
+- [ ] Anonymous visitor starts/plays without provider configuration.
+- [ ] Classic and Quick presets match HPA-391 exactly.
+- [ ] All four human colours produce the documented AI seating and red-first turn order.
+- [ ] Launch/jump/flight/final-endpoint capture/home/stack/blockade rules are engine-enforced.
+- [ ] Zero/one/multiple legal-move behavior matches the controller contract.
+- [ ] Cautious/Aggressive/Unpredictable are deterministic and legal-only.
+- [ ] Save/reload restores authoritative state, seats, and exact next dice/AI RNG.
+- [ ] Replay diagnostics reproduce recorded roll/choice/events/checksum but are not a recovery gate.
+- [ ] Pointer/touch/keyboard interactions and animation skipping are usable/idempotent.
+- [ ] Signed-in Aeroplane completion creates exactly one `aeroplane-trio-v1` history row with `ratingUpdate: null` and no rating row.
+- [ ] Existing LLM strategy games still update ratings; Stockfish remains unrated.
+- [ ] Local chatter cannot affect gameplay state or RNG.
+- [ ] Production ignores DEV/E2E fixture hooks.
