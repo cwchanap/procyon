@@ -821,15 +821,21 @@ export function useAeroplaneMatch(
 
 	useEffect(() => {
 		const current = activeMatch;
+		if (isHumanTurn(current) || aiTimerRef.current !== null) return;
+		const generation = generationRef.current;
+		if (current.state.phase === 'awaiting-roll') {
+			executeRoll('ai');
+			return;
+		}
 		if (
-			current.state.phase !== 'awaiting-roll' ||
-			isHumanTurn(current) ||
-			aiTimerRef.current !== null
+			current.state.phase !== 'awaiting-choice' ||
+			current.state.pendingRoll === null
 		)
 			return;
-		executeRoll('ai');
+		const legalMoves = getLegalMoves(current.state, current.state.pendingRoll);
+		if (legalMoves.length > 0) scheduleAiDecision(legalMoves, generation);
 		return undefined;
-	}, [activeMatch, executeRoll]);
+	}, [activeMatch, executeRoll, scheduleAiDecision]);
 
 	useEffect(() => {
 		return () => {
