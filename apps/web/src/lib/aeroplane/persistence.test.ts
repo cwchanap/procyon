@@ -81,6 +81,15 @@ test('valid snapshot round-trips through active storage', () => {
 	expect(restored.match).toEqual(saved);
 });
 
+test('malformed match-start timestamps are rejected', () => {
+	const saved = {
+		...validSave(),
+		startedAt: 'not-a-timestamp',
+	};
+
+	expect(restoreFixture(saved).kind).toBe('invalid');
+});
+
 test('valid pending-choice snapshot restores exact state seats and RNG', () => {
 	const match = createAeroplaneMatch(CLASSIC_CONFIG, 39101);
 	const rolled = rollTurn(match.state, match.diceRng);

@@ -77,6 +77,14 @@ function isBoolean(value: unknown): value is boolean {
 	return typeof value === 'boolean';
 }
 
+function isFiniteTimestamp(value: unknown): value is string {
+	return (
+		typeof value === 'string' &&
+		value.length > 0 &&
+		Number.isFinite(Date.parse(value))
+	);
+}
+
 function validConfig(value: unknown): value is AeroplaneConfig {
 	if (!isRecord(value)) return false;
 	return (
@@ -300,6 +308,8 @@ export function validatePersistedAeroplaneMatch(
 		return { ok: false, reason: 'unknown snapshot version' };
 	if (typeof value.savedAt !== 'string' || value.savedAt.length === 0)
 		return { ok: false, reason: 'savedAt must be a non-empty string' };
+	if (value.startedAt !== undefined && !isFiniteTimestamp(value.startedAt))
+		return { ok: false, reason: 'startedAt must be a finite timestamp' };
 	if (!isUint32(value.rootSeed))
 		return { ok: false, reason: 'invalid root seed' };
 	if (!validConfig(value.config))

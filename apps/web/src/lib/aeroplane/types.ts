@@ -129,6 +129,8 @@ export interface AeroplaneTransition {
 export interface PersistedAeroplaneMatchV1 {
 	version: 1;
 	savedAt: string;
+	/** Match-start wall clock. Optional only for legacy v1 snapshots. */
+	startedAt?: string;
 	rootSeed: number;
 	config: AeroplaneConfig;
 	state: AeroplaneState;

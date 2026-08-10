@@ -20,6 +20,7 @@ interface HookProps {
 	userId: string | null | undefined;
 	buildPayload: () => SubmitPlayHistoryInput | null;
 	debugKey?: string;
+	onSuccess?: () => void;
 }
 
 function makeProps(overrides: Partial<HookProps> = {}): HookProps {
@@ -95,6 +96,65 @@ describe('useTerminalHistorySave', () => {
 
 		expect(fetchCallCount).toBe(1);
 		expect(capturedBodies).toEqual([firstPayload]);
+	});
+
+	test('notifies the controller only after a successful terminal save', async () => {
+		let successCount = 0;
+		const { unmount } = renderHook(props => useTerminalHistorySave(props), {
+			initialProps: makeProps({
+				isTerminal: true,
+				onSuccess: () => {
+					successCount++;
+				},
+			}),
+		});
+
+		await act(async () => {
+			await waitForEffects();
+		});
+
+		expect(successCount).toBe(1);
+		unmount();
+	});
+
+	test('does not notify success for a stale terminal generation', async () => {
+		let resolveFirst: (response: Response) => void = () => {};
+		let successCount = 0;
+		globalThis.fetch = mock((input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (!url.includes('/play-history'))
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+				}) as unknown as Promise<Response>;
+			return new Promise<Response>(resolve => {
+				resolveFirst = resolve;
+			});
+		}) as unknown as typeof fetch;
+
+		const { rerender, unmount } = renderHook(
+			props => useTerminalHistorySave(props),
+			{
+				initialProps: makeProps({
+					isTerminal: true,
+					onSuccess: () => {
+						successCount++;
+					},
+				}),
+			}
+		);
+
+		await act(async () => {
+			await waitForEffects();
+		});
+		rerender(makeProps({ isTerminal: false }));
+		await act(async () => {
+			resolveFirst({ ok: true, status: 200 } as Response);
+			await waitForEffects();
+		});
+
+		expect(successCount).toBe(0);
+		unmount();
 	});
 
 	test('provider changes after terminal do not change frozen payload', async () => {

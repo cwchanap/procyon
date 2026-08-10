@@ -11,6 +11,7 @@ import {
 import { checksumState } from '../lib/aeroplane/checksum';
 import {
 	ACTIVE_MATCH_STORAGE_KEY,
+	clearActiveMatch,
 	restoreActiveMatch,
 	saveActiveMatch,
 	validatePersistedAeroplaneMatch,
@@ -77,6 +78,7 @@ export interface AeroplanePresentation {
 }
 
 export interface ActiveAeroplaneMatch {
+	startedAt: string;
 	rootSeed: number;
 	config: AeroplaneConfig;
 	state: AeroplaneState;
@@ -360,6 +362,7 @@ function activeFromPersisted(
 ): ActiveAeroplaneMatch {
 	const config = freezeConfig(value.config);
 	return {
+		startedAt: value.startedAt ?? value.savedAt,
 		rootSeed: value.rootSeed,
 		config,
 		state: { ...value.state, config },
@@ -381,7 +384,8 @@ function nextSeed(input: number | (() => number) | undefined): number {
 function activeFromFresh(
 	configInput: Partial<AeroplaneConfig>,
 	seed: number,
-	overrides: AeroplaneDevOverrides = {}
+	overrides: AeroplaneDevOverrides = {},
+	startedAt: string
 ): ActiveAeroplaneMatch {
 	const normalizedSeed = normalizeRngState(seed).value;
 	const fixtureConfig =
@@ -391,6 +395,7 @@ function activeFromFresh(
 	const base = createAeroplaneMatch(config, normalizedSeed);
 	const state = overrides.state ? { ...overrides.state, config } : base.state;
 	return {
+		startedAt,
 		rootSeed: normalizedSeed,
 		config,
 		state,
@@ -434,6 +439,7 @@ function persistedEnvelope(
 	return {
 		version: 1,
 		savedAt: now(),
+		startedAt: match.startedAt,
 		rootSeed: match.rootSeed,
 		config: match.config,
 		state: match.state,
@@ -485,27 +491,30 @@ function humanStats(match: ActiveAeroplaneMatch) {
 	};
 }
 
-function elapsedSeconds(_match: ActiveAeroplaneMatch): number {
-	// The authoritative Aeroplane snapshot has no wall-clock field. History
-	// keeps this metadata structurally valid while gameplay remains deterministic.
-	return 0;
+function elapsedSeconds(match: ActiveAeroplaneMatch, now: string): number {
+	const startedMs = Date.parse(match.startedAt);
+	const nowMs = Date.parse(now);
+	if (!Number.isFinite(startedMs) || !Number.isFinite(nowMs)) return 0;
+	return Math.max(0, Math.floor((nowMs - startedMs) / 1000));
 }
 
 function buildAeroplaneHistoryPayload(
-	match: ActiveAeroplaneMatch
+	match: ActiveAeroplaneMatch,
+	now: () => string = () => new Date().toISOString()
 ): SubmitPlayHistoryInput {
 	const stats = humanStats(match);
+	const date = now();
 	return {
 		gameId: 'aeroplane',
 		status: match.state.winner === match.config.humanColor ? 'win' : 'loss',
-		date: new Date().toISOString(),
+		date,
 		opponentEngineId: 'aeroplane-trio-v1',
 		details: {
 			rulePreset: match.config.rulePreset,
 			victoryTarget: match.config.victoryTarget,
 			diceMode: match.config.diceMode,
 			humanColor: match.config.humanColor,
-			durationSeconds: elapsedSeconds(match),
+			durationSeconds: elapsedSeconds(match, date),
 			planesFinished: stats.finished,
 			capturesMade: stats.capturesMade,
 			capturesSuffered: stats.capturesSuffered,
@@ -567,7 +576,8 @@ export function useAeroplaneMatch(
 				: activeFromFresh(
 						options.initialConfig ?? options.config ?? {},
 						seed,
-						overrides
+						overrides,
+						nowRef.current()
 					);
 		initialRef.current = {
 			active,
@@ -804,7 +814,12 @@ export function useAeroplaneMatch(
 				typeof input === 'number'
 					? input
 					: (requestedSeed ?? nextSeed(optionsRef.current.seed));
-			const next = activeFromFresh(config, normalizeRngState(seed).value);
+			const next = activeFromFresh(
+				config,
+				normalizeRngState(seed).value,
+				{},
+				nowRef.current()
+			);
 			setSetupState(config);
 			setupRef.current = config;
 			setEventFeed([]);
@@ -907,9 +922,10 @@ export function useAeroplaneMatch(
 		userId: user?.id,
 		buildPayload: () =>
 			activeMatch.state.phase === 'finished'
-				? buildAeroplaneHistoryPayload(activeMatch)
+				? buildAeroplaneHistoryPayload(activeMatch, nowRef.current)
 				: null,
 		debugKey: 'AEROPLANE',
+		onSuccess: () => clearActiveMatch(storageRef.current),
 	});
 
 	return {

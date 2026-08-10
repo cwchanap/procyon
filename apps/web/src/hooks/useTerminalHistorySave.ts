@@ -12,6 +12,7 @@ export interface UseTerminalHistorySaveOptions {
 	buildPayload: () => SubmitPlayHistoryInput | null;
 	debugKey?: string;
 	onFailure?: (reason: 'rejected' | 'network') => void;
+	onSuccess?: () => void;
 }
 
 const MAX_401_RETRIES = 3;
@@ -36,6 +37,7 @@ export function useTerminalHistorySave({
 	buildPayload,
 	debugKey,
 	onFailure,
+	onSuccess,
 }: UseTerminalHistorySaveOptions): void {
 	const savedRef = useRef(false);
 	const generationRef = useRef(0);
@@ -102,6 +104,10 @@ export function useTerminalHistorySave({
 		try {
 			const response = await submitPlayHistory(payload);
 			if (!activeRef.current) return;
+			if (response.ok) {
+				if (generation === generationRef.current) onSuccess?.();
+				return;
+			}
 			if (!response.ok) {
 				if (import.meta.env.DEV) {
 					// eslint-disable-next-line no-console
@@ -155,6 +161,7 @@ export function useTerminalHistorySave({
 		buildPayload,
 		debugKey,
 		onFailure,
+		onSuccess,
 		clearRetryTimer,
 	]);
 
