@@ -1,5 +1,6 @@
 import { describe, expect, test, mock } from 'bun:test';
 import { fireEvent, render } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { setupReactDom } from '../../test/reactSetup';
 import { CLASSIC_CONFIG, QUICK_CONFIG } from '../../lib/aeroplane/game';
 import type {
@@ -293,6 +294,15 @@ describe('Aeroplane board interactions', () => {
 });
 
 describe('Aeroplane event feed', () => {
+	test('server markup exposes the feed while hydration is pending', () => {
+		const markup = renderToStaticMarkup(<AeroplaneEventFeed events={[]} />);
+		expect(markup).toContain('data-testid="aeroplane-event-feed-content"');
+		expect(markup).toContain('aria-hidden="false"');
+		expect(markup).toContain('class="block divide-y divide-line sm:block"');
+		expect(markup).not.toContain('aria-hidden="true"');
+		expect(markup).not.toContain('aria-label="Event feed"');
+	});
+
 	test('starts compact and expands on narrow-screen toggle', () => {
 		const previousMatchMedia = window.matchMedia;
 		window.matchMedia = (() => ({
