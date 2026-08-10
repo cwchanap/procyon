@@ -106,6 +106,23 @@ function diceStateForRoll(roll: number): { value: number } {
 	throw new Error(`no small deterministic seed for roll ${roll}`);
 }
 
+function rngForRolls(rolls: readonly number[]): { value: number } {
+	for (let value = 1; value <= 1_000_000; value += 1) {
+		let rng = { value };
+		let matches = true;
+		for (const expected of rolls) {
+			const result = rollFair(rng);
+			if (result.roll !== expected) {
+				matches = false;
+				break;
+			}
+			rng = result.rng;
+		}
+		if (matches) return { value };
+	}
+	throw new Error(`Could not find deterministic dice sequence: ${rolls}`);
+}
+
 function oneLegalHumanMoveFixture(): AeroplaneE2EFixture {
 	return {
 		seed: 39101,
@@ -449,6 +466,78 @@ describe('useAeroplaneMatch controller', () => {
 		const match = createHookHarness(fixture);
 		match.advanceTime(650);
 		expect(match.state().currentPlayer).not.toBe('red');
+	});
+});
+
+describe('useAeroplaneMatch controller AI turn chaining (real timers)', () => {
+	// These tests use real timers with skipAnimations to verify the full
+	// human-no-move → AI roll/move → next AI auto-roll chain without
+	// depending on jest.advanceTimersByTime (unavailable in Bun).
+
+	function blockedHumanRollFixture(): AeroplaneE2EFixture {
+		const config: AeroplaneConfig = {
+			...CLASSIC_CONFIG,
+			rulePreset: 'custom',
+			stacking: true,
+			blockades: true,
+		};
+		const state = fixtureState(
+			'red',
+			[plane('red', 0, 1), plane('yellow', 0, 41), plane('yellow', 1, 41)],
+			config,
+			'awaiting-roll',
+			null
+		);
+		return {
+			seed: 39200,
+			config,
+			state,
+			diceRng: rngForRolls([3, 1, 1, 1]),
+			aiRng: { value: 33 },
+			skipAnimations: true,
+		};
+	}
+
+	async function settle(ms = 200): Promise<void> {
+		await act(async () => {
+			await new Promise(resolve => setTimeout(resolve, ms));
+		});
+	}
+
+	test('blocked human roll chains into consecutive AI roll/move/roll turns', async () => {
+		const storage = memoryStorage();
+		const rendered = renderHook(() =>
+			useAeroplaneMatch({
+				fixture: blockedHumanRollFixture(),
+				dev: true,
+				storage,
+			})
+		);
+
+		act(() => rendered.result.current.roll());
+		await settle();
+
+		const saved = JSON.parse(
+			storage.getItem(ACTIVE_MATCH_STORAGE_KEY) ?? '{}'
+		) as PersistedAeroplaneMatchV1;
+		expect(saved.actions.length).toBeGreaterThanOrEqual(4);
+		expect(
+			saved.actions.map(action => ({
+				kind: action.kind,
+				actor: action.actor,
+				color: action.color,
+			}))
+		).toEqual([
+			{ kind: 'roll', actor: 'human', color: 'red' },
+			{ kind: 'roll', actor: 'ai', color: 'yellow' },
+			{ kind: 'move', actor: 'ai', color: 'yellow' },
+			{ kind: 'roll', actor: 'ai', color: 'blue' },
+			{ kind: 'roll', actor: 'ai', color: 'green' },
+		]);
+		expect(saved.state.currentPlayer).toBe('red');
+		expect(saved.state.phase).toBe('awaiting-roll');
+
+		rendered.unmount();
 	});
 });
 

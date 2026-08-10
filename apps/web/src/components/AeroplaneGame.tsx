@@ -38,6 +38,7 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 					<AeroplaneBoard
 						state={match.state}
 						legalMoves={match.legalMoves}
+						isHumanTurn={match.isHumanTurn}
 						presentationQueue={match.presentationQueue}
 						onRoll={match.roll}
 						onSelectMove={match.selectMove}
@@ -45,6 +46,7 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 					<AeroplaneStatus
 						state={match.state}
 						legalMoves={match.legalMoves}
+						isHumanTurn={match.isHumanTurn}
 						isAnimating={match.isAnimating}
 					/>
 				</section>

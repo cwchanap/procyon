@@ -22,6 +22,7 @@ import type {
 export interface AeroplaneBoardProps {
 	state: AeroplaneState;
 	legalMoves: readonly ResolvedMove[];
+	isHumanTurn?: boolean;
 	presentationQueue?: readonly {
 		id: number;
 		move: ResolvedMove;
@@ -183,6 +184,7 @@ function isCoarsePointer(event: React.SyntheticEvent): boolean {
 export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	state,
 	legalMoves,
+	isHumanTurn = true,
 	presentationQueue = [],
 	onRoll,
 	onSelectMove,
@@ -451,7 +453,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 					</text>
 				</svg>
 			</div>
-			{legalMoves.length > 0 && (
+			{isHumanTurn && legalMoves.length > 0 && (
 				<div
 					role='list'
 					aria-label='Legal plane moves'
@@ -515,17 +517,23 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 			)}
 			<div className='flex flex-wrap items-center justify-between gap-3'>
 				<p className='text-sm text-ivory-dim'>
-					{state.phase === 'awaiting-choice' && legalMoves.length === 0
-						? 'No legal moves — this turn passes automatically.'
-						: state.phase === 'awaiting-choice'
-							? 'Choose a highlighted plane, or use Enter / Space.'
-							: 'Roll the die to start your turn.'}
+					{state.phase === 'finished'
+						? `${colorLabel[state.winner ?? state.currentPlayer]} wins the match.`
+						: !isHumanTurn
+							? state.phase === 'awaiting-choice'
+								? `${colorLabel[state.currentPlayer]} is choosing a move…`
+								: `${colorLabel[state.currentPlayer]} is rolling…`
+							: state.phase === 'awaiting-choice' && legalMoves.length === 0
+								? 'No legal moves — this turn passes automatically.'
+								: state.phase === 'awaiting-choice'
+									? 'Choose a highlighted plane, or use Enter / Space.'
+									: 'Roll the die to start your turn.'}
 				</p>
 				<Button
 					type='button'
 					variant='default'
 					onClick={onRoll}
-					disabled={state.phase !== 'awaiting-roll'}
+					disabled={!isHumanTurn || state.phase !== 'awaiting-roll'}
 					className='min-h-11 min-w-32 touch-manipulation'
 				>
 					Roll die
