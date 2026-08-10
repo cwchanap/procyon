@@ -49,6 +49,7 @@ export default {
           water: '#16323B', // jungle water square
           den: '#1F3029', // jungle den / normal-land square
         },
+        aeroplane: { DEFAULT: '#4F8FD8' },
         // shadcn semantic tokens (values from :root, see Layout.astro)
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',

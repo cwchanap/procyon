@@ -1,17 +1,20 @@
 import React from 'react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../lib/utils';
-import type { Accent } from '../lib/ai/game-variant-types';
+import type { Accent } from '../lib/game-id';
+
+const HEADER_ACCENT_CLASSES = {
+	chess: 'bg-chess',
+	xiangqi: 'bg-xiangqi',
+	shogi: 'bg-shogi',
+	jungle: 'bg-jungle',
+	aeroplane: 'bg-aeroplane',
+	brass: 'bg-brass',
+} satisfies Record<Accent, string>;
 
 const accentBar = cva('mt-5 h-px w-24', {
 	variants: {
-		accent: {
-			chess: 'bg-chess',
-			xiangqi: 'bg-xiangqi',
-			shogi: 'bg-shogi',
-			jungle: 'bg-jungle',
-			brass: 'bg-brass',
-		},
+		accent: HEADER_ACCENT_CLASSES,
 	},
 	defaultVariants: {
 		accent: 'brass',

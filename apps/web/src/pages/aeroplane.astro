@@ -1,0 +1,11 @@
+---
+import Layout from '../layouts/Layout.astro';
+import GamePageLayout from '../components/GamePageLayout.tsx';
+import AeroplaneGame from '../components/AeroplaneGame.tsx';
+---
+
+<Layout title='Aeroplane Chess'>
+  <GamePageLayout variant='aeroplane' showBackButton client:load>
+    <AeroplaneGame client:load />
+  </GamePageLayout>
+</Layout>

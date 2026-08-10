@@ -20,10 +20,10 @@ const waitForLoginFormReady = async (page: Page) => {
 
 const waitForHomepageGameCardsReady = async (page: Page) => {
 	await expect(
-		page.getByRole('button', { name: /Play Standard Chess/i })
+		page.getByRole('link', { name: /Play Standard Chess/i })
 	).toBeVisible({ timeout: 15000 });
 	await expect(
-		page.getByRole('button', { name: /Play Chinese Chess/i })
+		page.getByRole('link', { name: /Play Chinese Chess/i })
 	).toBeVisible({ timeout: 15000 });
 	await page
 		.locator('[data-testid="game-cards"][data-hydrated="true"]')
@@ -100,21 +100,29 @@ test.describe('Critical user journeys', () => {
 		).toBeVisible();
 
 		const routes = [
-			{ buttonName: /Play Standard Chess/, path: '/chess' },
-			{ buttonName: /Play Chinese Chess/, path: '/xiangqi' },
-			{ buttonName: /Play Japanese Chess \(Shogi\)/, path: '/shogi' },
-			{ buttonName: /Play Jungle Chess \(鬥獸棋\)/, path: '/jungle' },
+			{ linkName: /Play Standard Chess/, path: '/chess' },
+			{ linkName: /Play Chinese Chess/, path: '/xiangqi' },
+			{ linkName: /Play Japanese Chess \(Shogi\)/, path: '/shogi' },
+			{ linkName: /Play Jungle Chess \(鬥獸棋\)/, path: '/jungle' },
 		];
 
 		for (const route of routes) {
 			await page.goto('/');
 			await waitForHomepageGameCardsReady(page);
-			await page.getByRole('button', { name: route.buttonName }).click();
+			await page.getByRole('link', { name: route.linkName }).click();
 			await expect(page).toHaveURL(route.path, { timeout: 15000 });
 			await expect(page.getByRole('button', { name: '▶️ Start' })).toBeVisible({
 				timeout: 15000,
 			});
 		}
+
+		await page.goto('/');
+		await waitForHomepageGameCardsReady(page);
+		await page.getByRole('link', { name: /Play Aeroplane Chess/i }).click();
+		await expect(page).toHaveURL('/aeroplane', { timeout: 15000 });
+		await expect(
+			page.getByRole('heading', { name: 'Aeroplane Chess' })
+		).toBeVisible({ timeout: 15000 });
 	});
 
 	test('profile prompts unauthenticated users to log in', async ({ page }) => {

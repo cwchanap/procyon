@@ -1,5 +1,48 @@
 import React, { useEffect, useState } from 'react';
-import ChessGameCard from './ChessGameCard';
+import GameCard from './GameCard';
+import ChessBoardPreview from './ChessBoardPreview';
+import AeroplaneBoardPreview from './aeroplane/AeroplaneBoardPreview';
+import { GAME_ROUTES } from '../lib/game-id';
+
+const chessGames = [
+	{
+		title: 'Standard Chess',
+		description: 'Classic chess with game mode and interactive tutorials.',
+		gameId: 'chess' as const,
+		href: GAME_ROUTES.chess,
+		preview: <ChessBoardPreview variant='chess' />,
+	},
+	{
+		title: 'Chinese Chess',
+		description: 'Traditional Xiangqi with unique pieces and board layout.',
+		gameId: 'xiangqi' as const,
+		href: GAME_ROUTES.xiangqi,
+		preview: <ChessBoardPreview variant='xiangqi' />,
+	},
+	{
+		title: 'Japanese Chess (Shogi)',
+		description:
+			'Traditional Japanese chess with unique piece movement and drops.',
+		gameId: 'shogi' as const,
+		href: GAME_ROUTES.shogi,
+		preview: <ChessBoardPreview variant='shogi' />,
+	},
+	{
+		title: 'Jungle Chess (鬥獸棋)',
+		description:
+			'Animal-themed strategy game with unique terrain and piece hierarchy.',
+		gameId: 'jungle' as const,
+		href: GAME_ROUTES.jungle,
+		preview: <ChessBoardPreview variant='jungle' />,
+	},
+	{
+		title: 'Aeroplane Chess',
+		description: 'A race-around-the-board game of luck, timing, and takeoffs.',
+		gameId: 'aeroplane' as const,
+		href: GAME_ROUTES.aeroplane,
+		preview: <AeroplaneBoardPreview />,
+	},
+];
 
 const ChessGameSelector: React.FC = () => {
 	const [isHydrated, setIsHydrated] = useState(false);
@@ -7,46 +50,6 @@ const ChessGameSelector: React.FC = () => {
 	useEffect(() => {
 		setIsHydrated(true);
 	}, []);
-
-	const chessGames = [
-		{
-			title: 'Standard Chess',
-			description: 'Classic chess with game mode and interactive tutorials.',
-			variant: 'chess' as const,
-		},
-		{
-			title: 'Chinese Chess',
-			description: 'Traditional Xiangqi with unique pieces and board layout.',
-			variant: 'xiangqi' as const,
-		},
-		{
-			title: 'Japanese Chess (Shogi)',
-			description:
-				'Traditional Japanese chess with unique piece movement and drops.',
-			variant: 'shogi' as const,
-		},
-		{
-			title: 'Jungle Chess (鬥獸棋)',
-			description:
-				'Animal-themed strategy game with unique terrain and piece hierarchy.',
-			variant: 'jungle' as const,
-		},
-	];
-
-	const handlePlayGame = (gameTitle: string) => {
-		// Route to specific game pages based on game title
-		if (gameTitle === 'Chinese Chess') {
-			window.location.href = '/xiangqi';
-		} else if (gameTitle === 'Japanese Chess (Shogi)') {
-			window.location.href = '/shogi';
-		} else if (gameTitle === 'Jungle Chess (鬥獸棋)') {
-			window.location.href = '/jungle';
-		} else {
-			// For now, other games redirect to the standard chess page
-			// In a real implementation, you'd pass the game type as a parameter
-			window.location.href = '/chess';
-		}
-	};
 
 	return (
 		<div
@@ -63,11 +66,12 @@ const ChessGameSelector: React.FC = () => {
 						animationFillMode: 'both',
 					}}
 				>
-					<ChessGameCard
+					<GameCard
 						title={game.title}
 						description={game.description}
-						variant={game.variant}
-						onPlay={() => handlePlayGame(game.title)}
+						gameId={game.gameId}
+						href={game.href}
+						preview={game.preview}
 					/>
 				</div>
 			))}

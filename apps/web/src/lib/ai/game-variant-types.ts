@@ -13,13 +13,6 @@ import type { JungleGameState, JunglePiece, JungleMove } from '../jungle/types';
 
 export type GameVariant = 'chess' | 'xiangqi' | 'shogi' | 'jungle';
 
-// UI accent tokens derived from the game variants plus the shared "brass"
-// accent used across Panel/PageHeader/cards. Defined once here so every
-// accent-consuming component shares a single source of truth (previously each
-// component re-declared the union inline, and GamePageLayout even dropped
-// "jungle" — see #2 in the Nocturne review).
-export type Accent = GameVariant | 'brass';
-
 export interface GamePosition {
 	row: number;
 	col: number;
