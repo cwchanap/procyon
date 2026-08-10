@@ -160,18 +160,35 @@ function moveEquivalent(a: ResolvedMove, b: ResolvedMove): boolean {
 	return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function progressScore(state: AeroplaneState, color: AeroplaneColor): number {
+	let finishedPlanes = 0;
+	let activeProgress = 0;
+	for (const plane of state.planes) {
+		if (plane.color !== color || plane.progress === null) continue;
+		if (plane.progress === FINISH_PROGRESS) {
+			finishedPlanes += 1;
+		} else {
+			activeProgress += plane.progress;
+		}
+	}
+	return finishedPlanes * 1000 + activeProgress;
+}
+
 function boundaryLastPlaceRounds(
-	nextRoundNumber: number
+	state: AeroplaneState
 ): Record<AeroplaneColor, number> {
 	// A completed non-six green turn is the only authoritative round boundary.
-	// Keep all colours on the same completed-round marker; sixes and partial
-	// rounds leave this record untouched.
-	return {
-		red: nextRoundNumber,
-		yellow: nextRoundNumber,
-		blue: nextRoundNumber,
-		green: nextRoundNumber,
-	};
+	// Every colour tied for the minimum progress remains in last place; colours
+	// above that minimum leave last place and reset their duration.
+	const scores = {} as Record<AeroplaneColor, number>;
+	for (const color of TURN_ORDER) scores[color] = progressScore(state, color);
+	const minimum = Math.min(...TURN_ORDER.map(color => scores[color]));
+	const result = { ...state.lastPlaceRounds };
+	for (const color of TURN_ORDER) {
+		result[color] =
+			scores[color] === minimum ? state.lastPlaceRounds[color] + 1 : 0;
+	}
+	return result;
 }
 
 function advanceAfterTurn(
@@ -188,7 +205,7 @@ function advanceAfterTurn(
 	const noMoveStreak = cloneCounters(state.noMoveStreak);
 	if (noMove) noMoveStreak[state.currentPlayer] += 1;
 	const lastPlaceRounds = crossesRound
-		? boundaryLastPlaceRounds(nextRoundNumber)
+		? boundaryLastPlaceRounds(state)
 		: cloneCounters(state.lastPlaceRounds);
 
 	return {

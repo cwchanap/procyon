@@ -159,6 +159,56 @@ test('green to red completes a round on a non-six', () => {
 	expect(result.state.roundNumber).toBe(3);
 });
 
+test('last-place duration increments tied minimum scores and resets others', () => {
+	const state = stateWithPlanes(
+		[
+			plane('red-0', 20),
+			plane('yellow-0', 5),
+			plane('blue-0', null),
+			plane('green-0', 1),
+		],
+		CLASSIC_CONFIG,
+		'green',
+		'awaiting-choice',
+		4,
+		{
+			roundNumber: 2,
+			lastPlaceRounds: { red: 2, yellow: 1, blue: 3, green: 2 },
+		}
+	);
+	const move = resolveLegalMove(state, 'green-0', 4);
+
+	expect(move).not.toBeNull();
+	if (!move) return;
+	const result = playResolvedMove(state, move);
+
+	expect(result.state.lastPlaceRounds).toEqual({
+		red: 0,
+		yellow: 0,
+		blue: 4,
+		green: 0,
+	});
+
+	const nextRoundState: AeroplaneState = {
+		...result.state,
+		currentPlayer: 'green',
+		phase: 'awaiting-choice',
+		pendingRoll: 4,
+	};
+	const nextMove = resolveLegalMove(nextRoundState, 'green-0', 4);
+
+	expect(nextMove).not.toBeNull();
+	if (!nextMove) return;
+	const nextResult = playResolvedMove(nextRoundState, nextMove);
+
+	expect(nextResult.state.lastPlaceRounds).toEqual({
+		red: 0,
+		yellow: 0,
+		blue: 5,
+		green: 0,
+	});
+});
+
 test('Quick finishes at two planes and has no draw state', () => {
 	const state = stateWithPlanes(
 		[
