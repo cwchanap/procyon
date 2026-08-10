@@ -405,7 +405,10 @@ describe('useAeroplaneMatch terminal history integration', () => {
 		).__PROCYON_INITIAL_AUTH_USER__ = undefined;
 	});
 
-	function renderTerminalMatch(authenticated: boolean) {
+	function renderTerminalMatch(
+		authenticated: boolean,
+		storage: MemoryStorage = memoryStorage()
+	) {
 		(
 			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
 		).__PROCYON_INITIAL_AUTH_USER__ = authenticated
@@ -415,9 +418,44 @@ describe('useAeroplaneMatch terminal history integration', () => {
 			useAeroplaneMatch({
 				fixture: terminalAeroplaneFixture(),
 				dev: true,
-				storage: memoryStorage(),
+				storage,
 			})
 		);
+	}
+
+	function renderRestoredTerminalMatch(
+		storage: MemoryStorage,
+		now: () => string
+	) {
+		(
+			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
+		).__PROCYON_INITIAL_AUTH_USER__ = {
+			id: 'user-a',
+			email: 'a@b.com',
+			username: 'a',
+		};
+		return renderHook(() => useAeroplaneMatch({ storage, dev: true, now }));
+	}
+
+	function saveTerminalSnapshot(
+		storage: MemoryStorage,
+		startedAt: string
+	): void {
+		const fixture = terminalAeroplaneFixture();
+		const saved = {
+			version: 1 as const,
+			savedAt: startedAt,
+			startedAt,
+			rootSeed: fixture.seed!,
+			config: fixture.config!,
+			state: fixture.state!,
+			seats: fixture.seats!,
+			diceRng: fixture.diceRng!,
+			aiRng: fixture.aiRng!,
+			actions: [],
+		};
+		if (!saveActiveMatch(saved, storage))
+			throw new Error('expected terminal snapshot to save');
 	}
 
 	async function flushHistorySave(): Promise<void> {
@@ -463,6 +501,40 @@ describe('useAeroplaneMatch terminal history integration', () => {
 		await flushHistorySave();
 
 		expect(capturedBodies).toHaveLength(1);
+		match.unmount();
+	});
+
+	test('successful terminal save prevents a restored remount from submitting again', async () => {
+		const storage = memoryStorage();
+		const first = renderTerminalMatch(true, storage);
+		await flushHistorySave();
+		first.unmount();
+
+		const second = renderRestoredTerminalMatch(
+			storage,
+			() => '2026-08-09T00:00:01.000Z'
+		);
+		await flushHistorySave();
+
+		expect(capturedBodies).toHaveLength(1);
+		second.unmount();
+	});
+
+	test('restored terminal payload computes elapsed seconds from its persisted start', async () => {
+		const storage = memoryStorage();
+		const startedAt = '2026-08-09T00:00:00.000Z';
+		saveTerminalSnapshot(storage, startedAt);
+		const match = renderRestoredTerminalMatch(
+			storage,
+			() => '2026-08-09T00:00:12.900Z'
+		);
+		await flushHistorySave();
+
+		expect(capturedBodies).toHaveLength(1);
+		expect(
+			(capturedBodies[0]?.details as { durationSeconds?: number })
+				.durationSeconds
+		).toBe(12);
 		match.unmount();
 	});
 
