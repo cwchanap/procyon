@@ -44,6 +44,8 @@ export function useTerminalHistorySave({
 	const previousTerminalRef = useRef(isTerminal);
 	const retry401CountRef = useRef(0);
 	const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const retryPendingRef = useRef(false);
+	const activeRef = useRef(true);
 	const [retryTrigger, setRetryTrigger] = useState(0);
 
 	const clearRetryTimer = useCallback(() => {
@@ -51,13 +53,18 @@ export function useTerminalHistorySave({
 			clearTimeout(retryTimerRef.current);
 			retryTimerRef.current = null;
 		}
+		retryPendingRef.current = false;
 	}, []);
 
 	const save = useCallback(async () => {
-		if (!enabled || savedRef.current) return;
+		if (!activeRef.current || !enabled || savedRef.current) return;
 		// Keep the entry guard as well as the scheduling guard. Dependency
 		// changes can rerun this effect after the timer budget is exhausted.
 		if (retry401CountRef.current > MAX_401_RETRIES) return;
+		// A 401 has already cleared the optimistic save guard, but the retry
+		// must remain delayed until its one timer fires. This blocks provider or
+		// callback dependency churn from issuing an immediate duplicate POST.
+		if (retryPendingRef.current) return;
 		if (!(isAuthenticated || import.meta.env.DEV)) return;
 
 		const generation = generationRef.current;
@@ -94,6 +101,7 @@ export function useTerminalHistorySave({
 
 		try {
 			const response = await submitPlayHistory(payload);
+			if (!activeRef.current) return;
 			if (!response.ok) {
 				if (import.meta.env.DEV) {
 					// eslint-disable-next-line no-console
@@ -111,9 +119,11 @@ export function useTerminalHistorySave({
 					retry401CountRef.current++;
 					if (retry401CountRef.current <= MAX_401_RETRIES) {
 						clearRetryTimer();
+						retryPendingRef.current = true;
 						retryTimerRef.current = setTimeout(() => {
+							retryPendingRef.current = false;
 							retryTimerRef.current = null;
-							if (generation === generationRef.current) {
+							if (activeRef.current && generation === generationRef.current) {
 								setRetryTrigger(value => value + 1);
 							}
 						}, RETRY_401_DELAY_MS);
@@ -127,6 +137,7 @@ export function useTerminalHistorySave({
 				);
 			}
 		} catch (error) {
+			if (!activeRef.current) return;
 			if (import.meta.env.DEV) {
 				// eslint-disable-next-line no-console
 				console.warn('Error saving play history:', error);
@@ -175,7 +186,9 @@ export function useTerminalHistorySave({
 	}, [isTerminal, clearRetryTimer]);
 
 	useEffect(() => {
+		activeRef.current = true;
 		return () => {
+			activeRef.current = false;
 			clearRetryTimer();
 		};
 	}, [clearRetryTimer]);
