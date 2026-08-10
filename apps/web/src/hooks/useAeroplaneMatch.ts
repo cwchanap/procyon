@@ -139,6 +139,7 @@ export interface UseAeroplaneMatchResult {
 	presentationQueue: AeroplanePresentation[];
 	eventFeed: AeroplanePresentation[];
 	isAnimating: boolean;
+	isHumanTurn: boolean;
 	roll(): void;
 	select(planeId: string): void;
 	selectMove(move: ResolvedMove): void;
@@ -903,14 +904,17 @@ export function useAeroplaneMatch(
 		};
 	}, []);
 
+	const humanTurn = isHumanTurn(activeMatch);
+
 	const legalMoves = useMemo(() => {
 		if (
+			!humanTurn ||
 			activeMatch.state.phase !== 'awaiting-choice' ||
 			activeMatch.state.pendingRoll === null
 		)
 			return [];
 		return getLegalMoves(activeMatch.state, activeMatch.state.pendingRoll);
-	}, [activeMatch]);
+	}, [activeMatch, humanTurn]);
 
 	useTerminalHistorySave({
 		enabled: activeMatch !== null,
@@ -965,6 +969,7 @@ export function useAeroplaneMatch(
 		presentationQueue,
 		eventFeed,
 		isAnimating: presentationQueue.length > 0,
+		isHumanTurn: humanTurn,
 		roll,
 		select,
 		selectMove,

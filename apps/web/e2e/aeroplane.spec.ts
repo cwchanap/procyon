@@ -404,13 +404,17 @@ test.describe('Aeroplane Chess critical journey', () => {
 				await page.getByRole('button', { name: /Red plane 1/i }).click();
 			}
 			await expect
-				.poll(async () =>
-					(await storedMatch(page)).actions.some(
-						action =>
-							action.actor === 'human' &&
-							action.kind === (expectFriendlyStack ? 'move' : 'roll')
-					)
-				)
+				.poll(async () => {
+					try {
+						return (await storedMatch(page)).actions.some(
+							action =>
+								action.actor === 'human' &&
+								action.kind === (expectFriendlyStack ? 'move' : 'roll')
+						);
+					} catch {
+						return false;
+					}
+				})
 				.toBe(true);
 			const saved = await storedMatch(page);
 			expect(

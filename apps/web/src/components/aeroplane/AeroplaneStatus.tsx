@@ -9,6 +9,7 @@ import type {
 export interface AeroplaneStatusProps {
 	state: AeroplaneState;
 	legalMoves?: readonly ResolvedMove[];
+	isHumanTurn?: boolean;
 	isAnimating?: boolean;
 }
 
@@ -21,12 +22,18 @@ const colorLabel: Record<AeroplaneColor, string> = {
 
 function statusCopy(
 	state: AeroplaneState,
-	legalMoves: readonly ResolvedMove[]
+	legalMoves: readonly ResolvedMove[],
+	isHumanTurn: boolean
 ): string {
 	if (state.phase === 'finished') {
 		return state.winner
 			? `${colorLabel[state.winner]} wins the match.`
 			: 'Match ended.';
+	}
+	if (!isHumanTurn) {
+		return state.phase === 'awaiting-choice'
+			? `${colorLabel[state.currentPlayer]} is choosing a move…`
+			: `${colorLabel[state.currentPlayer]} is rolling…`;
 	}
 	if (state.phase === 'awaiting-choice') {
 		if (legalMoves.length === 0)
@@ -41,10 +48,11 @@ function statusCopy(
 export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 	state,
 	legalMoves = [],
+	isHumanTurn = true,
 	isAnimating = false,
 }) => {
 	const die = state.pendingRoll === null ? '—' : String(state.pendingRoll);
-	const message = statusCopy(state, legalMoves);
+	const message = statusCopy(state, legalMoves, isHumanTurn);
 
 	return (
 		<Panel

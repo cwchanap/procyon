@@ -400,6 +400,49 @@ describe('Aeroplane board interactions', () => {
 		).toBeTruthy();
 	});
 
+	test('hides legal moves and disables Roll during an AI awaiting-choice turn', () => {
+		const onRoll = mock(() => {});
+		const onSelectMove = mock(() => {});
+		const { getByRole, queryByRole, getByText } = render(
+			<AeroplaneBoard
+				state={fixtureState({
+					currentPlayer: 'yellow',
+					phase: 'awaiting-choice',
+					pendingRoll: 3,
+				})}
+				legalMoves={[move()]}
+				isHumanTurn={false}
+				onRoll={onRoll}
+				onSelectMove={onSelectMove}
+			/>
+		);
+		expect(getByText(/yellow is choosing a move/i)).toBeTruthy();
+		// Legal move buttons must not be rendered for AI turns.
+		expect(queryByRole('button', { name: /Red plane 1/i })).toBeNull();
+		// Roll button is disabled during AI turns.
+		const rollButton = getByRole('button', { name: /roll die/i });
+		expect(rollButton.getAttribute('disabled')).not.toBeNull();
+	});
+
+	test('disables Roll and shows AI rolling copy during an AI awaiting-roll turn', () => {
+		const onRoll = mock(() => {});
+		const { getByRole, getByText } = render(
+			<AeroplaneBoard
+				state={fixtureState({
+					currentPlayer: 'blue',
+					phase: 'awaiting-roll',
+					pendingRoll: null,
+				})}
+				legalMoves={[]}
+				isHumanTurn={false}
+				onRoll={onRoll}
+			/>
+		);
+		expect(getByText(/blue is rolling/i)).toBeTruthy();
+		const rollButton = getByRole('button', { name: /roll die/i });
+		expect(rollButton.getAttribute('disabled')).not.toBeNull();
+	});
+
 	test('renders planes in home and finished positions', () => {
 		const state = fixtureState({
 			planes: fixtureState().planes.map(plane => {
