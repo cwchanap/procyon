@@ -1,3 +1,5 @@
+import type { RngState } from './rng';
+
 export type AeroplaneColor = 'red' | 'yellow' | 'blue' | 'green';
 export type Personality = 'cautious' | 'aggressive' | 'unpredictable';
 export type DiceMode = 'fair' | 'relaxed';
@@ -67,6 +69,12 @@ export interface ResolvedMove {
 	finalEndpoint: AeroplanePosition;
 	events: AeroplaneEvent[];
 	capturedPlaneIds: string[];
+}
+
+/** The selected local-AI move and the immutable AI stream continuation. */
+export interface AiMoveChoice {
+	move: ResolvedMove;
+	rng: RngState;
 }
 
 export interface AeroplaneStats {
