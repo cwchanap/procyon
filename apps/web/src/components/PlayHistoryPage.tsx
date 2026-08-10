@@ -1,30 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { env } from '../lib/env';
+import type { OpponentEngineId } from '../lib/ai/opponent';
+import type { GameId } from '../lib/game-id';
 import { PageHeader } from './PageHeader';
 import { Panel } from './ui/Panel';
 import { Button } from './ui/Button';
 
 type ServerPlayHistory = {
 	id: number;
-	gameId: 'chess' | 'shogi' | 'xiangqi' | 'jungle';
+	gameId: GameId;
 	date: string;
 	status: 'win' | 'loss' | 'draw';
 	opponentUserId: string | null;
 	opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' | null;
-	opponentEngineId: 'stockfish' | null;
+	opponentEngineId: OpponentEngineId | null;
+	details: unknown;
 	// Rating fields (populated after rating system was added)
 	// Can be null when rating history doesn't exist (e.g., older games)
 	ratingChange: number | null | undefined;
 	newRating: number | null | undefined;
 };
 
-const VARIANT_LABELS: Record<ServerPlayHistory['gameId'], string> = {
+const GAME_LABELS = {
 	chess: 'Classical Chess',
 	shogi: 'Shogi',
 	xiangqi: 'Xiangqi',
 	jungle: 'Jungle',
-};
+	aeroplane: 'Aeroplane Chess',
+} satisfies Record<GameId, string>;
 
 const RESULT_STYLES: Record<
 	ServerPlayHistory['status'],
@@ -66,6 +70,9 @@ function formatOpponent(entry: ServerPlayHistory): string {
 	}
 
 	if (entry.opponentEngineId) {
+		if (entry.opponentEngineId === 'aeroplane-trio-v1') {
+			return 'Local Aeroplane trio';
+		}
 		return 'On-device rival';
 	}
 
@@ -339,7 +346,7 @@ export default function PlayHistoryPage() {
 													{formatDate(entry.date)}
 												</td>
 												<td className='py-4 pr-4 whitespace-nowrap'>
-													{VARIANT_LABELS[entry.gameId]}
+													{GAME_LABELS[entry.gameId]}
 												</td>
 												<td className='py-4 pr-4'>
 													<span>{formatOpponent(entry)}</span>

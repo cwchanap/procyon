@@ -41,6 +41,7 @@ describe('PlayHistoryPage — engine row rendering', () => {
 								opponentEngineId: 'stockfish',
 								ratingChange: null,
 								newRating: null,
+								details: null,
 							},
 							{
 								id: 2,
@@ -53,6 +54,34 @@ describe('PlayHistoryPage — engine row rendering', () => {
 								opponentEngineId: null,
 								ratingChange: null, // legacy pre-rating row
 								newRating: null,
+								details: null,
+							},
+							{
+								id: 3,
+								userId: 'user-a',
+								gameId: 'aeroplane',
+								date: new Date().toISOString(),
+								status: 'loss',
+								opponentUserId: null,
+								opponentLlmId: null,
+								opponentEngineId: 'aeroplane-trio-v1',
+								ratingChange: null,
+								newRating: null,
+								details: {
+									rulePreset: 'quick-chill',
+									victoryTarget: 2,
+									diceMode: 'relaxed',
+									humanColor: 'red',
+									durationSeconds: 240,
+									planesFinished: 1,
+									capturesMade: 3,
+									capturesSuffered: 1,
+									aiPlayers: [
+										{ color: 'yellow', personality: 'cautious' },
+										{ color: 'blue', personality: 'aggressive' },
+										{ color: 'green', personality: 'unpredictable' },
+									],
+								},
 							},
 						],
 					}),
@@ -68,11 +97,28 @@ describe('PlayHistoryPage — engine row rendering', () => {
 	});
 
 	test('engine row shows "On-device rival" and "Unrated"; legacy null row keeps —', async () => {
-		const { getByText } = render(<PlayHistoryPage />);
+		const { getAllByText, getByText } = render(<PlayHistoryPage />);
 
-		await waitFor(() => expect(getByText('On-device rival')).toBeDefined());
-		expect(getByText('Unrated')).toBeDefined();
+		await waitFor(() =>
+			expect(getAllByText('On-device rival').length).toBeGreaterThan(0)
+		);
+		expect(getAllByText('Unrated').length).toBeGreaterThan(0);
 		// Legacy pre-rating LLM row (no engine id, null ratingChange) keeps the em dash.
 		expect(getByText('—')).toBeDefined();
+	});
+
+	test('Aeroplane trio rows show the unrated label without rendering details', async () => {
+		const {
+			getAllByText,
+			getByText,
+			queryByText: queryRenderedText,
+		} = render(<PlayHistoryPage />);
+
+		await waitFor(() =>
+			expect(getByText('Local Aeroplane trio')).toBeDefined()
+		);
+		expect(getByText('Aeroplane Chess')).toBeDefined();
+		expect(getAllByText('Unrated').length).toBeGreaterThan(1);
+		expect(queryRenderedText('quick-chill')).toBeNull();
 	});
 });

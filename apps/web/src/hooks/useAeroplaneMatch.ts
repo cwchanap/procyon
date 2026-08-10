@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '../lib/auth';
 import { chooseAiMove } from '../lib/aeroplane/ai';
 import {
 	CLASSIC_CONFIG,
@@ -17,6 +18,8 @@ import {
 } from '../lib/aeroplane/persistence';
 import { getLegalMoves } from '../lib/aeroplane/rules';
 import { normalizeRngState, type RngState } from '../lib/aeroplane/rng';
+import type { SubmitPlayHistoryInput } from '../lib/play-history';
+import { useTerminalHistorySave } from './useTerminalHistorySave';
 import type {
 	AeroplaneActionActor,
 	AeroplaneActionRecord,
@@ -473,6 +476,47 @@ function mergeSetup(
 	});
 }
 
+function humanStats(match: ActiveAeroplaneMatch) {
+	const color = match.config.humanColor;
+	return {
+		finished: match.state.stats.finished[color],
+		capturesMade: match.state.stats.capturesMade[color],
+		capturesSuffered: match.state.stats.capturesSuffered[color],
+	};
+}
+
+function elapsedSeconds(_match: ActiveAeroplaneMatch): number {
+	// The authoritative Aeroplane snapshot has no wall-clock field. History
+	// keeps this metadata structurally valid while gameplay remains deterministic.
+	return 0;
+}
+
+function buildAeroplaneHistoryPayload(
+	match: ActiveAeroplaneMatch
+): SubmitPlayHistoryInput {
+	const stats = humanStats(match);
+	return {
+		gameId: 'aeroplane',
+		status: match.state.winner === match.config.humanColor ? 'win' : 'loss',
+		date: new Date().toISOString(),
+		opponentEngineId: 'aeroplane-trio-v1',
+		details: {
+			rulePreset: match.config.rulePreset,
+			victoryTarget: match.config.victoryTarget,
+			diceMode: match.config.diceMode,
+			humanColor: match.config.humanColor,
+			durationSeconds: elapsedSeconds(match),
+			planesFinished: stats.finished,
+			capturesMade: stats.capturesMade,
+			capturesSuffered: stats.capturesSuffered,
+			aiPlayers: match.seats.map(seat => ({
+				color: seat.color,
+				personality: seat.personality,
+			})),
+		},
+	};
+}
+
 /**
  * Own the local Aeroplane match lifecycle while keeping all movement/dice/AI
  * decisions in the reviewed pure modules.  The controller stores one active
@@ -481,6 +525,7 @@ function mergeSetup(
 export function useAeroplaneMatch(
 	options: UseAeroplaneMatchOptions = {}
 ): UseAeroplaneMatchResult {
+	const { isAuthenticated, user } = useAuth();
 	const optionsRef = useRef(options);
 	const storageRef = useRef(options.storage);
 	const diagnosticsRef = useRef(options.diagnostics);
@@ -854,6 +899,18 @@ export function useAeroplaneMatch(
 			return [];
 		return getLegalMoves(activeMatch.state, activeMatch.state.pendingRoll);
 	}, [activeMatch]);
+
+	useTerminalHistorySave({
+		enabled: activeMatch !== null,
+		isTerminal: activeMatch.state.phase === 'finished',
+		isAuthenticated,
+		userId: user?.id,
+		buildPayload: () =>
+			activeMatch.state.phase === 'finished'
+				? buildAeroplaneHistoryPayload(activeMatch)
+				: null,
+		debugKey: 'AEROPLANE',
+	});
 
 	return {
 		setup,
