@@ -4,6 +4,7 @@ import { cn } from '../lib/utils';
 import ThemeToggle from './ThemeToggle';
 import SidebarAIConfig from './game/SidebarAIConfig';
 import { hydrate as hydrateAIConfig } from '../lib/ai/ai-config-store';
+import { isAIConfigGamePath } from '../lib/game-id';
 
 interface NavItem {
 	label: string;
@@ -49,14 +50,10 @@ export function AppShell() {
 	const [mobileAIOpen, setMobileAIOpen] = useState(false);
 	const isDesktop = useIsDesktop();
 
-	// All four game variants consume the cross-island ai-config-store via
-	// useAIConfig() and edit provider/model through SidebarAIConfig (rail +
-	// mobile panel). Scope both the rail and store hydrate to game pages.
-	const isGamePage = (p: string) =>
-		p.startsWith('/chess') ||
-		p.startsWith('/xiangqi') ||
-		p.startsWith('/shogi') ||
-		p.startsWith('/jungle');
+	// Only the four strategy variants consume the cross-island ai-config-store
+	// via useAIConfig() and edit provider/model through SidebarAIConfig (rail +
+	// mobile panel). Aeroplane is intentionally excluded because it has no
+	// provider consumer.
 
 	useEffect(() => {
 		setPath(window.location.pathname);
@@ -76,7 +73,7 @@ export function AppShell() {
 	// session.
 	useEffect(() => {
 		if (loading || !isAuthenticated || !revalidated) return;
-		if (!isGamePage(window.location.pathname)) return;
+		if (!isAIConfigGamePath(window.location.pathname)) return;
 		void hydrateAIConfig();
 	}, [loading, isAuthenticated, revalidated]);
 
@@ -175,7 +172,7 @@ export function AppShell() {
 						</a>
 					))}
 				</nav>
-				{isGamePage(path) && isDesktop && (
+				{isAIConfigGamePath(path) && isDesktop && (
 					<div className='mt-6'>
 						<SidebarAIConfig />
 					</div>
@@ -200,7 +197,7 @@ export function AppShell() {
 					</span>
 				</a>
 				<div className='flex items-center gap-2'>
-					{isGamePage(path) && (
+					{isAIConfigGamePath(path) && (
 						<button
 							type='button'
 							onClick={() => setMobileAIOpen(o => !o)}
@@ -226,7 +223,7 @@ export function AppShell() {
 			    lg breakpoint there is no other surface to change provider /
 			    model before starting an AI game. This collapsible panel mirrors
 			    the desktop rail using the same store-backed component. */}
-			{isGamePage(path) && mobileAIOpen && !isDesktop && (
+			{isAIConfigGamePath(path) && mobileAIOpen && !isDesktop && (
 				<div
 					id='procyon-mobile-ai-config'
 					className='fixed inset-x-0 top-16 z-30 border-b border-line bg-ink-800 px-4 py-4 lg:hidden'
