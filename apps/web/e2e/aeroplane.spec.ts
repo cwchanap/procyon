@@ -79,6 +79,35 @@ function withPlaneProgress(
 	};
 }
 
+function nearVictoryFixture(seed: number): AeroplaneE2EFixture {
+	const config = { ...QUICK_CONFIG, chatter: false };
+	const match = createAeroplaneMatch(config, seed);
+	const state = withPlaneProgress(
+		{
+			...match.state,
+			config: match.state.config,
+			currentPlayer: 'red',
+			phase: 'awaiting-choice',
+			pendingRoll: 1,
+			winner: null,
+			stats: {
+				...match.state.stats,
+				finished: { ...match.state.stats.finished, red: 1 },
+			},
+		},
+		{ 'red-0': 56, 'red-1': 55 }
+	);
+	return {
+		seed: match.rootSeed,
+		config: match.state.config,
+		state,
+		seats: match.seats,
+		diceRng: match.diceRng,
+		aiRng: match.aiRng,
+		skipAnimations: true,
+	};
+}
+
 async function installFixture(page: Page, fixture: AeroplaneE2EFixture) {
 	await page.addInitScript(value => {
 		(
@@ -337,17 +366,32 @@ test.describe('Aeroplane Chess critical journey', () => {
 				},
 				roll: 1,
 			},
+			{
+				progressById: { 'red-0': 2, 'red-1': 3 },
+				roll: 1,
+				expectFriendlyStack: true,
+			},
 		] as const;
 
 		for (const [index, scenario] of scenarios.entries()) {
+			const expectFriendlyStack =
+				'expectFriendlyStack' in scenario &&
+				scenario.expectFriendlyStack === true;
 			await clearStoredMatch(page);
 			const fixture = fixtureFrom(
-				{
-					...CLASSIC_CONFIG,
-					rulePreset: 'custom',
-					stacking: true,
-					blockades: true,
-				},
+				expectFriendlyStack
+					? {
+							...CLASSIC_CONFIG,
+							rulePreset: 'custom',
+							stacking: true,
+							blockades: false,
+						}
+					: {
+							...CLASSIC_CONFIG,
+							rulePreset: 'custom',
+							stacking: true,
+							blockades: true,
+						},
 				41400 + index,
 				{ currentPlayer: 'red', phase: 'awaiting-roll', pendingRoll: null },
 				{ diceRng: rngForRolls([scenario.roll, 1, 1, 1]) }
@@ -355,10 +399,27 @@ test.describe('Aeroplane Chess critical journey', () => {
 			fixture.state = withPlaneProgress(fixture.state!, scenario.progressById);
 			await gotoAeroplane(page, fixture);
 			await page.getByRole('button', { name: 'Roll die' }).click();
+			if (expectFriendlyStack) {
+				await page.getByRole('button', { name: /Red plane 1/i }).click();
+			}
 			await expect
 				.poll(async () => (await storedMatch(page)).actions.length)
-				.toBeGreaterThanOrEqual(4);
+				.toBeGreaterThanOrEqual(expectFriendlyStack ? 2 : 4);
 			const saved = await storedMatch(page);
+			if (expectFriendlyStack) {
+				expect(
+					saved.state.planes.filter(
+						plane => plane.color === 'red' && plane.progress === 3
+					)
+				).toHaveLength(2);
+				await expect(
+					page.getByTestId('aeroplane-plane-control-red-0')
+				).toHaveCount(1);
+				await expect(
+					page.getByTestId('aeroplane-plane-control-red-1')
+				).toHaveCount(1);
+				continue;
+			}
 			for (const [planeId, progress] of Object.entries(scenario.progressById)) {
 				if (!planeId.startsWith('red-')) continue;
 				expect(
@@ -419,8 +480,13 @@ test.describe('Aeroplane Chess critical journey', () => {
 		await page.getByRole('button', { name: /Red plane 2/i }).click();
 		await expect(status(page)).toContainText('Red wins the match.');
 		await expect
-			.poll(async () => (await storedMatch(page)).state.winner)
-			.toBe('red');
+			.poll(async () =>
+				page.evaluate(
+					key => localStorage.getItem(key),
+					ACTIVE_MATCH_STORAGE_KEY
+				)
+			)
+			.toBeNull();
 	});
 
 	test('submits exactly one Aeroplane history POST for a signed-in completion', async ({
@@ -445,31 +511,11 @@ test.describe('Aeroplane Chess critical journey', () => {
 			});
 		});
 
-		const config = { ...QUICK_CONFIG, chatter: false };
-		const match = createAeroplaneMatch(config, 41700);
-		const terminalState = withPlaneProgress(
-			{
-				...match.state,
-				config: match.state.config,
-				currentPlayer: 'red',
-				phase: 'finished',
-				pendingRoll: null,
-				winner: 'red',
-			},
-			{ 'red-0': 56, 'red-1': 56 }
-		);
-		terminalState.stats = {
-			...terminalState.stats,
-			finished: { ...terminalState.stats.finished, red: 2 },
-		};
-		await gotoAeroplane(page, {
-			seed: match.rootSeed,
-			config: match.state.config,
-			state: terminalState,
-			diceRng: match.diceRng,
-			aiRng: match.aiRng,
-			skipAnimations: true,
-		});
+		await gotoAeroplane(page, nearVictoryFixture(41700));
+		await expect(
+			page.getByRole('button', { name: /Red plane 2/i })
+		).toBeVisible();
+		await page.getByRole('button', { name: /Red plane 2/i }).click();
 		await expect(status(page)).toContainText('Red wins the match.');
 		await expect.poll(() => posts.length).toBe(1);
 		expect(JSON.parse(posts[0] ?? '{}')).toMatchObject({

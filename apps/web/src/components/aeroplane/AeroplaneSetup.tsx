@@ -243,7 +243,8 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 				</Button>
 			)}
 			<p className='text-xs leading-relaxed text-ivory-dim'>
-				{labelize(setup.rulePreset)} rules · {setup.humanColor} pilots first.
+				{labelize(setup.rulePreset)} rules · You control the{' '}
+				{colorLabel[setup.humanColor]} planes; Red starts.
 			</p>
 		</Panel>
 	);

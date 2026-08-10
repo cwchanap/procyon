@@ -81,6 +81,7 @@ export interface AeroplanePresentation {
 
 export interface ActiveAeroplaneMatch {
 	startedAt: string;
+	completedAt?: string;
 	rootSeed: number;
 	config: AeroplaneConfig;
 	state: AeroplaneState;
@@ -363,8 +364,12 @@ function activeFromPersisted(
 	value: PersistedAeroplaneMatchV1
 ): ActiveAeroplaneMatch {
 	const config = freezeConfig(value.config);
+	const completedAt =
+		value.completedAt ??
+		(value.state.phase === 'finished' ? value.savedAt : undefined);
 	return {
 		startedAt: value.startedAt ?? value.savedAt,
+		...(completedAt === undefined ? {} : { completedAt }),
 		rootSeed: value.rootSeed,
 		config,
 		state: { ...value.state, config },
@@ -396,8 +401,10 @@ function activeFromFresh(
 	const config = freezeConfig(normalizeConfig(fixtureConfig ?? configInput));
 	const base = createAeroplaneMatch(config, normalizedSeed);
 	const state = overrides.state ? { ...overrides.state, config } : base.state;
+	const completedAt = state.phase === 'finished' ? startedAt : undefined;
 	return {
 		startedAt,
+		...(completedAt === undefined ? {} : { completedAt }),
 		rootSeed: normalizedSeed,
 		config,
 		state,
@@ -442,6 +449,9 @@ function persistedEnvelope(
 		version: 1,
 		savedAt: now(),
 		startedAt: match.startedAt,
+		...(match.completedAt === undefined
+			? {}
+			: { completedAt: match.completedAt }),
 		rootSeed: match.rootSeed,
 		config: match.config,
 		state: match.state,
@@ -493,11 +503,14 @@ function humanStats(match: ActiveAeroplaneMatch) {
 	};
 }
 
-function elapsedSeconds(match: ActiveAeroplaneMatch, now: string): number {
+function elapsedSeconds(
+	match: ActiveAeroplaneMatch,
+	completionTimestamp: string
+): number {
 	const startedMs = Date.parse(match.startedAt);
-	const nowMs = Date.parse(now);
-	if (!Number.isFinite(startedMs) || !Number.isFinite(nowMs)) return 0;
-	return Math.max(0, Math.floor((nowMs - startedMs) / 1000));
+	const completedMs = Date.parse(completionTimestamp);
+	if (!Number.isFinite(startedMs) || !Number.isFinite(completedMs)) return 0;
+	return Math.max(0, Math.floor((completedMs - startedMs) / 1000));
 }
 
 function buildAeroplaneHistoryPayload(
@@ -516,7 +529,10 @@ function buildAeroplaneHistoryPayload(
 			victoryTarget: match.config.victoryTarget,
 			diceMode: match.config.diceMode,
 			humanColor: match.config.humanColor,
-			durationSeconds: elapsedSeconds(match, date),
+			durationSeconds: elapsedSeconds(
+				match,
+				match.completedAt ?? match.startedAt
+			),
 			planesFinished: stats.finished,
 			capturesMade: stats.capturesMade,
 			capturesSuffered: stats.capturesSuffered,
@@ -729,6 +745,11 @@ export function useAeroplaneMatch(
 			);
 			const next: ActiveAeroplaneMatch = {
 				...current,
+				...(transition.state.phase === 'finished'
+					? {
+							completedAt: current.completedAt ?? nowRef.current(),
+						}
+					: { completedAt: undefined }),
 				state: transition.state,
 				aiRng: aiRng ?? current.aiRng,
 				actions: [...current.actions, action],
@@ -954,6 +975,18 @@ export function useAeroplaneMatch(
 				? buildAeroplaneHistoryPayload(activeMatch, nowRef.current)
 				: null,
 		debugKey: 'AEROPLANE',
+		onBeforeFirstAttempt: () => {
+			// The terminal snapshot is a restorable non-idempotent submission. Clear
+			// it before transport so an ambiguous outcome cannot be resubmitted after
+			// reload, while the identity guard protects a synchronously persisted
+			// replacement match.
+			if (
+				activeRef.current !== activeMatch ||
+				activeMatch.state.phase !== 'finished'
+			)
+				return;
+			clearActiveMatch(storageRef.current);
+		},
 		onSuccess: () => {
 			// A response can resolve after a replacement match has already been
 			// persisted but before the shared hook's generation effect runs. Only

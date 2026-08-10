@@ -131,6 +131,8 @@ export interface PersistedAeroplaneMatchV1 {
 	savedAt: string;
 	/** Match-start wall clock. Optional only for legacy v1 snapshots. */
 	startedAt?: string;
+	/** Winning-transition wall clock. Optional only for legacy terminal saves. */
+	completedAt?: string;
 	rootSeed: number;
 	config: AeroplaneConfig;
 	state: AeroplaneState;
