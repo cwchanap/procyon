@@ -1,6 +1,27 @@
 import { env } from './env';
 import type { GameId } from './game-id';
 import type { OpponentEngineId, OpponentLlmId } from './ai/opponent';
+import type {
+	AeroplaneColor,
+	AeroplaneConfig,
+	Personality,
+} from './aeroplane/types';
+
+/** Aeroplane-specific terminal-match details persisted to play history. */
+export interface AeroplanePlayHistoryDetails {
+	rulePreset: AeroplaneConfig['rulePreset'];
+	victoryTarget: AeroplaneConfig['victoryTarget'];
+	diceMode: AeroplaneConfig['diceMode'];
+	humanColor: AeroplaneColor;
+	durationSeconds: number;
+	planesFinished: number;
+	capturesMade: number;
+	capturesSuffered: number;
+	aiPlayers: Array<{
+		color: AeroplaneColor;
+		personality: Personality;
+	}>;
+}
 
 export interface SubmitPlayHistoryInput {
 	gameId: GameId;
@@ -8,7 +29,7 @@ export interface SubmitPlayHistoryInput {
 	date: string;
 	opponentLlmId?: OpponentLlmId;
 	opponentEngineId?: OpponentEngineId;
-	details?: unknown;
+	details?: AeroplanePlayHistoryDetails;
 }
 
 /** Submit a play-history record; terminal save/retry policy belongs to the hook. */

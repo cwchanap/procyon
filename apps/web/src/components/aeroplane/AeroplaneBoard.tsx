@@ -479,6 +479,9 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 										suppressClickRef.current = true;
 										activatePlane(plane.id, true);
 									}}
+									onPointerCancel={() => {
+										suppressClickRef.current = false;
+									}}
 									onClick={event => {
 										if (suppressClickRef.current) {
 											suppressClickRef.current = false;

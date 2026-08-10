@@ -346,7 +346,7 @@ export default function PlayHistoryPage() {
 													{formatDate(entry.date)}
 												</td>
 												<td className='py-4 pr-4 whitespace-nowrap'>
-													{GAME_LABELS[entry.gameId]}
+													{GAME_LABELS[entry.gameId] ?? entry.gameId}
 												</td>
 												<td className='py-4 pr-4'>
 													<span>{formatOpponent(entry)}</span>

@@ -53,14 +53,12 @@ const finishMove: ResolvedMove = {
 };
 
 describe('Aeroplane local chatter', () => {
-	test('same notable event produces a stable local line without consuming RNG', () => {
-		const before = { value: 123 };
+	test('same notable event produces a stable local line', () => {
 		const first = getChatterLine(captureMove, 'aggressive');
 		const second = getChatterLine(captureMove, 'aggressive');
 
 		expect(first).toBeTruthy();
 		expect(first).toBe(second);
-		expect(before).toEqual({ value: 123 });
 	});
 
 	test('selects presentation-only lines for each notable event kind', () => {

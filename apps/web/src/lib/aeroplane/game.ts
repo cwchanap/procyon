@@ -1,6 +1,7 @@
 import { applyResolvedMove, getLegalMoves } from './rules';
 import { rollDice, type DiceResult } from './dice';
 import { TURN_ORDER, FINISH_PROGRESS } from './topology';
+import { canonicalSerialize } from './checksum';
 import { deriveRngStreams, normalizeRngState, type RngState } from './rng';
 import type {
 	AeroplaneColor,
@@ -124,7 +125,8 @@ export function createAeroplaneMatch(
 	rootSeed = Date.now()
 ): AeroplaneMatch {
 	const config = normalizeConfig(input);
-	const streams = deriveRngStreams(rootSeed);
+	const normalizedSeed = normalizeRngState(rootSeed).value;
+	const streams = deriveRngStreams(normalizedSeed);
 	const state: AeroplaneState = {
 		config,
 		currentPlayer: 'red',
@@ -139,7 +141,7 @@ export function createAeroplaneMatch(
 		stats: zeroStats(),
 	};
 	return {
-		rootSeed: normalizeRngState(rootSeed).value,
+		rootSeed: normalizedSeed,
 		state,
 		seats: seatAIs(config.humanColor),
 		diceRng: streams.dice,
@@ -157,7 +159,7 @@ function isValidRoll(roll: number): boolean {
 }
 
 function moveEquivalent(a: ResolvedMove, b: ResolvedMove): boolean {
-	return JSON.stringify(a) === JSON.stringify(b);
+	return canonicalSerialize(a) === canonicalSerialize(b);
 }
 
 function progressScore(state: AeroplaneState, color: AeroplaneColor): number {

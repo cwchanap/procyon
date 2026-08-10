@@ -18,7 +18,7 @@ export interface UseTerminalHistorySaveOptions {
 }
 
 const MAX_401_RETRIES = 3;
-const RETRY_401_DELAY_MS = 5_000;
+export const RETRY_401_DELAY_MS = 5_000;
 
 interface SaveSnapshot {
 	payload: SubmitPlayHistoryInput;
@@ -137,6 +137,10 @@ export function useTerminalHistorySave({
 								setRetryTrigger(value => value + 1);
 							}
 						}, RETRY_401_DELAY_MS);
+						// A retry is scheduled: do not report rejection yet. The
+						// failure callback and log fire only when the retry budget
+						// is exhausted or the response is non-retryable.
+						return;
 					}
 				}
 

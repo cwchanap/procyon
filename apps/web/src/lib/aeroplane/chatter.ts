@@ -1,4 +1,4 @@
-import { canonicalSerialize } from './checksum';
+import { canonicalSerialize, fnv1a } from './checksum';
 import type { Personality, ResolvedMove } from './types';
 
 export type ChatterKind = 'capture' | 'flight' | 'finish' | 'win' | 'loss';
@@ -107,15 +107,6 @@ function isPersonality(value: unknown): value is Personality {
 	return PERSONALITY_KEYS.includes(value as Personality);
 }
 
-function stableHash(value: string): number {
-	let hash = 0x811c9dc5;
-	for (let index = 0; index < value.length; index += 1) {
-		hash ^= value.charCodeAt(index);
-		hash = Math.imul(hash, 0x01000193) >>> 0;
-	}
-	return hash >>> 0;
-}
-
 function cueFromInput(input: ChatterInput): AeroplaneChatterCue | null {
 	if ('kind' in input) {
 		return isChatterKind(input.kind) ? input : null;
@@ -151,6 +142,6 @@ export function getChatterLine(
 	const cue = cueFromInput(input);
 	if (!cue) return null;
 	const lines = CHATTER_LINES[cue.kind][personality];
-	const index = stableHash(canonicalSerialize(cue)) % lines.length;
+	const index = fnv1a(canonicalSerialize(cue)) % lines.length;
 	return lines[index] ?? null;
 }

@@ -2,7 +2,10 @@ import { test, expect, describe, beforeEach, afterEach, mock } from 'bun:test';
 import { renderHook, act } from '@testing-library/react';
 import { setupReactDom } from '../test/reactSetup';
 import type { SubmitPlayHistoryInput } from '../lib/play-history';
-import { useTerminalHistorySave } from './useTerminalHistorySave';
+import {
+	useTerminalHistorySave,
+	RETRY_401_DELAY_MS,
+} from './useTerminalHistorySave';
 
 setupReactDom();
 
@@ -21,6 +24,7 @@ interface HookProps {
 	buildPayload: () => SubmitPlayHistoryInput | null;
 	debugKey?: string;
 	onSuccess?: () => void;
+	onFailure?: (reason: 'rejected' | 'network') => void;
 }
 
 function makeProps(overrides: Partial<HookProps> = {}): HookProps {
@@ -178,7 +182,7 @@ describe('useTerminalHistorySave', () => {
 			}) as unknown as Promise<Response>;
 		}) as unknown as typeof fetch;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
-			if (delay === 5_000) {
+			if (delay === RETRY_401_DELAY_MS) {
 				retryCallback = fn;
 				return 1 as unknown as ReturnType<typeof setTimeout>;
 			}
@@ -244,7 +248,7 @@ describe('useTerminalHistorySave', () => {
 			}) as unknown as Promise<Response>;
 		}) as unknown as typeof fetch;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
-			if (delay === 5_000) {
+			if (delay === RETRY_401_DELAY_MS) {
 				retryCallback = fn;
 				return 1 as unknown as ReturnType<typeof setTimeout>;
 			}
@@ -287,6 +291,7 @@ describe('useTerminalHistorySave', () => {
 	});
 
 	test('401 retries are bounded to three delayed retries', async () => {
+		const failureReasons: string[] = [];
 		globalThis.fetch = mock((input: RequestInfo | URL) => {
 			const url = typeof input === 'string' ? input : input.toString();
 			if (url.includes('/play-history')) {
@@ -303,7 +308,7 @@ describe('useTerminalHistorySave', () => {
 			}) as unknown as Promise<Response>;
 		}) as unknown as typeof fetch;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
-			if (delay === 5_000) {
+			if (delay === RETRY_401_DELAY_MS) {
 				fn();
 				return 1 as unknown as ReturnType<typeof setTimeout>;
 			}
@@ -311,7 +316,10 @@ describe('useTerminalHistorySave', () => {
 		}) as unknown as typeof setTimeout;
 
 		const { unmount } = renderHook(props => useTerminalHistorySave(props), {
-			initialProps: makeProps({ isTerminal: true }),
+			initialProps: makeProps({
+				isTerminal: true,
+				onFailure: reason => failureReasons.push(reason),
+			}),
 		});
 
 		await act(async () => {
@@ -320,6 +328,7 @@ describe('useTerminalHistorySave', () => {
 		unmount();
 
 		expect(fetchCallCount).toBe(4);
+		expect(failureReasons).toEqual(['rejected']);
 	});
 
 	test('new game generation makes old 401 response stale', async () => {
@@ -451,7 +460,7 @@ describe('useTerminalHistorySave', () => {
 			}) as unknown as Promise<Response>;
 		}) as unknown as typeof fetch;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
-			if (delay === 5_000) {
+			if (delay === RETRY_401_DELAY_MS) {
 				retryCallback = fn;
 				return 42 as unknown as ReturnType<typeof setTimeout>;
 			}
@@ -493,7 +502,7 @@ describe('useTerminalHistorySave', () => {
 			}) as unknown as Promise<Response>;
 		}) as unknown as typeof fetch;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
-			if (delay === 5_000) {
+			if (delay === RETRY_401_DELAY_MS) {
 				retryTimerCount++;
 				retryCallback = fn;
 				return 42 as unknown as ReturnType<typeof setTimeout>;
@@ -571,7 +580,7 @@ describe('useTerminalHistorySave', () => {
 			}) as unknown as Promise<Response>;
 		}) as unknown as typeof fetch;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
-			if (delay === 5_000) {
+			if (delay === RETRY_401_DELAY_MS) {
 				return 42 as unknown as ReturnType<typeof setTimeout>;
 			}
 			return originalSetTimeout(fn, delay);
@@ -620,7 +629,7 @@ describe('useTerminalHistorySave', () => {
 			}) as unknown as Promise<Response>;
 		}) as unknown as typeof fetch;
 		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
-			if (delay === 5_000) {
+			if (delay === RETRY_401_DELAY_MS) {
 				retryCallback = fn;
 				return 42 as unknown as ReturnType<typeof setTimeout>;
 			}

@@ -8,6 +8,8 @@ export const START_OFFSET = {
 	green: 39,
 } as const;
 export const SHARED_PROGRESS_MAX = 50;
+/** Number of shared nodes around the ring each colour's offset wraps over. */
+export const SHARED_NODE_COUNT = 52;
 export const FINISH_PROGRESS = 56;
 export const FLIGHT_ENTRANCE_PROGRESS = 18;
 export const FLIGHT_EXIT_PROGRESS = 30;
@@ -45,7 +47,7 @@ export function toGlobalTrackIndex(
 	const offset = START_OFFSET[color];
 	if (offset === undefined)
 		throw new RangeError(`Unknown Aeroplane colour: ${String(color)}`);
-	return (offset + progress - 1) % 52;
+	return (offset + progress - 1) % SHARED_NODE_COUNT;
 }
 
 /** Return the logical position used by rule events and board projections. */

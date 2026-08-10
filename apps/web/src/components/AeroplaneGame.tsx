@@ -44,7 +44,6 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 					/>
 					<AeroplaneStatus
 						state={match.state}
-						config={match.activeConfig}
 						legalMoves={match.legalMoves}
 						isAnimating={match.isAnimating}
 					/>

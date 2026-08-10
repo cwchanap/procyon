@@ -2,14 +2,12 @@ import React from 'react';
 import Panel from '../ui/Panel';
 import type {
 	AeroplaneColor,
-	AeroplaneConfig,
 	AeroplaneState,
 	ResolvedMove,
 } from '../../lib/aeroplane/types';
 
 export interface AeroplaneStatusProps {
 	state: AeroplaneState;
-	config?: AeroplaneConfig;
 	legalMoves?: readonly ResolvedMove[];
 	isAnimating?: boolean;
 }
@@ -25,8 +23,10 @@ function statusCopy(
 	state: AeroplaneState,
 	legalMoves: readonly ResolvedMove[]
 ): string {
-	if (state.phase === 'finished' && state.winner) {
-		return `${colorLabel[state.winner]} wins the match.`;
+	if (state.phase === 'finished') {
+		return state.winner
+			? `${colorLabel[state.winner]} wins the match.`
+			: 'Match ended.';
 	}
 	if (state.phase === 'awaiting-choice') {
 		if (legalMoves.length === 0)
@@ -80,11 +80,12 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 						<span className='ml-2 text-aeroplane'>Route in flight…</span>
 					)}
 				</div>
-				<p className='sr-only'>{message}</p>
-			</div>
-			<div className='border-t border-line px-3 py-2 text-xs text-ivory-dim sm:hidden'>
-				<span>{message}</span>
-				{isAnimating && <span className='ml-2 text-aeroplane'>In flight</span>}
+				<div className='min-w-0 basis-full border-t border-line pt-2 text-sm text-ivory-dim sm:hidden'>
+					<span>{message}</span>
+					{isAnimating && (
+						<span className='ml-2 text-aeroplane'>In flight</span>
+					)}
+				</div>
 			</div>
 		</Panel>
 	);

@@ -135,6 +135,22 @@ const createPlayHistorySchema = z
 					message: 'Aeroplane history requires details',
 					path: ['details'],
 				});
+			} else {
+				const aiColors = data.details.aiPlayers.map(player => player.color);
+				if (new Set(aiColors).size !== aiColors.length) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: 'Aeroplane AI players must each use a distinct colour',
+						path: ['details', 'aiPlayers'],
+					});
+				}
+				if (aiColors.includes(data.details.humanColor)) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: 'Aeroplane AI players cannot share the human colour',
+						path: ['details', 'aiPlayers'],
+					});
+				}
 			}
 		} else if (data.opponentEngineId === OpponentEngineId.AeroplaneTrioV1) {
 			ctx.addIssue({

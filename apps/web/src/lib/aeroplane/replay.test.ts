@@ -93,12 +93,15 @@ test('changed recorded AI choice reports the first mismatch', () => {
 	expect(aiMove).toBeDefined();
 	if (!aiMove) return;
 	aiMove.selectedPlaneId = aiMove.color + '-3';
+	const actionIndex = changed.actions.indexOf(aiMove);
 
 	const result = replayMatch(changed);
 
 	expect(result.kind).toBe('mismatch');
-	if (result.kind === 'mismatch')
-		expect(result.index).toBeGreaterThanOrEqual(0);
+	if (result.kind === 'mismatch') {
+		expect(result.index).toBe(actionIndex);
+		expect(result.reason).toBe('recorded AI choice mismatch');
+	}
 });
 
 test('valid restore is independent of diagnostic checksum mismatch', async () => {
@@ -149,7 +152,7 @@ test('recorded colors stay in the four-colour domain', () => {
 	}
 });
 
-test('checksum is stable across record-key and plane ordering and presentation data', () => {
+test('checksum is stable across plane ordering and presentation data', () => {
 	const match = createAeroplaneMatch(QUICK_CONFIG, 7);
 	const first = {
 		...match.state,
@@ -165,6 +168,16 @@ test('checksum is stable across record-key and plane ordering and presentation d
 	};
 
 	expect(checksumState(first)).toBe(checksumState(second));
+
+	// A materially different authoritative state must produce a different
+	// checksum so the contract remains meaningful.
+	const movedRed = {
+		...match.state,
+		planes: match.state.planes.map(plane =>
+			plane.id === 'red-0' ? { ...plane, progress: 12 } : plane
+		),
+	};
+	expect(checksumState(movedRed)).not.toBe(checksumState(match.state));
 });
 
 // --- Mismatch-branch coverage for the diagnostic replay path ---

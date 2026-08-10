@@ -4,7 +4,7 @@ import ChessBoardPreview from './ChessBoardPreview';
 import AeroplaneBoardPreview from './aeroplane/AeroplaneBoardPreview';
 import { GAME_ROUTES } from '../lib/game-id';
 
-const chessGames = [
+const games = [
 	{
 		title: 'Standard Chess',
 		description: 'Classic chess with game mode and interactive tutorials.',
@@ -57,7 +57,7 @@ const ChessGameSelector: React.FC = () => {
 			data-hydrated={isHydrated ? 'true' : 'false'}
 			className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto'
 		>
-			{chessGames.map((game, index) => (
+			{games.map((game, index) => (
 				<div
 					key={index}
 					className='animate-fade-in-up'

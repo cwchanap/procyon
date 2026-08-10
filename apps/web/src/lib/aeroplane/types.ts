@@ -1,14 +1,13 @@
 import type { RngState } from './rng';
 
-export type AeroplaneColor = 'red' | 'yellow' | 'blue' | 'green';
+export const AEROPLANE_COLORS = ['red', 'yellow', 'blue', 'green'] as const;
+export type AeroplaneColor = (typeof AEROPLANE_COLORS)[number];
 export type Personality = 'cautious' | 'aggressive' | 'unpredictable';
 export type DiceMode = 'fair' | 'relaxed';
 export type LaunchRule = 'six' | 'five-or-six';
 export type FinishRule = 'exact' | 'bounce';
 export type AeroplanePhase = 'awaiting-roll' | 'awaiting-choice' | 'finished';
 export type AeroplaneRulePreset = 'classic' | 'quick-chill' | 'custom';
-
-export const AEROPLANE_COLORS = ['red', 'yellow', 'blue', 'green'] as const;
 
 export interface AeroplaneConfig {
 	rulePreset: AeroplaneRulePreset;

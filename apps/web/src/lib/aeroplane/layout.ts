@@ -2,8 +2,11 @@
  * Render-only board projection data.  These coordinates are normalized to a
  * 100 by 100 square so the board can scale with its container.  No gameplay
  * module imports this file: logical progress remains the sole source of
- * legality and movement decisions.
+ * legality and movement decisions.  The flight-progress offsets are imported
+ * from topology so the render projection stays aligned with the rules.
  */
+
+import { FLIGHT_ENTRANCE_PROGRESS, FLIGHT_EXIT_PROGRESS } from './topology';
 
 export type AeroplaneLayoutColor = 'red' | 'yellow' | 'blue' | 'green';
 
@@ -114,11 +117,22 @@ export const HOME_PATHS: Readonly<
 	),
 });
 
+/** Progress offsets used only to project a player's logical track onto SVG. */
+export const START_OFFSETS: Readonly<Record<AeroplaneLayoutColor, number>> =
+	Object.freeze({ red: 0, yellow: 13, blue: 26, green: 39 });
+
 /** Centre flight guides shown whenever a resolved route includes a flight. */
 export const FLIGHT_GUIDES: readonly FlightGuide[] = Object.freeze(
 	COLORS.map((color, index) => {
-		const from = TRACK_ANCHORS[(index * 13 + 17) % TRACK_ANCHORS.length]!;
-		const to = TRACK_ANCHORS[(index * 13 + 29) % TRACK_ANCHORS.length]!;
+		const offset = START_OFFSETS[COLORS[index]!]!;
+		const from =
+			TRACK_ANCHORS[
+				(offset + FLIGHT_ENTRANCE_PROGRESS - 1) % TRACK_ANCHORS.length
+			]!;
+		const to =
+			TRACK_ANCHORS[
+				(offset + FLIGHT_EXIT_PROGRESS - 1) % TRACK_ANCHORS.length
+			]!;
 		const control = rotateQuarter({ x: 50, y: 50 - 16 }, index);
 		return Object.freeze({ color, from, to, control });
 	})
@@ -131,7 +145,3 @@ export const STACK_OFFSETS: readonly LayoutAnchor[] = Object.freeze([
 	Object.freeze({ x: -1.8, y: 1.8 }),
 	Object.freeze({ x: 1.8, y: 1.8 }),
 ]);
-
-/** Progress offsets used only to project a player's logical track onto SVG. */
-export const START_OFFSETS: Readonly<Record<AeroplaneLayoutColor, number>> =
-	Object.freeze({ red: 0, yellow: 13, blue: 26, green: 39 });
