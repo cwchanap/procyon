@@ -35,6 +35,7 @@ describe('database schema - table definitions', () => {
 		expect(playHistory.status).toBeDefined();
 		expect(playHistory.opponentUserId).toBeDefined();
 		expect(playHistory.opponentLlmId).toBeDefined();
+		expect(playHistory.details).toBeDefined();
 	});
 
 	test('playerRatings table has correct structure', () => {
@@ -169,6 +170,7 @@ describe('database schema - type constraints', () => {
 		expect(validGameIds).toContain(GameId.Xiangqi);
 		expect(validGameIds).toContain(GameId.Shogi);
 		expect(validGameIds).toContain(GameId.Jungle);
+		expect(validGameIds).toContain('aeroplane');
 	});
 
 	test('playHistory status accepts valid GameResultStatus values', () => {
@@ -215,6 +217,10 @@ describe('database schema - nullable columns', () => {
 
 	test('playHistory opponentLlmId is nullable', () => {
 		expect(playHistory.opponentLlmId).toBeDefined();
+	});
+
+	test('playHistory details is nullable', () => {
+		expect(playHistory.details).toBeDefined();
 	});
 
 	test('userPuzzleProgress solvedAt is nullable', () => {

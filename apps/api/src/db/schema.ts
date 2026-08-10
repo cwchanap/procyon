@@ -13,6 +13,7 @@ import {
 	OpponentLlmId,
 	OpponentEngineId,
 } from '../constants/game';
+import type { AeroplaneHistoryDetails } from '../types/play-history';
 
 // Application-owned user identity (replaces Supabase Auth).
 // `id` is the canonical user UUID referenced by all user-keyed tables.
@@ -72,6 +73,9 @@ export const playHistory = sqliteTable(
 		opponentEngineId: text(
 			'opponent_engine_id'
 		).$type<OpponentEngineId | null>(),
+		details: text('details', {
+			mode: 'json',
+		}).$type<AeroplaneHistoryDetails | null>(),
 	},
 	table => ({
 		userIdIdx: index('play_history_user_id_idx').on(table.userId),

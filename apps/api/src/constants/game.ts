@@ -5,20 +5,15 @@ export enum ChessVariantId {
 	Jungle = 'jungle',
 }
 
-/**
- * Strategy game identities accepted by the play-history API.
- *
- * Aeroplane is intentionally excluded until its API/rating support lands in
- * the follow-up task; the web navigation type may still include it.
- */
 export enum GameId {
 	Chess = 'chess',
 	Xiangqi = 'xiangqi',
 	Shogi = 'shogi',
 	Jungle = 'jungle',
+	Aeroplane = 'aeroplane',
 }
 
-export function getRatedVariantId(gameId: GameId): ChessVariantId {
+export function getRatedVariantId(gameId: GameId): ChessVariantId | null {
 	switch (gameId) {
 		case GameId.Chess:
 			return ChessVariantId.Chess;
@@ -28,6 +23,8 @@ export function getRatedVariantId(gameId: GameId): ChessVariantId {
 			return ChessVariantId.Shogi;
 		case GameId.Jungle:
 			return ChessVariantId.Jungle;
+		case GameId.Aeroplane:
+			return null;
 	}
 }
 
@@ -44,6 +41,7 @@ export enum OpponentLlmId {
 
 export enum OpponentEngineId {
 	Stockfish = 'stockfish',
+	AeroplaneTrioV1 = 'aeroplane-trio-v1',
 }
 
 export const ALL_CHESS_VARIANT_IDS = Object.values(ChessVariantId);
