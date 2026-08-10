@@ -121,7 +121,7 @@ test.describe('Critical user journeys', () => {
 		await page.getByRole('link', { name: /Play Aeroplane Chess/i }).click();
 		await expect(page).toHaveURL('/aeroplane', { timeout: 15000 });
 		await expect(
-			page.getByRole('heading', { name: 'Aeroplane Chess' })
+			page.getByRole('heading', { name: 'Aeroplane Chess', exact: true })
 		).toBeVisible({ timeout: 15000 });
 	});
 
