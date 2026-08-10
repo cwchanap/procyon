@@ -74,11 +74,9 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 	onSkipAnimations,
 }) => {
 	const [open, setOpen] = useState(false);
-	const [isDesktop, setIsDesktop] = useState(() =>
-		typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-			? window.matchMedia('(min-width: 640px)').matches
-			: false
-	);
+	// Start expanded so SSR markup is accessible and hydration-stable. Mobile
+	// collapses after the media query effect runs; desktop remains expanded.
+	const [isDesktop, setIsDesktop] = useState(true);
 	const contentId = useId();
 	const feed = eventFeed ?? events;
 
