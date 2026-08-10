@@ -1,7 +1,11 @@
 import { describe, expect, jest, test } from 'bun:test';
 import { act, renderHook } from '@testing-library/react';
 import { setupReactDom } from '../test/reactSetup';
-import { CLASSIC_CONFIG, createAeroplaneMatch } from '../lib/aeroplane/game';
+import {
+	CLASSIC_CONFIG,
+	createAeroplaneMatch,
+	rollTurn,
+} from '../lib/aeroplane/game';
 import { rollFair } from '../lib/aeroplane/dice';
 import {
 	ACTIVE_MATCH_STORAGE_KEY,
@@ -124,6 +128,40 @@ function aiTurnFixture(): AeroplaneE2EFixture {
 	};
 }
 
+function saveAiAwaitingChoice(storage: MemoryStorage): void {
+	const fixture = aiTurnFixture();
+	const config = { ...fixture.state!.config, humanColor: 'blue' as const };
+	const state = { ...fixture.state!, config };
+	const diceRng = fixture.diceRng!;
+	const rolled = rollTurn(state, diceRng);
+	if (!rolled.rng || rolled.legalMoves.length !== 1)
+		throw new Error('expected one legal AI move in fixture');
+	const match = createAeroplaneMatch(config, fixture.seed);
+	const saved: PersistedAeroplaneMatchV1 = {
+		version: 1,
+		savedAt: new Date(0).toISOString(),
+		rootSeed: match.rootSeed,
+		config: state.config,
+		state: rolled.state,
+		seats: match.seats,
+		diceRng: rolled.rng,
+		aiRng: fixture.aiRng!,
+		actions: [
+			{
+				kind: 'roll',
+				actor: 'ai',
+				color: 'yellow',
+				roll: rolled.roll,
+				selectedPlaneId: null,
+				events: [],
+				checksum: '00000000',
+			},
+		],
+	};
+	if (!saveActiveMatch(saved, storage))
+		throw new Error('expected AI awaiting-choice snapshot to save');
+}
+
 function createHookHarness(
 	fixture: AeroplaneE2EFixture,
 	options: Omit<UseAeroplaneMatchOptions, 'fixture' | 'dev'> = {}
@@ -243,6 +281,39 @@ describe('useAeroplaneMatch controller', () => {
 		const match = createHookHarness({}, { storage });
 		expect(match.result.current.seats).toEqual(seats);
 		expect(match.result.current.rootSeed).toBe(original.rootSeed);
+	});
+
+	test('initial restore schedules a persisted AI awaiting-choice decision', () => {
+		const storage = memoryStorage();
+		saveAiAwaitingChoice(storage);
+		const match = createHookHarness({}, { storage });
+		expect(match.state().phase).toBe('awaiting-choice');
+		match.advanceTime(649);
+		expect(match.state().phase).toBe('awaiting-choice');
+		match.advanceTime(1);
+		expect(match.state().phase).toBe('awaiting-roll');
+		expect(match.state().currentPlayer).toBe('blue');
+		const saved = JSON.parse(
+			storage.getItem(ACTIVE_MATCH_STORAGE_KEY) ?? '{}'
+		) as PersistedAeroplaneMatchV1;
+		expect(saved.actions).toHaveLength(2);
+		expect(saved.actions.at(-1)?.kind).toBe('move');
+	});
+
+	test('explicit resume reschedules a persisted AI awaiting-choice decision', () => {
+		const storage = memoryStorage();
+		saveAiAwaitingChoice(storage);
+		const match = createHookHarness({}, { storage });
+		act(() => {
+			expect(match.result.current.resume()).toBe(true);
+		});
+		match.advanceTime(650);
+		expect(match.state().phase).toBe('awaiting-roll');
+		const saved = JSON.parse(
+			storage.getItem(ACTIVE_MATCH_STORAGE_KEY) ?? '{}'
+		) as PersistedAeroplaneMatchV1;
+		expect(saved.actions).toHaveLength(2);
+		expect(saved.actions.at(-1)?.kind).toBe('move');
 	});
 
 	test('setup preset mutation applies the complete preset contract', () => {
