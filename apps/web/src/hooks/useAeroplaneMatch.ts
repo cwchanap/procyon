@@ -12,8 +12,12 @@ import { checksumState } from '../lib/aeroplane/checksum';
 import {
 	ACTIVE_MATCH_STORAGE_KEY,
 	clearActiveMatch,
+	isRecord,
+	isUint32,
 	restoreActiveMatch,
 	saveActiveMatch,
+	validConfig,
+	validSeats,
 	validatePersistedAeroplaneMatch,
 	type AeroplaneStorage,
 } from '../lib/aeroplane/persistence';
@@ -30,7 +34,6 @@ import type {
 	AeroplaneEvent,
 	AeroplaneState,
 	AiSeat,
-	Personality,
 	PersistedAeroplaneMatchV1,
 	ResolvedMove,
 } from '../lib/aeroplane/types';
@@ -54,15 +57,8 @@ export interface AeroplaneE2EFixture {
 	skipAnimations?: boolean;
 }
 
-export interface AeroplaneDevOverrides {
-	seed?: number;
-	config?: AeroplaneConfig;
-	state?: AeroplaneState;
-	seats?: AiSeat[];
-	diceRng?: RngState;
-	aiRng?: RngState;
-	skipAnimations?: boolean;
-}
+/** Identical shape to the fixture; resolved dev overrides share its contract. */
+export type AeroplaneDevOverrides = AeroplaneE2EFixture;
 
 export interface ReadDevOverridesOptions {
 	dev: boolean;
@@ -91,6 +87,12 @@ export interface ActiveAeroplaneMatch {
 	actions: AeroplaneActionRecord[];
 }
 
+/**
+ * Options are captured into refs on the first render and treated as stable for
+ * the life of the match. Callers must keep `options` and every referenced
+ * callback/configuration value referentially stable across re-renders; later
+ * changes to these values are not picked up after the initial render.
+ */
 export interface UseAeroplaneMatchOptions {
 	/** Injected active-match storage, primarily for unit/E2E harnesses. */
 	storage?: AeroplaneStorage;
@@ -152,68 +154,8 @@ declare global {
 	}
 }
 
-const COLORS: readonly AeroplaneColor[] = ['red', 'yellow', 'blue', 'green'];
-const PERSONALITIES: readonly Personality[] = [
-	'cautious',
-	'aggressive',
-	'unpredictable',
-];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isUint32(value: unknown): value is number {
-	return (
-		typeof value === 'number' &&
-		Number.isInteger(value) &&
-		value >= 0 &&
-		value <= 0xffffffff
-	);
-}
-
 function isRng(value: unknown): value is RngState {
 	return isRecord(value) && isUint32(value.value) && value.value !== 0;
-}
-
-function isConfig(value: unknown): value is AeroplaneConfig {
-	if (!isRecord(value)) return false;
-	return (
-		(value.rulePreset === 'classic' ||
-			value.rulePreset === 'quick-chill' ||
-			value.rulePreset === 'custom') &&
-		(value.victoryTarget === 2 || value.victoryTarget === 4) &&
-		(value.diceMode === 'fair' || value.diceMode === 'relaxed') &&
-		(value.launchRule === 'six' || value.launchRule === 'five-or-six') &&
-		(value.finishRule === 'exact' || value.finishRule === 'bounce') &&
-		typeof value.stacking === 'boolean' &&
-		typeof value.blockades === 'boolean' &&
-		typeof value.humanColor === 'string' &&
-		COLORS.includes(value.humanColor as AeroplaneColor) &&
-		typeof value.chatter === 'boolean' &&
-		(!value.blockades || value.stacking)
-	);
-}
-
-function isSeats(
-	value: unknown,
-	humanColor: AeroplaneColor
-): value is AiSeat[] {
-	if (!Array.isArray(value) || value.length !== 3) return false;
-	const seen = new Set<AeroplaneColor>();
-	for (const seat of value) {
-		if (!isRecord(seat)) return false;
-		if (
-			typeof seat.color !== 'string' ||
-			!COLORS.includes(seat.color as AeroplaneColor) ||
-			seat.color === humanColor ||
-			!PERSONALITIES.includes(seat.personality as Personality) ||
-			seen.has(seat.color as AeroplaneColor)
-		)
-			return false;
-		seen.add(seat.color as AeroplaneColor);
-	}
-	return seen.size === 3;
 }
 
 function fixtureFromWindow(): AeroplaneE2EFixture | undefined {
@@ -247,7 +189,7 @@ function candidateEnvelope(
 	const seats = fixture.seats ?? base.seats;
 	const diceRng = fixture.diceRng ?? base.diceRng;
 	const aiRng = fixture.aiRng ?? base.aiRng;
-	if (!isSeats(seats, config.humanColor) || !isRng(diceRng) || !isRng(aiRng))
+	if (!validSeats(seats, config.humanColor) || !isRng(diceRng) || !isRng(aiRng))
 		return null;
 	return {
 		version: 1,
@@ -293,13 +235,13 @@ export function readDevOverrides(
 
 	let config: AeroplaneConfig | undefined;
 	if (fixture.config !== undefined) {
-		if (!isConfig(fixture.config)) {
+		if (!validConfig(fixture.config)) {
 			warnDev('Ignoring invalid Aeroplane DEV fixture config.', options.warn);
 		} else {
 			config = Object.freeze({ ...fixture.config });
 		}
 	}
-	if (!config && isRecord(fixture.state) && isConfig(fixture.state.config)) {
+	if (!config && isRecord(fixture.state) && validConfig(fixture.state.config)) {
 		config = Object.freeze({ ...fixture.state.config });
 	}
 

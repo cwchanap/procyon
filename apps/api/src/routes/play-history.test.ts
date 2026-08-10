@@ -802,6 +802,35 @@ describe('play-history routes - Aeroplane (unrated) games', () => {
 		}
 	);
 
+	test('Aeroplane rejects duplicate AI colours', async () => {
+		const res = await postAeroplane({
+			details: {
+				...validAeroplaneDetails,
+				aiPlayers: [
+					{ color: 'yellow', personality: 'cautious' },
+					{ color: 'yellow', personality: 'aggressive' },
+					{ color: 'blue', personality: 'unpredictable' },
+				],
+			},
+		});
+		expect(res.status).toBe(400);
+	});
+
+	test('Aeroplane rejects an AI colour equal to the human colour', async () => {
+		const res = await postAeroplane({
+			details: {
+				...validAeroplaneDetails,
+				humanColor: 'red',
+				aiPlayers: [
+					{ color: 'red', personality: 'cautious' },
+					{ color: 'blue', personality: 'aggressive' },
+					{ color: 'green', personality: 'unpredictable' },
+				],
+			},
+		});
+		expect(res.status).toBe(400);
+	});
+
 	test('Aeroplane rejects invalid enum values', async () => {
 		const res = await postAeroplane({
 			details: { ...validAeroplaneDetails, diceMode: 'loaded' },

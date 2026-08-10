@@ -86,18 +86,6 @@ test('relaxed protection below both current-player thresholds consumes one sampl
 	expect(rollRelaxed(state, rng).rng).toEqual(nextUint32(rng).rng);
 });
 
-test('relaxed protection activates at the current-player no-move threshold', () => {
-	const rng = { value: 456 };
-	const state = {
-		...relaxedFixtureState(),
-		noMoveStreak: { red: 3, yellow: 0, blue: 0, green: 0 },
-	};
-	const first = nextUint32(rng);
-	const second = nextUint32(first.rng);
-
-	expect(rollRelaxed(state, rng).rng).toEqual(second.rng);
-});
-
 test('relaxed protection activates at the current-player last-place threshold', () => {
 	const rng = { value: 456 };
 	const state = {

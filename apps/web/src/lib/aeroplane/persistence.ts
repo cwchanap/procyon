@@ -49,7 +49,7 @@ const PERSONALITIES = new Set<Personality>([
 	'unpredictable',
 ]);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
@@ -60,7 +60,7 @@ function isColor(value: unknown): value is AeroplaneColor {
 	);
 }
 
-function isUint32(value: unknown, allowZero = true): value is number {
+export function isUint32(value: unknown, allowZero = true): value is number {
 	return (
 		typeof value === 'number' &&
 		Number.isInteger(value) &&
@@ -85,7 +85,7 @@ function isFiniteTimestamp(value: unknown): value is string {
 	);
 }
 
-function validConfig(value: unknown): value is AeroplaneConfig {
+export function validConfig(value: unknown): value is AeroplaneConfig {
 	if (!isRecord(value)) return false;
 	return (
 		(value.rulePreset === 'classic' ||
@@ -198,7 +198,7 @@ function validAction(value: unknown): value is AeroplaneActionRecord {
 	return true;
 }
 
-function validSeats(
+export function validSeats(
 	value: unknown,
 	humanColor: AeroplaneColor
 ): value is AiSeat[] {
@@ -276,10 +276,19 @@ function validState(
 	}
 
 	const authoritative = value as unknown as AeroplaneState;
+	let legalMoveCount = 0;
+	try {
+		legalMoveCount =
+			authoritative.phase === 'awaiting-choice' &&
+			authoritative.pendingRoll !== null
+				? getLegalMoves(authoritative, authoritative.pendingRoll).length
+				: 0;
+	} catch {
+		return false;
+	}
 	if (
 		authoritative.phase === 'awaiting-choice' &&
-		(authoritative.pendingRoll === null ||
-			getLegalMoves(authoritative, authoritative.pendingRoll).length === 0)
+		(authoritative.pendingRoll === null || legalMoveCount === 0)
 	) {
 		return false;
 	}
@@ -306,8 +315,8 @@ export function validatePersistedAeroplaneMatch(
 		return { ok: false, reason: 'snapshot must be an object' };
 	if (value.version !== 1)
 		return { ok: false, reason: 'unknown snapshot version' };
-	if (typeof value.savedAt !== 'string' || value.savedAt.length === 0)
-		return { ok: false, reason: 'savedAt must be a non-empty string' };
+	if (!isFiniteTimestamp(value.savedAt))
+		return { ok: false, reason: 'savedAt must be a finite timestamp' };
 	if (value.startedAt !== undefined && !isFiniteTimestamp(value.startedAt))
 		return { ok: false, reason: 'startedAt must be a finite timestamp' };
 	if (value.completedAt !== undefined && !isFiniteTimestamp(value.completedAt))

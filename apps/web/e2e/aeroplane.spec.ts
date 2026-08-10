@@ -220,6 +220,7 @@ test.describe('Aeroplane Chess critical journey', () => {
 			expect(saved.seats).toEqual(expectedSeats(humanColor));
 			expect(
 				saved.actions
+					.filter(action => action.kind === 'roll')
 					.slice(0, index)
 					.map(action => ({ actor: action.actor, color: action.color }))
 			).toEqual(expectedAiTurnPrefix(humanColor));

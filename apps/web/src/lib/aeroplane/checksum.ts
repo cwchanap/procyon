@@ -5,7 +5,6 @@ const OMITTED_KEYS = new Set([
 	'timestamp',
 	'presentation',
 	'presentationQueue',
-	'chatter',
 	'diagnostics',
 ]);
 
@@ -53,20 +52,31 @@ export function canonicalSerialize(value: unknown): string {
 }
 
 /**
+ * Deterministic, non-cryptographic FNV-1a hash for a string. Shared by the
+ * authoritative checksum and any presentation helper that needs the same
+ * stable, RNG-free derivation.
+ */
+export function fnv1a(input: string): number {
+	let hash = 0x811c9dc5;
+	for (let index = 0; index < input.length; index += 1) {
+		hash ^= input.charCodeAt(index);
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return hash >>> 0;
+}
+
+/**
  * Deterministic, non-cryptographic FNV-1a checksum for an authoritative state.
  * Passing a persisted envelope is convenient for diagnostics; in that case
  * only its `state` member is hashed, keeping action checksums independent of
- * save timestamps and presentation metadata.
+ * save timestamps and presentation metadata. `config.chatter` is part of the
+ * authoritative configuration and is included; chatter inside presentation
+ * queue items is excluded because `presentationQueue` itself is omitted.
  */
 export function checksumState(
-	state: AeroplaneState | { state: AeroplaneState } | unknown
+	state: AeroplaneState | { state: AeroplaneState }
 ): string {
 	const source = isRecord(state) && isRecord(state.state) ? state.state : state;
 	const serialized = canonicalSerialize(source);
-	let hash = 0x811c9dc5;
-	for (let index = 0; index < serialized.length; index += 1) {
-		hash ^= serialized.charCodeAt(index);
-		hash = Math.imul(hash, 0x01000193) >>> 0;
-	}
-	return hash.toString(16).padStart(8, '0');
+	return fnv1a(serialized).toString(16).padStart(8, '0');
 }

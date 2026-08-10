@@ -30,6 +30,13 @@ import {
 
 setupReactDom();
 
+// createHookHarness enables fake timers per test; restore the real clock
+// after every test so it cannot leak into integration or fixture-contract
+// tests that expect real timers.
+afterEach(() => {
+	jest.useRealTimers();
+});
+
 const STATS = {
 	capturesMade: { red: 0, yellow: 0, blue: 0, green: 0 },
 	capturesSuffered: { red: 0, yellow: 0, blue: 0, green: 0 },

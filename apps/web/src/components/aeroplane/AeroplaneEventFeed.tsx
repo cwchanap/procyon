@@ -86,11 +86,19 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 		const media = window.matchMedia('(min-width: 640px)');
 		const update = () => setIsDesktop(media.matches);
 		update();
-		media.addEventListener?.('change', update);
-		media.addListener?.(update);
+		// Register through one API and mirror the same choice on cleanup so the
+		// listener is never registered or removed twice.
+		if (typeof media.addEventListener === 'function') {
+			media.addEventListener('change', update);
+		} else if (typeof media.addListener === 'function') {
+			media.addListener(update);
+		}
 		return () => {
-			media.removeEventListener?.('change', update);
-			media.removeListener?.(update);
+			if (typeof media.removeEventListener === 'function') {
+				media.removeEventListener('change', update);
+			} else if (typeof media.removeListener === 'function') {
+				media.removeListener(update);
+			}
 		};
 	}, []);
 

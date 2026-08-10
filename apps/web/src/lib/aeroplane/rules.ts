@@ -2,6 +2,7 @@ import {
 	FLIGHT_ENTRANCE_PROGRESS,
 	FLIGHT_EXIT_PROGRESS,
 	FINISH_PROGRESS,
+	SHARED_PROGRESS_MAX,
 	isNormalJumpSquare,
 	isSharedTrackProgress,
 	toGlobalTrackIndex,
@@ -191,12 +192,12 @@ export function resolveLegalMove(
 	// Base path checks are only meaningful while traversing shared nodes. A
 	// plane in its private home lane has no shared occupancy to cross.
 	if (
-		plane.progress <= 50 &&
+		plane.progress <= SHARED_PROGRESS_MAX &&
 		pathCrossesBlockade(
 			state,
 			plane.color,
 			plane.progress,
-			Math.min(baseProgress, 50)
+			Math.min(baseProgress, SHARED_PROGRESS_MAX)
 		)
 	) {
 		return null;

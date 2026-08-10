@@ -9,6 +9,18 @@ import type {
 	ResolvedMove,
 } from './types';
 
+export interface AiMoveFeatures {
+	finish: number;
+	enterHome: number;
+	capture: number;
+	jump: number;
+	flight: number;
+	launch: number;
+	blockade: number;
+	progress: number;
+	exposure: number;
+}
+
 export const AI_WEIGHTS = {
 	cautious: {
 		finish: 10000,
@@ -43,23 +55,11 @@ export const AI_WEIGHTS = {
 		progress: 3,
 		exposure: -75,
 	},
-} as const satisfies Record<Personality, Record<string, number>>;
+} as const satisfies Record<Personality, Record<keyof AiMoveFeatures, number>>;
 
 const JITTER_MIN = -120;
 const JITTER_MAX = 120;
 const JITTER_RANGE = JITTER_MAX - JITTER_MIN + 1;
-
-export interface AiMoveFeatures {
-	finish: number;
-	enterHome: number;
-	capture: number;
-	jump: number;
-	flight: number;
-	launch: number;
-	blockade: number;
-	progress: number;
-	exposure: number;
-}
 
 interface ScoredMove {
 	move: ResolvedMove;

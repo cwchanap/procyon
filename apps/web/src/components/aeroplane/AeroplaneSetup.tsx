@@ -112,7 +112,6 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 				<label className='space-y-1 text-sm text-ivory'>
 					<span>Human colour</span>
 					<select
-						aria-label='Human color'
 						value={setup.humanColor}
 						onChange={event =>
 							manualChange('humanColor', event.target.value as AeroplaneColor)
@@ -236,7 +235,7 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 			{start && (
 				<Button
 					type='button'
-					onClick={start}
+					onClick={() => start()}
 					className='min-h-11 w-full touch-manipulation'
 				>
 					Start match

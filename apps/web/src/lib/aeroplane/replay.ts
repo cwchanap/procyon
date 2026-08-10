@@ -62,14 +62,6 @@ function actionKind(action: AeroplaneActionRecord): 'roll' | 'move' | null {
 	return kind === 'roll' || kind === 'move' ? kind : null;
 }
 
-function actionColor(
-	action: AeroplaneActionRecord,
-	currentPlayer: AeroplaneColor
-): AeroplaneColor {
-	if (isColor(action.color)) return action.color;
-	return currentPlayer;
-}
-
 function actionRole(action: AeroplaneActionRecord): 'human' | 'ai' | null {
 	if (action.actor === 'human' || action.actor === 'ai') return action.actor;
 	return null;
@@ -142,18 +134,26 @@ function checkRoleAndColor(
 	state: AeroplaneState,
 	index: number
 ): ReplayMismatchResult | null {
-	const color = actionColor(action, state.currentPlayer);
-	if (color !== state.currentPlayer) {
+	if (!isColor(action.color)) {
+		return mismatch(
+			index,
+			'action colour is missing or out of domain',
+			'color',
+			action.color
+		);
+	}
+	if (action.color !== state.currentPlayer) {
 		return mismatch(
 			index,
 			'action colour does not own the turn',
 			'color',
-			color,
+			action.color,
 			state.currentPlayer
 		);
 	}
 	const role = actionRole(action);
-	const expectedRole = color === state.config.humanColor ? 'human' : 'ai';
+	const expectedRole =
+		action.color === state.config.humanColor ? 'human' : 'ai';
 	if (role !== expectedRole) {
 		return mismatch(
 			index,
@@ -353,8 +353,14 @@ export function replayMatch(value: PersistedAeroplaneMatchV1): ReplayResult {
 		let transition;
 		try {
 			transition = playResolvedMove(state, choice.move);
-		} catch {
-			return mismatch(index, 'recorded move could not be applied');
+		} catch (error) {
+			return mismatch(
+				index,
+				'recorded move could not be applied',
+				undefined,
+				undefined,
+				error instanceof Error ? error.message : String(error)
+			);
 		}
 		state = transition.state;
 		const eventMismatch = checkEvents(action, transition.events, index);

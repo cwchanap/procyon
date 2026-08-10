@@ -264,8 +264,11 @@ test('storage exceptions never escape persistence helpers', () => {
 		},
 	};
 
-	expect(() => saveActiveMatch(validSave(), throwingStorage)).not.toThrow();
-	expect(() => restoreActiveMatch(throwingStorage)).not.toThrow();
+	expect(saveActiveMatch(validSave(), throwingStorage)).toBe(false);
+	expect(restoreActiveMatch(throwingStorage)).toEqual({
+		kind: 'unavailable',
+		reason: expect.any(String),
+	});
 	expect(() => clearActiveMatch(throwingStorage)).not.toThrow();
 });
 
