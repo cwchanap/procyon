@@ -19,6 +19,22 @@ const SUPABASE_ANON_KEY = 'test-anon-key';
 const BASE_URL = 'http://localhost';
 const TEST_USER_ID = 'user-uuid-1';
 
+const validAeroplaneDetails = {
+	rulePreset: 'quick-chill',
+	victoryTarget: 2,
+	diceMode: 'relaxed',
+	humanColor: 'red',
+	durationSeconds: 240,
+	planesFinished: 2,
+	capturesMade: 3,
+	capturesSuffered: 1,
+	aiPlayers: [
+		{ color: 'yellow', personality: 'cautious' },
+		{ color: 'blue', personality: 'aggressive' },
+		{ color: 'green', personality: 'unpredictable' },
+	],
+} as const;
+
 let AUTH_HEADER: Record<string, string> = {};
 let originalJwtSecret: string | undefined;
 
@@ -198,7 +214,7 @@ describe('play-history routes - validation', () => {
 		expect(res.status).toBe(400);
 	});
 
-	test('POST / rejects Aeroplane until the API expansion task', async () => {
+	test('POST / accepts a valid Aeroplane history body', async () => {
 		const res = await playHistoryRoutes.request(
 			`${BASE_URL}/`,
 			{
@@ -208,12 +224,13 @@ describe('play-history routes - validation', () => {
 					gameId: 'aeroplane',
 					status: 'win',
 					date: new Date().toISOString(),
-					opponentLlmId: 'gemini-2.5-flash',
+					opponentEngineId: 'aeroplane-trio-v1',
+					details: validAeroplaneDetails,
 				}),
 			},
 			CF_ENV
 		);
-		expect(res.status).toBe(400);
+		expect(res.status).toBe(201);
 	});
 
 	test('POST / returns 400 for invalid status', async () => {
@@ -670,5 +687,142 @@ describe('play-history routes - engine (unrated) games', () => {
 		expect(body.playHistory[0]?.opponentEngineId).toBe('stockfish');
 		expect(body.playHistory[0]?.ratingChange).toBeNull();
 		expect(body.playHistory[0]?.newRating).toBeNull();
+	});
+});
+
+describe('play-history routes - Aeroplane (unrated) games', () => {
+	let restore: FetchMockRestore = () => {};
+	let originalUrl: string | undefined;
+	let originalAnonKey: string | undefined;
+
+	beforeEach(() => {
+		originalUrl = process.env.SUPABASE_URL;
+		originalAnonKey = process.env.SUPABASE_ANON_KEY;
+		process.env.SUPABASE_URL = SUPABASE_URL;
+		process.env.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+		restore = mockSupabaseFetch();
+		initializeDB(undefined, { localDbPath: ':memory:', resetLocal: true });
+	});
+
+	afterEach(() => {
+		restore();
+		process.env.SUPABASE_URL = originalUrl;
+		process.env.SUPABASE_ANON_KEY = originalAnonKey;
+	});
+
+	async function postAeroplane(
+		overrides: Record<string, unknown> = {}
+	): Promise<Response> {
+		return playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					gameId: 'aeroplane',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentEngineId: 'aeroplane-trio-v1',
+					details: validAeroplaneDetails,
+					...overrides,
+				}),
+			},
+			CF_ENV
+		);
+	}
+
+	test('valid Aeroplane trio insert is unrated and creates no rating rows', async () => {
+		const res = await postAeroplane();
+		expect(res.status).toBe(201);
+
+		const body = (await res.json()) as {
+			ratingUpdate: unknown;
+			playHistory: { details: unknown };
+		};
+		expect(body.ratingUpdate).toBeNull();
+		expect(body.playHistory.details).toEqual(validAeroplaneDetails);
+
+		const db = getDB();
+		expect(await db.select().from(playerRatings)).toHaveLength(0);
+		expect(await db.select().from(ratingHistory)).toHaveLength(0);
+	});
+
+	test.each([
+		[
+			'Aeroplane + LLM',
+			{ opponentEngineId: undefined, opponentLlmId: 'gemini-2.5-flash' },
+		],
+		['Aeroplane + Stockfish', { opponentEngineId: 'stockfish' }],
+	] as const)('%s is rejected', async (_label, overrides) => {
+		const res = await postAeroplane(overrides);
+		expect(res.status).toBe(400);
+	});
+
+	test('chess + Aeroplane trio id is rejected', async () => {
+		const res = await postAeroplane({ gameId: 'chess' });
+		expect(res.status).toBe(400);
+	});
+
+	test('Aeroplane draw is rejected', async () => {
+		const res = await postAeroplane({ status: 'draw' });
+		expect(res.status).toBe(400);
+	});
+
+	test('Aeroplane requires details', async () => {
+		const res = await postAeroplane({ details: undefined });
+		expect(res.status).toBe(400);
+	});
+
+	test.each([
+		['negative duration', { durationSeconds: -1 }],
+		['non-integer finished planes', { planesFinished: 1.5 }],
+	] as const)('Aeroplane rejects %s counters', async (_label, counter) => {
+		const res = await postAeroplane({
+			details: { ...validAeroplaneDetails, ...counter },
+		});
+		expect(res.status).toBe(400);
+	});
+
+	test.each([
+		['two', validAeroplaneDetails.aiPlayers.slice(0, 2)],
+		[
+			'four',
+			[
+				...validAeroplaneDetails.aiPlayers,
+				{ color: 'red', personality: 'cautious' },
+			],
+		],
+	] as const)(
+		'Aeroplane rejects %s AI seat entries',
+		async (_label, aiPlayers) => {
+			const res = await postAeroplane({
+				details: { ...validAeroplaneDetails, aiPlayers },
+			});
+			expect(res.status).toBe(400);
+		}
+	);
+
+	test('Aeroplane rejects invalid enum values', async () => {
+		const res = await postAeroplane({
+			details: { ...validAeroplaneDetails, diceMode: 'loaded' },
+		});
+		expect(res.status).toBe(400);
+	});
+
+	test('GET / returns the exact stored Aeroplane details object', async () => {
+		const postRes = await postAeroplane();
+		expect(postRes.status).toBe(201);
+
+		const getRes = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{ headers: AUTH_HEADER },
+			CF_ENV
+		);
+		expect(getRes.status).toBe(200);
+		const body = (await getRes.json()) as {
+			playHistory: Array<{ details: unknown }>;
+		};
+		expect(body.playHistory).toHaveLength(1);
+		expect(body.playHistory[0]?.details).toEqual(validAeroplaneDetails);
 	});
 });

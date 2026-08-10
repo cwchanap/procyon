@@ -13,17 +13,14 @@ import {
 } from './game';
 
 describe('GameId enum', () => {
-	test('has exactly the four strategy game values', () => {
+	test('has exactly the five API game values', () => {
 		expect(Object.values(GameId) as string[]).toEqual([
 			'chess',
 			'xiangqi',
 			'shogi',
 			'jungle',
+			'aeroplane',
 		]);
-	});
-
-	test('does not accept Aeroplane until the API expansion task', () => {
-		expect(Object.values(GameId)).not.toContain('aeroplane');
 	});
 });
 
@@ -33,6 +30,7 @@ describe('getRatedVariantId', () => {
 		[GameId.Xiangqi, ChessVariantId.Xiangqi],
 		[GameId.Shogi, ChessVariantId.Shogi],
 		[GameId.Jungle, ChessVariantId.Jungle],
+		[GameId.Aeroplane, null],
 	] as const)('%s maps to %s', (gameId, expected) => {
 		expect(getRatedVariantId(gameId)).toBe(expected);
 	});
@@ -119,16 +117,20 @@ describe('ALL_OPPONENT_LLM_IDS', () => {
 describe('OpponentEngineId enum', () => {
 	test('has the correct values', () => {
 		expect(OpponentEngineId.Stockfish as string).toBe('stockfish');
+		expect(OpponentEngineId.AeroplaneTrioV1 as string).toBe(
+			'aeroplane-trio-v1'
+		);
 	});
 
-	test('has exactly 1 engine ID', () => {
-		expect(Object.values(OpponentEngineId)).toHaveLength(1);
+	test('has exactly 2 engine IDs', () => {
+		expect(Object.values(OpponentEngineId)).toHaveLength(2);
 	});
 });
 
 describe('ALL_OPPONENT_ENGINE_IDS', () => {
 	test('contains all opponent engine ID strings', () => {
 		expect(ALL_OPPONENT_ENGINE_IDS).toContain(OpponentEngineId.Stockfish);
+		expect(ALL_OPPONENT_ENGINE_IDS).toContain(OpponentEngineId.AeroplaneTrioV1);
 	});
 
 	test('has the same length as OpponentEngineId enum', () => {

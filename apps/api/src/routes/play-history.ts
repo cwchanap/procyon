@@ -13,6 +13,7 @@ import {
 	getRatedVariantId,
 } from '../constants/game';
 import { updatePlayerRating } from '../services/rating-service';
+import type { AeroplaneHistoryDetails } from '../types/play-history';
 
 /**
  * Classify the opponent of a validated POST body. The superRefine guarantees
@@ -34,6 +35,25 @@ export const UUID_REGEX =
 
 export const NUMERIC_ID_REGEX = /^\d+$/;
 
+const aeroplaneHistoryDetailsSchema = z.object({
+	rulePreset: z.enum(['classic', 'quick-chill', 'custom']),
+	victoryTarget: z.union([z.literal(2), z.literal(4)]),
+	diceMode: z.enum(['fair', 'relaxed']),
+	humanColor: z.enum(['red', 'yellow', 'blue', 'green']),
+	durationSeconds: z.number().finite().int().nonnegative(),
+	planesFinished: z.number().int().min(0).max(4),
+	capturesMade: z.number().int().nonnegative(),
+	capturesSuffered: z.number().int().nonnegative(),
+	aiPlayers: z
+		.array(
+			z.object({
+				color: z.enum(['red', 'yellow', 'blue', 'green']),
+				personality: z.enum(['cautious', 'aggressive', 'unpredictable']),
+			})
+		)
+		.length(3),
+});
+
 const createPlayHistorySchema = z
 	.object({
 		gameId: z.nativeEnum(GameId),
@@ -43,6 +63,7 @@ const createPlayHistorySchema = z
 		opponentUserId: z.union([z.string(), z.number()]).optional(),
 		opponentLlmId: z.nativeEnum(OpponentLlmId).optional(),
 		opponentEngineId: z.nativeEnum(OpponentEngineId).optional(),
+		details: aeroplaneHistoryDetailsSchema.optional(),
 	})
 	.superRefine((data, ctx) => {
 		const hasUserOpponent =
@@ -89,6 +110,39 @@ const createPlayHistorySchema = z
 				});
 			}
 		}
+
+		if (data.gameId === GameId.Aeroplane) {
+			if (data.opponentEngineId !== OpponentEngineId.AeroplaneTrioV1) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message:
+						'Aeroplane history requires opponentEngineId aeroplane-trio-v1',
+					path: ['opponentEngineId'],
+				});
+			}
+
+			if (data.status === GameResultStatus.Draw) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: 'Aeroplane history does not support draw results',
+					path: ['status'],
+				});
+			}
+
+			if (data.details === undefined) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: 'Aeroplane history requires details',
+					path: ['details'],
+				});
+			}
+		} else if (data.opponentEngineId === OpponentEngineId.AeroplaneTrioV1) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'Aeroplane trio opponent is only valid for Aeroplane history',
+				path: ['opponentEngineId'],
+			});
+		}
 	});
 
 app.get('/', authMiddleware, async c => {
@@ -106,6 +160,7 @@ app.get('/', authMiddleware, async c => {
 				opponentUserId: playHistory.opponentUserId,
 				opponentLlmId: playHistory.opponentLlmId,
 				opponentEngineId: playHistory.opponentEngineId,
+				details: playHistory.details,
 				ratingChange: ratingHistory.ratingChange,
 				newRating: ratingHistory.newRating,
 			})
@@ -147,6 +202,8 @@ app.post(
 			}
 
 			const kind = getOpponentKind(body);
+			const ratedVariantId = getRatedVariantId(body.gameId);
+			const shouldRate = kind === 'llm' && ratedVariantId !== null;
 			const db = getDB();
 
 			// Perform all database operations in a single transaction.
@@ -168,6 +225,8 @@ app.post(
 					opponentUserId: null,
 					opponentLlmId: body.opponentLlmId ?? null,
 					opponentEngineId: body.opponentEngineId ?? null,
+					details:
+						(body.details as AeroplaneHistoryDetails | undefined) ?? null,
 				};
 
 				const [record] = await tx
@@ -181,13 +240,13 @@ app.post(
 
 				savedRecord = record as PlayHistory;
 
-				// Engine games are unrated: never touch the rating service.
-				// Only the LLM path updates rating (rated ⇔ kind !== 'engine').
-				if (kind === 'llm') {
+				// Ratings are only created for LLM games whose game identity maps to
+				// a rated variant. Engine games, including Aeroplane, stay unrated.
+				if (shouldRate) {
 					const ratingResult = await updatePlayerRating(
 						{
 							userId: user.userId,
-							variantId: getRatedVariantId(body.gameId),
+							variantId: ratedVariantId,
 							playHistoryId: record.id,
 							gameResult: body.status,
 							opponentLlmId: body.opponentLlmId ?? null,

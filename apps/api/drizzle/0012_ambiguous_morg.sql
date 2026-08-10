@@ -1,0 +1,1 @@
+ALTER TABLE `play_history` ADD `details` text;
