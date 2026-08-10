@@ -925,7 +925,17 @@ export function useAeroplaneMatch(
 				? buildAeroplaneHistoryPayload(activeMatch, nowRef.current)
 				: null,
 		debugKey: 'AEROPLANE',
-		onSuccess: () => clearActiveMatch(storageRef.current),
+		onSuccess: () => {
+			// A response can resolve after a replacement match has already been
+			// persisted but before the shared hook's generation effect runs. Only
+			// clear the snapshot owned by this terminal match.
+			if (
+				activeRef.current !== activeMatch ||
+				activeMatch.state.phase !== 'finished'
+			)
+				return;
+			clearActiveMatch(storageRef.current);
+		},
 	});
 
 	return {
