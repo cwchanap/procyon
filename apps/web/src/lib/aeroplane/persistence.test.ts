@@ -322,8 +322,20 @@ test('selectedPlaneId coerces an empty string and a non-string to null on roll r
 	const empty = { ...baseRecord(), selectedPlaneId: '' };
 	const nonString = { ...baseRecord(), selectedPlaneId: 42 };
 
-	expect(restoreFixture({ ...saved, actions: [empty] }).kind).toBe('ok');
-	expect(restoreFixture({ ...saved, actions: [nonString] }).kind).toBe('ok');
+	const emptyRestored = restoreFixture({ ...saved, actions: [empty] });
+	const nonStringRestored = restoreFixture({ ...saved, actions: [nonString] });
+
+	expect(emptyRestored.kind).toBe('ok');
+	expect(nonStringRestored.kind).toBe('ok');
+
+	if (emptyRestored.kind === 'ok') {
+		expect(emptyRestored.match.actions).toHaveLength(1);
+		expect(emptyRestored.match.actions[0]?.selectedPlaneId).toBeNull();
+	}
+	if (nonStringRestored.kind === 'ok') {
+		expect(nonStringRestored.match.actions).toHaveLength(1);
+		expect(nonStringRestored.match.actions[0]?.selectedPlaneId).toBeNull();
+	}
 });
 
 test('browserStorage returns a candidate when localStorage is available', () => {

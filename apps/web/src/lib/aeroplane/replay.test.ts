@@ -445,5 +445,5 @@ test('replay reports a mismatch for a unified move whose roll disagrees with the
 	const changed = structuredClone(unifiedMoveMatch());
 	const move = changed.actions[0]!;
 	move.roll = move.roll === 6 ? 1 : move.roll + 1;
-	expectMismatch(changed, 'roll');
+	expectMismatch(changed, 'recorded roll mismatch');
 });

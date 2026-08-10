@@ -333,7 +333,19 @@ export function validatePersistedAeroplaneMatch(
 		return { ok: false, reason: 'invalid RNG state' };
 	if (!Array.isArray(value.actions) || !value.actions.every(validAction))
 		return { ok: false, reason: 'invalid action history' };
-	return { ok: true, value: value as unknown as PersistedAeroplaneMatchV1 };
+	const normalizedActions = (
+		value.actions as unknown as Record<string, unknown>[]
+	).map(action => ({
+		...action,
+		selectedPlaneId: selectedPlaneId(action),
+	}));
+	return {
+		ok: true,
+		value: {
+			...value,
+			actions: normalizedActions,
+		} as unknown as PersistedAeroplaneMatchV1,
+	};
 }
 
 export function isValidPersistedAeroplaneMatch(
