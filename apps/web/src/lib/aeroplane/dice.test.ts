@@ -64,15 +64,69 @@ test('fair maps every sample to one die value', () => {
 
 test('active relaxed protection consumes exactly two samples', () => {
 	const rng = { value: 456 };
-	const result = rollRelaxed(relaxedFixtureState(), rng);
+	const state = {
+		...relaxedFixtureState(),
+		noMoveStreak: { red: 3, yellow: 0, blue: 0, green: 0 },
+	};
+	const result = rollRelaxed(state, rng);
 	const first = nextUint32(rng);
 	const second = nextUint32(first.rng);
 
 	expect(result.rng).toEqual(second.rng);
 });
 
+test('relaxed protection below both current-player thresholds consumes one sample', () => {
+	const rng = { value: 456 };
+	const state = {
+		...relaxedFixtureState(),
+		noMoveStreak: { red: 2, yellow: 3, blue: 0, green: 0 },
+		lastPlaceRounds: { red: 2, yellow: 3, blue: 0, green: 0 },
+	};
+
+	expect(rollRelaxed(state, rng).rng).toEqual(nextUint32(rng).rng);
+});
+
+test('relaxed protection activates at the current-player no-move threshold', () => {
+	const rng = { value: 456 };
+	const state = {
+		...relaxedFixtureState(),
+		noMoveStreak: { red: 3, yellow: 0, blue: 0, green: 0 },
+	};
+	const first = nextUint32(rng);
+	const second = nextUint32(first.rng);
+
+	expect(rollRelaxed(state, rng).rng).toEqual(second.rng);
+});
+
+test('relaxed protection activates at the current-player last-place threshold', () => {
+	const rng = { value: 456 };
+	const state = {
+		...relaxedFixtureState(),
+		lastPlaceRounds: { red: 3, yellow: 0, blue: 0, green: 0 },
+	};
+	const first = nextUint32(rng);
+	const second = nextUint32(first.rng);
+
+	expect(rollRelaxed(state, rng).rng).toEqual(second.rng);
+});
+
+test('relaxed protection ignores another colour counters', () => {
+	const rng = { value: 456 };
+	const state = {
+		...relaxedFixtureState(),
+		noMoveStreak: { red: 0, yellow: 3, blue: 0, green: 0 },
+		lastPlaceRounds: { red: 0, yellow: 3, blue: 0, green: 0 },
+	};
+
+	expect(rollRelaxed(state, rng).rng).toEqual(nextUint32(rng).rng);
+});
+
 test('relaxed protection prefers the first candidate when both are legal', () => {
-	const result = rollRelaxed(relaxedFixtureState(), { value: 456 });
+	const state = {
+		...relaxedFixtureState(),
+		noMoveStreak: { red: 3, yellow: 0, blue: 0, green: 0 },
+	};
+	const result = rollRelaxed(state, { value: 456 });
 
 	// Seed 456 yields candidate rolls 5 and 6; the active red plane can play
 	// either, so the normative first-candidate preference must keep 5.

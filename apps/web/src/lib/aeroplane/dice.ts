@@ -1,6 +1,5 @@
 import { getLegalMoves } from './rules';
 import { nextUint32, type RngState } from './rng';
-import { FINISH_PROGRESS } from './topology';
 import type { AeroplaneState } from './types';
 
 export interface DiceResult {
@@ -18,20 +17,19 @@ export function rollFair(rng: RngState): DiceResult {
 	return { roll: fairValue(sample.value), rng: sample.rng };
 }
 
-function hasActivePlane(state: AeroplaneState): boolean {
-	return state.planes.some(
-		plane => plane.progress !== null && plane.progress < FINISH_PROGRESS
-	);
+function isRelaxedProtectionActive(state: AeroplaneState): boolean {
+	const color = state.currentPlayer;
+	return state.noMoveStreak[color] >= 3 || state.lastPlaceRounds[color] >= 3;
 }
 
 /**
- * Relaxed dice protect an active player with one optional reroll. Both
- * samples are consumed whenever a non-finished plane is in play; the better
- * roll is preferred, while a roll that unlocks a legal move wins ties.
+ * Relaxed dice protect a player after three consecutive no-move turns or
+ * three consecutive rounds in last place. Protection consumes one extra
+ * sample; otherwise relaxed mode is the same one-sample fair roll.
  */
 export function rollRelaxed(state: AeroplaneState, rng: RngState): DiceResult {
 	const first = rollFair(rng);
-	if (!hasActivePlane(state)) return first;
+	if (!isRelaxedProtectionActive(state)) return first;
 
 	const second = rollFair(first.rng);
 	const firstLegal = getLegalMoves(state, first.roll).length > 0;
