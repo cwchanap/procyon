@@ -520,6 +520,53 @@ describe('useAeroplaneMatch terminal history integration', () => {
 		second.unmount();
 	});
 
+	test('stale success cannot clear a synchronously persisted replacement match', async () => {
+		let replaceBeforeSuccess: (() => void) | null = null;
+		let playHistoryCalls = 0;
+		globalThis.fetch = (async (
+			input: RequestInfo | URL,
+			init?: RequestInit
+		) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history') && init?.body) {
+				playHistoryCalls++;
+				if (playHistoryCalls === 1) {
+					return Promise.resolve({
+						get ok() {
+							replaceBeforeSuccess?.();
+							return true;
+						},
+						status: 201,
+						statusText: 'Created',
+					} as Response);
+				}
+			}
+			return new Response('{}', { status: 201 });
+		}) as typeof fetch;
+
+		const storage = memoryStorage();
+		let removeCount = 0;
+		const removeActive = storage.removeItem;
+		storage.removeItem = key => {
+			removeCount++;
+			removeActive(key);
+		};
+		(
+			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
+		).__PROCYON_INITIAL_AUTH_USER__ = {
+			id: 'user-a',
+			email: 'a@b.com',
+			username: 'a',
+		};
+		const match = renderTerminalMatch(true, storage);
+		replaceBeforeSuccess = () => match.result.current.reset(undefined, 39106);
+		await flushHistorySave();
+
+		expect(removeCount).toBe(0);
+		expect(playHistoryCalls).toBe(1);
+		match.unmount();
+	});
+
 	test('restored terminal payload computes elapsed seconds from its persisted start', async () => {
 		const storage = memoryStorage();
 		const startedAt = '2026-08-09T00:00:00.000Z';
