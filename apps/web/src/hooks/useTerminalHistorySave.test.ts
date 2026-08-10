@@ -100,6 +100,7 @@ describe('useTerminalHistorySave', () => {
 	test('provider changes after terminal do not change frozen payload', async () => {
 		const retryBodies: unknown[] = [];
 		let fetchCallIndex = 0;
+		let retryCallback: (() => void) | null = null;
 		globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
 			const url = typeof input === 'string' ? input : input.toString();
 			if (url.includes('/play-history')) {
@@ -116,6 +117,13 @@ describe('useTerminalHistorySave', () => {
 				status: 200,
 			}) as unknown as Promise<Response>;
 		}) as unknown as typeof fetch;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay === 5_000) {
+				retryCallback = fn;
+				return 1 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof setTimeout;
 
 		let currentPayload = firstPayload;
 		const { rerender } = renderHook(props => useTerminalHistorySave(props), {
@@ -142,6 +150,14 @@ describe('useTerminalHistorySave', () => {
 			})
 		);
 		await act(async () => {
+			await waitForEffects();
+		});
+
+		expect(fetchCallIndex).toBe(1);
+		expect(retryCallback).not.toBeNull();
+
+		await act(async () => {
+			retryCallback?.();
 			await waitForEffects();
 		});
 
@@ -396,6 +412,55 @@ describe('useTerminalHistorySave', () => {
 		unmount();
 
 		expect(clearedTimerIds).toContain(42);
+		expect(fetchCallCount).toBe(1);
+	});
+
+	test('late 401 after unmount does not schedule a retry', async () => {
+		let resolveFirst: (response: Response) => void = () => {};
+		let retryTimerCount = 0;
+		let retryCallback: (() => void) | null = null;
+		globalThis.fetch = mock((input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				return new Promise<Response>(resolve => {
+					resolveFirst = resolve;
+				});
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+			}) as unknown as Promise<Response>;
+		}) as unknown as typeof fetch;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay === 5_000) {
+				retryTimerCount++;
+				retryCallback = fn;
+				return 42 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof setTimeout;
+
+		const { unmount } = renderHook(props => useTerminalHistorySave(props), {
+			initialProps: makeProps({ isTerminal: true }),
+		});
+		await act(async () => {
+			await waitForEffects();
+		});
+		expect(fetchCallCount).toBe(1);
+
+		unmount();
+		await act(async () => {
+			resolveFirst({
+				ok: false,
+				status: 401,
+				statusText: 'Unauthorized',
+			} as Response);
+			await waitForEffects();
+		});
+
+		expect(retryTimerCount).toBe(0);
+		expect(retryCallback).toBeNull();
 		expect(fetchCallCount).toBe(1);
 	});
 });
