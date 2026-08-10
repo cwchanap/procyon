@@ -404,9 +404,20 @@ test.describe('Aeroplane Chess critical journey', () => {
 				await page.getByRole('button', { name: /Red plane 1/i }).click();
 			}
 			await expect
-				.poll(async () => (await storedMatch(page)).actions.length)
-				.toBeGreaterThanOrEqual(expectFriendlyStack ? 2 : 4);
+				.poll(async () =>
+					(await storedMatch(page)).actions.some(
+						action =>
+							action.actor === 'human' &&
+							action.kind === (expectFriendlyStack ? 'move' : 'roll')
+					)
+				)
+				.toBe(true);
 			const saved = await storedMatch(page);
+			expect(
+				saved.actions
+					.filter(action => action.actor === 'human')
+					.map(action => action.kind)
+			).toEqual(expectFriendlyStack ? ['roll', 'move'] : ['roll']);
 			if (expectFriendlyStack) {
 				expect(
 					saved.state.planes.filter(
