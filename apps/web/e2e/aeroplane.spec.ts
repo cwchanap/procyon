@@ -164,6 +164,13 @@ function expectedSeats(humanColor: AeroplaneColor) {
 	}));
 }
 
+function expectedAiTurnPrefix(humanColor: AeroplaneColor) {
+	return COLORS.slice(0, COLORS.indexOf(humanColor)).map(color => ({
+		actor: 'ai' as const,
+		color,
+	}));
+}
+
 test.describe('Aeroplane Chess critical journey', () => {
 	test('assigns fixed AI seats and automates red-first turns for every human colour', async ({
 		page,
@@ -182,6 +189,11 @@ test.describe('Aeroplane Chess critical journey', () => {
 			await expect(status(page)).toContainText(colorLabels[humanColor]);
 			const saved = await waitForStoredMatch(page);
 			expect(saved.seats).toEqual(expectedSeats(humanColor));
+			expect(
+				saved.actions
+					.slice(0, index)
+					.map(action => ({ actor: action.actor, color: action.color }))
+			).toEqual(expectedAiTurnPrefix(humanColor));
 		}
 	});
 
