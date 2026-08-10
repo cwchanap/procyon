@@ -199,6 +199,12 @@ describe('Aeroplane path resolver', () => {
 		expect(resolveLegalMove(state, 'red-0', 1)).toBeNull();
 	});
 
+	test('allows multiple planes to accumulate at the finished cell', () => {
+		const state = stateWithPlane('red-0', 55, {}, [plane('red-1', 56)]);
+		const move = resolveLegalMove(state, 'red-0', 1);
+		expect(move?.finalEndpoint).toEqual({ kind: 'finished', color: 'red' });
+	});
+
 	describe('stacking and blockade matrix', () => {
 		const cases: Array<{
 			name: string;

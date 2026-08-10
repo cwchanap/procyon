@@ -250,14 +250,8 @@ export function resolveLegalMove(
 		if (captures === null) return null;
 		capturedPlaneIds = captures;
 	} else if (
-		(finalEndpoint.kind === 'home' || finalEndpoint.kind === 'finished') &&
-		finalHomeOccupancy(
-			state,
-			plane,
-			finalEndpoint.kind === 'finished'
-				? FINISH_PROGRESS
-				: finalEndpoint.progress
-		)
+		finalEndpoint.kind === 'home' &&
+		finalHomeOccupancy(state, plane, finalEndpoint.progress)
 	) {
 		return null;
 	}
