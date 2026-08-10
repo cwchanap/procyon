@@ -1,4 +1,4 @@
-import React, { useId, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { Button } from '../ui/Button';
 import type {
 	AeroplaneActionActor,
@@ -74,8 +74,28 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 	onSkipAnimations,
 }) => {
 	const [open, setOpen] = useState(false);
+	const [isDesktop, setIsDesktop] = useState(() =>
+		typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+			? window.matchMedia('(min-width: 640px)').matches
+			: false
+	);
 	const contentId = useId();
 	const feed = eventFeed ?? events;
+
+	useEffect(() => {
+		if (typeof window === 'undefined' || !window.matchMedia) return;
+		const media = window.matchMedia('(min-width: 640px)');
+		const update = () => setIsDesktop(media.matches);
+		update();
+		media.addEventListener?.('change', update);
+		media.addListener?.(update);
+		return () => {
+			media.removeEventListener?.('change', update);
+			media.removeListener?.(update);
+		};
+	}, []);
+
+	const expanded = isDesktop || open;
 
 	return (
 		<section
@@ -93,16 +113,18 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 					</span>
 				</h2>
 				<div className='flex items-center gap-2'>
-					<button
-						type='button'
-						className='min-h-11 rounded-md border border-line px-3 text-sm text-ivory-dim transition-colors hover:bg-ink-600 hover:text-ivory motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900 sm:hidden'
-						aria-expanded={open}
-						aria-controls={contentId}
-						aria-label='Event feed'
-						onClick={() => setOpen(previous => !previous)}
-					>
-						{open ? 'Hide feed' : 'Show feed'}
-					</button>
+					{!isDesktop && (
+						<button
+							type='button'
+							className='min-h-11 rounded-md border border-line px-3 text-sm text-ivory-dim transition-colors hover:bg-ink-600 hover:text-ivory motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900'
+							aria-expanded={open}
+							aria-controls={contentId}
+							aria-label='Event feed'
+							onClick={() => setOpen(previous => !previous)}
+						>
+							{open ? 'Hide feed' : 'Show feed'}
+						</button>
+					)}
 					{onSkipAnimations && (
 						<Button
 							type='button'
@@ -118,8 +140,9 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 			</div>
 			<div
 				id={contentId}
-				aria-hidden={!open}
-				className={`${open ? 'block' : 'hidden'} divide-y divide-line sm:block`}
+				data-testid='aeroplane-event-feed-content'
+				aria-hidden={!expanded}
+				className={`${expanded ? 'block' : 'hidden'} divide-y divide-line sm:block`}
 			>
 				{feed.length === 0 ? (
 					<p className='px-3 py-4 text-sm text-ivory-dim sm:px-4'>

@@ -234,35 +234,134 @@ describe('Aeroplane board interactions', () => {
 		fireEvent.pointerUp(plane, { pointerType: 'touch' });
 		expect(onSelectMove).toHaveBeenCalledTimes(1);
 	});
+
+	test('routes each legal plane to its own control without disabled overlays intercepting', () => {
+		const onSelectMove = mock((_selected: ResolvedMove) => {});
+		const first = move('red-0', 20);
+		const second = move('red-1', 30);
+		const { getByRole, getByTestId } = render(
+			<AeroplaneBoard
+				state={fixtureState()}
+				legalMoves={[first, second]}
+				onRoll={mock(() => {})}
+				onSelectMove={onSelectMove}
+			/>
+		);
+
+		fireEvent.click(getByRole('button', { name: /Red plane 1/i }));
+		fireEvent.click(getByRole('button', { name: /Red plane 2/i }));
+		expect(
+			onSelectMove.mock.calls.map(([selected]) => selected.planeId)
+		).toEqual(['red-0', 'red-1']);
+		expect(
+			getByTestId('aeroplane-plane-control-yellow-0').getAttribute(
+				'pointer-events'
+			)
+		).toBe('none');
+	});
+
+	test('exposes a labelled region with nested native plane controls', () => {
+		const { getByRole } = render(
+			<AeroplaneBoard
+				state={fixtureState()}
+				legalMoves={[move()]}
+				onRoll={mock(() => {})}
+				onSelectMove={mock(() => {})}
+			/>
+		);
+		expect(
+			getByRole('region', { name: /aeroplane chess board/i })
+		).toBeTruthy();
+		expect(getByRole('button', { name: /Red plane 1/i })).toBeTruthy();
+	});
+
+	test('keeps all sixteen hangar slots visible after planes launch', () => {
+		const launched = fixtureState({
+			planes: fixtureState().planes.map(plane =>
+				plane.id === 'red-0' ? { ...plane, progress: 4 } : plane
+			),
+		});
+		const { getAllByTestId } = render(
+			<AeroplaneBoard
+				state={launched}
+				legalMoves={[]}
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(getAllByTestId('aeroplane-hangar-slot')).toHaveLength(16);
+	});
 });
 
 describe('Aeroplane event feed', () => {
 	test('starts compact and expands on narrow-screen toggle', () => {
-		const { getByRole, getByText } = render(
-			<AeroplaneEventFeed
-				events={[
-					{
-						id: 1,
-						move: move(),
-						events: [],
-						action: {
-							kind: 'move',
-							actor: 'human',
-							color: 'red',
-							roll: 3,
-							selectedPlaneId: 'red-0',
+		const previousMatchMedia = window.matchMedia;
+		window.matchMedia = (() => ({
+			matches: false,
+			media: '(min-width: 640px)',
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false,
+		})) as typeof window.matchMedia;
+		try {
+			const { getByRole, getByText, getByTestId } = render(
+				<AeroplaneEventFeed
+					events={[
+						{
+							id: 1,
+							move: move(),
 							events: [],
-							checksum: '00000000',
+							action: {
+								kind: 'move',
+								actor: 'human',
+								color: 'red',
+								roll: 3,
+								selectedPlaneId: 'red-0',
+								events: [],
+								checksum: '00000000',
+							},
 						},
-					},
-				]}
-			/>
-		);
-		const toggle = getByRole('button', { name: /event feed/i });
-		expect(toggle.getAttribute('aria-expanded')).toBe('false');
-		fireEvent.click(toggle);
-		expect(toggle.getAttribute('aria-expanded')).toBe('true');
-		expect(getByText(/red plane 1/i)).toBeTruthy();
+					]}
+				/>
+			);
+			const toggle = getByRole('button', { name: /event feed/i });
+			expect(toggle.getAttribute('aria-expanded')).toBe('false');
+			expect(
+				getByTestId('aeroplane-event-feed-content').getAttribute('aria-hidden')
+			).toBe('true');
+			fireEvent.click(toggle);
+			expect(toggle.getAttribute('aria-expanded')).toBe('true');
+			expect(getByText(/red plane 1/i)).toBeTruthy();
+		} finally {
+			window.matchMedia = previousMatchMedia;
+		}
+	});
+
+	test('keeps the event feed available to assistive tech on desktop', () => {
+		const previousMatchMedia = window.matchMedia;
+		window.matchMedia = (() => ({
+			matches: true,
+			media: '(min-width: 640px)',
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false,
+		})) as typeof window.matchMedia;
+		try {
+			const { getByTestId, queryByRole } = render(
+				<AeroplaneEventFeed events={[]} />
+			);
+			expect(
+				getByTestId('aeroplane-event-feed-content').getAttribute('aria-hidden')
+			).toBe('false');
+			expect(queryByRole('button', { name: /event feed/i })).toBeNull();
+		} finally {
+			window.matchMedia = previousMatchMedia;
+		}
 	});
 
 	test('skip animations can be requested repeatedly without changing feed data', () => {

@@ -233,18 +233,25 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	});
 
 	return (
-		<div className='space-y-4'>
+		<div
+			role='region'
+			aria-labelledby='aeroplane-board-title'
+			data-testid='aeroplane-board'
+			className='space-y-4'
+		>
+			<h2 id='aeroplane-board-title' className='sr-only'>
+				Aeroplane Chess board
+			</h2>
 			<div className='rounded-xl border border-line bg-ink-800 p-2 shadow-panel sm:p-3'>
 				<svg
 					viewBox='0 0 100 100'
 					className='block h-auto w-full select-none overflow-visible'
-					role='img'
-					aria-labelledby='aeroplane-board-title aeroplane-board-description'
+					aria-hidden='true'
+					focusable='false'
 				>
-					<title id='aeroplane-board-title'>Aeroplane Chess board</title>
-					<desc id='aeroplane-board-description'>
-						52-node clockwise track with four private home lanes. Select a
-						highlighted plane to move it.
+					<desc>
+						52-node clockwise track with four private home lanes. Use the legal
+						plane controls below the board to move.
 					</desc>
 					<rect
 						x='1'
@@ -278,6 +285,22 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 							strokeWidth='0.35'
 						/>
 					))}
+					{COLORS.flatMap(color =>
+						HANGAR_SLOTS[color].map((anchor, index) => (
+							<circle
+								key={`hangar-${color}-${index}`}
+								data-testid='aeroplane-hangar-slot'
+								cx={anchor.x}
+								cy={anchor.y}
+								r='3.8'
+								fill='#17263A'
+								fillOpacity='0.72'
+								stroke={PLANE_FILL[color]}
+								strokeOpacity='0.72'
+								strokeWidth='0.65'
+							/>
+						))
+					)}
 					{COLORS.map(color => {
 						const pad = LAUNCH_PADS[color];
 						return (
@@ -368,50 +391,15 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 						/>
 					))}
 					{planeNodes.map(({ plane, anchor, offset }) => {
-						const legalMove = moveByPlane.get(plane.id);
 						const active = previewedPlaneId === plane.id;
 						const x = anchor.x + offset.x;
 						const y = anchor.y + offset.y;
 						return (
 							<g
 								key={plane.id}
-								role='button'
-								tabIndex={legalMove ? 0 : -1}
-								aria-label={moveLabel(plane, legalMove)}
-								aria-disabled={legalMove ? undefined : 'true'}
-								aria-current={active ? 'true' : undefined}
-								onMouseEnter={() => setHoveredPlaneId(plane.id)}
-								onMouseLeave={() => setHoveredPlaneId(null)}
-								onFocus={() => setFocusedPlaneId(plane.id)}
-								onBlur={() => setFocusedPlaneId(null)}
-								onPointerUp={event => {
-									if (!isCoarsePointer(event)) return;
-									if (!moveByPlane.has(plane.id)) return;
-									suppressClickRef.current = true;
-									activatePlane(plane.id, true);
-								}}
-								onClick={event => {
-									if (suppressClickRef.current) {
-										suppressClickRef.current = false;
-										return;
-									}
-									activatePlane(plane.id, isCoarsePointer(event));
-								}}
-								onKeyDown={event => {
-									if (
-										event.key !== 'Enter' &&
-										event.key !== ' ' &&
-										event.key !== 'Space'
-									)
-										return;
-									event.preventDefault();
-									activatePlane(plane.id);
-								}}
-								className={`cursor-pointer outline-none focus-visible:outline-none ${
-									legalMove && legalMoves.length > 1
-										? 'animate-pulse motion-reduce:animate-none'
-										: ''
-								}`}
+								aria-hidden='true'
+								pointerEvents='none'
+								data-testid={`aeroplane-plane-control-${plane.id}`}
 							>
 								{active && (
 									<circle
@@ -424,15 +412,6 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 										className='motion-reduce:animate-none'
 									/>
 								)}
-								{/* Keep coarse-pointer hit areas at least 44px as the SVG scales. */}
-								<circle
-									cx={x}
-									cy={y}
-									r='8'
-									fill='transparent'
-									pointerEvents='all'
-									data-coarse-target='true'
-								/>
 								<circle
 									cx={x}
 									cy={y}
@@ -472,6 +451,65 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 					</text>
 				</svg>
 			</div>
+			{legalMoves.length > 0 && (
+				<div
+					role='list'
+					aria-label='Legal plane moves'
+					className='grid grid-cols-1 gap-2 sm:grid-cols-2'
+				>
+					{legalMoves.map(legalMove => {
+						const plane = state.planes.find(
+							candidate => candidate.id === legalMove.planeId
+						);
+						if (!plane) return null;
+						const label = moveLabel(plane, legalMove);
+						const active = previewedPlaneId === plane.id;
+						return (
+							<div key={legalMove.planeId} role='listitem'>
+								<button
+									type='button'
+									aria-label={label}
+									aria-current={active ? 'true' : undefined}
+									onMouseEnter={() => setHoveredPlaneId(plane.id)}
+									onMouseLeave={() => setHoveredPlaneId(null)}
+									onFocus={() => setFocusedPlaneId(plane.id)}
+									onBlur={() => setFocusedPlaneId(null)}
+									onPointerUp={event => {
+										if (!isCoarsePointer(event)) return;
+										suppressClickRef.current = true;
+										activatePlane(plane.id, true);
+									}}
+									onClick={event => {
+										if (suppressClickRef.current) {
+											suppressClickRef.current = false;
+											return;
+										}
+										activatePlane(plane.id, isCoarsePointer(event));
+									}}
+									onKeyDown={event => {
+										if (
+											event.key !== 'Enter' &&
+											event.key !== ' ' &&
+											event.key !== 'Space'
+										)
+											return;
+										event.preventDefault();
+										activatePlane(plane.id);
+									}}
+									className={`min-h-11 touch-manipulation rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900 ${
+										active
+											? 'border-brass bg-brass text-ink-900'
+											: 'border-line bg-ink-700 text-ivory hover:bg-ink-600'
+									}`}
+								>
+									{colorLabel[plane.color]} plane {planeNumber(plane.id)}
+									<span className='sr-only'>: {label}</span>
+								</button>
+							</div>
+						);
+					})}
+				</div>
+			)}
 			<div className='flex flex-wrap items-center justify-between gap-3'>
 				<p className='text-sm text-ivory-dim'>
 					{state.phase === 'awaiting-choice' && legalMoves.length === 0
