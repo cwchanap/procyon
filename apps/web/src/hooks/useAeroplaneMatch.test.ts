@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { setupReactDom } from '../test/reactSetup';
 import {
 	CLASSIC_CONFIG,
+	QUICK_CONFIG,
 	createAeroplaneMatch,
 	rollTurn,
 } from '../lib/aeroplane/game';
@@ -168,6 +169,37 @@ function terminalAeroplaneFixture(
 			planes,
 			winner,
 		},
+		seats: match.seats,
+		diceRng: match.diceRng,
+		aiRng: match.aiRng,
+		skipAnimations: true,
+	};
+}
+
+function nearVictoryAeroplaneFixture(): AeroplaneE2EFixture {
+	const config = { ...QUICK_CONFIG, chatter: false };
+	const match = createAeroplaneMatch(config, 39107);
+	const state: AeroplaneState = {
+		...match.state,
+		config: match.state.config,
+		currentPlayer: 'red',
+		phase: 'awaiting-choice',
+		pendingRoll: 1,
+		winner: null,
+		planes: match.state.planes.map(candidate => {
+			if (candidate.id === 'red-0') return { ...candidate, progress: 56 };
+			if (candidate.id === 'red-1') return { ...candidate, progress: 55 };
+			return candidate;
+		}),
+		stats: {
+			...match.state.stats,
+			finished: { ...match.state.stats.finished, red: 1 },
+		},
+	};
+	return {
+		seed: match.rootSeed,
+		config: match.state.config,
+		state,
 		seats: match.seats,
 		diceRng: match.diceRng,
 		aiRng: match.aiRng,
@@ -478,12 +510,13 @@ describe('useAeroplaneMatch terminal history integration', () => {
 
 	function saveTerminalSnapshot(
 		storage: MemoryStorage,
-		startedAt: string
+		startedAt: string,
+		savedAt = startedAt
 	): void {
 		const fixture = terminalAeroplaneFixture();
 		const saved = {
 			version: 1 as const,
-			savedAt: startedAt,
+			savedAt,
 			startedAt,
 			rootSeed: fixture.seed!,
 			config: fixture.config!,
@@ -601,15 +634,89 @@ describe('useAeroplaneMatch terminal history integration', () => {
 		replaceBeforeSuccess = () => match.result.current.reset(undefined, 39106);
 		await flushHistorySave();
 
-		expect(removeCount).toBe(0);
+		expect(removeCount).toBe(1);
 		expect(playHistoryCalls).toBe(1);
 		match.unmount();
 	});
 
-	test('restored terminal payload computes elapsed seconds from its persisted start', async () => {
+	test('ambiguous terminal history failure is not resubmitted after a restored remount', async () => {
+		const storage = memoryStorage();
+		let attempts = 0;
+		let storageAtTransport: string | null = 'not-called';
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				attempts++;
+				storageAtTransport = storage.getItem(ACTIVE_MATCH_STORAGE_KEY);
+				return Promise.reject(new Error('network failure'));
+			}
+			return new Response('{}', { status: 200 });
+		}) as typeof fetch;
+
+		const first = renderTerminalMatch(true, storage);
+		await flushHistorySave();
+		expect(attempts).toBe(1);
+		expect(storageAtTransport).toBeNull();
+		first.unmount();
+
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				attempts++;
+				return new Response('{}', { status: 201 });
+			}
+			return new Response('{}', { status: 200 });
+		}) as typeof fetch;
+		const second = renderRestoredTerminalMatch(
+			storage,
+			() => '2026-08-09T00:00:01.000Z'
+		);
+		await flushHistorySave();
+
+		expect(attempts).toBe(1);
+		second.unmount();
+	});
+
+	test('freezes terminal duration when a winning move commits across restored remount', async () => {
+		const storage = memoryStorage();
+		let nowValue = '2026-08-09T00:00:00.000Z';
+		(
+			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
+		).__PROCYON_INITIAL_AUTH_USER__ = null;
+		const first = renderHook(() =>
+			useAeroplaneMatch({
+				fixture: nearVictoryAeroplaneFixture(),
+				dev: true,
+				storage,
+				now: () => nowValue,
+			})
+		);
+		act(() => first.result.current.select('red-1'));
+		await flushHistorySave();
+
+		const savedRaw = storage.getItem(ACTIVE_MATCH_STORAGE_KEY);
+		expect(savedRaw).not.toBeNull();
+		const saved = JSON.parse(savedRaw ?? '{}') as PersistedAeroplaneMatchV1;
+		expect(saved.state.phase).toBe('finished');
+		expect(saved.completedAt).toBe(nowValue);
+		first.unmount();
+
+		nowValue = '2026-08-09T12:00:00.000Z';
+		const second = renderRestoredTerminalMatch(storage, () => nowValue);
+		await flushHistorySave();
+
+		expect(capturedBodies).toHaveLength(1);
+		expect(
+			(capturedBodies[0]?.details as { durationSeconds?: number })
+				.durationSeconds
+		).toBe(0);
+		second.unmount();
+	});
+
+	test('legacy restored terminal payload uses savedAt as deterministic completion fallback', async () => {
 		const storage = memoryStorage();
 		const startedAt = '2026-08-09T00:00:00.000Z';
-		saveTerminalSnapshot(storage, startedAt);
+		saveTerminalSnapshot(storage, startedAt, '2026-08-09T00:00:05.000Z');
 		const match = renderRestoredTerminalMatch(
 			storage,
 			() => '2026-08-09T00:00:12.900Z'
@@ -620,7 +727,7 @@ describe('useAeroplaneMatch terminal history integration', () => {
 		expect(
 			(capturedBodies[0]?.details as { durationSeconds?: number })
 				.durationSeconds
-		).toBe(12);
+		).toBe(5);
 		match.unmount();
 	});
 

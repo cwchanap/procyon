@@ -11,6 +11,8 @@ export interface UseTerminalHistorySaveOptions {
 	userId: string | null | undefined;
 	buildPayload: () => SubmitPlayHistoryInput | null;
 	debugKey?: string;
+	/** Clear or mark any restorable terminal snapshot before first transport. */
+	onBeforeFirstAttempt?: () => void;
 	onFailure?: (reason: 'rejected' | 'network') => void;
 	onSuccess?: () => void;
 }
@@ -36,6 +38,7 @@ export function useTerminalHistorySave({
 	userId,
 	buildPayload,
 	debugKey,
+	onBeforeFirstAttempt,
 	onFailure,
 	onSuccess,
 }: UseTerminalHistorySaveOptions): void {
@@ -94,6 +97,7 @@ export function useTerminalHistorySave({
 		}
 
 		savedRef.current = true;
+		if (isFirstAttempt) onBeforeFirstAttempt?.();
 
 		if (isFirstAttempt && debugKey && typeof window !== 'undefined') {
 			const w = window as unknown as Record<string, number | undefined>;
@@ -160,6 +164,7 @@ export function useTerminalHistorySave({
 		userId,
 		buildPayload,
 		debugKey,
+		onBeforeFirstAttempt,
 		onFailure,
 		onSuccess,
 		clearRetryTimer,

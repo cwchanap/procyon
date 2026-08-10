@@ -310,6 +310,8 @@ export function validatePersistedAeroplaneMatch(
 		return { ok: false, reason: 'savedAt must be a non-empty string' };
 	if (value.startedAt !== undefined && !isFiniteTimestamp(value.startedAt))
 		return { ok: false, reason: 'startedAt must be a finite timestamp' };
+	if (value.completedAt !== undefined && !isFiniteTimestamp(value.completedAt))
+		return { ok: false, reason: 'completedAt must be a finite timestamp' };
 	if (!isUint32(value.rootSeed))
 		return { ok: false, reason: 'invalid root seed' };
 	if (!validConfig(value.config))
