@@ -8,6 +8,7 @@ import {
 import { sql } from 'drizzle-orm';
 import {
 	ChessVariantId,
+	GameId,
 	GameResultStatus,
 	OpponentLlmId,
 	OpponentEngineId,
@@ -63,7 +64,7 @@ export const playHistory = sqliteTable(
 		id: integer('id').primaryKey({ autoIncrement: true }),
 		// Supabase user UUID stored as text (no foreign key - user data lives in Supabase)
 		userId: text('user_id').notNull(),
-		chessId: text('chess_id').$type<ChessVariantId>().notNull(),
+		gameId: text('game_id').$type<GameId>().notNull(),
 		date: text('date').notNull(),
 		status: text('status').$type<GameResultStatus>().notNull(),
 		opponentUserId: text('opponent_user_id').$type<string | null>(),

@@ -9,6 +9,7 @@ import {
 import { sql } from 'drizzle-orm';
 import {
 	ChessVariantId,
+	GameId,
 	GameResultStatus,
 	OpponentLlmId,
 } from '../constants/game';
@@ -49,7 +50,7 @@ async function insertPlayHistoryRecord(
 		.insert(playHistory)
 		.values({
 			userId,
-			chessId: variantId,
+			gameId: variantId as unknown as GameId,
 			date: new Date().toISOString(),
 			status,
 			opponentLlmId: OpponentLlmId.Gemini25Flash,

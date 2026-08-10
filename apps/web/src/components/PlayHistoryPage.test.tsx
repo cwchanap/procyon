@@ -33,7 +33,7 @@ describe('PlayHistoryPage — engine row rendering', () => {
 							{
 								id: 1,
 								userId: 'user-a',
-								chessId: 'chess',
+								gameId: 'chess',
 								date: new Date().toISOString(),
 								status: 'win',
 								opponentUserId: null,
@@ -45,7 +45,7 @@ describe('PlayHistoryPage — engine row rendering', () => {
 							{
 								id: 2,
 								userId: 'user-a',
-								chessId: 'chess',
+								gameId: 'chess',
 								date: new Date().toISOString(),
 								status: 'win',
 								opponentUserId: null,

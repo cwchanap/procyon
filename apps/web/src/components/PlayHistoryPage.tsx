@@ -7,7 +7,7 @@ import { Button } from './ui/Button';
 
 type ServerPlayHistory = {
 	id: number;
-	chessId: 'chess' | 'shogi' | 'xiangqi' | 'jungle';
+	gameId: 'chess' | 'shogi' | 'xiangqi' | 'jungle';
 	date: string;
 	status: 'win' | 'loss' | 'draw';
 	opponentUserId: string | null;
@@ -19,7 +19,7 @@ type ServerPlayHistory = {
 	newRating: number | null | undefined;
 };
 
-const VARIANT_LABELS: Record<ServerPlayHistory['chessId'], string> = {
+const VARIANT_LABELS: Record<ServerPlayHistory['gameId'], string> = {
 	chess: 'Classical Chess',
 	shogi: 'Shogi',
 	xiangqi: 'Xiangqi',
@@ -339,7 +339,7 @@ export default function PlayHistoryPage() {
 													{formatDate(entry.date)}
 												</td>
 												<td className='py-4 pr-4 whitespace-nowrap'>
-													{VARIANT_LABELS[entry.chessId]}
+													{VARIANT_LABELS[entry.gameId]}
 												</td>
 												<td className='py-4 pr-4'>
 													<span>{formatOpponent(entry)}</span>

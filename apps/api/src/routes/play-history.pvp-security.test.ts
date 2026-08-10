@@ -35,7 +35,7 @@ describe('POST /api/play-history PvP submission guard', () => {
 				...authHeader,
 			},
 			body: JSON.stringify({
-				chessId: 'chess',
+				gameId: 'chess',
 				status: 'win',
 				date: new Date().toISOString(),
 				opponentUserId: '00000000-0000-4000-8000-000000000000',

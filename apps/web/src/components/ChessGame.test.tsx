@@ -1232,7 +1232,7 @@ describe('ChessGame — identity policy, history & tools', () => {
 			expect(env.playHistoryCount()).toBe(1);
 			expect(env.bodies[0]).toHaveProperty('opponentEngineId', 'stockfish');
 			expect(env.bodies[0]).not.toHaveProperty('opponentLlmId');
-			expect(env.bodies[0]).toHaveProperty('chessId', 'chess');
+			expect(env.bodies[0]).toHaveProperty('gameId', 'chess');
 		} finally {
 			env.restore();
 		}
