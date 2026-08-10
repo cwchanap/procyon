@@ -70,3 +70,11 @@ test('active relaxed protection consumes exactly two samples', () => {
 
 	expect(result.rng).toEqual(second.rng);
 });
+
+test('relaxed protection prefers the first candidate when both are legal', () => {
+	const result = rollRelaxed(relaxedFixtureState(), { value: 456 });
+
+	// Seed 456 yields candidate rolls 5 and 6; the active red plane can play
+	// either, so the normative first-candidate preference must keep 5.
+	expect(result.roll).toBe(5);
+});
