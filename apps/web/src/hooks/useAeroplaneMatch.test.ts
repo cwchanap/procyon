@@ -1,4 +1,4 @@
-import { describe, expect, jest, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { act, renderHook } from '@testing-library/react';
 import { setupReactDom } from '../test/reactSetup';
 import {
@@ -125,6 +125,38 @@ function aiTurnFixture(): AeroplaneE2EFixture {
 		diceRng: diceStateForRoll(1),
 		aiRng: { value: 33 },
 		skipAnimations: false,
+	};
+}
+
+function terminalAeroplaneFixture(
+	winner: AeroplaneColor = 'red'
+): AeroplaneE2EFixture {
+	const config: AeroplaneConfig = {
+		...CLASSIC_CONFIG,
+		victoryTarget: 2,
+	};
+	const match = createAeroplaneMatch(config, 39105);
+	const planes = match.state.planes.map(candidate =>
+		candidate.color === winner && Number(candidate.id.slice(-1)) < 2
+			? { ...candidate, progress: 56 }
+			: candidate
+	);
+	return {
+		seed: match.rootSeed,
+		config,
+		state: {
+			...match.state,
+			config,
+			currentPlayer: winner,
+			phase: 'finished',
+			pendingRoll: null,
+			planes,
+			winner,
+		},
+		seats: match.seats,
+		diceRng: match.diceRng,
+		aiRng: match.aiRng,
+		skipAnimations: true,
 	};
 }
 
@@ -339,6 +371,107 @@ describe('useAeroplaneMatch controller', () => {
 		const match = createHookHarness(fixture);
 		match.advanceTime(650);
 		expect(match.state().currentPlayer).not.toBe('red');
+	});
+});
+
+describe('useAeroplaneMatch terminal history integration', () => {
+	let originalFetch: typeof globalThis.fetch;
+	let capturedBodies: Array<Record<string, unknown>>;
+
+	beforeEach(() => {
+		originalFetch = globalThis.fetch;
+		capturedBodies = [];
+		globalThis.fetch = (async (
+			input: RequestInfo | URL,
+			init?: RequestInit
+		) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history') && init?.body) {
+				capturedBodies.push(
+					JSON.parse(String(init.body)) as Record<string, unknown>
+				);
+			}
+			return new Response('{}', {
+				status: 201,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}) as typeof fetch;
+	});
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		(
+			window as unknown as { __PROCYON_INITIAL_AUTH_USER__?: unknown }
+		).__PROCYON_INITIAL_AUTH_USER__ = undefined;
+	});
+
+	function renderTerminalMatch(authenticated: boolean) {
+		(
+			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
+		).__PROCYON_INITIAL_AUTH_USER__ = authenticated
+			? { id: 'user-a', email: 'a@b.com', username: 'a' }
+			: null;
+		return renderHook(() =>
+			useAeroplaneMatch({
+				fixture: terminalAeroplaneFixture(),
+				dev: true,
+				storage: memoryStorage(),
+			})
+		);
+	}
+
+	async function flushHistorySave(): Promise<void> {
+		await act(async () => {
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+	}
+
+	test('terminal Aeroplane match builds the human-perspective trio payload once', async () => {
+		const match = renderTerminalMatch(true);
+		await flushHistorySave();
+
+		expect(capturedBodies).toHaveLength(1);
+		expect(capturedBodies[0]).toMatchObject({
+			gameId: 'aeroplane',
+			opponentEngineId: 'aeroplane-trio-v1',
+			status: 'win',
+			details: {
+				rulePreset: 'classic',
+				victoryTarget: 2,
+				diceMode: 'fair',
+				humanColor: 'red',
+				planesFinished: 0,
+				capturesMade: 0,
+				capturesSuffered: 0,
+				aiPlayers: [
+					{ color: 'yellow', personality: 'cautious' },
+					{ color: 'blue', personality: 'aggressive' },
+					{ color: 'green', personality: 'unpredictable' },
+				],
+			},
+		});
+
+		match.unmount();
+	});
+
+	test('repeated terminal renders do not submit another Aeroplane history record', async () => {
+		const match = renderTerminalMatch(true);
+		await flushHistorySave();
+		match.rerender();
+		match.rerender();
+		await flushHistorySave();
+
+		expect(capturedBodies).toHaveLength(1);
+		match.unmount();
+	});
+
+	test('signed-out Aeroplane play does not submit history', async () => {
+		const match = renderTerminalMatch(false);
+		await flushHistorySave();
+
+		expect(capturedBodies).toHaveLength(0);
+		match.unmount();
 	});
 });
 

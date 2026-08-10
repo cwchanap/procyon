@@ -1,6 +1,6 @@
 export type OpponentLlmId = 'gpt-4o' | 'gemini-2.5-flash';
 
-export type OpponentEngineId = 'stockfish';
+export type OpponentEngineId = 'stockfish' | 'aeroplane-trio-v1';
 
 /**
  * The opponent a game was played against. The hook and history layer branch on
