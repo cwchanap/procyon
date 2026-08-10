@@ -6,10 +6,11 @@ import { authMiddleware, getUser } from '../auth/middleware';
 import { getDB } from '../db';
 import { playHistory, ratingHistory, type PlayHistory } from '../db/schema';
 import {
-	ChessVariantId,
+	GameId,
 	GameResultStatus,
 	OpponentLlmId,
 	OpponentEngineId,
+	getRatedVariantId,
 } from '../constants/game';
 import { updatePlayerRating } from '../services/rating-service';
 
@@ -35,7 +36,7 @@ export const NUMERIC_ID_REGEX = /^\d+$/;
 
 const createPlayHistorySchema = z
 	.object({
-		chessId: z.nativeEnum(ChessVariantId),
+		gameId: z.nativeEnum(GameId),
 		status: z.nativeEnum(GameResultStatus),
 		date: z.string().datetime(),
 		// Accept both UUID strings and legacy numeric IDs for backward compatibility
@@ -99,7 +100,7 @@ app.get('/', authMiddleware, async c => {
 			.selectDistinct({
 				id: playHistory.id,
 				userId: playHistory.userId,
-				chessId: playHistory.chessId,
+				gameId: playHistory.gameId,
 				date: playHistory.date,
 				status: playHistory.status,
 				opponentUserId: playHistory.opponentUserId,
@@ -161,7 +162,7 @@ app.post(
 				// (null for LLM games) to mirror the existing opponentUserId: null.
 				const newPlayHistory: typeof playHistory.$inferInsert = {
 					userId: user.userId,
-					chessId: body.chessId,
+					gameId: body.gameId,
 					status: body.status,
 					date: new Date(body.date).toISOString(),
 					opponentUserId: null,
@@ -186,7 +187,7 @@ app.post(
 					const ratingResult = await updatePlayerRating(
 						{
 							userId: user.userId,
-							variantId: body.chessId,
+							variantId: getRatedVariantId(body.gameId),
 							playHistoryId: record.id,
 							gameResult: body.status,
 							opponentLlmId: body.opponentLlmId ?? null,

@@ -694,7 +694,7 @@ describe('usePlayHistory — React integration (renderHook)', () => {
 	test('5xx save uses snapshotted result; dep changes do not re-fire', async () => {
 		// Capture the request bodies so we can verify the snapshot.
 		const capturedBodies: Array<{
-			chessId: string;
+			gameId: string;
 			status: string;
 			opponentLlmId: string;
 		}> = [];
@@ -1816,7 +1816,7 @@ describe('usePlayHistory — engine (unrated) path', () => {
 		expect(capturedBody).toBeDefined();
 		expect(capturedBody).toHaveProperty('opponentEngineId', 'stockfish');
 		expect(capturedBody).not.toHaveProperty('opponentLlmId');
-		expect(capturedBody).toHaveProperty('chessId', 'chess');
+		expect(capturedBody).toHaveProperty('gameId', 'chess');
 	});
 
 	test('LLM path (no descriptor) is unchanged — still sends opponentLlmId', () => {

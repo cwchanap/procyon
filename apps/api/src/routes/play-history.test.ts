@@ -112,7 +112,7 @@ describe('play-history routes - auth guards', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentLlmId: 'gemini-2.5-flash',
@@ -151,7 +151,7 @@ describe('play-history routes - validation', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: new Date().toISOString(),
 				}),
@@ -168,7 +168,7 @@ describe('play-history routes - validation', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentUserId: '00000000-0000-4000-8000-000000000002',
@@ -180,14 +180,32 @@ describe('play-history routes - validation', () => {
 		expect(res.status).toBe(400);
 	});
 
-	test('POST / returns 400 for invalid chessId', async () => {
+	test('POST / returns 400 for invalid gameId', async () => {
 		const res = await playHistoryRoutes.request(
 			`${BASE_URL}/`,
 			{
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'invalid-game',
+					gameId: 'invalid-game',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentLlmId: 'gemini-2.5-flash',
+				}),
+			},
+			CF_ENV
+		);
+		expect(res.status).toBe(400);
+	});
+
+	test('POST / rejects Aeroplane until the API expansion task', async () => {
+		const res = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					gameId: 'aeroplane',
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentLlmId: 'gemini-2.5-flash',
@@ -205,7 +223,7 @@ describe('play-history routes - validation', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'invalid-status',
 					date: new Date().toISOString(),
 					opponentLlmId: 'gemini-2.5-flash',
@@ -223,7 +241,7 @@ describe('play-history routes - validation', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: 'not-a-date',
 					opponentLlmId: 'gemini-2.5-flash',
@@ -241,7 +259,7 @@ describe('play-history routes - validation', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentUserId: 'not-a-uuid-or-numeric',
@@ -259,7 +277,7 @@ describe('play-history routes - validation', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentUserId: '00000000-0000-4000-8000-000000000002',
@@ -279,7 +297,7 @@ describe('play-history routes - validation', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentLlmId: 'unknown-llm',
@@ -324,7 +342,7 @@ describe('play-history routes - GET and POST success', () => {
 		expect(body.playHistory).toHaveLength(0);
 	});
 
-	test('POST / creates play history record for PvAI match', async () => {
+	test('LLM chess remains rated after gameId rename', async () => {
 		const date = new Date().toISOString();
 		const res = await playHistoryRoutes.request(
 			`${BASE_URL}/`,
@@ -332,7 +350,7 @@ describe('play-history routes - GET and POST success', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date,
 					opponentLlmId: 'gemini-2.5-flash',
@@ -343,19 +361,19 @@ describe('play-history routes - GET and POST success', () => {
 		expect(res.status).toBe(201);
 		const body = (await res.json()) as {
 			message: string;
-			playHistory: { userId: string; chessId: string; status: string };
+			playHistory: { userId: string; gameId: string; status: string };
 			ratingUpdate: {
 				oldRating: number;
 				newRating: number;
 				ratingChange: number;
-			};
+			} | null;
 		};
 		expect(body.message).toBe('Play history saved');
 		expect(body.playHistory.userId).toBe(TEST_USER_ID);
-		expect(body.playHistory.chessId).toBe('chess');
+		expect(body.playHistory.gameId).toBe('chess');
 		expect(body.playHistory.status).toBe('win');
-		expect(body.ratingUpdate).toBeDefined();
-		expect(typeof body.ratingUpdate.ratingChange).toBe('number');
+		expect(body.ratingUpdate).not.toBeNull();
+		expect(typeof body.ratingUpdate!.ratingChange).toBe('number');
 	});
 
 	test('POST / win increases rating', async () => {
@@ -366,7 +384,7 @@ describe('play-history routes - GET and POST success', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date,
 					opponentLlmId: 'gemini-2.5-flash',
@@ -389,7 +407,7 @@ describe('play-history routes - GET and POST success', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'loss',
 					date,
 					opponentLlmId: 'gemini-2.5-flash',
@@ -412,7 +430,7 @@ describe('play-history routes - GET and POST success', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'shogi',
+					gameId: 'shogi',
 					status: 'draw',
 					date,
 					opponentLlmId: 'gemini-2.5-flash',
@@ -428,10 +446,10 @@ describe('play-history routes - GET and POST success', () => {
 		);
 		expect(getRes.status).toBe(200);
 		const body = (await getRes.json()) as {
-			playHistory: Array<{ chessId: string; status: string }>;
+			playHistory: Array<{ gameId: string; status: string }>;
 		};
 		expect(body.playHistory).toHaveLength(1);
-		expect(body.playHistory[0]?.chessId).toBe('shogi');
+		expect(body.playHistory[0]?.gameId).toBe('shogi');
 		expect(body.playHistory[0]?.status).toBe('draw');
 	});
 });
@@ -456,6 +474,28 @@ describe('play-history routes - engine (unrated) games', () => {
 		process.env.SUPABASE_ANON_KEY = originalAnonKey;
 	});
 
+	test('Stockfish remains unrated after gameId rename', async () => {
+		const response = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
+				body: JSON.stringify({
+					gameId: 'chess',
+					status: 'win',
+					date: new Date().toISOString(),
+					opponentEngineId: 'stockfish',
+				}),
+			},
+			CF_ENV
+		);
+		expect(response.status).toBe(201);
+		const body = (await response.json()) as {
+			ratingUpdate: { ratingChange: number } | null;
+		};
+		expect(body.ratingUpdate).toBeNull();
+	});
+
 	test.each(['win', 'loss', 'draw'] as const)(
 		'POST / engine game (%s) leaves rating unchanged with no rating_history',
 		async status => {
@@ -468,7 +508,7 @@ describe('play-history routes - engine (unrated) games', () => {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 					body: JSON.stringify({
-						chessId: 'chess',
+						gameId: 'chess',
 						status: 'win',
 						date: new Date().toISOString(),
 						opponentLlmId: 'gemini-2.5-flash',
@@ -509,7 +549,7 @@ describe('play-history routes - engine (unrated) games', () => {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 					body: JSON.stringify({
-						chessId: 'chess',
+						gameId: 'chess',
 						status,
 						date: new Date().toISOString(),
 						opponentEngineId: 'stockfish',
@@ -566,7 +606,7 @@ describe('play-history routes - engine (unrated) games', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentEngineId: 'stockfish',
@@ -585,7 +625,7 @@ describe('play-history routes - engine (unrated) games', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentEngineId: 'stockfish',
@@ -604,7 +644,7 @@ describe('play-history routes - engine (unrated) games', () => {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
 				body: JSON.stringify({
-					chessId: 'chess',
+					gameId: 'chess',
 					status: 'win',
 					date: new Date().toISOString(),
 					opponentEngineId: 'stockfish',

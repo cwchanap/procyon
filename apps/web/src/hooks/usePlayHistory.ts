@@ -1,10 +1,10 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { env } from '../lib/env';
 import {
 	resolveOpponentLlmId,
 	type OpponentLlmId,
 	type OpponentEngineId,
 } from '../lib/ai/opponent';
+import { submitPlayHistory } from '../lib/play-history';
 import type { AIConfig } from '../lib/ai/types';
 import type { GameVariant, GameStatus } from '../lib/ai/game-variant-types';
 
@@ -74,14 +74,6 @@ function isGameOverStatus(status: GameStatus): boolean {
 }
 
 /**
- * Timeout for the play-history POST request. Prevents the fetch from hanging
- * indefinitely on a stalled connection — the resulting AbortError falls into
- * the catch block and is treated as a network error (no retry, to avoid
- * duplicate records).
- */
-const SAVE_TIMEOUT_MS = 10_000;
-
-/**
  * Maximum number of delayed retries after a 401 response. A 401 means the
  * session cookie expired while the game was in progress. The client's
  * `isAuthenticated` may still be true (it doesn't periodically re-verify
@@ -146,7 +138,7 @@ export function usePlayHistory({
 				gameVariant: GameVariant;
 				userId: string | null | undefined;
 		  } & (
-				| { kind: 'llm'; opponentLlmId: string }
+				| { kind: 'llm'; opponentLlmId: OpponentLlmId }
 				| { kind: 'engine'; opponentEngineId: OpponentEngineId }
 		  ))
 		| null
@@ -215,7 +207,7 @@ export function usePlayHistory({
 		let result: 'win' | 'loss' | 'draw';
 		let snapshotGameVariant: GameVariant;
 		let snapshotKind: 'llm' | 'engine';
-		let snapshotOpponentLlmId: string | undefined;
+		let snapshotOpponentLlmId: OpponentLlmId | undefined;
 		let snapshotOpponentEngineId: OpponentEngineId | undefined;
 		if (saveSnapshotRef.current) {
 			result = saveSnapshotRef.current.result;
@@ -282,19 +274,13 @@ export function usePlayHistory({
 		}
 
 		try {
-			const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				credentials: 'include',
-				signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
-				body: JSON.stringify({
-					chessId: snapshotGameVariant,
-					status: result,
-					date: new Date().toISOString(),
-					...(snapshotKind === 'llm'
-						? { opponentLlmId: snapshotOpponentLlmId }
-						: { opponentEngineId: snapshotOpponentEngineId }),
-				}),
+			const response = await submitPlayHistory({
+				gameId: snapshotGameVariant,
+				status: result,
+				date: new Date().toISOString(),
+				...(snapshotKind === 'llm'
+					? { opponentLlmId: snapshotOpponentLlmId }
+					: { opponentEngineId: snapshotOpponentEngineId }),
 			});
 			if (!response.ok) {
 				if (import.meta.env.DEV) {

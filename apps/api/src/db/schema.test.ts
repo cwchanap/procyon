@@ -10,6 +10,7 @@ import {
 } from './schema';
 import {
 	ChessVariantId,
+	GameId,
 	GameResultStatus,
 	OpponentLlmId,
 } from '../constants/game';
@@ -29,7 +30,7 @@ describe('database schema - table definitions', () => {
 	test('playHistory table has correct structure', () => {
 		expect(playHistory).toBeDefined();
 		expect(playHistory.userId).toBeDefined();
-		expect(playHistory.chessId).toBeDefined();
+		expect(playHistory.gameId).toBeDefined();
 		expect(playHistory.date).toBeDefined();
 		expect(playHistory.status).toBeDefined();
 		expect(playHistory.opponentUserId).toBeDefined();
@@ -161,13 +162,13 @@ describe('database schema - indexes', () => {
 });
 
 describe('database schema - type constraints', () => {
-	test('playHistory chessId accepts valid ChessVariantId values', () => {
+	test('playHistory gameId accepts valid API GameId values', () => {
 		// Type-level test - ensures the column is typed correctly
-		const validVariants = Object.values(ChessVariantId);
-		expect(validVariants).toContain(ChessVariantId.Chess);
-		expect(validVariants).toContain(ChessVariantId.Xiangqi);
-		expect(validVariants).toContain(ChessVariantId.Shogi);
-		expect(validVariants).toContain(ChessVariantId.Jungle);
+		const validGameIds = Object.values(GameId);
+		expect(validGameIds).toContain(GameId.Chess);
+		expect(validGameIds).toContain(GameId.Xiangqi);
+		expect(validGameIds).toContain(GameId.Shogi);
+		expect(validGameIds).toContain(GameId.Jungle);
 	});
 
 	test('playHistory status accepts valid GameResultStatus values', () => {
@@ -259,7 +260,7 @@ describe('database schema - type exports', () => {
 		type TestPlayHistory = {
 			id: number;
 			userId: string;
-			chessId: ChessVariantId;
+			gameId: GameId;
 			date: string;
 			status: GameResultStatus;
 			opponentUserId: string | null;

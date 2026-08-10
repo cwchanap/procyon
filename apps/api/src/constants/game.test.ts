@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import {
 	ChessVariantId,
+	GameId,
 	GameResultStatus,
 	OpponentLlmId,
 	OpponentEngineId,
@@ -8,7 +9,34 @@ import {
 	ALL_GAME_RESULT_STATUSES,
 	ALL_OPPONENT_LLM_IDS,
 	ALL_OPPONENT_ENGINE_IDS,
+	getRatedVariantId,
 } from './game';
+
+describe('GameId enum', () => {
+	test('has exactly the four strategy game values', () => {
+		expect(Object.values(GameId) as string[]).toEqual([
+			'chess',
+			'xiangqi',
+			'shogi',
+			'jungle',
+		]);
+	});
+
+	test('does not accept Aeroplane until the API expansion task', () => {
+		expect(Object.values(GameId)).not.toContain('aeroplane');
+	});
+});
+
+describe('getRatedVariantId', () => {
+	test.each([
+		[GameId.Chess, ChessVariantId.Chess],
+		[GameId.Xiangqi, ChessVariantId.Xiangqi],
+		[GameId.Shogi, ChessVariantId.Shogi],
+		[GameId.Jungle, ChessVariantId.Jungle],
+	] as const)('%s maps to %s', (gameId, expected) => {
+		expect(getRatedVariantId(gameId)).toBe(expected);
+	});
+});
 
 describe('ChessVariantId enum', () => {
 	test('has the correct values', () => {
