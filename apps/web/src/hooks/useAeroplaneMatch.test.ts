@@ -1,0 +1,325 @@
+import { describe, expect, jest, test } from 'bun:test';
+import { act, renderHook } from '@testing-library/react';
+import { setupReactDom } from '../test/reactSetup';
+import { CLASSIC_CONFIG, createAeroplaneMatch } from '../lib/aeroplane/game';
+import { rollFair } from '../lib/aeroplane/dice';
+import {
+	ACTIVE_MATCH_STORAGE_KEY,
+	saveActiveMatch,
+	type AeroplaneStorage,
+} from '../lib/aeroplane/persistence';
+import type {
+	AeroplaneColor,
+	AeroplaneConfig,
+	AeroplaneState,
+	AiSeat,
+	PersistedAeroplaneMatchV1,
+	PlaneState,
+} from '../lib/aeroplane/types';
+import {
+	readDevOverrides,
+	useAeroplaneMatch,
+	type AeroplaneE2EFixture,
+	type UseAeroplaneMatchOptions,
+} from './useAeroplaneMatch';
+
+setupReactDom();
+
+const STATS = {
+	capturesMade: { red: 0, yellow: 0, blue: 0, green: 0 },
+	capturesSuffered: { red: 0, yellow: 0, blue: 0, green: 0 },
+	finished: { red: 0, yellow: 0, blue: 0, green: 0 },
+};
+
+interface MemoryStorage extends AeroplaneStorage {
+	values: Map<string, string>;
+}
+
+function memoryStorage(initial: Record<string, string> = {}): MemoryStorage {
+	const values = new Map(Object.entries(initial));
+	return {
+		values,
+		getItem: key => values.get(key) ?? null,
+		setItem: (key, value) => void values.set(key, value),
+		removeItem: key => void values.delete(key),
+	};
+}
+
+function plane(
+	color: AeroplaneColor,
+	index: number,
+	progress: number | null
+): PlaneState {
+	return { id: `${color}-${index}`, color, progress };
+}
+
+function fixtureState(
+	currentPlayer: AeroplaneColor,
+	planes: PlaneState[],
+	config: AeroplaneConfig = CLASSIC_CONFIG,
+	phase: AeroplaneState['phase'] = 'awaiting-roll',
+	pendingRoll: number | null = null
+): AeroplaneState {
+	const allPlanes = [
+		...planes,
+		...(['red', 'yellow', 'blue', 'green'] as const).flatMap(color =>
+			Array.from({ length: 4 }, (_, index) =>
+				planes.some(candidate => candidate.id === `${color}-${index}`)
+					? null
+					: plane(color, index, null)
+			)
+		),
+	].filter((candidate): candidate is PlaneState => candidate !== null);
+	return {
+		config,
+		currentPlayer,
+		phase,
+		pendingRoll,
+		planes: allPlanes,
+		winner: null,
+		turnNumber: 1,
+		noMoveStreak: { red: 0, yellow: 0, blue: 0, green: 0 },
+		lastPlaceRounds: { red: 0, yellow: 0, blue: 0, green: 0 },
+		roundNumber: 1,
+		stats: STATS,
+	};
+}
+
+function diceStateForRoll(roll: number): { value: number } {
+	for (let value = 1; value <= 0xffffffff; value += 1) {
+		const result = rollFair({ value });
+		if (result.roll === roll) return { value };
+		if (value > 100_000) break;
+	}
+	throw new Error(`no small deterministic seed for roll ${roll}`);
+}
+
+function oneLegalHumanMoveFixture(): AeroplaneE2EFixture {
+	return {
+		seed: 39101,
+		state: fixtureState('red', [plane('red', 0, 1)]),
+		diceRng: diceStateForRoll(1),
+		aiRng: { value: 33 },
+		skipAnimations: false,
+	};
+}
+
+function twoLegalHumanMovesFixture(): AeroplaneE2EFixture {
+	return {
+		seed: 39102,
+		state: fixtureState('red', [plane('red', 0, 1), plane('red', 1, 1)]),
+		diceRng: diceStateForRoll(1),
+		aiRng: { value: 33 },
+		skipAnimations: true,
+	};
+}
+
+function aiTurnFixture(): AeroplaneE2EFixture {
+	return {
+		seed: 39103,
+		state: fixtureState('yellow', [plane('yellow', 0, 1)]),
+		diceRng: diceStateForRoll(1),
+		aiRng: { value: 33 },
+		skipAnimations: false,
+	};
+}
+
+function createHookHarness(
+	fixture: AeroplaneE2EFixture,
+	options: Omit<UseAeroplaneMatchOptions, 'fixture' | 'dev'> = {}
+) {
+	jest.useFakeTimers();
+	const storage = options.storage ?? memoryStorage();
+	const rendered = renderHook(() =>
+		useAeroplaneMatch({
+			...options,
+			storage,
+			fixture,
+			dev: true,
+		})
+	);
+	return {
+		...rendered,
+		storage,
+		state: () => rendered.result.current.state,
+		legalMoves: () => rendered.result.current.legalMoves,
+		aiRng: () => rendered.result.current.aiRng,
+		roll: () => act(() => rendered.result.current.roll()),
+		select: (planeId: string) =>
+			act(() => rendered.result.current.select(planeId)),
+		advanceTime: (ms: number) =>
+			act(() =>
+				(
+					jest as unknown as { advanceTimersByTime(value: number): void }
+				).advanceTimersByTime(ms)
+			),
+		flushPresentation: async () => {
+			await act(async () => {
+				(
+					jest as unknown as { runOnlyPendingTimers(): void }
+				).runOnlyPendingTimers();
+				await Promise.resolve();
+			});
+		},
+		skipAnimations: () => act(() => rendered.result.current.skipAnimations()),
+	};
+}
+
+describe('useAeroplaneMatch controller', () => {
+	test('one legal human move auto-applies without prompting', async () => {
+		const match = createHookHarness(oneLegalHumanMoveFixture());
+		match.roll();
+		await match.flushPresentation();
+		expect(match.state().phase).toBe('awaiting-roll');
+	});
+
+	test('multiple legal human moves wait for selection', () => {
+		const match = createHookHarness(twoLegalHumanMovesFixture());
+		match.roll();
+		expect(match.state().phase).toBe('awaiting-choice');
+		expect(match.legalMoves()).toHaveLength(2);
+	});
+
+	test('AI delay consumes no gameplay RNG before decision time', () => {
+		const match = createHookHarness(aiTurnFixture());
+		const before = match.aiRng();
+		match.advanceTime(400);
+		expect(match.aiRng()).toEqual(before);
+	});
+
+	test('skip animations is idempotent', () => {
+		const match = createHookHarness(oneLegalHumanMoveFixture());
+		match.skipAnimations();
+		const once = match.state();
+		match.skipAnimations();
+		expect(match.state()).toEqual(once);
+	});
+
+	test('reset cancels stale AI timer', () => {
+		const match = createHookHarness(aiTurnFixture());
+		act(() => match.result.current.reset());
+		match.advanceTime(1000);
+		expect(match.state().turnNumber).toBe(1);
+		expect(match.state().currentPlayer).toBe('red');
+	});
+
+	test('unmount cancels stale AI timer', () => {
+		const match = createHookHarness(aiTurnFixture());
+		match.unmount();
+		match.advanceTime(1000);
+		expect(match.storage.getItem(ACTIVE_MATCH_STORAGE_KEY)).not.toBeNull();
+	});
+
+	test('pending-choice roll is persisted before selection', () => {
+		const storage = memoryStorage();
+		const match = createHookHarness(twoLegalHumanMovesFixture(), { storage });
+		match.roll();
+		const raw = storage.getItem(ACTIVE_MATCH_STORAGE_KEY);
+		expect(raw).not.toBeNull();
+		const saved = JSON.parse(raw ?? '{}') as PersistedAeroplaneMatchV1;
+		expect(saved.state.phase).toBe('awaiting-choice');
+		expect(saved.actions.at(-1)?.kind).toBe('roll');
+	});
+
+	test('resume restores persisted seats exactly', () => {
+		const original = createAeroplaneMatch(CLASSIC_CONFIG, 39104);
+		const seats: AiSeat[] = original.seats.map((seat, index) => ({
+			...seat,
+			personality: index === 0 ? 'unpredictable' : seat.personality,
+		}));
+		const saved: PersistedAeroplaneMatchV1 = {
+			version: 1,
+			savedAt: new Date(0).toISOString(),
+			rootSeed: original.rootSeed,
+			config: original.state.config,
+			state: original.state,
+			seats,
+			diceRng: original.diceRng,
+			aiRng: original.aiRng,
+			actions: [],
+		};
+		const storage = memoryStorage();
+		saveActiveMatch(saved, storage);
+		const match = createHookHarness({}, { storage });
+		expect(match.result.current.seats).toEqual(seats);
+		expect(match.result.current.rootSeed).toBe(original.rootSeed);
+	});
+
+	test('setup preset mutation applies the complete preset contract', () => {
+		const match = createHookHarness(oneLegalHumanMoveFixture());
+		act(() => match.result.current.setSetup({ rulePreset: 'quick-chill' }));
+		expect(match.result.current.setup.rulePreset).toBe('quick-chill');
+		expect(match.result.current.setup.victoryTarget).toBe(2);
+		expect(match.result.current.setup.diceMode).toBe('relaxed');
+		expect(match.result.current.setup.launchRule).toBe('five-or-six');
+		expect(match.result.current.setup.finishRule).toBe('bounce');
+	});
+
+	test('red-first AI turns run automatically when human is not red', () => {
+		const fixture = aiTurnFixture();
+		fixture.config = { ...CLASSIC_CONFIG, humanColor: 'green' };
+		fixture.state = fixtureState(
+			'red',
+			[plane('red', 0, 1)],
+			fixture.config,
+			'awaiting-roll',
+			null
+		);
+		const match = createHookHarness(fixture);
+		match.advanceTime(650);
+		expect(match.state().currentPlayer).not.toBe('red');
+	});
+});
+
+describe('Aeroplane DEV fixture contract', () => {
+	test('non-DEV ignores query and fixture', () => {
+		expect(
+			readDevOverrides({
+				dev: false,
+				search: '?e2eSeed=12',
+				fixture: { seed: 34 },
+			})
+		).toEqual({});
+	});
+
+	test('fixture seed wins over query and defaults skip animations', () => {
+		expect(
+			readDevOverrides({
+				dev: true,
+				search: '?e2eSeed=12',
+				fixture: { seed: 34 },
+			})
+		).toMatchObject({ seed: 34, skipAnimations: true });
+	});
+
+	test('explicit fixture false keeps animations enabled', () => {
+		expect(
+			readDevOverrides({
+				dev: true,
+				search: '?e2eSeed=12',
+				fixture: { seed: 34, skipAnimations: false },
+			})
+		).toMatchObject({ seed: 34, skipAnimations: false });
+	});
+
+	test('invalid authoritative fixture data is ignored with a DEV warning', () => {
+		const warnings: string[] = [];
+		const fixture = oneLegalHumanMoveFixture();
+		fixture.state = {
+			...fixture.state!,
+			planes: fixture.state!.planes.map(plane => ({
+				...plane,
+				progress: null,
+			})),
+			phase: 'awaiting-choice',
+			pendingRoll: 1,
+		};
+		const overrides = readDevOverrides({
+			dev: true,
+			fixture,
+			warn: message => warnings.push(message),
+		});
+		expect(overrides.state).toBeUndefined();
+		expect(warnings.length).toBeGreaterThan(0);
+	});
+});
