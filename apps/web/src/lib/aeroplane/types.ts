@@ -77,6 +77,27 @@ export interface AiMoveChoice {
 	rng: RngState;
 }
 
+/**
+ * A deterministic action committed by the match controller.
+ *
+ * Roll and move actions share one record shape so a pending-choice save can
+ * retain the roll before a plane is selected.  `selectedPlaneId` is null (or
+ * omitted) for rolls without a selected plane; move actions include the
+ * selected plane and the logical resolver events.
+ */
+export type AeroplaneActionKind = 'roll' | 'move';
+export type AeroplaneActionActor = 'human' | 'ai';
+
+export interface AeroplaneActionRecord {
+	kind: AeroplaneActionKind;
+	actor: AeroplaneActionActor;
+	color: AeroplaneColor;
+	roll: number;
+	selectedPlaneId?: string | null;
+	events: AeroplaneEvent[];
+	checksum: string;
+}
+
 export interface AeroplaneStats {
 	capturesMade: Record<AeroplaneColor, number>;
 	capturesSuffered: Record<AeroplaneColor, number>;
@@ -102,4 +123,17 @@ export interface AeroplaneTransition {
 	move: ResolvedMove;
 	events: AeroplaneEvent[];
 	capturedPlaneIds: string[];
+}
+
+/** Versioned local recovery envelope.  Action history is diagnostic only. */
+export interface PersistedAeroplaneMatchV1 {
+	version: 1;
+	savedAt: string;
+	rootSeed: number;
+	config: AeroplaneConfig;
+	state: AeroplaneState;
+	seats: AiSeat[];
+	diceRng: RngState;
+	aiRng: RngState;
+	actions: AeroplaneActionRecord[];
 }

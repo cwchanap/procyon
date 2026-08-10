@@ -1,0 +1,230 @@
+import { expect, test } from 'bun:test';
+import {
+	CLASSIC_CONFIG,
+	createAeroplaneMatch,
+	rollTurn,
+	type AeroplaneMatch,
+} from './game';
+import {
+	ACTIVE_MATCH_STORAGE_KEY,
+	SESSION_DIAGNOSTICS_KEY,
+	clearActiveMatch,
+	restoreActiveMatch,
+	saveActiveMatch,
+} from './persistence';
+import type {
+	AeroplaneActionRecord,
+	AeroplaneState,
+	PersistedAeroplaneMatchV1,
+} from './types';
+
+interface MemoryStorage {
+	getItem(key: string): string | null;
+	setItem(key: string, value: string): void;
+	removeItem(key: string): void;
+}
+
+function memoryStorage(initial?: Record<string, string>): MemoryStorage {
+	const values = new Map(Object.entries(initial ?? {}));
+	return {
+		getItem: key => values.get(key) ?? null,
+		setItem: (key, value) => void values.set(key, value),
+		removeItem: key => void values.delete(key),
+	};
+}
+
+function baseRecord(): AeroplaneActionRecord {
+	return {
+		kind: 'roll',
+		actor: 'human',
+		color: 'red',
+		roll: 1,
+		selectedPlaneId: null,
+		events: [],
+		checksum: '00000000',
+	};
+}
+
+function validSave(
+	match: AeroplaneMatch = createAeroplaneMatch(CLASSIC_CONFIG, 39101),
+	state: AeroplaneState = match.state,
+	extra: Partial<PersistedAeroplaneMatchV1> = {}
+): PersistedAeroplaneMatchV1 {
+	return {
+		version: 1,
+		savedAt: '2026-08-09T00:00:00.000Z',
+		rootSeed: match.rootSeed,
+		config: match.state.config,
+		state,
+		seats: match.seats,
+		diceRng: match.diceRng,
+		aiRng: match.aiRng,
+		actions: [],
+		...extra,
+	};
+}
+
+function restoreFixture(saved: unknown, storage = memoryStorage()) {
+	storage.setItem(ACTIVE_MATCH_STORAGE_KEY, JSON.stringify(saved));
+	return restoreActiveMatch(storage);
+}
+
+test('valid snapshot round-trips through active storage', () => {
+	const saved = validSave();
+	const storage = memoryStorage();
+
+	expect(saveActiveMatch(saved, storage)).toBe(true);
+	const restored = restoreActiveMatch(storage);
+
+	expect(restored.kind).toBe('ok');
+	if (restored.kind !== 'ok') throw new Error('expected ok');
+	expect(restored.match).toEqual(saved);
+});
+
+test('valid pending-choice snapshot restores exact state seats and RNG', () => {
+	const match = createAeroplaneMatch(CLASSIC_CONFIG, 39101);
+	const rolled = rollTurn(match.state, match.diceRng);
+	const pending = rolled.legalMoves.length > 0 ? rolled.state : match.state;
+	const saved = validSave(match, pending, {
+		diceRng: rolled.rng ?? match.diceRng,
+	});
+
+	const restored = restoreFixture(saved);
+	expect(restored.kind).toBe('ok');
+	if (restored.kind !== 'ok') throw new Error('expected ok');
+	expect(restored.match.state).toEqual(saved.state);
+	expect(restored.match.seats).toEqual(saved.seats);
+	expect(restored.match.diceRng).toEqual(saved.diceRng);
+	expect(restored.match.aiRng).toEqual(saved.aiRng);
+});
+
+test('unknown versions are rejected and removed', () => {
+	const storage = memoryStorage();
+	const saved = validSave();
+	storage.setItem(
+		ACTIVE_MATCH_STORAGE_KEY,
+		JSON.stringify({ ...saved, version: 2 })
+	);
+
+	const restored = restoreActiveMatch(storage);
+
+	expect(restored.kind).toBe('invalid');
+	expect(storage.getItem(ACTIVE_MATCH_STORAGE_KEY)).toBeNull();
+});
+
+test('invalid plane count, identity, and progress are rejected', () => {
+	const saved = validSave();
+	const invalids = [
+		{
+			...saved,
+			state: { ...saved.state, planes: saved.state.planes.slice(1) },
+		},
+		{
+			...saved,
+			state: {
+				...saved.state,
+				planes: saved.state.planes.map((plane, index) =>
+					index === 0 ? { ...plane, id: 'yellow-0' } : plane
+				),
+			},
+		},
+		{
+			...saved,
+			state: {
+				...saved.state,
+				planes: saved.state.planes.map((plane, index) =>
+					index === 0 ? { ...plane, progress: 57 } : plane
+				),
+			},
+		},
+	];
+
+	for (const invalid of invalids)
+		expect(restoreFixture(invalid).kind).toBe('invalid');
+});
+
+test('invalid phase, winner, and pending roll are rejected', () => {
+	const saved = validSave();
+	const invalids = [
+		{ ...saved, state: { ...saved.state, phase: 'bogus' as never } },
+		{
+			...saved,
+			state: { ...saved.state, phase: 'awaiting-roll', pendingRoll: 4 },
+		},
+		{
+			...saved,
+			state: {
+				...saved.state,
+				phase: 'awaiting-choice',
+				pendingRoll: null,
+			},
+		},
+		{
+			...saved,
+			state: { ...saved.state, phase: 'finished', winner: null },
+		},
+	];
+
+	for (const invalid of invalids)
+		expect(restoreFixture(invalid).kind).toBe('invalid');
+});
+
+test('invalid seats and RNG are rejected', () => {
+	const saved = validSave();
+	const invalids = [
+		{ ...saved, seats: saved.seats.slice(1) },
+		{
+			...saved,
+			seats: [{ ...saved.seats[0]!, color: 'red' }, ...saved.seats.slice(1)],
+		},
+		{ ...saved, diceRng: { value: 0 } },
+		{ ...saved, aiRng: { value: Number.NaN } },
+	];
+
+	for (const invalid of invalids)
+		expect(restoreFixture(invalid).kind).toBe('invalid');
+});
+
+test('storage exceptions never escape persistence helpers', () => {
+	const throwingStorage: MemoryStorage = {
+		getItem: () => {
+			throw new Error('blocked');
+		},
+		setItem: () => {
+			throw new Error('blocked');
+		},
+		removeItem: () => {
+			throw new Error('blocked');
+		},
+	};
+
+	expect(() => saveActiveMatch(validSave(), throwingStorage)).not.toThrow();
+	expect(() => restoreActiveMatch(throwingStorage)).not.toThrow();
+	expect(() => clearActiveMatch(throwingStorage)).not.toThrow();
+});
+
+test('invalid raw text is cleared and copied to session diagnostics when available', () => {
+	const storage = memoryStorage({ [ACTIVE_MATCH_STORAGE_KEY]: '{not-json' });
+	const diagnostics = memoryStorage();
+
+	const restored = restoreActiveMatch(storage, diagnostics);
+
+	expect(restored.kind).toBe('invalid');
+	expect(storage.getItem(ACTIVE_MATCH_STORAGE_KEY)).toBeNull();
+	expect(diagnostics.getItem(SESSION_DIAGNOSTICS_KEY)).not.toBeNull();
+});
+
+test('action records contain structured events but no state snapshots', () => {
+	const saved = validSave(undefined, undefined, { actions: [baseRecord()] });
+	const restored = restoreFixture(saved);
+
+	expect(restored.kind).toBe('ok');
+});
+
+test('legacy action aliases are not accepted by the versioned contract', () => {
+	const saved = validSave();
+	const alias = { ...baseRecord(), type: 'roll' } as Record<string, unknown>;
+	delete alias.kind;
+
+	expect(restoreFixture({ ...saved, actions: [alias] }).kind).toBe('invalid');
+});
