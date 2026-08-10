@@ -264,4 +264,36 @@ describe('usePlayHistory strategy payload derivation', () => {
 
 		expect(capturedBodies).toHaveLength(1);
 	});
+
+	test('LLM save without aiConfig logs a DEV warning and skips the payload', async () => {
+		const originalWarn = console.warn;
+		const warnings: string[] = [];
+		console.warn = (message: string) => warnings.push(message);
+
+		try {
+			const { unmount } = renderHook(() =>
+				usePlayHistory({
+					gameVariant: 'chess',
+					gameStatus: 'checkmate',
+					aiPlayer: 'black',
+					aiConfig: undefined,
+					opponentDescriptor: { kind: 'llm', id: 'gpt-4o' },
+					moveCount: 10,
+					getWinnerColor: stableGetWinnerColor,
+					enabled: true,
+					isAuthenticated: true,
+					userId: 'user-a',
+				} as unknown as Parameters<typeof usePlayHistory>[0])
+			);
+
+			await act(async () => {
+				await new Promise(resolve => setTimeout(resolve, 0));
+			});
+			unmount();
+
+			expect(capturedBodies).toHaveLength(0);
+		} finally {
+			console.warn = originalWarn;
+		}
+	});
 });

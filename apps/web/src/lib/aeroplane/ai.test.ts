@@ -1,11 +1,16 @@
 import { expect, test } from 'bun:test';
 import { applyResolvedMove, resolveLegalMove } from './rules';
 import { nextUint32, type RngState } from './rng';
-import { chooseAiMove, countImmediateCaptureThreats } from './ai';
+import {
+	chooseAiMove,
+	countImmediateCaptureThreats,
+	extractAiMoveFeatures,
+} from './ai';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
 	AeroplaneState,
+	Personality,
 	PlaneState,
 	ResolvedMove,
 } from './types';
@@ -282,4 +287,53 @@ test('AI only returns one of the provided legal moves', () => {
 		});
 		expect(fixture.moves).toContain(result.move);
 	}
+});
+
+test('formsBlockade counts a same-color stack on the destination track square', () => {
+	const state = stateWithPlanes(
+		[plane('red-anchor', 3), plane('red-arriver', 1)],
+		{ stacking: true, blockades: true }
+	);
+	const move = legalMove(state, 'red-arriver', 2);
+
+	const features = extractAiMoveFeatures(state, move);
+	expect(features.blockade).toBe(1);
+});
+
+test('formsBlockade is zero when blockades are disabled even with stacking', () => {
+	const state = stateWithPlanes(
+		[plane('red-anchor', 3), plane('red-arriver', 1)],
+		{ stacking: true, blockades: false }
+	);
+	const move = legalMove(state, 'red-arriver', 2);
+
+	const features = extractAiMoveFeatures(state, move);
+	expect(features.blockade).toBe(0);
+});
+
+test('formsBlockade is zero when the move ends off the shared track', () => {
+	const state = stateWithPlanes(
+		[plane('red-anchor', 10), plane('red-finisher', 55)],
+		{ stacking: true, blockades: true }
+	);
+	const move = legalMove(state, 'red-finisher', 1);
+
+	const features = extractAiMoveFeatures(state, move);
+	expect(features.blockade).toBe(0);
+});
+
+test('chooseAiMove rejects an unknown personality', () => {
+	const fixture = quietFixture();
+	expect(() =>
+		chooseAiMove(fixture.state, fixture.moves, 'bogus' as Personality, {
+			value: 7,
+		})
+	).toThrow(RangeError);
+});
+
+test('chooseAiMove rejects an empty legal move set', () => {
+	const fixture = quietFixture();
+	expect(() =>
+		chooseAiMove(fixture.state, [], 'cautious', { value: 7 })
+	).toThrow(RangeError);
 });

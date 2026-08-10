@@ -791,4 +791,72 @@ describe('Aeroplane DEV fixture contract', () => {
 		expect(overrides.state).toBeUndefined();
 		expect(warnings.length).toBeGreaterThan(0);
 	});
+
+	test('non-record fixture is ignored with a DEV warning', () => {
+		const warnings: string[] = [];
+		const overrides = readDevOverrides({
+			dev: true,
+			search: '?e2eSeed=12',
+			fixture: 'not-a-record' as unknown as AeroplaneE2EFixture,
+			warn: message => warnings.push(message),
+		});
+		expect(overrides).toEqual({ seed: 12, skipAnimations: true });
+		expect(warnings.length).toBeGreaterThan(0);
+	});
+
+	test('invalid fixture seed is ignored with a DEV warning', () => {
+		const warnings: string[] = [];
+		const overrides = readDevOverrides({
+			dev: true,
+			search: '?e2eSeed=12',
+			fixture: { seed: -1 },
+			warn: message => warnings.push(message),
+		});
+		expect(overrides.seed).toBe(12);
+		expect(warnings.length).toBeGreaterThan(0);
+	});
+
+	test('invalid fixture config is ignored with a DEV warning', () => {
+		const warnings: string[] = [];
+		const overrides = readDevOverrides({
+			dev: true,
+			fixture: {
+				seed: 34,
+				config: { rulePreset: 'invalid' } as unknown as AeroplaneConfig,
+			},
+			warn: message => warnings.push(message),
+		});
+		expect(overrides.seed).toBe(34);
+		expect(overrides.config).toBeUndefined();
+		expect(warnings.length).toBeGreaterThan(0);
+	});
+
+	test('querySeed returns undefined for a non-numeric e2eSeed', () => {
+		expect(readDevOverrides({ dev: true, search: '?e2eSeed=abc' })).toEqual({});
+	});
+
+	test('querySeed returns undefined for a negative e2eSeed', () => {
+		expect(readDevOverrides({ dev: true, search: '?e2eSeed=-5' })).toEqual({});
+	});
+
+	test('querySeed returns undefined when e2eSeed is missing', () => {
+		expect(readDevOverrides({ dev: true, search: '?other=123' })).toEqual({});
+	});
+
+	test('querySeed returns undefined for an empty search string', () => {
+		expect(readDevOverrides({ dev: true, search: '' })).toEqual({});
+		expect(readDevOverrides({ dev: true, search: undefined })).toEqual({});
+	});
+
+	test('DEV mode with only a query seed defaults skip animations', () => {
+		expect(readDevOverrides({ dev: true, search: '?e2eSeed=42' })).toEqual({
+			seed: 42,
+			skipAnimations: true,
+		});
+	});
+
+	test('non-DEV mode ignores the fixture entirely', () => {
+		const fixture = oneLegalHumanMoveFixture();
+		expect(readDevOverrides({ dev: false, fixture })).toEqual({});
+	});
 });
