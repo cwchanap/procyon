@@ -13,6 +13,7 @@ export interface AeroplanePresentationLike {
 	id: number;
 	move: ResolvedMove;
 	events: AeroplaneEvent[];
+	chatter?: string;
 	action: {
 		actor: AeroplaneActionActor;
 		color: AeroplaneColor;
@@ -155,7 +156,12 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 								key={presentation.id}
 								className='px-3 py-3 text-sm text-ivory-dim sm:px-4'
 							>
-								{eventCopy(presentation)}
+								<p>{eventCopy(presentation)}</p>
+								{presentation.chatter && (
+									<p className='mt-1 text-xs italic text-aeroplane'>
+										{presentation.chatter}
+									</p>
+								)}
 							</div>
 						))
 				)}

@@ -108,6 +108,21 @@ function oneLegalHumanMoveFixture(): AeroplaneE2EFixture {
 	};
 }
 
+function captureHumanMoveFixture(chatter: boolean): AeroplaneE2EFixture {
+	const fixture = oneLegalHumanMoveFixture();
+	fixture.config = { ...CLASSIC_CONFIG, chatter };
+	fixture.state = {
+		...fixture.state!,
+		config: fixture.config,
+		planes: fixture.state!.planes.map(candidate => {
+			if (candidate.id === 'red-0') return { ...candidate, progress: 1 };
+			if (candidate.id === 'blue-0') return { ...candidate, progress: 32 };
+			return candidate;
+		}),
+	};
+	return fixture;
+}
+
 function twoLegalHumanMovesFixture(): AeroplaneE2EFixture {
 	return {
 		seed: 39102,
@@ -213,6 +228,7 @@ function createHookHarness(
 		storage,
 		state: () => rendered.result.current.state,
 		legalMoves: () => rendered.result.current.legalMoves,
+		eventFeed: () => rendered.result.current.eventFeed,
 		aiRng: () => rendered.result.current.aiRng,
 		roll: () => act(() => rendered.result.current.roll()),
 		select: (planeId: string) =>
@@ -263,6 +279,29 @@ describe('useAeroplaneMatch controller', () => {
 		const once = match.state();
 		match.skipAnimations();
 		expect(match.state()).toEqual(once);
+	});
+
+	test('enqueues deterministic local chatter only after a committed notable move', () => {
+		const match = createHookHarness(captureHumanMoveFixture(true));
+		match.roll();
+
+		const humanPresentation = match
+			.eventFeed()
+			.find(presentation => presentation.action.actor === 'human');
+		expect(humanPresentation?.chatter).toBeTruthy();
+		expect(
+			match.state().planes.find(plane => plane.id === 'red-0')?.progress
+		).toBe(6);
+	});
+
+	test('does not enqueue chatter when the setup toggle is disabled', () => {
+		const match = createHookHarness(captureHumanMoveFixture(false));
+		match.roll();
+
+		const humanPresentation = match
+			.eventFeed()
+			.find(presentation => presentation.action.actor === 'human');
+		expect(humanPresentation?.chatter).toBeUndefined();
 	});
 
 	test('reset cancels stale AI timer', () => {

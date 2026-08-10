@@ -18,6 +18,7 @@ import {
 	type AeroplaneStorage,
 } from '../lib/aeroplane/persistence';
 import { getLegalMoves } from '../lib/aeroplane/rules';
+import { getChatterLine } from '../lib/aeroplane/chatter';
 import { normalizeRngState, type RngState } from '../lib/aeroplane/rng';
 import type { SubmitPlayHistoryInput } from '../lib/play-history';
 import { useTerminalHistorySave } from './useTerminalHistorySave';
@@ -75,6 +76,7 @@ export interface AeroplanePresentation {
 	move: ResolvedMove;
 	events: AeroplaneEvent[];
 	action: AeroplaneActionRecord;
+	chatter?: string;
 }
 
 export interface ActiveAeroplaneMatch {
@@ -648,11 +650,38 @@ export function useAeroplaneMatch(
 	const enqueuePresentation = useCallback(
 		(move: ResolvedMove, action: AeroplaneActionRecord) => {
 			if (skipAnimationsRef.current) return;
+			const committed = activeRef.current;
+			const personality =
+				committed.seats.find(seat => seat.color === move.color)?.personality ??
+				'cautious';
+			let chatter: string | undefined;
+			if (committed.config.chatter) {
+				try {
+					chatter =
+						(committed.state.phase === 'finished'
+							? getChatterLine(
+									{
+										kind:
+											committed.state.winner === committed.config.humanColor
+												? 'win'
+												: 'loss',
+										token: committed.state.winner ?? move.color,
+									},
+									personality
+								)
+							: getChatterLine(move, personality)) ?? undefined;
+				} catch {
+					// Chatter is presentation-only; a malformed line must not affect
+					// the committed match or its persistence.
+					chatter = undefined;
+				}
+			}
 			const item: AeroplanePresentation = {
 				id: (presentationIdRef.current += 1),
 				move,
 				events: [...move.events],
 				action,
+				...(chatter === undefined ? {} : { chatter }),
 			};
 			setPresentationQueue(previous => [...previous, item]);
 			setEventFeed(previous => [...previous, item]);
