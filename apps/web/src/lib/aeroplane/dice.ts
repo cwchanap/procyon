@@ -36,12 +36,10 @@ export function rollRelaxed(state: AeroplaneState, rng: RngState): DiceResult {
 	const second = rollFair(first.rng);
 	const firstLegal = getLegalMoves(state, first.roll).length > 0;
 	const secondLegal = getLegalMoves(state, second.roll).length > 0;
-	let roll = first.roll;
-	if (secondLegal && !firstLegal) {
-		roll = second.roll;
-	} else if (secondLegal === firstLegal && second.roll > first.roll) {
-		roll = second.roll;
-	}
+	// Relaxed protection is deliberately not a high-roll preference: preserve
+	// candidate one whenever it is playable, and only use candidate two when it
+	// is the first playable candidate.
+	const roll = !firstLegal && secondLegal ? second.roll : first.roll;
 	return { roll, rng: second.rng };
 }
 
