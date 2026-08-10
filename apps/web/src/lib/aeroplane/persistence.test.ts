@@ -169,6 +169,54 @@ test('invalid phase, winner, and pending roll are rejected', () => {
 		expect(restoreFixture(invalid).kind).toBe('invalid');
 });
 
+test('awaiting-choice snapshots must have a legal move for the pending roll', () => {
+	const saved = validSave();
+	const impossible = {
+		...saved,
+		state: {
+			...saved.state,
+			phase: 'awaiting-choice' as const,
+			pendingRoll: 1,
+		},
+	};
+
+	expect(restoreFixture(impossible).kind).toBe('invalid');
+});
+
+test('finished snapshots must meet the configured victory target', () => {
+	const saved = validSave();
+	const impossible = {
+		...saved,
+		state: {
+			...saved.state,
+			phase: 'finished' as const,
+			currentPlayer: 'red' as const,
+			winner: 'red' as const,
+		},
+	};
+
+	expect(restoreFixture(impossible).kind).toBe('invalid');
+});
+
+test('finished winner must be the current player', () => {
+	const saved = validSave();
+	const finishedPlanes = saved.state.planes.map(plane =>
+		plane.color === 'red' ? { ...plane, progress: 56 } : plane
+	);
+	const impossible = {
+		...saved,
+		state: {
+			...saved.state,
+			planes: finishedPlanes,
+			phase: 'finished' as const,
+			currentPlayer: 'red' as const,
+			winner: 'yellow' as const,
+		},
+	};
+
+	expect(restoreFixture(impossible).kind).toBe('invalid');
+});
+
 test('invalid seats and RNG are rejected', () => {
 	const saved = validSave();
 	const invalids = [

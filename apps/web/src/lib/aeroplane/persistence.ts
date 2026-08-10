@@ -1,5 +1,6 @@
 import { canonicalSerialize } from './checksum';
-import { TURN_ORDER } from './topology';
+import { getLegalMoves } from './rules';
+import { FINISH_PROGRESS, TURN_ORDER } from './topology';
 import type {
 	AeroplaneActionRecord,
 	AeroplaneColor,
@@ -264,6 +265,27 @@ function validState(
 			);
 			if (!validPlane(plane, expectedId, color)) return false;
 		}
+	}
+
+	const authoritative = value as unknown as AeroplaneState;
+	if (
+		authoritative.phase === 'awaiting-choice' &&
+		(authoritative.pendingRoll === null ||
+			getLegalMoves(authoritative, authoritative.pendingRoll).length === 0)
+	) {
+		return false;
+	}
+	if (
+		authoritative.phase === 'finished' &&
+		(authoritative.winner !== authoritative.currentPlayer ||
+			authoritative.winner === null ||
+			authoritative.planes.filter(
+				plane =>
+					plane.color === authoritative.winner &&
+					plane.progress === FINISH_PROGRESS
+			).length < config.victoryTarget)
+	) {
+		return false;
 	}
 	return true;
 }
