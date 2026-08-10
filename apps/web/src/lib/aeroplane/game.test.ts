@@ -233,3 +233,30 @@ test('Quick finishes at two planes and has no draw state', () => {
 	expect(result.state.winner).toBe('red');
 	expect(result.state.phase).not.toBe('draw');
 });
+
+test('rollTurn rejects a roll outside the awaiting-roll phase', () => {
+	const state = stateWithPlanes(
+		[plane('red-0', 1)],
+		CLASSIC_CONFIG,
+		'red',
+		'awaiting-choice',
+		3
+	);
+
+	expect(() => rollTurn(state, 3)).toThrow(/awaiting-roll/);
+});
+
+test('playResolvedMove rejects a move outside the awaiting-choice phase', () => {
+	const state = stateWithPlanes(
+		[plane('red-0', 1)],
+		CLASSIC_CONFIG,
+		'red',
+		'awaiting-roll',
+		null
+	);
+	const move = resolveLegalMove(state, 'red-0', 3);
+	expect(move).not.toBeNull();
+	if (!move) return;
+
+	expect(() => playResolvedMove(state, move)).toThrow(/awaiting-choice/);
+});

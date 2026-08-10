@@ -294,3 +294,73 @@ test('legacy action aliases are not accepted by the versioned contract', () => {
 
 	expect(restoreFixture({ ...saved, actions: [alias] }).kind).toBe('invalid');
 });
+
+test('validPosition rejects an unknown position kind', () => {
+	const saved = validSave();
+	const action = {
+		...baseRecord(),
+		kind: 'move',
+		selectedPlaneId: 'red-0',
+		events: [
+			{
+				type: 'move',
+				planeId: 'red-0',
+				from: { kind: 'hangar', color: 'red' },
+				to: { kind: 'wormhole', color: 'red' },
+			},
+		],
+	};
+
+	expect(restoreFixture({ ...saved, actions: [action] }).kind).toBe('invalid');
+});
+
+test('selectedPlaneId coerces an empty string and a non-string to null on roll records', () => {
+	const saved = validSave();
+	const empty = { ...baseRecord(), selectedPlaneId: '' };
+	const nonString = { ...baseRecord(), selectedPlaneId: 42 };
+
+	expect(restoreFixture({ ...saved, actions: [empty] }).kind).toBe('ok');
+	expect(restoreFixture({ ...saved, actions: [nonString] }).kind).toBe('ok');
+});
+
+test('browserStorage returns a candidate when localStorage is available', () => {
+	const fakeStorage = {
+		getItem: () => null,
+		setItem: () => {},
+		removeItem: () => {},
+	};
+	const root = globalThis as Record<string, unknown>;
+	const previousLocalStorage = root.localStorage;
+	const previousWindow = root.window;
+	root.localStorage = fakeStorage;
+	root.window = { localStorage: fakeStorage };
+
+	try {
+		// saveActiveMatch/restoreActiveMatch with no storage arg falls back to
+		// browserStorage(localStorage). With our fake in place, it should be
+		// used rather than throwing.
+		expect(() => saveActiveMatch(validSave())).not.toThrow();
+		expect(() => restoreActiveMatch()).not.toThrow();
+	} finally {
+		root.localStorage = previousLocalStorage;
+		root.window = previousWindow;
+	}
+});
+
+test('browserStorage returns null when no storage is available', () => {
+	const root = globalThis as Record<string, unknown>;
+	const previousLocalStorage = root.localStorage;
+	const previousWindow = root.window;
+	delete root.localStorage;
+	delete root.window;
+
+	try {
+		// With no global storage, the helpers should not throw and should
+		// treat the missing storage as a no-op.
+		expect(() => saveActiveMatch(validSave())).not.toThrow();
+		expect(() => restoreActiveMatch()).not.toThrow();
+	} finally {
+		root.localStorage = previousLocalStorage;
+		root.window = previousWindow;
+	}
+});

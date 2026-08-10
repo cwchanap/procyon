@@ -523,4 +523,137 @@ describe('useTerminalHistorySave', () => {
 		expect(retryCallback).toBeNull();
 		expect(fetchCallCount).toBe(1);
 	});
+
+	test('abandons a terminal save when the user changes before the first attempt', async () => {
+		const { rerender } = renderHook(props => useTerminalHistorySave(props), {
+			initialProps: makeProps({ isTerminal: false, userId: 'user-a' }),
+		});
+		// Switch to terminal AND change the user in the same render.
+		rerender(makeProps({ isTerminal: true, userId: 'user-b' }));
+		await act(async () => {
+			await waitForEffects();
+		});
+		expect(fetchCallCount).toBe(0);
+	});
+
+	test('marks the save complete when buildPayload returns null', async () => {
+		const { rerender } = renderHook(props => useTerminalHistorySave(props), {
+			initialProps: makeProps({
+				isTerminal: true,
+				buildPayload: () => null,
+			}),
+		});
+		await act(async () => {
+			await waitForEffects();
+		});
+		expect(fetchCallCount).toBe(0);
+		// A later re-render with a valid payload should not re-save.
+		rerender(makeProps({ isTerminal: true, buildPayload: () => firstPayload }));
+		await act(async () => {
+			await waitForEffects();
+		});
+		expect(fetchCallCount).toBe(0);
+	});
+
+	test('abandons a retry when the user changes after a 401', async () => {
+		let resolveFirst: (response: Response) => void = () => {};
+		globalThis.fetch = mock((input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				return new Promise<Response>(resolve => {
+					resolveFirst = resolve;
+				});
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+			}) as unknown as Promise<Response>;
+		}) as unknown as typeof fetch;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay === 5_000) {
+				return 42 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof setTimeout;
+
+		const { rerender } = renderHook(props => useTerminalHistorySave(props), {
+			initialProps: makeProps({ isTerminal: true, userId: 'user-a' }),
+		});
+		await act(async () => {
+			await waitForEffects();
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// Resolve with 401 to trigger a retry snapshot.
+		await act(async () => {
+			resolveFirst({
+				ok: false,
+				status: 401,
+				statusText: 'Unauthorized',
+			} as Response);
+			await waitForEffects();
+		});
+
+		// Switch the user; the retry should be abandoned.
+		rerender(makeProps({ isTerminal: true, userId: 'user-b' }));
+		await act(async () => {
+			await waitForEffects();
+		});
+		expect(fetchCallCount).toBe(1);
+	});
+
+	test('save callback detects account switch when retry fires with a different user', async () => {
+		let resolveFirst: (response: Response) => void = () => {};
+		let retryCallback: (() => void) | null = null;
+		globalThis.fetch = mock((input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				return new Promise<Response>(resolve => {
+					resolveFirst = resolve;
+				});
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+			}) as unknown as Promise<Response>;
+		}) as unknown as typeof fetch;
+		globalThis.setTimeout = mock((fn: () => void, delay?: number) => {
+			if (delay === 5_000) {
+				retryCallback = fn;
+				return 42 as unknown as ReturnType<typeof setTimeout>;
+			}
+			return originalSetTimeout(fn, delay);
+		}) as unknown as typeof setTimeout;
+
+		const { rerender } = renderHook(props => useTerminalHistorySave(props), {
+			initialProps: makeProps({ isTerminal: true, userId: 'user-a' }),
+		});
+		await act(async () => {
+			await waitForEffects();
+		});
+		expect(fetchCallCount).toBe(1);
+
+		// Resolve with 401 to trigger a retry snapshot.
+		await act(async () => {
+			resolveFirst({
+				ok: false,
+				status: 401,
+				statusText: 'Unauthorized',
+			} as Response);
+			await waitForEffects();
+		});
+
+		// Switch the user before the retry timer fires.
+		rerender(makeProps({ isTerminal: true, userId: 'user-b' }));
+
+		// Fire the retry timer; save() should detect the account switch and
+		// abandon rather than sending a duplicate POST.
+		await act(async () => {
+			retryCallback?.();
+			await waitForEffects();
+		});
+		expect(fetchCallCount).toBe(1);
+	});
 });
