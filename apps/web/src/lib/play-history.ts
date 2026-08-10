@@ -11,7 +11,7 @@ export interface SubmitPlayHistoryInput {
 	details?: unknown;
 }
 
-/** Submit a play-history record; save/retry policy belongs to the caller. */
+/** Submit a play-history record; terminal save/retry policy belongs to the hook. */
 export async function submitPlayHistory(
 	input: SubmitPlayHistoryInput
 ): Promise<Response> {
