@@ -20,6 +20,11 @@ export interface AeroplaneConfig {
 	chatter: boolean;
 }
 
+export interface AiSeat {
+	color: AeroplaneColor;
+	personality: Personality;
+}
+
 export interface PlaneState {
 	id: string;
 	color: AeroplaneColor;
