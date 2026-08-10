@@ -470,6 +470,11 @@ function buildAeroplaneHistoryPayload(
 			rulePreset: match.config.rulePreset,
 			victoryTarget: match.config.victoryTarget,
 			diceMode: match.config.diceMode,
+			launchRule: match.config.launchRule,
+			finishRule: match.config.finishRule,
+			stacking: match.config.stacking,
+			blockades: match.config.blockades,
+			chatter: match.config.chatter,
 			humanColor: match.config.humanColor,
 			durationSeconds: elapsedSeconds(
 				match,

@@ -521,17 +521,42 @@ describe('Aeroplane board interactions', () => {
 	});
 });
 
+function withDesktopMatchMedia(run: () => void): void {
+	const previousMatchMedia = window.matchMedia;
+	window.matchMedia = (() => ({
+		matches: true,
+		media: '(min-width: 640px)',
+		onchange: null,
+		addEventListener: () => {},
+		removeEventListener: () => {},
+		addListener: () => {},
+		removeListener: () => {},
+		dispatchEvent: () => false,
+	})) as typeof window.matchMedia;
+	try {
+		run();
+	} finally {
+		window.matchMedia = previousMatchMedia;
+	}
+}
+
 describe('Aeroplane event feed', () => {
 	test('server markup exposes the feed while hydration is pending', () => {
 		const markup = renderToStaticMarkup(<AeroplaneEventFeed events={[]} />);
 		expect(markup).toContain('data-testid="aeroplane-event-feed-content"');
 		expect(markup).toContain('aria-hidden="false"');
-		// Validate the hydration contract tokens individually so the test is
-		// not sensitive to class ordering or additional utility classes.
-		expect(markup).toContain('block');
-		expect(markup).toContain('sm:block');
-		expect(markup).toContain('divide-y');
-		expect(markup).toContain('divide-line');
+		// Validate the hydration contract tokens as standalone whitespace-
+		// delimited class tokens so a prefixed or longer class name (e.g.
+		// `sm:block` satisfying a bare `block` substring) cannot satisfy the
+		// unprefixed token check.
+		const feedClassMatch = markup.match(
+			/data-testid="aeroplane-event-feed-content"[^>]*\sclass="([^"]*)"/
+		);
+		const classTokens = feedClassMatch ? feedClassMatch[1]!.split(/\s+/) : [];
+		expect(classTokens).toContain('block');
+		expect(classTokens).toContain('sm:block');
+		expect(classTokens).toContain('divide-y');
+		expect(classTokens).toContain('divide-line');
 		expect(markup).not.toContain('aria-hidden="true"');
 		expect(markup).not.toContain('aria-label="Event feed"');
 	});
@@ -583,18 +608,7 @@ describe('Aeroplane event feed', () => {
 	});
 
 	test('keeps the event feed available to assistive tech on desktop', () => {
-		const previousMatchMedia = window.matchMedia;
-		window.matchMedia = (() => ({
-			matches: true,
-			media: '(min-width: 640px)',
-			onchange: null,
-			addEventListener: () => {},
-			removeEventListener: () => {},
-			addListener: () => {},
-			removeListener: () => {},
-			dispatchEvent: () => false,
-		})) as typeof window.matchMedia;
-		try {
+		withDesktopMatchMedia(() => {
 			const { getByTestId, queryByRole } = render(
 				<AeroplaneEventFeed events={[]} />
 			);
@@ -602,9 +616,7 @@ describe('Aeroplane event feed', () => {
 				getByTestId('aeroplane-event-feed-content').getAttribute('aria-hidden')
 			).toBe('false');
 			expect(queryByRole('button', { name: /event feed/i })).toBeNull();
-		} finally {
-			window.matchMedia = previousMatchMedia;
-		}
+		});
 	});
 
 	test('skip animations can be requested repeatedly without changing feed data', () => {
@@ -619,18 +631,7 @@ describe('Aeroplane event feed', () => {
 	});
 
 	test('event copy describes every endpoint kind and route variant', () => {
-		const previousMatchMedia = window.matchMedia;
-		window.matchMedia = (() => ({
-			matches: true,
-			media: '(min-width: 640px)',
-			onchange: null,
-			addEventListener: () => {},
-			removeEventListener: () => {},
-			addListener: () => {},
-			removeListener: () => {},
-			dispatchEvent: () => false,
-		})) as typeof window.matchMedia;
-		try {
+		withDesktopMatchMedia(() => {
 			const endpoints: AeroplaneEvent['to'][] = [
 				{ kind: 'hangar', color: 'red' },
 				{ kind: 'launch', color: 'red' },
@@ -693,24 +694,11 @@ describe('Aeroplane event feed', () => {
 			expect(getByText(/to track 12/i)).toBeTruthy();
 			expect(getByText(/to home 2/i)).toBeTruthy();
 			expect(getByText(/to finish/i)).toBeTruthy();
-		} finally {
-			window.matchMedia = previousMatchMedia;
-		}
+		});
 	});
 
 	test('event feed prefers eventFeed prop over events prop', () => {
-		const previousMatchMedia = window.matchMedia;
-		window.matchMedia = (() => ({
-			matches: true,
-			media: '(min-width: 640px)',
-			onchange: null,
-			addEventListener: () => {},
-			removeEventListener: () => {},
-			addListener: () => {},
-			removeListener: () => {},
-			dispatchEvent: () => false,
-		})) as typeof window.matchMedia;
-		try {
+		withDesktopMatchMedia(() => {
 			const { getByText, queryByText } = render(
 				<AeroplaneEventFeed
 					events={[
@@ -752,9 +740,7 @@ describe('Aeroplane event feed', () => {
 			expect(getByText(/chatter line/i)).toBeTruthy();
 			// The events-only entry (red plane 1) should not appear.
 			expect(queryByText(/You:.*red plane 1/i)).toBeNull();
-		} finally {
-			window.matchMedia = previousMatchMedia;
-		}
+		});
 	});
 });
 

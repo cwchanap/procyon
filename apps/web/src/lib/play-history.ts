@@ -12,6 +12,11 @@ export interface AeroplanePlayHistoryDetails {
 	rulePreset: AeroplaneConfig['rulePreset'];
 	victoryTarget: AeroplaneConfig['victoryTarget'];
 	diceMode: AeroplaneConfig['diceMode'];
+	launchRule: AeroplaneConfig['launchRule'];
+	finishRule: AeroplaneConfig['finishRule'];
+	stacking: AeroplaneConfig['stacking'];
+	blockades: AeroplaneConfig['blockades'];
+	chatter: AeroplaneConfig['chatter'];
 	humanColor: AeroplaneColor;
 	durationSeconds: number;
 	planesFinished: number;

@@ -266,9 +266,12 @@ describe('usePlayHistory strategy payload derivation', () => {
 	});
 
 	test('LLM save without aiConfig logs a DEV warning and skips the payload', async () => {
-		const originalWarn = console.warn;
+		const originalError = console.error;
 		const warnings: string[] = [];
-		console.warn = (message: string) => warnings.push(message);
+		console.error = (message: string) => warnings.push(message);
+		const devEnv = import.meta.env as unknown as { DEV: boolean };
+		const originalDev = devEnv.DEV;
+		devEnv.DEV = true;
 
 		try {
 			const { unmount } = renderHook(() =>
@@ -292,8 +295,12 @@ describe('usePlayHistory strategy payload derivation', () => {
 			unmount();
 
 			expect(capturedBodies).toHaveLength(0);
+			expect(warnings).toContain(
+				'[usePlayHistory] LLM save attempted without aiConfig; skipping.'
+			);
 		} finally {
-			console.warn = originalWarn;
+			console.error = originalError;
+			devEnv.DEV = originalDev;
 		}
 	});
 });
