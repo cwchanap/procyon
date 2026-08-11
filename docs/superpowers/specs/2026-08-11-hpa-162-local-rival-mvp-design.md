@@ -1,6 +1,6 @@
 # HPA-162 — Local Rival MVP Difficulty and Bounded Failure Design
 
-**Status:** Approved design, pending written-spec review  
+**Status:** Approved design and written spec  
 **Date:** 2026-08-11  
 **Linear:** HPA-162 — Finish local-rival MVP with simple difficulty and bounded failure recovery  
 **Parent:** HPA-159 — Add a local non-LLM chess rival  
@@ -8,59 +8,66 @@
 
 ## Summary
 
-HPA-162 finishes the first local Stockfish rival MVP by extending the existing HPA-161 setup/session/provider boundaries with two intentionally small capabilities:
+HPA-162 finishes the first local Stockfish rival MVP by extending the existing HPA-161 setup → frozen session → provider ownership flow with two deliberately small capabilities:
 
-1. three understandable on-device difficulty presets — **Casual**, **Normal**, and **Strong**; and
+1. exactly three understandable on-device difficulty presets — **Casual**, **Normal**, and **Strong**; and
 2. one bounded failure path — an on-device move that does not finish within 10 seconds ends that engine session cleanly and requires **New Game**.
 
-This is not a new rival architecture. HPA-161 already provides the important ownership model: editable pre-game setup, an immutable active rival session, provider ownership and disposal, stale-result guards keyed by generation/session/provider/FEN/turn, lazy Stockfish loading, and separate LLM behavior. HPA-162 reuses those seams.
+This is not a new rival architecture. HPA-161 already owns editable setup, immutable active rival sessions, provider construction/disposal, stale-result checks keyed by generation/session/provider/FEN/turn, lazy Stockfish loading, and separate LLM retry behavior. HPA-162 extends those seams rather than creating an engine registry, cancellation protocol, retry framework, calibration layer, or second state store.
 
-The selected difficulty is device-local setup state before Start and frozen engine-session identity after Start. The Stockfish provider receives that frozen preset and maps it to one fixed UCI `Skill Level` value. Move time remains the existing 250 ms.
+The selected difficulty is mutable device-local setup before Start and immutable engine-session identity after Start. The Stockfish provider receives that frozen preset and maps it to one fixed UCI `Skill Level` value. The existing 250 ms engine movetime remains unchanged.
 
-The 10-second move deadline is owned by `useChessRivalSession`, because that hook already decides whether an asynchronous provider result still belongs to the current game. When an engine request times out, the hook disposes the engine provider, invalidates the pending request, clears thinking, records a typed timeout error, preserves the board and frozen active-session summary, and blocks further engine moves until New Game. Late output cannot apply because the timed-out provider is no longer the active provider and the request no longer owns the pending slot.
+The 10-second move deadline is owned by `useChessRivalSession`, because that hook already decides whether an async provider result still belongs to the current game. On timeout, the hook invalidates the request, detaches and disposes the provider, clears thinking, records a typed timeout error, preserves the board and frozen active session, and makes **New Game** the only recovery. Late output cannot apply, and clearing an error alone must not re-arm a timed-out engine session whose provider is gone.
 
-This design supersedes the older deferred-scope notes in the HPA-161 design that referred to four benchmarked presets and placed per-move timeout work in HPA-163. Linear now defines HPA-162 as the sole remaining HPA-159 MVP slice: three fixed presets plus the bounded 10-second local-move failure path.
+This spec supersedes the older HPA-161 future-scope notes that mentioned four benchmarked presets or placed the per-move timeout in HPA-163. Linear now defines HPA-162 as the sole remaining HPA-159 MVP slice.
 
-## Current repository state
+## Reuse survey
 
-The current code already contains the boundaries needed for this work:
+The implementation should extend these existing seams directly:
 
-- `GameSetup` contains editable rival kind and human side.
-- `ActiveRivalSession` freezes opponent identity, human/rival side, starting user, and LLM config where applicable.
-- `useChessRivalSetup` hydrates device-local rival preferences, resolves automatic fallback, persists deliberate setup changes, and locks setup while Start is in flight or a game is active/completed.
-- `RivalPreferencesV1` stores last rival kind and per-rival human side under `procyon.chess.rival-preferences.v1`.
-- `StockfishRivalProvider` uses a fixed `Skill Level 0` and fixed 250 ms `go movetime`.
-- `useChessRivalSession` owns a 60-second Start deadline, committed provider/session refs, one pending move request, thinking/error state, reset disposal, and stale-result checks.
-- `ChessGame` uses `rivalSession.rivalError` as a move-generation guard and already preserves the board when an engine move fails.
-- `EngineRivalDetails` already directs move failures to New Game rather than retrying the same position.
-- `stockfish-assets.spec.ts` already launches the packaged same-origin Stockfish Worker and verifies UCI readiness, but it does not yet ask the real engine for a move.
+| Capability | Decision | Existing seam |
+| --- | --- | --- |
+| `EngineDifficulty` | New small domain type | `apps/web/src/lib/chess/rival/types.ts` |
+| Editable difficulty | Extend | `GameSetup` |
+| Frozen difficulty | Extend | `EngineOpponent` inside `ActiveRivalSession` |
+| Device persistence | Rewrite current rival preferences payload as V2 | `preferences.ts` + `useChessRivalSetup.ts` |
+| Stockfish skill mapping | Extend | `stockfish-provider.ts` + existing `formatSetSkillLevelCommand` |
+| Provider construction | Extend exact factory contract | `UseChessRivalSessionOptions.createEngineProvider` |
+| Move deadline | Extend | existing Start deadline/race ownership pattern in `useChessRivalSession.ts` |
+| Timeout failure reason | Extend | `RivalMoveFailureReason` |
+| Setup controls | Extend | `ChessRivalSetup` + `useChessRivalSetup` selectors |
+| Frozen summary | Extend | `RivalSetupSummary` |
+| Timeout copy | Extend | `EngineRivalDetails` |
+| Move guard on error | Reuse | `ChessGame` turn effect already gates on `!rivalSession.rivalError` |
+| Board preservation | Reuse | `ChessGame` applies only current successful legal moves |
+| Real legal-move smoke | Extend/reuse | `stockfish-assets.spec.ts`, `parseBestMove`, `makeAIMove` |
 
-The remaining work can therefore stay local to standard chess rival setup/session/provider/UI tests and the existing Stockfish smoke test.
+No rival equivalent of `EngineDifficulty` exists today; unrelated puzzle difficulty types must not be reused.
 
 ## Goals
 
-1. Offer exactly three on-device difficulty choices: Casual, Normal, and Strong.
+1. Offer exactly Casual, Normal, and Strong for the on-device computer.
 2. Default a new device to Casual.
-3. Remember the most recently selected on-device difficulty on that device.
-4. Freeze the chosen difficulty when Start succeeds so later preference/auth/config changes cannot alter an active or completed game.
-5. Map the three presets to fixed Stockfish UCI `Skill Level` values: Casual `0`, Normal `8`, Strong `16`.
-6. Keep the existing Stockfish move time unchanged at 250 ms.
-7. Apply a 10-second deadline to each on-device move request in the existing rival-session ownership layer.
-8. On timeout, preserve the board, dispose the failed provider, ignore all late output, clear thinking, show a clear error, and require New Game.
-9. Extend the packaged-engine browser smoke test so the real distributed Worker returns one move that Procyon's chess rules accept as legal.
+3. Remember the most recently selected engine difficulty on that device.
+4. Freeze the selected difficulty on successful Start.
+5. Map Casual → Stockfish Skill Level `0`, Normal → `8`, Strong → `16`.
+6. Keep Stockfish movetime at the existing 250 ms for every preset.
+7. Apply a 10-second deadline to each on-device move request.
+8. On timeout, preserve the board, dispose the failed provider, ignore late output, clear thinking, show a clear error, and require New Game.
+9. Extend the packaged-engine browser smoke test so the real distributed Worker returns one move accepted by Procyon's authoritative chess rules.
 10. Preserve lazy engine loading, signed-out local play, unrated engine history, LLM behavior, reset semantics, and existing third-party/licensing assets.
 
 ## Non-goals
 
 - Elo estimates, calibration, tournaments, benchmarks, or per-device strength tuning.
 - More than three presets or advanced Stockfish controls.
-- Multiple local engines, an engine registry, or plugin configuration.
 - Per-difficulty movetime changes.
+- Multiple local engines, an engine registry, or plugin configuration.
 - Same-position retry after timeout or Worker failure.
 - Automatic Worker reconstruction.
 - Retry counters, backoff, or a generalized recovery state machine.
-- Provider cancellation/abort protocol changes.
-- LLM move deadlines or changes to LLM retry behavior.
+- AbortController/provider cancellation protocol changes.
+- LLM move deadlines or changes to LLM pause/retry behavior.
 - Engine version/difficulty persistence in server play history.
 - Full local-game export/history persistence.
 - Formal browser certification or numeric performance budgets.
@@ -71,7 +78,7 @@ The remaining work can therefore stay local to standard chess rival setup/sessio
 
 ### Selected approach — extend setup → frozen session → provider
 
-Difficulty follows the same ownership path already used for rival kind and side:
+Difficulty follows the ownership path already used for rival kind and side:
 
 ```text
 RivalPreferencesV2
@@ -82,12 +89,14 @@ Start ────────────────────────�
                                     ↓
                          ActiveRivalSession
                                     ↓ frozen engine difficulty
-                         createEngineProvider(...)
+                  createEngineProvider({ difficulty })
                                     ↓
-                         Stockfish Skill Level
+                       StockfishRivalProvider
+                                    ↓
+                         UCI Skill Level
 ```
 
-The move deadline stays in `useChessRivalSession`:
+Move timeout remains inside the session owner:
 
 ```text
 ChessGame requests rival move
@@ -95,45 +104,46 @@ ChessGame requests rival move
 useChessRivalSession captures
 request/session/provider/FEN/generation/turn ownership
           ↓
-engine provider.makeMove()  ← race → 10 s deadline
+provider.makeMove()  ← race → 10 s engine deadline
           ↓                         ↓
-valid current result              timeout
+current result                    timeout
           ↓                         ↓
-return move                  drop pending ownership
-                             detach + dispose provider
+return result                clear pending ownership
+                             detach providerRef
+                             dispose provider
                              clear thinking
                              set timeout error
-                             keep board/session
-                             require New Game
+                             keep active session + board
+                             New Game only
 ```
 
-This approach is preferred because it adds no new lifecycle owner. The same hook that currently decides whether a result is stale also decides whether a request timed out and whether the timed-out provider still belongs to the current session.
+This adds no lifecycle owner. The same hook that currently decides whether a provider result is stale also decides whether a deadline belongs to the current request/session/provider.
 
-### Rejected approach — provider-owned timeout
+### Rejected — provider-owned timeout
 
-Putting the 10-second deadline inside `StockfishRivalProvider.makeMove()` would make the provider responsible for application/session recovery policy. It would also leave `useChessRivalSession` to infer whether a provider error means timeout, Worker failure, reset, or stale replacement.
+Putting the 10-second deadline in `StockfishRivalProvider.makeMove()` would make the UCI transport layer responsible for application/session recovery policy and would weaken the existing request/session/provider stale-result ownership model.
 
-The provider should continue to own UCI communication only. Session ownership and failure consequences belong in the session hook.
+The provider should continue to own Stockfish communication only. Session consequences belong in `useChessRivalSession`.
 
-### Rejected approach — generic engine/recovery framework
+### Rejected — generic engine/recovery framework
 
-A generic engine options object, cancellation protocol, retry manager, or lifecycle state machine would solve problems HPA-162 explicitly does not have. Stockfish is the only engine and New Game is the only recovery path. Adding those abstractions would increase implementation and maintenance cost without improving the MVP.
+A generic engine registry, options framework, cancellation protocol, retry manager, or recovery state machine would solve problems outside HPA-162. Stockfish is the only local engine and New Game is the only timeout recovery path.
 
 ## Canonical data model
 
 ### Difficulty type
 
-Add a small shared rival type:
+Add one shared rival type:
 
 ```ts
 export type EngineDifficulty = 'casual' | 'normal' | 'strong';
 ```
 
-No numeric UCI values appear in React setup code or persisted preferences.
+Do not persist or expose numeric UCI values outside the Stockfish integration.
 
 ### Editable setup
 
-Extend the existing setup rather than introducing a union hierarchy:
+Extend the current setup shape:
 
 ```ts
 export interface GameSetup {
@@ -143,11 +153,20 @@ export interface GameSetup {
 }
 ```
 
-`engineDifficulty` remains present while LLM is selected. It is simply inactive setup state, similar to how the preference object already remembers human side separately by rival kind. This keeps setup resolution and React call sites simple.
+`engineDifficulty` remains present while LLM is selected. It is inactive setup state, allowing the last engine choice to survive rival-kind switching without another store or union hierarchy.
 
-### Frozen active engine identity
+Every setup reconstruction/comparison path must preserve it, including:
 
-Put the difficulty on the engine opponent descriptor:
+- `defaultSetup`;
+- `setupForResolution`;
+- `setupsEqual`;
+- `selectRival`;
+- `selectHumanSide`; and
+- the new `selectDifficulty`.
+
+### Frozen engine identity
+
+Extend the engine opponent descriptor:
 
 ```ts
 export type EngineOpponent = {
@@ -157,52 +176,97 @@ export type EngineOpponent = {
 };
 ```
 
-This makes the active-session source of truth self-contained:
+Sources of truth:
 
-- setup UI before Start reads `GameSetup.engineDifficulty`;
-- active/terminal UI reads `activeSession.opponent.difficulty`;
-- the provider factory receives the same frozen value;
-- no active-game UI reads localStorage or mutable setup to display difficulty.
+- before Start: `GameSetup.engineDifficulty`;
+- during/after Start: `activeSession.opponent.difficulty` for engine sessions;
+- provider construction: the same frozen Start snapshot.
 
-LLM opponent/session types remain unchanged.
+No active-game UI should read localStorage or mutable setup to display engine difficulty.
+
+## Explicit provider factory contract
+
+The factory boundary is load-bearing and must be changed explicitly rather than inferred during implementation.
+
+Change:
+
+```ts
+createEngineProvider?: () => ChessRivalProvider;
+```
+
+to:
+
+```ts
+createEngineProvider?: (input: {
+  difficulty: EngineDifficulty;
+}) => ChessRivalProvider;
+```
+
+The default production factory mirrors the existing LLM factory style:
+
+```ts
+function defaultCreateEngineProvider({
+  difficulty,
+}: {
+  difficulty: EngineDifficulty;
+}): ChessRivalProvider {
+  return new StockfishRivalProvider({ difficulty });
+}
+```
+
+At Start, engine construction is therefore:
+
+```ts
+engineFactoryRef.current({
+  difficulty: input.setup.engineDifficulty,
+});
+```
+
+The session committed after successful initialization must contain the same difficulty value. Injected factories/fakes in session tests must adopt this signature so tests can assert exactly which frozen preset construction received.
+
+`StockfishRivalProviderOptions` should require `difficulty: EngineDifficulty` for provider construction; Worker factory/origin/base URL remain optional test/runtime plumbing. The provider itself should not invent a device preference default — Casual is a setup/preferences default.
 
 ## Stockfish preset mapping
 
-Keep one centralized mapping beside the existing Stockfish provider because UCI `Skill Level` is Stockfish-specific:
+Keep the mapping beside the existing provider rather than create a generic engine-config module:
 
 ```ts
-export const STOCKFISH_SKILL_LEVEL_BY_DIFFICULTY = {
+const STOCKFISH_SKILL_LEVEL_BY_DIFFICULTY = {
   casual: 0,
   normal: 8,
   strong: 16,
 } as const satisfies Record<EngineDifficulty, number>;
 ```
 
-`StockfishRivalProviderOptions` gains the difficulty required for normal production construction. Tests may continue to inject Worker factories/origin/base URL.
-
-Initialization becomes conceptually:
+Initialization continues to use the existing protocol helper:
 
 ```text
 uci
-→ verify Skill Level option exists
-→ setoption name Skill Level value <mapped frozen preset>
+→ verify Stockfish advertised Skill Level
+→ formatSetSkillLevelCommand(mappedDifficulty)
 → isready
 ```
 
-The existing `STOCKFISH_MOVE_TIME_MS = 250` is unchanged for every preset.
+The existing `formatSetSkillLevelCommand` and Skill Level advertisement check are reused.
 
-Do not publish an Elo label or imply that the three names are calibrated ratings. They are product-friendly relative presets backed only by fixed Stockfish Skill Level values.
+`STOCKFISH_MOVE_TIME_MS = 250` remains unchanged for all three presets.
 
-## Preference persistence
+The UI must not show Elo estimates or imply calibration. Casual/Normal/Strong are relative product labels backed only by fixed Stockfish Skill Level values.
 
-Create a new preference payload/key rather than migrating V1:
+## Preferences — atomic V1 → V2 rewrite
+
+This work is a **full rival-preferences module rewrite to the V2 key**, not a field graft onto V1.
+
+Change the canonical key to:
 
 ```text
 procyon.chess.rival-preferences.v2
 ```
 
+Canonical payload:
+
 ```ts
-interface RivalPreferencesV2 {
+export interface RivalPreferencesV2 {
   version: 2;
   lastRivalKind: RivalKind;
   humanSideByRival: Record<RivalKind, ChessSide>;
@@ -216,114 +280,146 @@ Default:
 {
   version: 2,
   lastRivalKind: 'engine',
-  humanSideByRival: { engine: 'white', llm: 'white' },
+  humanSideByRival: {
+    engine: 'white',
+    llm: 'white',
+  },
   engineDifficulty: 'casual',
 }
 ```
 
+The following paths must move to V2 together in one implementation step:
+
+- `RIVAL_PREFERENCES_STORAGE_KEY` value;
+- `RivalPreferencesV1` → `RivalPreferencesV2` usages;
+- `createDefaultRivalPreferences` return type/data;
+- `parseRivalPreferences` version/difficulty validation;
+- `readRivalPreferences`;
+- internal `writeRivalPreferences`;
+- `persistRivalKind`;
+- `persistHumanSide`;
+- new `persistEngineDifficulty`;
+- `useChessRivalSetup.readPreferencesOnce`;
+- setup-hook preference state/type;
+- `setupForResolution` and every selector that rebuilds setup.
+
 Rules:
 
 - read only the V2 key;
-- V1 is ignored and may remain in storage;
+- do not read or migrate the V1 key;
+- V1 may remain in localStorage unused;
 - malformed, partial, unknown-version, or invalid-difficulty V2 data falls back to the full V2 default;
-- persist difficulty only on a deliberate difficulty selection;
-- storage read/write failures retain the existing in-memory fallback behavior;
+- persist difficulty only after deliberate difficulty selection;
+- storage failures retain the existing in-memory fallback behavior;
 - automatic rival fallback never changes difficulty;
-- changing LLM settings never changes engine difficulty.
+- LLM configuration changes never change difficulty.
 
-This intentionally accepts resetting old local rival/side preferences on upgrade; HPA-162 explicitly requires no migration or backward-compatibility layer.
+This deliberately accepts resetting old local rival/side preferences on upgrade. There is no compatibility or migration layer.
 
-## Setup and UI behavior
+## Setup hook and component contracts
 
-### Difficulty selector
+### `useChessRivalSetup`
 
-Add a compact radio group to `ChessRivalSetup` with labels:
+Extend the result contract explicitly:
 
-- **Casual**
-- **Normal**
-- **Strong**
+```ts
+export interface UseChessRivalSetupResult {
+  // existing fields...
+  selectRival(kind: RivalKind): void;
+  selectHumanSide(side: ChessSide): void;
+  selectDifficulty(difficulty: EngineDifficulty): void;
+  clearFallbackNotice(): void;
+}
+```
 
-Show it only when `setup.rivalKind === 'engine'`.
+`selectDifficulty` parallels `selectHumanSide`:
 
-It uses the same `disabled` setup lock as opponent and side controls. Therefore it is disabled:
+1. mark setup as deliberately touched;
+2. keep the explicit rival kind stable;
+3. clear fallback notice state as existing deliberate setup changes do;
+4. update in-memory `RivalPreferencesV2.engineDifficulty`;
+5. persist through `persistEngineDifficulty` when storage exists;
+6. update `GameSetup.engineDifficulty` without changing rival kind/side; and
+7. call the existing `onSetupChange(nextSetup)` callback.
+
+`ChessGame` already wires `onSetupChange` to `rivalSession.reset`; difficulty changes must use that same path, not a new session-reset mechanism.
+
+### `ChessRivalSetup`
+
+Extend the component contract explicitly:
+
+```ts
+interface ChessRivalSetupProps {
+  // existing props...
+  onSelectRival: (kind: RivalKind) => void;
+  onSelectHumanSide: (side: ChessSide) => void;
+  onSelectDifficulty: (difficulty: EngineDifficulty) => void;
+}
+```
+
+Render exactly three compact radio choices only while `setup.rivalKind === 'engine'`:
+
+- Casual
+- Normal
+- Strong
+
+Use the same `disabled` prop as opponent/side controls, so difficulty is locked:
 
 - while Start is in flight;
 - throughout an active game; and
 - after a terminal result until New Game.
 
-Do not show disabled engine-difficulty controls while LLM is selected; hide them entirely.
+When LLM is selected, hide the difficulty controls rather than showing disabled engine controls.
 
-Changing difficulty before Start:
+Selecting a difficulty must not instantiate or download Stockfish.
 
-1. marks setup as deliberately touched;
-2. updates in-memory V2 preferences;
-3. persists the selected difficulty when storage is available;
-4. updates `GameSetup.engineDifficulty`; and
-5. calls the existing `onSetupChange`, so any stale failed/candidate provider state is reset using the same path as opponent/side changes.
+### Summary
 
-No engine asset is loaded by selecting a difficulty.
-
-### Persistent summary
-
-Extend the engine summary to include difficulty.
-
-Before Start:
+Before Start, engine summary uses setup state, for example:
 
 ```text
 On-device computer · Casual · Computer plays Black · Unrated
 ```
 
-During and after the game, the summary must use `activeSession.opponent.difficulty`, never the live setup preference.
+After successful Start and through terminal/timeout states, engine summary uses `activeSession.opponent.difficulty`.
 
-The LLM summary remains unchanged.
-
-### Failure presentation
-
-A timeout should display plain-language engine-specific copy, for example:
-
-```text
-Computer move timed out
-The on-device computer took too long to move.
-Start a New Game to continue.
-```
-
-Do not offer **Try again** for a move timeout. The existing Start-load failure may continue to offer **Try again**, because no active game was committed in that case.
-
-Do not expose Worker/UCI internals or the 10,000 ms constant to the player.
+LLM summary remains unchanged.
 
 ## Start and session freezing
 
-`StartRivalSessionInput.setup` already carries the editable setup snapshot. On a successful engine Start:
+`StartRivalSessionInput.setup` already captures the editable setup snapshot passed to Start.
 
-1. capture `input.setup.engineDifficulty` with the rest of the setup;
-2. construct the engine provider using that value;
+For an engine Start:
+
+1. read `input.setup.engineDifficulty`;
+2. call `createEngineProvider({ difficulty })` with that snapshot;
 3. initialize/begin the provider using the existing 60-second Start deadline;
-4. only after initialization succeeds, commit `ActiveRivalSession` with `opponent: { kind: 'engine', id: 'stockfish', difficulty }`;
-5. keep setup locked for the life of that active/terminal session.
+4. only after readiness succeeds, commit `ActiveRivalSession` with `opponent: { kind: 'engine', id: 'stockfish', difficulty }`;
+5. retain existing setup locking for the life of the active/terminal session.
 
-If Start fails, no active session is committed. The player can retry Start, change difficulty, change side, or change rival kind exactly as the current pre-game failure flow allows.
+If Start fails, no active session is committed. The player may retry Start or change setup exactly as today.
 
-Changes to localStorage, auth state, AI provider configuration, or setup-hook internal resolution after a successful Start cannot change the frozen difficulty.
+Changes to localStorage, auth state, AI provider configuration, or setup-hook resolution after a successful Start cannot change the active engine difficulty.
 
-## Bounded move deadline
+The existing `ENGINE_START_TIMEOUT_MS = 60_000` remains unchanged.
+
+## Bounded engine move deadline
 
 ### Scope
 
-Apply the 10-second deadline only when the committed session's opponent kind is `engine`.
-
-LLM `requestMove` behavior remains byte-for-byte equivalent in policy: no new timeout and no change to its pause/retry flow.
-
-Add:
+Add in `useChessRivalSession`:
 
 ```ts
 export const ENGINE_MOVE_TIMEOUT_MS = 10_000;
 ```
 
-in `useChessRivalSession`, beside the existing Start timeout constant.
+Apply it only when the committed session's opponent kind is `engine`.
 
-### Timeout result type
+LLM `requestMove` behavior stays unchanged: no new deadline and no change to its pause/retry flow.
 
-Extend the existing typed failure reason with:
+### Typed timeout reason
+
+Extend the existing failure union:
 
 ```ts
 export type RivalMoveFailureReason =
@@ -334,152 +430,203 @@ export type RivalMoveFailureReason =
   | 'timeout';
 ```
 
-This avoids adding another parallel error channel. `RivalSessionError` can continue using `kind: 'move-failed'` with `reason: 'timeout'`.
+Add the timeout message to the existing `failureMessages` record. `RivalSessionError` continues to use `kind: 'move-failed'` with `reason: 'timeout'`; do not add a parallel timeout error channel.
 
-### Request lifecycle
+### Request race
 
-For an engine request, after the current pending request and `rivalThinking` state are established:
+Reuse the Start-deadline pattern, but preserve the move request's stronger ownership checks.
 
-1. start `provider.makeMove(state, requestId)`;
-2. race it against the 10-second deadline;
-3. clear the timer if the provider settles first;
-4. attach a catch to the provider promise after racing so disposal or a later Worker failure cannot become an unhandled rejection;
-5. re-check the same ownership guards before consuming either result.
+For an engine request:
 
-If the provider result wins, existing result/staleness handling continues.
+1. establish the existing `PendingMoveRequest` and `rivalThinking` state;
+2. call `provider.makeMove(state, requestId)`;
+3. race it against the 10-second deadline;
+4. clear the timer if the provider settles first;
+5. ensure the provider promise has a catch path so disposal/late rejection cannot become unhandled;
+6. re-check the existing request/session/provider/generation/FEN/turn guards before consuming either outcome.
 
-If the deadline wins **and the request is still current**:
+If the provider wins while current, continue existing result handling.
 
-1. clear `pendingRequestRef` for that exact request;
+If the deadline wins **and that exact request still owns the current session/provider**:
+
+1. clear `pendingRequestRef` only for that request;
 2. clear `rivalThinking`;
-3. detach the timed-out provider from `providerRef` before disposal;
-4. dispose the provider, which terminates its Worker and rejects its internal pending waiter;
+3. set `providerRef.current = null` before disposal;
+4. dispose the captured provider;
 5. keep `activeSessionRef` and React `activeSession` unchanged;
-6. set `rivalError` to a typed timeout move failure;
-7. return a typed `{ ok: false, reason: 'timeout', ... }` result to the caller.
+6. set a typed timeout move failure;
+7. return `{ ok: false, reason: 'timeout', ... }` to the caller.
 
-Detaching `providerRef` before/while disposing is important: even if a fake/test provider resolves after the deadline, the existing `isCurrent()` predicate fails the provider-identity check. The pending slot has also been cleared, so the timed-out result has two independent stale guards.
+If reset, navigation, generation replacement, FEN change, turn change, or a newer provider/session occurs before the deadline, the old deadline is stale: it must not write an error and must never dispose the newer provider.
 
-If reset/navigation/session replacement happens before the timeout wins, the request is stale and the timeout path must not write a new error or dispose a newer provider. Existing reset ownership remains authoritative.
+### Dead-provider recovery invariant
+
+A timed-out engine session intentionally has this state:
+
+```text
+activeSession = committed engine session
+providerRef = null
+rivalError = timeout
+```
+
+`rivalError` is already the normal `ChessGame` turn-effect guard, but it must not be the **only** invariant preventing accidental resume.
+
+The simplest ownership-safe rule is:
+
+> `clearError()` must not clear the error for a committed engine session whose provider has been detached/disposed.
+
+Conceptually:
+
+```ts
+if (
+  activeSessionRef.current?.opponent.kind === 'engine' &&
+  providerRef.current === null
+) {
+  return;
+}
+setRivalError(null);
+```
+
+This keeps provider liveness private to the session hook and avoids adding a new public `hasProvider`/`canRetry` state just to gate `ChessGame`.
+
+Current `clearError()` usage is the LLM retry path; that behavior remains available because an LLM retry retains its provider. `reset()` / New Game is the only operation that clears the timed-out engine session and allows another Start.
+
+Do not add a same-position retry button, provider reconstruction, or hidden auto-restart.
 
 ### Board preservation
 
-The hook never mutates chess state. `ChessGame` already applies a provider move only after `requestMove` returns a current successful result and the existing `makeAIMove` legality gate accepts it.
+`useChessRivalSession` never mutates chess state. `ChessGame` applies a move only after `requestMove` returns a current successful result and `makeAIMove` accepts it.
 
-Therefore timeout handling leaves:
+Therefore timeout preserves:
 
-- the current FEN unchanged;
-- all prior legal moves unchanged;
-- move history unchanged;
-- active opponent/side/difficulty summary unchanged.
+- current FEN;
+- all prior legal moves;
+- move history;
+- active rival side/difficulty summary.
 
-`ChessGame` clears its board-level `isAiThinking` flag for the typed failure exactly as it already does for other move failures.
+`ChessGame` clears its board-level AI-thinking flag for the typed failure as it already does for other provider failures.
 
-### Why keep the active session after timeout
+### Timeout presentation
 
-Do not set `activeSession = null` on timeout.
+Use engine-specific plain language, for example:
 
-Keeping the session committed provides the desired product state:
+```text
+Computer move timed out
+The on-device computer took too long to move.
+Start a New Game to continue.
+```
 
-- setup remains locked, so the failed position cannot silently become a different rival configuration;
-- the frozen difficulty remains visible;
-- play-history ownership metadata remains coherent if the board was already terminal for an unrelated reason;
-- `rivalError` prevents the move effect from starting another request;
-- the existing New Game action is the only way to reset provider/session/game state together.
+Do not show the Start-load **Try again** action for a move timeout. Start-load failure may keep its current retry affordance because no active game was committed.
 
-The provider itself is gone, so the timed-out game cannot resume accidentally.
+Do not expose Worker/UCI internals or the 10,000 ms constant to the player.
 
-## Real packaged-engine legal-move smoke test
+## Real packaged-engine legal-move smoke
 
-Extend the existing `apps/web/e2e/stockfish-assets.spec.ts` test rather than creating another Playwright project or CI job.
+Extend `apps/web/e2e/stockfish-assets.spec.ts`; do not add another Playwright project or CI job.
 
-After the same-origin Worker passes `uci` / `uciok` and `isready` / `readyok`:
+After the same-origin Worker completes the existing `uci` / `uciok` and readiness flow:
 
 1. send `ucinewgame`;
-2. send `isready` and wait for `readyok`;
-3. send `position startpos`;
+2. wait for `readyok`;
+3. send the standard starting position;
 4. send `go movetime 250`;
-5. wait for one `bestmove ...` line with the existing generous browser-smoke timeout;
+5. wait for one `bestmove ...` line using the existing generous browser-smoke timeout;
 6. terminate the Worker in `finally`;
-7. return the `bestmove` line/string to the test runner;
-8. parse it with the existing Stockfish protocol collector/parser rather than adding a second UCI parser;
-9. create Procyon's standard starting chess state; and
-10. pass the parsed move through the existing authoritative `makeAIMove`/chess-rules path and assert that it produces a non-null legal next state.
+7. return the line/string to the Playwright test runner;
+8. parse it with existing `parseBestMove` / collector logic rather than adding a second UCI parser;
+9. create Procyon's standard initial chess state;
+10. pass the parsed move through existing authoritative `makeAIMove`; and
+11. assert a non-null legal next state.
 
-The assertion is deliberately semantic: the distributed Worker must produce a move that Procyon's own chess rules accept. Do not assert one exact opening move.
+Do not assert a specific opening move.
 
-Existing static-asset, MIME, license, corresponding-source, failed-request, and console-error assertions stay intact.
+Keep existing asset, MIME, license, corresponding-source, failed-request, and console-error assertions intact.
 
 ## Test strategy
 
-### Difficulty and persistence
+### 1. Timeout ownership first
 
-Extend `types.test.ts` / `preferences.test.ts` / `useChessRivalSetup.test.tsx` to cover:
+The timeout race is the highest-risk change and must be proven with fake timers before UI work.
 
-- exactly the three allowed difficulty values;
-- Casual default;
+Extend `useChessRivalSession.test.tsx` with a controllable fake engine provider and cover:
+
+- engine move still pending at 10 seconds becomes `reason: 'timeout'`;
+- provider is detached/disposed exactly once;
+- committed session remains present;
+- thinking clears;
+- timeout returns no successful move;
+- late resolve after timeout cannot apply, clear, or replace the timeout error;
+- late reject after timeout is handled and does not become an unhandled rejection;
+- reset before deadline prevents the old request from writing timeout state;
+- a newer session/provider is never disposed by an older deadline;
+- normal engine result before deadline clears the timer and behaves as today;
+- LLM requests are not subject to `ENGINE_MOVE_TIMEOUT_MS`;
+- `clearError()` cannot re-arm a timed-out engine session with no provider;
+- New Game/reset clears the dead engine session and permits a later Start.
+
+Use fake timers; no unit test should wait 10 real seconds.
+
+### 2. Types, persistence, and factory freezing
+
+Cover:
+
+- exactly the three `EngineDifficulty` values used by the product;
+- V2 Casual default;
 - V2 round-trip persistence;
 - invalid/corrupt/future payload fallback;
-- V1 ignored/reset behavior;
-- difficulty restored on a later setup mount;
-- LLM selection retaining remembered engine difficulty without displaying the selector;
-- selector change persistence;
-- setup change callback on difficulty mutation;
-- setup mutation blocked while Start/active/terminal locks are applied.
+- V1 key ignored/reset behavior;
+- `persistRivalKind`, `persistHumanSide`, and `persistEngineDifficulty` all write V2;
+- restored difficulty on later setup mount;
+- setup reconstruction/equality keeps difficulty;
+- engine factory receives the Start snapshot's difficulty;
+- committed `EngineOpponent` contains the same frozen difficulty;
+- later mutable preference/setup changes cannot alter the committed session;
+- LLM factory/session behavior remains unchanged.
 
-### Provider mapping
+### 3. Stockfish mapping
 
-Extend `stockfish-provider.test.ts` to prove:
+Extend provider tests to prove:
 
 - Casual emits Skill Level 0;
 - Normal emits 8;
 - Strong emits 16;
-- movetime remains 250 ms for every preset;
-- the existing failure when Stockfish does not advertise `Skill Level` remains intact.
+- all presets continue to emit `go movetime 250`;
+- existing failure when Stockfish does not advertise Skill Level remains intact.
 
-### Session freezing
+### 4. Setup/UI wiring
 
-Extend `useChessRivalSession.test.tsx` to prove:
+Extend setup/component tests to prove:
 
-- the engine factory receives the Start snapshot's difficulty;
-- the committed engine opponent contains the frozen difficulty;
-- changing the source setup object after Start does not alter the session;
-- LLM factory/session behavior is unchanged.
-
-### Timeout and stale results
-
-Use an injected fake engine provider whose `makeMove()` can remain pending and later be resolved manually.
-
-Cover:
-
-- pending engine move transitions to timeout at 10 seconds;
-- provider is disposed exactly once;
-- committed session remains present;
-- thinking clears;
-- timeout error is typed as `reason: 'timeout'`;
-- timeout returns no successful move to apply;
-- late resolution after timeout returns/applies nothing and cannot clear/replace the timeout error;
-- reset before the deadline prevents the old timer/request from writing a timeout error;
-- a newer session/provider is never disposed by an older request's deadline;
-- normal engine result before deadline clears the timer and behaves as today;
-- LLM requests are not subject to `ENGINE_MOVE_TIMEOUT_MS`.
-
-Prefer fake timers for the hook-level deadline tests so the suite does not wait 10 real seconds.
-
-### UI
-
-Extend `ChessRivalSetup.test.tsx`, `RivalSetupSummary.test.tsx`, `EngineRivalDetails.test.tsx`, and focused `ChessGame` tests to cover:
-
-- three difficulty choices visible only for the engine;
-- Casual initially selected;
-- difficulty disabled with the rest of setup while locked;
-- active summary reads frozen session difficulty;
-- timeout copy directs the player to New Game and does not show the Start-load **Try again** action;
+- `selectDifficulty` persists and calls `onSetupChange`;
+- three difficulty choices are visible only for engine setup;
+- Casual is initially selected on a fresh device;
+- controls use the existing disabled/lock behavior;
+- switching to LLM hides but does not forget engine difficulty;
+- active/terminal/timeout summary reads frozen session difficulty;
+- timeout copy directs New Game and exposes no move retry;
 - existing LLM setup/details remain unchanged.
 
-### Browser smoke
+### 5. Browser smoke
 
-Extend the existing Stockfish asset Playwright test to obtain and validate one legal starting move from the real packaged Worker.
+Extend the existing Stockfish asset test to obtain one real packaged-engine `bestmove`, parse it with existing UCI logic, and validate it with `makeAIMove`.
+
+## Implementation-plan ordering constraint
+
+The detailed implementation plan must be **risk-first**, not "typecheck first, timeout last".
+
+Required task order:
+
+1. establish failing fake-timer session tests for timeout/dispose/stale/late-result/dead-provider recovery;
+2. implement the minimal session timeout behavior needed to pass those tests;
+3. perform the atomic V1 → V2 preferences rewrite plus `EngineDifficulty`, frozen-session data, and explicit engine factory signature;
+4. wire Stockfish 0/8/16 mapping and unchanged 250 ms movetime;
+5. wire setup hook/component/summary/error UI;
+6. extend the real Worker smoke from readiness through `bestmove` → `parseBestMove` → `makeAIMove`;
+7. run focused checks after each task and the full validation matrix at the end.
+
+The plan should use the existing Start-deadline race as the implementation template, but preserve the stronger move ownership guards.
+
+No new abstraction should be introduced to satisfy this order.
 
 ## Expected implementation surface
 
@@ -495,50 +642,54 @@ Primary files:
 - `apps/web/src/components/game/EngineRivalDetails.tsx`
 - `apps/web/src/components/ChessGame.tsx` for wiring only
 - `apps/web/e2e/stockfish-assets.spec.ts`
-- corresponding existing unit/component tests
+- corresponding existing unit/component tests and fake provider helpers.
 
 No API, database, migration, rating, shared game-core, or non-chess variant files should be required.
 
 ## Implementation boundaries
 
-- Reuse the existing setup hook; do not create a second difficulty store/hook.
-- Reuse the existing active rival session; do not create an engine-game session type beside it.
-- Reuse the existing Stockfish provider; do not add an engine registry.
-- Reuse existing stale-result ownership checks; do not create an AbortController/cancellation protocol.
-- Reuse existing engine error/New Game presentation; only distinguish timeout wording where useful.
-- Reuse the existing Stockfish Playwright project and CI step.
-- Reuse Procyon's authoritative chess move application to validate the real engine smoke move.
-- Do not modify HPA-161 historical documents just to rewrite their old deferred-scope notes; this HPA-162 spec is the current authority for the remaining MVP slice.
+- Reuse `useChessRivalSetup`; do not create a difficulty store/hook.
+- Reuse `ActiveRivalSession`; do not create an engine-game session beside it.
+- Reuse `StockfishRivalProvider`; do not add an engine registry.
+- Reuse existing UCI helpers, especially Skill Level formatting and bestmove parsing.
+- Reuse stale-result ownership checks; do not add provider cancellation protocol.
+- Keep provider liveness private to `useChessRivalSession`; do not expose it merely to recover from timeout.
+- Reuse existing engine error/New Game presentation; specialize timeout wording only.
+- Reuse existing Stockfish Playwright project and CI step.
+- Reuse authoritative chess move application for the real-engine smoke assertion.
+- Do not edit HPA-161 historical design docs merely to rewrite superseded future-scope notes; this spec is the current authority.
 
 ## Acceptance matrix
 
 | Requirement | Design proof |
 | --- | --- |
-| Casual / Normal / Strong before Start | Engine-only difficulty radio group in existing setup |
-| Casual default | RivalPreferencesV2 default |
-| Remember last difficulty | Device-local V2 persistence |
-| Freeze difficulty at Start | Difficulty stored in frozen `EngineOpponent` and passed to provider factory |
-| Skill values 0 / 8 / 16 | One Stockfish-specific mapping |
-| Keep current engine movetime | Existing 250 ms constant unchanged |
-| Selector locked during Start/game | Existing `disabled` setup lock reused |
-| 10-second local move deadline | Engine-only race in `useChessRivalSession` |
-| Preserve board on timeout | Session hook owns no board mutation; failure returns without applying a move |
-| Dispose failed Worker | Timed-out provider detached and disposed |
-| Ignore late output | Pending ownership cleared + active provider identity changed |
-| New Game only | Active session retained with timeout error; no retry/rebuild path |
-| Existing Start timeout unchanged | `ENGINE_START_TIMEOUT_MS = 60_000` untouched |
-| Real Worker produces legal move | Existing Stockfish Playwright smoke extended through Procyon chess rules |
-| No eager engine download | Difficulty remains pure setup/persistence state; Worker construction still occurs only on Start |
-| LLM behavior unchanged | Deadline gated to engine sessions and no LLM contract changes |
+| Casual / Normal / Strong | Engine-only selector in existing setup |
+| Casual fresh-device default | RivalPreferencesV2 default |
+| Remember last difficulty | V2 device-local persistence |
+| Freeze difficulty at Start | `EngineOpponent.difficulty` + explicit factory input |
+| Skill values 0 / 8 / 16 | One Stockfish-specific map |
+| Keep engine movetime | Existing 250 ms constant unchanged |
+| Selector locked during Start/game | Existing setup `disabled` lock reused |
+| No eager engine download | Difficulty selection is pure setup/persistence state |
+| 10-second engine move deadline | Engine-only race in session hook |
+| Preserve board on timeout | No successful move reaches `makeAIMove` |
+| Dispose failed Worker | Timed-out provider detached then disposed |
+| Ignore late output | Pending ownership cleared + provider identity invalidated |
+| New Game only | Dead-provider engine error cannot be cleared into resume |
+| Existing 60-second Start deadline | Unchanged |
+| LLM behavior unchanged | No LLM deadline; LLM `clearError` retry remains viable |
+| Real Worker returns legal move | Existing smoke extended through parser + `makeAIMove` |
 
 ## Completion criteria
 
 HPA-162 is complete when:
 
-- all three presets can be selected and persisted;
-- a successful Start freezes and visibly retains the selected engine difficulty;
-- Stockfish receives only the mapped Skill Level while keeping 250 ms movetime;
-- an engine move still pending at 10 seconds enters the terminal-for-that-session error path, disposes the provider, preserves the board, and cannot apply a late result;
-- New Game fully resets the failed session and allows a new setup/start;
-- the real packaged Stockfish Worker returns at least one move accepted by Procyon's chess rules;
-- focused tests, typecheck, lint, build, the full unit suite, existing rival E2E, and the Stockfish asset smoke suite pass without changing LLM/rating/lazy-load behavior.
+- all three presets can be selected and persisted through the V2-only preference path;
+- successful Start freezes and visibly retains the selected engine difficulty;
+- the exact frozen difficulty reaches provider construction;
+- Stockfish receives Skill Level 0/8/16 while movetime stays 250 ms;
+- an engine move still pending at 10 seconds enters the timeout path, detaches/disposes its provider, preserves the board/session, and cannot apply a late result;
+- clearing an error cannot resume a timed-out engine session without a provider;
+- New Game fully resets that failed session and permits a fresh Start;
+- the real packaged Worker returns at least one move accepted by Procyon's chess rules;
+- focused tests, typecheck, lint, build, full unit suite, existing rival E2E, and Stockfish asset smoke pass without changing LLM, rating, or lazy-load behavior.
