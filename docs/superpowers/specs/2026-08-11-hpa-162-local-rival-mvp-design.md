@@ -17,7 +17,7 @@ This is not a new rival architecture. HPA-161 already owns editable setup, immut
 
 The selected difficulty is mutable device-local setup before Start and immutable engine-session identity after Start. The Stockfish provider receives that frozen preset and maps it to one fixed UCI `Skill Level` value. The existing 250 ms engine movetime remains unchanged.
 
-The 10-second move deadline is owned by `useChessRivalSession`, because that hook already decides whether an async provider result still belongs to the current game. On timeout, the hook invalidates the request, detaches and disposes the provider, clears thinking, records a typed timeout error, preserves the board and frozen active session, and makes **New Game** the only recovery. Late output cannot apply, and clearing an error alone must not re-arm a timed-out engine session whose provider is gone.
+The 10-second move deadline is owned by `useChessRivalSession`, because that hook already decides whether an async provider result still belongs to the current game. On timeout, the hook invalidates the request, detaches and disposes the provider, clears thinking, records a typed timeout error, preserves the board and frozen active session, and makes **New Game** the only recovery. Late resolve or reject output cannot alter session state, and clearing an error alone must not re-arm a timed-out engine session whose provider is gone.
 
 This spec supersedes the older HPA-161 future-scope notes that mentioned four benchmarked presets or placed the per-move timeout in HPA-163. Linear now defines HPA-162 as the sole remaining HPA-159 MVP slice.
 
@@ -54,7 +54,7 @@ No rival equivalent of `EngineDifficulty` exists today; unrelated puzzle difficu
 5. Map Casual → Stockfish Skill Level `0`, Normal → `8`, Strong → `16`.
 6. Keep Stockfish movetime at the existing 250 ms for every preset.
 7. Apply a 10-second deadline to each on-device move request.
-8. On timeout, preserve the board, dispose the failed provider, ignore late output, clear thinking, show a clear error, and require New Game.
+8. On timeout, preserve the board, dispose the failed provider, ignore late resolve/reject output, clear thinking, show a clear error, and require New Game.
 9. Extend the packaged-engine browser smoke test so the real distributed Worker returns one move accepted by Procyon's authoritative chess rules.
 10. Preserve lazy engine loading, signed-out local play, unrated engine history, LLM behavior, reset semantics, and existing third-party/licensing assets.
 
@@ -558,7 +558,7 @@ Extend `useChessRivalSession.test.tsx` with a controllable fake engine provider 
 - thinking clears;
 - timeout returns no successful move;
 - late resolve after timeout cannot apply, clear, or replace the timeout error;
-- late reject after timeout is handled and does not become an unhandled rejection;
+- late reject after timeout is handled and cannot replace the timeout error or become an unhandled rejection;
 - reset before deadline prevents the old request from writing timeout state;
 - a newer session/provider is never disposed by an older deadline;
 - normal engine result before deadline clears the timer and behaves as today;
@@ -621,7 +621,7 @@ The detailed implementation plan must be **risk-first**, not "typecheck first, t
 
 Required task order:
 
-1. establish failing fake-timer session tests for timeout/dispose/stale/late-result/dead-provider recovery;
+1. establish failing fake-timer session tests for timeout/dispose/stale/late-resolve/late-reject/dead-provider recovery;
 2. implement the minimal session timeout behavior needed to pass those tests;
 3. perform the atomic V1 → V2 preferences rewrite plus `EngineDifficulty`, frozen-session data, explicit engine factory signature, provider-options contract, and browser preference fixture;
 4. wire Stockfish 0/8/16 mapping and unchanged 250 ms movetime;
@@ -680,7 +680,7 @@ No API, database, migration, rating, shared game-core, or non-chess variant file
 | 10-second engine move deadline | Engine-only race in session hook |
 | Preserve board on timeout | No successful move reaches `makeAIMove` |
 | Dispose failed Worker | Timed-out provider detached then disposed |
-| Ignore late output | Pending ownership cleared + provider identity invalidated |
+| Ignore late output | Provider promise handles late reject; pending/provider identity prevents late resolve state changes |
 | New Game only | Dead-provider engine error cannot be cleared into resume |
 | Existing 60-second Start deadline | Unchanged |
 | LLM behavior unchanged | No LLM deadline; LLM `clearError` retry remains viable |
@@ -695,7 +695,7 @@ HPA-162 is complete when:
 - successful Start freezes and visibly retains the selected engine difficulty;
 - the exact frozen difficulty reaches provider construction;
 - Stockfish receives Skill Level 0/8/16 while movetime stays 250 ms;
-- an engine move still pending at 10 seconds enters the timeout path, detaches/disposes its provider, preserves the board/session, and cannot apply a late result;
+- an engine move still pending at 10 seconds enters the timeout path, detaches/disposes its provider, preserves the board/session, and cannot apply or be disturbed by a late result/rejection;
 - clearing an error cannot resume a timed-out engine session without a provider;
 - New Game fully resets that failed session and permits a fresh Start;
 - browser rival E2E uses the V2 remembered-preference fixture and still proves no eager local-engine loading;
