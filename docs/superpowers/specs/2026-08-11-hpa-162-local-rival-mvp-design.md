@@ -1,6 +1,6 @@
 # HPA-162 — Local Rival MVP Difficulty and Bounded Failure Design
 
-**Status:** Approved design and written spec  
+**Status:** Approved design and written spec; review feedback addressed  
 **Date:** 2026-08-11  
 **Linear:** HPA-162 — Finish local-rival MVP with simple difficulty and bounded failure recovery  
 **Parent:** HPA-159 — Add a local non-LLM chess rival  
@@ -442,9 +442,9 @@ For an engine request:
 
 1. establish the existing `PendingMoveRequest` and `rivalThinking` state;
 2. call `provider.makeMove(state, requestId)`;
-3. race it against the 10-second deadline;
+3. wrap provider resolve/reject into a handled outcome promise, then race it against the 10-second deadline;
 4. clear the timer if the provider settles first;
-5. ensure the provider promise has a handled rejection path so disposal/late rejection cannot become unhandled;
+5. keep the provider promise's rejection handled after timeout/disposal;
 6. re-check the existing request/session/provider/generation/FEN/turn guards before consuming either outcome.
 
 If the provider wins while current, continue existing result handling.
