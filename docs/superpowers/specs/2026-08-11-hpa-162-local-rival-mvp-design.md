@@ -31,6 +31,7 @@ The implementation should extend these existing seams directly:
 | Editable difficulty | Extend | `GameSetup` |
 | Frozen difficulty | Extend | `EngineOpponent` inside `ActiveRivalSession` |
 | Device persistence | Rewrite current rival preferences payload as V2 | `preferences.ts` + `useChessRivalSetup.ts` |
+| Browser preference fixture | Extend | `apps/web/e2e/chess-rival.spec.ts` currently hard-codes the V1 key/payload |
 | Stockfish skill mapping | Extend | `stockfish-provider.ts` + existing `formatSetSkillLevelCommand` |
 | Provider construction | Extend exact factory contract | `UseChessRivalSessionOptions.createEngineProvider` |
 | Move deadline | Extend | existing Start deadline/race ownership pattern in `useChessRivalSession.ts` |
@@ -301,7 +302,8 @@ The following paths must move to V2 together in one implementation step:
 - new `persistEngineDifficulty`;
 - `useChessRivalSetup.readPreferencesOnce`;
 - setup-hook preference state/type;
-- `setupForResolution` and every selector that rebuilds setup.
+- `setupForResolution` and every selector that rebuilds setup;
+- the browser E2E fixture in `apps/web/e2e/chess-rival.spec.ts`, which must seed only the V2 key with `engineDifficulty` included.
 
 Rules:
 
@@ -442,7 +444,7 @@ For an engine request:
 2. call `provider.makeMove(state, requestId)`;
 3. race it against the 10-second deadline;
 4. clear the timer if the provider settles first;
-5. ensure the provider promise has a catch path so disposal/late rejection cannot become unhandled;
+5. ensure the provider promise has a handled rejection path so disposal/late rejection cannot become unhandled;
 6. re-check the existing request/session/provider/generation/FEN/turn guards before consuming either outcome.
 
 If the provider wins while current, continue existing result handling.
@@ -576,6 +578,7 @@ Cover:
 - invalid/corrupt/future payload fallback;
 - V1 key ignored/reset behavior;
 - `persistRivalKind`, `persistHumanSide`, and `persistEngineDifficulty` all write V2;
+- browser E2E remembered-rival fixture seeds the V2 payload only;
 - restored difficulty on later setup mount;
 - setup reconstruction/equality keeps difficulty;
 - engine factory receives the Start snapshot's difficulty;
@@ -606,6 +609,8 @@ Extend setup/component tests to prove:
 - timeout copy directs New Game and exposes no move retry;
 - existing LLM setup/details remain unchanged.
 
+Update existing browser E2E engine summary assertions to include Casual while preserving the current no-eager-download checks.
+
 ### 5. Browser smoke
 
 Extend the existing Stockfish asset test to obtain one real packaged-engine `bestmove`, parse it with existing UCI logic, and validate it with `makeAIMove`.
@@ -618,7 +623,7 @@ Required task order:
 
 1. establish failing fake-timer session tests for timeout/dispose/stale/late-result/dead-provider recovery;
 2. implement the minimal session timeout behavior needed to pass those tests;
-3. perform the atomic V1 → V2 preferences rewrite plus `EngineDifficulty`, frozen-session data, and explicit engine factory signature;
+3. perform the atomic V1 → V2 preferences rewrite plus `EngineDifficulty`, frozen-session data, explicit engine factory signature, provider-options contract, and browser preference fixture;
 4. wire Stockfish 0/8/16 mapping and unchanged 250 ms movetime;
 5. wire setup hook/component/summary/error UI;
 6. extend the real Worker smoke from readiness through `bestmove` → `parseBestMove` → `makeAIMove`;
@@ -641,6 +646,7 @@ Primary files:
 - `apps/web/src/components/game/RivalSetupSummary.tsx`
 - `apps/web/src/components/game/EngineRivalDetails.tsx`
 - `apps/web/src/components/ChessGame.tsx` for wiring only
+- `apps/web/e2e/chess-rival.spec.ts`
 - `apps/web/e2e/stockfish-assets.spec.ts`
 - corresponding existing unit/component tests and fake provider helpers.
 
@@ -678,6 +684,7 @@ No API, database, migration, rating, shared game-core, or non-chess variant file
 | New Game only | Dead-provider engine error cannot be cleared into resume |
 | Existing 60-second Start deadline | Unchanged |
 | LLM behavior unchanged | No LLM deadline; LLM `clearError` retry remains viable |
+| Browser remembered-rival fixture | V2 key/payload only |
 | Real Worker returns legal move | Existing smoke extended through parser + `makeAIMove` |
 
 ## Completion criteria
@@ -691,5 +698,6 @@ HPA-162 is complete when:
 - an engine move still pending at 10 seconds enters the timeout path, detaches/disposes its provider, preserves the board/session, and cannot apply a late result;
 - clearing an error cannot resume a timed-out engine session without a provider;
 - New Game fully resets that failed session and permits a fresh Start;
+- browser rival E2E uses the V2 remembered-preference fixture and still proves no eager local-engine loading;
 - the real packaged Worker returns at least one move accepted by Procyon's chess rules;
 - focused tests, typecheck, lint, build, full unit suite, existing rival E2E, and Stockfish asset smoke pass without changing LLM, rating, or lazy-load behavior.
