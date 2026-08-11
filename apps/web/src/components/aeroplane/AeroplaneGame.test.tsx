@@ -424,6 +424,27 @@ describe('Aeroplane board interactions', () => {
 		expect(rollButton.getAttribute('disabled')).not.toBeNull();
 	});
 
+	test('shows the no-legal-moves pass message during an AI awaiting-choice turn with no moves', () => {
+		const { getByText, queryByText } = render(
+			<AeroplaneBoard
+				state={fixtureState({
+					currentPlayer: 'yellow',
+					phase: 'awaiting-choice',
+					pendingRoll: 3,
+				})}
+				legalMoves={[]}
+				isHumanTurn={false}
+				onRoll={mock(() => {})}
+				onSelectMove={mock(() => {})}
+			/>
+		);
+		expect(
+			getByText(/no legal moves — this turn passes automatically/i)
+		).toBeTruthy();
+		// The generic "choosing a move" copy must not appear when there are no moves.
+		expect(queryByText(/yellow is choosing a move/i)).toBeNull();
+	});
+
 	test('disables Roll and shows AI rolling copy during an AI awaiting-roll turn', () => {
 		const onRoll = mock(() => {});
 		const { getByRole, getByText } = render(
