@@ -520,11 +520,9 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 					{state.phase === 'finished'
 						? `${colorLabel[state.winner ?? state.currentPlayer]} wins the match.`
 						: !isHumanTurn
-							? state.phase === 'awaiting-choice' && legalMoves.length === 0
-								? 'No legal moves — this turn passes automatically.'
-								: state.phase === 'awaiting-choice'
-									? `${colorLabel[state.currentPlayer]} is choosing a move…`
-									: `${colorLabel[state.currentPlayer]} is rolling…`
+							? state.phase === 'awaiting-choice'
+								? `${colorLabel[state.currentPlayer]} is choosing a move…`
+								: `${colorLabel[state.currentPlayer]} is rolling…`
 							: state.phase === 'awaiting-choice' && legalMoves.length === 0
 								? 'No legal moves — this turn passes automatically.'
 								: state.phase === 'awaiting-choice'
