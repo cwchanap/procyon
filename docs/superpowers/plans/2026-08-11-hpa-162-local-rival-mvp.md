@@ -17,43 +17,43 @@
 - Keep the existing Start deadline exactly `60_000` ms.
 - Add an engine-move deadline exactly `10_000` ms; never apply it to LLM moves.
 - Default a fresh device to Casual and persist only `procyon.chess.rival-preferences.v2`.
-- Never read/migrate the V1 preference key.
-- Freeze difficulty only on successful Start; active/terminal UI reads the frozen session.
+- Never read or migrate `procyon.chess.rival-preferences.v1`.
+- Freeze difficulty only on successful Start; active and terminal UI reads the frozen session.
 - On engine timeout: clear pending ownership, detach/dispose the provider, preserve board/session, ignore late results, and require New Game.
 - `clearError()` must not re-arm a committed engine session whose provider is gone.
-- Do not add an engine registry, generic recovery state machine, provider cancellation protocol, same-position retry, Worker reconstruction, Elo/calibration claims, or server-side difficulty persistence.
 - Selecting difficulty must not construct/download Stockfish; current lazy Start ownership remains authoritative.
+- Do not add an engine registry, generic recovery state machine, provider cancellation protocol, same-position retry, Worker reconstruction, Elo/calibration claims, server-side difficulty persistence, or unrelated game changes.
 
 ---
 
 ## File Structure
 
-### Domain/session ownership
+### Domain and session ownership
 
 - Modify `apps/web/src/lib/chess/rival/types.ts` — `EngineDifficulty`, setup/session fields, `'timeout'` failure reason.
 - Modify `apps/web/src/hooks/useChessRivalSession.ts` — 10-second engine move race, dead-provider recovery invariant, explicit engine factory input, frozen engine opponent.
-- Modify `apps/web/src/hooks/useChessRivalSession.test.tsx` — risk-first fake-timer ownership tests and later difficulty freezing tests.
-- Modify `apps/web/src/test/fakeRival.ts` — engine factories accept/record `{ difficulty }`.
+- Modify `apps/web/src/hooks/useChessRivalSession.test.tsx` — fake-timer timeout ownership tests first, then difficulty freezing/factory tests.
+- Modify `apps/web/src/test/fakeRival.ts` — engine factories accept and record `{ difficulty }`.
 
-### Preferences/setup
+### Preferences and editable setup
 
-- Modify `apps/web/src/lib/chess/rival/preferences.ts` — atomic V1→V2 key/payload rewrite + `persistEngineDifficulty`.
-- Modify `apps/web/src/lib/chess/rival/preferences.test.ts` — V2/default/version/storage coverage.
-- Modify `apps/web/src/hooks/useChessRivalSetup.ts` — carry difficulty through all setup reconstruction/equality/selector paths.
+- Modify `apps/web/src/lib/chess/rival/preferences.ts` — atomic V1→V2 key/payload rewrite and `persistEngineDifficulty`.
+- Modify `apps/web/src/lib/chess/rival/preferences.test.ts` — V2 default/version/difficulty/storage coverage.
+- Modify `apps/web/src/hooks/useChessRivalSetup.ts` — carry difficulty through every setup reconstruction/equality/selector path.
 - Modify `apps/web/src/hooks/useChessRivalSetup.test.tsx` — hydration/selection/persistence/fallback coverage.
-- Modify `apps/web/e2e/chess-rival.spec.ts` — update hard-coded preference key/payload to V2; later update engine summary assertions for difficulty.
+- Modify `apps/web/e2e/chess-rival.spec.ts` — update its hard-coded V1 preference fixture to V2; later update engine summary assertions for difficulty.
 
 ### Stockfish integration
 
-- Modify `apps/web/src/lib/chess/rival/stockfish-provider.ts` — require difficulty in options, then map it centrally to UCI Skill Level.
-- Modify `apps/web/src/lib/chess/rival/stockfish-provider.test.ts` — all provider constructors pass explicit difficulty; assert 0/8/16 and unchanged movetime.
+- Modify `apps/web/src/lib/chess/rival/stockfish-provider.ts` — require difficulty in options and map it centrally to UCI Skill Level.
+- Modify `apps/web/src/lib/chess/rival/stockfish-provider.test.ts` — direct constructors pass explicit difficulty; assert 0/8/16 and unchanged movetime.
 
-### UI/wiring
+### UI and wiring
 
-- Modify `apps/web/src/components/game/ChessRivalSetup.tsx` and `.test.tsx` — engine-only difficulty radios + explicit callback.
-- Modify `apps/web/src/components/game/RivalSetupSummary.tsx` and `.test.tsx` — editable pre-Start vs frozen active difficulty.
-- Modify `apps/web/src/components/game/EngineRivalDetails.tsx` and `.test.tsx` — timeout-specific copy, no move retry.
-- Modify `apps/web/src/components/ChessGame.tsx` and `.test.tsx` — pass `selectDifficulty`; integration proof for locked/frozen setup and timeout board preservation.
+- Modify `apps/web/src/components/game/ChessRivalSetup.tsx` and `.test.tsx` — engine-only difficulty radios and explicit callback.
+- Modify `apps/web/src/components/game/RivalSetupSummary.tsx` and `.test.tsx` — editable pre-Start versus frozen active difficulty.
+- Modify `apps/web/src/components/game/EngineRivalDetails.tsx` and `.test.tsx` — timeout-specific copy with no move retry.
+- Modify `apps/web/src/components/ChessGame.tsx` and `.test.tsx` — pass `selectDifficulty`; integration proof for frozen/locked setup and timeout board preservation.
 
 ### Real packaged engine smoke
 
@@ -69,12 +69,12 @@
 - Test: `apps/web/src/hooks/useChessRivalSession.test.tsx`
 
 **Interfaces:**
-- Consumes: existing `PendingMoveRequest`, `providerRef`, `activeSessionRef`, `isCurrent`, `resolvePending`, `reset`, and current Start deadline pattern.
-- Produces: `ENGINE_MOVE_TIMEOUT_MS = 10_000`, `'timeout'` failure reason, engine-only move deadline, safe late-result handling, and non-clearable dead-engine error state.
+- Consumes: existing `PendingMoveRequest`, `providerRef`, `activeSessionRef`, `isCurrent`, `resolvePending`, `reset`, and the current Start-deadline race pattern.
+- Produces: `ENGINE_MOVE_TIMEOUT_MS = 10_000`, `'timeout'` as a typed failure reason, engine-only move deadline behavior, safe late-result handling, and a dead-engine error that `clearError()` cannot revive.
 
 - [ ] **Step 1: Write the failing basic timeout test**
 
-Add `ENGINE_MOVE_TIMEOUT_MS` to the test import and add:
+Add `ENGINE_MOVE_TIMEOUT_MS` to the hook import and add:
 
 ```ts
 test('engine move times out, disposes provider, preserves session, and returns timeout', async () => {
@@ -156,7 +156,7 @@ timeout: 'The on-device computer took too long to move.',
 
 - [ ] **Step 4: Implement the engine-only provider/deadline outcome race**
 
-Keep the existing pending request and `isCurrent()` guards. Wrap provider settlement so later rejection is always handled:
+Keep the existing pending request and `isCurrent()` guards. Wrap provider settlement so a post-timeout rejection is handled by the promise itself:
 
 ```ts
 type ProviderOutcome =
@@ -210,7 +210,7 @@ if (outcome.kind === 'timeout') {
 }
 ```
 
-For `{ kind: 'error' }`, preserve current stale-check/`unexpected` behavior. For `{ kind: 'result' }`, preserve current typed result handling.
+For `{ kind: 'error' }`, preserve the current stale check and `unexpected` error behavior. For `{ kind: 'result' }`, preserve the current typed result behavior.
 
 - [ ] **Step 5: Run the basic timeout test green**
 
@@ -286,16 +286,45 @@ test('reset before engine deadline prevents stale timeout state', async () => {
 
 - [ ] **Step 8: Add old-deadline/new-provider ownership test**
 
-Use two engine providers: provider A has a pending move; reset after starting that move; Start provider B; then advance 10 seconds. Assert provider B remains committed and `disposeCount === 0`, while provider A was disposed by reset exactly once and no timeout error appears.
-
-Concrete assertions:
+Use the existing `orderedEngineFactory` helper:
 
 ```ts
-expect(providerA.disposeCount).toBe(1);
-expect(providerB.disposeCount).toBe(0);
-expect(result.current.activeSession?.id).toBe(secondSession?.id);
-expect(result.current.rivalError).toBeNull();
+test('an old engine deadline never disposes a newer provider', async () => {
+	const oldMove = deferred<RivalMoveResult>();
+	const providerA = new FakeRivalProvider('engine');
+	providerA.onMakeMove = () => oldMove.promise;
+	const providerB = new FakeRivalProvider('engine');
+	const factory = orderedEngineFactory(providerA, providerB);
+	const { result } = renderSession({ createEngineProvider: factory });
+
+	await act(async () => void (await result.current.start(startInput())));
+	jest.useFakeTimers();
+	try {
+		act(() => {
+			void result.current.requestMove(makeContext(makeGameState()));
+		});
+		act(() => result.current.reset());
+
+		let secondSession: ActiveRivalSession | null = null;
+		await act(async () => {
+			secondSession = await result.current.start(startInput());
+		});
+		await act(async () => {
+			advanceTimers(ENGINE_MOVE_TIMEOUT_MS);
+			await Promise.resolve();
+		});
+
+		expect(providerA.disposeCount).toBe(1);
+		expect(providerB.disposeCount).toBe(0);
+		expect(result.current.activeSession?.id).toBe(secondSession?.id);
+		expect(result.current.rivalError).toBeNull();
+	} finally {
+		jest.useRealTimers();
+	}
+});
 ```
+
+Import `ActiveRivalSession` into the test file with the existing rival types.
 
 - [ ] **Step 9: Add explicit LLM-no-deadline test**
 
@@ -383,7 +412,7 @@ const clearError = useCallback(() => {
 
 Do not expose provider liveness in `UseChessRivalSessionResult`.
 
-- [ ] **Step 12: Run session suite + typecheck**
+- [ ] **Step 12: Run session suite and typecheck**
 
 ```bash
 cd apps/web && bun test src/hooks/useChessRivalSession.test.tsx
@@ -414,10 +443,10 @@ git commit -m "feat: bound local engine move requests"
 - Modify: `apps/web/src/hooks/useChessRivalSession.ts`
 - Test: `apps/web/src/hooks/useChessRivalSession.test.tsx`
 - Modify: `apps/web/src/test/fakeRival.ts`
-- Modify: `apps/web/src/lib/chess/rival/stockfish-provider.ts` — accept required difficulty option now so the explicit production factory typechecks; mapping lands in Task 3.
-- Test fixture update: `apps/web/src/lib/chess/rival/stockfish-provider.test.ts` — pass `difficulty: 'casual'` to all existing direct provider constructions.
+- Modify: `apps/web/src/lib/chess/rival/stockfish-provider.ts` — accept the required difficulty option now so the production factory typechecks; UCI mapping lands in Task 3.
+- Test fixture update: `apps/web/src/lib/chess/rival/stockfish-provider.test.ts` — pass `difficulty: 'casual'` to direct provider construction.
 - Modify: `apps/web/e2e/chess-rival.spec.ts` — V2 key/payload fixture.
-- Update required `GameSetup`/engine-opponent fixtures in `ChessRivalSetup.test.tsx` and `RivalSetupSummary.test.tsx`.
+- Update required `GameSetup`/engine-opponent fixtures in `apps/web/src/components/game/ChessRivalSetup.test.tsx` and `apps/web/src/components/game/RivalSetupSummary.test.tsx`.
 
 **Interfaces:**
 - Consumes: Task 1 timeout-capable session hook.
@@ -470,7 +499,14 @@ test('persists engine difficulty independently in V2', () => {
 });
 ```
 
-Add explicit invalid-difficulty (`'expert'`), corrupt JSON, future-version (`version: 3`), and throwing-storage cases.
+Add these exact malformed payload cases under the V2 key and assert `defaultPreferences` each time:
+
+```ts
+{ version: 2, lastRivalKind: 'engine', humanSideByRival: { engine: 'white', llm: 'white' }, engineDifficulty: 'expert' }
+{ version: 3, lastRivalKind: 'llm', humanSideByRival: { engine: 'black', llm: 'black' }, engineDifficulty: 'strong' }
+```
+
+Keep the existing corrupt-JSON and throwing-storage cases, updated to the V2 type.
 
 - [ ] **Step 2: Run preference suite red**
 
@@ -478,7 +514,7 @@ Add explicit invalid-difficulty (`'expert'`), corrupt JSON, future-version (`ver
 cd apps/web && bun test src/lib/chess/rival/preferences.test.ts
 ```
 
-Expected: FAIL on V1 key/type and missing `persistEngineDifficulty`.
+Expected: FAIL on the V1 key/type and missing `persistEngineDifficulty`.
 
 - [ ] **Step 3: Add required difficulty domain fields**
 
@@ -579,7 +615,7 @@ test('selectDifficulty persists and notifies the existing setup-change path', as
 });
 ```
 
-Add an engine→LLM→engine test asserting remembered difficulty stays Strong and automatic fallback does not mutate it.
+Add an engine→LLM→engine test: start from `engineDifficulty: 'strong'`, call `selectRival('llm')`, then `selectRival('engine')`, and assert `result.current.setup.engineDifficulty === 'strong'` after both changes. Existing automatic-fallback tests should additionally assert `engineDifficulty` remains unchanged.
 
 - [ ] **Step 7: Carry difficulty through every setup path**
 
@@ -608,15 +644,27 @@ function setupForResolution(
 }
 ```
 
-Equality compares `rivalKind`, `humanSide`, and `engineDifficulty`.
+Equality must compare all fields:
 
-`selectRival` includes `engineDifficulty: nextPreferences.engineDifficulty`; `selectHumanSide` keeps spreading current setup.
+```ts
+function setupsEqual(left: GameSetup, right: GameSetup): boolean {
+	return (
+		left.rivalKind === right.rivalKind &&
+		left.humanSide === right.humanSide &&
+		left.engineDifficulty === right.engineDifficulty
+	);
+}
+```
 
-Add result contract and implementation:
+`selectRival` builds `nextSetup` with `engineDifficulty: nextPreferences.engineDifficulty`; `selectHumanSide` keeps spreading the current setup.
+
+Add the result contract:
 
 ```ts
 selectDifficulty(difficulty: EngineDifficulty): void;
 ```
+
+And selector:
 
 ```ts
 const selectDifficulty = useCallback(
@@ -670,7 +718,7 @@ JSON.stringify({
 
 Do not seed both keys.
 
-- [ ] **Step 9: Write engine factory/session freezing test**
+- [ ] **Step 9: Write engine factory/session freezing tests**
 
 Update engine setup:
 
@@ -706,7 +754,32 @@ test('engine Start forwards and freezes the Start difficulty', async () => {
 });
 ```
 
-Add a mutable `GameSetup` object test: Start with Normal, mutate the source object's `engineDifficulty = 'strong'` after Start, and assert committed opponent remains Normal.
+Add frozen-source mutation coverage:
+
+```ts
+test('mutating the source setup after Start does not change frozen engine difficulty', async () => {
+	const mutableSetup: GameSetup = {
+		rivalKind: 'engine',
+		humanSide: 'white',
+		engineDifficulty: 'normal',
+	};
+	const provider = new FakeRivalProvider('engine');
+	const { result } = renderSession({
+		createEngineProvider: mock(() => provider),
+	});
+
+	await act(async () => {
+		await result.current.start(startInput({ setup: mutableSetup }));
+	});
+	mutableSetup.engineDifficulty = 'strong';
+
+	expect(result.current.activeSession?.opponent).toEqual({
+		kind: 'engine',
+		id: 'stockfish',
+		difficulty: 'normal',
+	});
+});
+```
 
 - [ ] **Step 10: Make the engine factory contract explicit and forward frozen difficulty**
 
@@ -737,7 +810,7 @@ candidate =
 		: llmFactoryRef.current({ config: frozenConfig });
 ```
 
-Engine opponent:
+Engine opponent construction:
 
 ```ts
 return {
@@ -749,7 +822,7 @@ return {
 
 - [ ] **Step 11: Make `StockfishRivalProviderOptions` accept required difficulty now**
 
-In `stockfish-provider.ts`:
+Import `EngineDifficulty`, then change:
 
 ```ts
 export interface StockfishRivalProviderOptions {
@@ -760,24 +833,42 @@ export interface StockfishRivalProviderOptions {
 }
 ```
 
-Keep the existing fixed Skill Level 0 in this task. Task 3 will consume `options.difficulty` for mapping.
-
-Update every direct constructor in `stockfish-provider.test.ts` from forms like:
+Change the constructor signature from a default-empty options object to:
 
 ```ts
-new StockfishRivalProvider({ workerFactory })
+constructor(options: StockfishRivalProviderOptions) {
+	const workerFactory = options.workerFactory ?? defaultWorkerFactory;
+	this.worker = workerFactory(resolveStockfishWorkerUrl(options));
+	// existing handler wiring
+}
 ```
 
-to:
+Keep fixed Skill Level 0 in this task; Task 3 consumes `options.difficulty` for the 0/8/16 mapping.
+
+Update the provider-test harness to provide Casual by default while still allowing base-path tests:
 
 ```ts
-new StockfishRivalProvider({
-	difficulty: 'casual',
-	workerFactory,
-})
+function createHarness(
+	options: { difficulty?: EngineDifficulty; baseUrl?: string } = {}
+) {
+	const factoryHarness = createFactoryHarness();
+	const provider = new StockfishRivalProvider({
+		difficulty: options.difficulty ?? 'casual',
+		workerFactory: factoryHarness.workerFactory,
+		origin,
+		...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
+	});
+
+	return {
+		provider,
+		worker: factoryHarness.workers[0]!,
+		workers: factoryHarness.workers,
+		urls: factoryHarness.urls,
+	};
+}
 ```
 
-This keeps Task 2's intermediate commit type-correct without prematurely implementing Task 3's mapping.
+For direct constructors in the repeated-Start test, add `difficulty: 'casual'` to both instances.
 
 - [ ] **Step 12: Update fake engine factories to the production signature**
 
@@ -808,9 +899,9 @@ export function engineFactory(
 }
 ```
 
-Return `difficulties` from `engineOptions` too.
+Return `difficulties` from `engineOptions` alongside `instances`.
 
-- [ ] **Step 13: Run V2/setup/session/provider-fixture tests + typecheck**
+- [ ] **Step 13: Run V2/setup/session/provider-fixture tests and typecheck**
 
 ```bash
 cd apps/web && bun test \
@@ -821,9 +912,9 @@ cd apps/web && bun test \
 cd apps/web && bun run typecheck
 ```
 
-Expected: PASS. Typecheck catches every missed required `GameSetup.engineDifficulty` and provider constructor input.
+Expected: PASS. Typecheck is the guard for every required `GameSetup.engineDifficulty` and provider constructor input missed by focused runtime tests.
 
-- [ ] **Step 14: Commit atomic V2/freeze contract**
+- [ ] **Step 14: Commit the atomic V2/freeze contract**
 
 ```bash
 git add apps/web/src/lib/chess/rival/types.ts \
@@ -851,32 +942,67 @@ git commit -m "feat: persist frozen local rival difficulty"
 - Test: `apps/web/src/lib/chess/rival/stockfish-provider.test.ts`
 
 **Interfaces:**
-- Consumes: required `StockfishRivalProviderOptions.difficulty` from Task 2; existing `formatSetSkillLevelCommand`, Skill Level advertisement check, and `formatGoCommand`.
+- Consumes: required `StockfishRivalProviderOptions.difficulty` from Task 2, existing `formatSetSkillLevelCommand`, Skill Level advertisement check, and `formatGoCommand`.
 - Produces: one Stockfish-specific 0/8/16 mapping; all presets retain 250 ms movetime.
 
-- [ ] **Step 1: Add failing mapping tests for all presets**
+- [ ] **Step 1: Write failing mapping tests with the existing `FakeWorker` harness**
 
-Use existing fake Worker command capture and assert:
-
-```ts
-expect(casualWorker.messages).toContain('setoption name Skill Level value 0');
-expect(normalWorker.messages).toContain('setoption name Skill Level value 8');
-expect(strongWorker.messages).toContain('setoption name Skill Level value 16');
-```
-
-Construct providers explicitly with `difficulty: 'casual'`, `'normal'`, and `'strong'`.
-
-Add a table-driven move assertion:
+Import `EngineDifficulty` into the test file. Add this table-driven initialization test:
 
 ```ts
-for (const difficulty of ['casual', 'normal', 'strong'] as const) {
-	// initialize/beginGame using the existing fake Worker harness
-	// invoke makeMove and capture commands
-	expect(worker.messages).toContain('go movetime 250');
-}
+test('maps Casual, Normal, and Strong to fixed Stockfish Skill Level values', async () => {
+	const cases: Array<readonly [EngineDifficulty, number]> = [
+		['casual', 0],
+		['normal', 8],
+		['strong', 16],
+	];
+
+	for (const [difficulty, skillLevel] of cases) {
+		const { provider, worker } = createHarness({ difficulty });
+		const pending = provider.initialize();
+
+		expect(worker.commands).toEqual(['uci']);
+		worker.emit(skillLevelOption);
+		worker.emit('uciok');
+		await flushProviderTasks();
+		expect(worker.commands).toEqual([
+			'uci',
+			`setoption name Skill Level value ${skillLevel}`,
+			'isready',
+		]);
+
+		worker.emit('readyok');
+		await pending;
+		provider.dispose();
+	}
+});
 ```
 
-The harness setup is the existing provider test code; only the explicit difficulty and command assertions change.
+Add this movetime test using the same existing `initialize` / `beginGame` helpers:
+
+```ts
+test('keeps 250 ms movetime for every difficulty', async () => {
+	const difficulties: EngineDifficulty[] = ['casual', 'normal', 'strong'];
+	const state = createInitialGameState('human-vs-ai', 'black');
+
+	for (const difficulty of difficulties) {
+		const { provider, worker } = createHarness({ difficulty });
+		await initialize(provider, worker);
+		await beginGame(provider, worker);
+
+		const pending = provider.makeMove(state, 1);
+		expect(worker.commands.slice(-2)).toEqual([
+			`position fen ${state.fen}`,
+			'go movetime 250',
+		]);
+		worker.emit('bestmove e7e5');
+		await expect(pending).resolves.toMatchObject({ ok: true });
+		provider.dispose();
+	}
+});
+```
+
+Keep the existing missing-Skill-Level advertisement test unchanged except for its explicit Casual construction through `createHarness()`.
 
 - [ ] **Step 2: Run provider tests red**
 
@@ -884,9 +1010,11 @@ The harness setup is the existing provider test code; only the explicit difficul
 cd apps/web && bun test src/lib/chess/rival/stockfish-provider.test.ts
 ```
 
-Expected: Normal/Strong assertions fail because Skill Level is still fixed at 0.
+Expected: Normal and Strong mapping assertions fail because initialization still emits Skill Level 0.
 
-- [ ] **Step 3: Replace fixed skill constant with centralized map**
+- [ ] **Step 3: Replace the fixed skill constant with the centralized mapping**
+
+In `stockfish-provider.ts`:
 
 ```ts
 const STOCKFISH_MOVE_TIME_MS = 250;
@@ -897,21 +1025,37 @@ const STOCKFISH_SKILL_LEVEL_BY_DIFFICULTY = {
 } as const satisfies Record<EngineDifficulty, number>;
 ```
 
-Initialization:
+Store the constructor input:
+
+```ts
+private readonly difficulty: EngineDifficulty;
+
+constructor(options: StockfishRivalProviderOptions) {
+	this.difficulty = options.difficulty;
+	const workerFactory = options.workerFactory ?? defaultWorkerFactory;
+	this.worker = workerFactory(resolveStockfishWorkerUrl(options));
+	this.worker.onmessage = event => {
+		this.handleMessage(event.data);
+	};
+	this.worker.onerror = event => {
+		this.handleWorkerError(event);
+	};
+}
+```
+
+Replace the current fixed command with:
 
 ```ts
 this.postCommand(
 	formatSetSkillLevelCommand(
-		STOCKFISH_SKILL_LEVEL_BY_DIFFICULTY[optionsDifficulty]
+		STOCKFISH_SKILL_LEVEL_BY_DIFFICULTY[this.difficulty]
 	)
 );
 ```
 
-Store `options.difficulty` in a private `difficulty` field during construction and use `this.difficulty` in `initialize()`.
+Do not change `STOCKFISH_MOVE_TIME_MS` or `makeMove` command construction.
 
-Do not change `STOCKFISH_MOVE_TIME_MS` or `makeMove` search command construction.
-
-- [ ] **Step 4: Run provider + protocol tests**
+- [ ] **Step 4: Run provider and protocol tests**
 
 ```bash
 cd apps/web && bun test \
@@ -919,9 +1063,9 @@ cd apps/web && bun test \
   src/lib/chess/rival/stockfish-protocol.test.ts
 ```
 
-Expected: PASS, including existing missing-Skill-Level advertisement failure coverage.
+Expected: PASS, including the existing initialization failure when Stockfish does not advertise `Skill Level`.
 
-- [ ] **Step 5: Commit mapping**
+- [ ] **Step 5: Commit the Stockfish mapping**
 
 ```bash
 git add apps/web/src/lib/chess/rival/stockfish-provider.ts \
@@ -940,31 +1084,33 @@ git commit -m "feat: map local rival difficulty to Stockfish"
 - Test: `apps/web/src/components/game/RivalSetupSummary.test.tsx`
 - Modify: `apps/web/src/components/ChessGame.tsx`
 - Test: `apps/web/src/components/ChessGame.test.tsx`
-- Modify: `apps/web/e2e/chess-rival.spec.ts` — update engine summary assertions to include Casual.
+- Modify: `apps/web/e2e/chess-rival.spec.ts` — update engine summary expectations to include Casual.
 
 **Interfaces:**
 - Consumes: `GameSetup.engineDifficulty`, `EngineOpponent.difficulty`, and `selectDifficulty` from Task 2.
 - Produces: exactly three engine-only controls wired through existing `onSetupChange → rivalSession.reset`; summaries switch to frozen session difficulty after Start.
 
-- [ ] **Step 1: Add failing setup component tests**
+- [ ] **Step 1: Write failing setup component tests**
 
-Pass `onSelectDifficulty` mock. For engine setup assert:
+Add `onSelectDifficulty` beside the existing selector mocks. For engine setup `{ rivalKind: 'engine', humanSide: 'white', engineDifficulty: 'casual' }`, assert:
 
 ```ts
-expect(screen.getByRole('radio', { name: 'Casual' })).toBeInTheDocument();
-expect(screen.getByRole('radio', { name: 'Normal' })).toBeInTheDocument();
-expect(screen.getByRole('radio', { name: 'Strong' })).toBeInTheDocument();
-expect(screen.getByRole('radio', { name: 'Casual' })).toBeChecked();
+expect(view.getByRole('radio', { name: 'Casual' })).toBeTruthy();
+expect(view.getByRole('radio', { name: 'Normal' })).toBeTruthy();
+expect(view.getByRole('radio', { name: 'Strong' })).toBeTruthy();
+expect(
+	(view.getByRole('radio', { name: 'Casual' }) as HTMLInputElement).checked
+).toBe(true);
 ```
 
-Click Normal:
+Click Normal and assert:
 
 ```ts
-fireEvent.click(screen.getByRole('radio', { name: 'Normal' }));
+fireEvent.click(view.getByRole('radio', { name: 'Normal' }));
 expect(onSelectDifficulty).toHaveBeenCalledWith('normal');
 ```
 
-Rerender with LLM setup and assert all three are absent. Rerender engine setup with `disabled` and assert all three are disabled.
+Rerender with LLM setup and assert the three labels are absent. Rerender the engine setup with `disabled` and assert all three difficulty inputs are disabled.
 
 - [ ] **Step 2: Run setup UI test red**
 
@@ -972,18 +1118,22 @@ Rerender with LLM setup and assert all three are absent. Rerender engine setup w
 cd apps/web && bun test src/components/game/ChessRivalSetup.test.tsx
 ```
 
-Expected: FAIL because prop/control is absent.
+Expected: FAIL because the prop/control does not exist.
 
-- [ ] **Step 3: Add explicit prop and three fixed radios**
+- [ ] **Step 3: Add the explicit prop and three fixed radios**
+
+Extend imports and props:
 
 ```ts
 interface ChessRivalSetupProps {
-	// existing props...
+	// existing props
 	onSelectRival: (kind: RivalKind) => void;
 	onSelectHumanSide: (side: ChessSide) => void;
 	onSelectDifficulty: (difficulty: EngineDifficulty) => void;
 }
 ```
+
+Use a local constant, not a registry:
 
 ```ts
 const engineDifficultyOptions: Array<{
@@ -996,24 +1146,38 @@ const engineDifficultyOptions: Array<{
 ];
 ```
 
-Render only when `setup.rivalKind === 'engine'`; use the same `disabled` value as opponent/side controls and call `onSelectDifficulty(option.value)` directly. Keep existing visual component style; add no generic option/registry layer.
+Render the group only while `setup.rivalKind === 'engine'`. Each radio uses:
 
-- [ ] **Step 4: Add failing summary tests for editable vs frozen source**
+```tsx
+<input
+	type='radio'
+	name='engine-difficulty'
+	value={option.value}
+	aria-label={option.label}
+	checked={setup.engineDifficulty === option.value}
+	disabled={disabled}
+	onChange={() => onSelectDifficulty(option.value)}
+/>
+```
+
+Use the existing component's border/text/spacing classes; do not introduce a generic form component for this slice.
+
+- [ ] **Step 4: Write failing summary tests for editable versus frozen source**
 
 Pre-Start Casual:
 
 ```ts
 expect(
-	screen.getByText('On-device computer · Casual · Computer plays Black · Unrated')
-).toBeInTheDocument();
+	view.getByText('On-device computer · Casual · Computer plays Black · Unrated')
+).toBeTruthy();
 ```
 
 Active session Strong while setup remains Casual:
 
 ```ts
 expect(
-	screen.getByText('On-device computer · Strong · Computer plays Black · Unrated')
-).toBeInTheDocument();
+	view.getByText('On-device computer · Strong · Computer plays Black · Unrated')
+).toBeTruthy();
 ```
 
 - [ ] **Step 5: Update engine summary formatting**
@@ -1042,11 +1206,11 @@ function difficultyLabel(value: EngineDifficulty): string {
 }
 ```
 
-Keep LLM summary unchanged.
+Keep the LLM summary unchanged.
 
 - [ ] **Step 6: Wire `selectDifficulty` in `ChessGame`**
 
-Where `ChessRivalSetup` is rendered:
+Where `ChessRivalSetup` is rendered, add:
 
 ```tsx
 onSelectDifficulty={rivalSetup.selectDifficulty}
@@ -1054,23 +1218,36 @@ onSelectDifficulty={rivalSetup.selectDifficulty}
 
 Do not add a difficulty-specific reset. `useChessRivalSetup` invokes existing `onSetupChange`, and `ChessGame` already supplies `rivalSession.reset`.
 
-- [ ] **Step 7: Extend existing no-eager-load/unit integration coverage**
+- [ ] **Step 7: Extend existing no-eager-load and Start integration coverage**
 
-In the existing `constructs no Worker before the game starts` test, click **Strong** before opponent/side preview changes and keep:
+In `ChessGame.test.tsx`, update the existing `constructs no Worker before the game starts` test to click Strong before its opponent/side preview changes, then keep:
 
 ```ts
 expect(workerSpy).not.toHaveBeenCalled();
 ```
 
-Add a successful Start test that selects Normal, clicks Start, and asserts:
+Add a Start test:
 
 ```ts
-expect(
-	view.getByText(/On-device computer · Normal · Computer plays Black · Unrated/i)
-).toBeTruthy();
-expect(
-	(view.getByRole('radio', { name: 'Normal' }) as HTMLInputElement).disabled
-).toBe(true);
+test('successful engine Start freezes the selected difficulty', async () => {
+	const { options, difficulties } = engineOptions();
+	const view = render(<ChessGame rivalSessionOptions={options} />);
+	await waitForSetupResolved(view);
+
+	fireEvent.click(view.getByRole('radio', { name: 'Normal' }));
+	fireEvent.click(view.getByRole('button', { name: /start/i }));
+
+	await waitFor(() =>
+		expect(view.getByRole('button', { name: /new game/i })).toBeTruthy()
+	);
+	expect(difficulties).toEqual(['normal']);
+	expect(
+		view.getByText(/On-device computer · Normal · Computer plays Black · Unrated/i)
+	).toBeTruthy();
+	expect(
+		(view.getByRole('radio', { name: 'Normal' }) as HTMLInputElement).disabled
+	).toBe(true);
+});
 ```
 
 - [ ] **Step 8: Update existing browser rival engine-summary expectations**
@@ -1087,9 +1264,9 @@ with:
 /On-device computer · Casual · Computer plays White · Unrated/i
 ```
 
-Do the corresponding Black-side expectation with `Computer plays Black`. Keep the no-vendor-request-before-Start assertions unchanged.
+Use the corresponding `Computer plays Black` regex where that side is expected. Keep the existing no-vendor-request-before-Start assertions unchanged.
 
-- [ ] **Step 9: Run setup/summary/game tests + typecheck**
+- [ ] **Step 9: Run setup, summary, game tests, and typecheck**
 
 ```bash
 cd apps/web && bun test \
@@ -1101,7 +1278,7 @@ cd apps/web && bun run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit UI/wiring**
+- [ ] **Step 10: Commit UI and wiring**
 
 ```bash
 git add apps/web/src/components/game/ChessRivalSetup.tsx \
@@ -1125,11 +1302,11 @@ git commit -m "feat: add local rival difficulty controls"
 
 **Interfaces:**
 - Consumes: Task 1 typed timeout/dead-provider invariant and current ChessGame move-error path.
-- Produces: timeout-specific copy; integration proof that timeout applies no engine move, retains frozen session/locks, and New Game resets it.
+- Produces: timeout-specific copy; integration proof that timeout applies no engine move, retains the frozen session/locks, and New Game resets it.
 
-- [ ] **Step 1: Add failing timeout presentation test**
+- [ ] **Step 1: Write the failing timeout presentation test**
 
-Render with:
+Render `EngineRivalDetails` with:
 
 ```ts
 rivalError={{
@@ -1142,17 +1319,17 @@ rivalError={{
 Assert:
 
 ```ts
-expect(screen.getByText('Computer move timed out')).toBeInTheDocument();
+expect(view.getByText('Computer move timed out')).toBeTruthy();
 expect(
-	screen.getByText('The on-device computer took too long to move.')
-).toBeInTheDocument();
-expect(screen.getByText(/Start a New Game/)).toBeInTheDocument();
-expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+	view.getByText('The on-device computer took too long to move.')
+).toBeTruthy();
+expect(view.getByText(/Start a New Game/)).toBeTruthy();
+expect(view.queryByRole('button', { name: 'Try again' })).toBeNull();
 ```
 
-Keep existing Start-load failure test asserting **Try again** still appears for `startState === 'load-failed'`.
+Keep the existing Start-load failure test asserting **Try again** still appears for `startState === 'load-failed'`.
 
-- [ ] **Step 2: Implement timeout-specific heading in existing error panel**
+- [ ] **Step 2: Implement the timeout-specific heading in the existing error panel**
 
 ```ts
 const errorHeading =
@@ -1161,13 +1338,11 @@ const errorHeading =
 		: 'Computer move failed';
 ```
 
-Use `errorHeading` in the existing `rivalError` branch. Keep the existing New Game instruction and add no retry button.
+Use `errorHeading` in the current `rivalError` branch. Keep the existing New Game instruction and add no move retry button.
 
-- [ ] **Step 3: Add exact ChessGame timeout integration test**
+- [ ] **Step 3: Add exact ChessGame timeout integration coverage**
 
-Import `ENGINE_MOVE_TIMEOUT_MS` into `ChessGame.test.tsx`.
-
-Use the existing atomic Start test pattern:
+In `ChessGame.test.tsx`, import `ENGINE_MOVE_TIMEOUT_MS` from the session hook and `RivalMoveResult` from rival types. Add:
 
 ```ts
 test('engine timeout preserves the human move and requires New Game', async () => {
@@ -1227,9 +1402,9 @@ test('engine timeout preserves the human move and requires New Game', async () =
 });
 ```
 
-The human e2→e4 move is the board-preservation proof: after timeout, e2 stays empty and e4 still contains the white pawn; no black engine move is applied.
+The e2→e4 assertion is the board-preservation proof: after timeout, e2 stays empty and e4 still contains the white pawn; no black engine move is applied.
 
-- [ ] **Step 4: Run timeout UI/integration/session tests**
+- [ ] **Step 4: Run timeout UI, integration, and session tests**
 
 ```bash
 cd apps/web && bun test \
@@ -1260,16 +1435,18 @@ No production `ChessGame.tsx` timeout lifecycle change belongs in this task; Tas
 
 **Interfaces:**
 - Consumes: current asset smoke, `parseBestMove`, `createInitialGameState`, and `makeAIMove`.
-- Produces: proof that the distributed Worker returns one starting move accepted by Procyon's authoritative rules.
+- Produces: proof that the distributed Worker returns one starting move accepted by Procyon's authoritative chess rules.
 
 - [ ] **Step 1: Import existing parser/rules helpers and rename the readiness test**
+
+Add:
 
 ```ts
 import { createInitialGameState, makeAIMove } from '../src/lib/chess/game';
 import { parseBestMove } from '../src/lib/chess/rival/stockfish-protocol';
 ```
 
-Rename to:
+Rename the current Worker-readiness test to:
 
 ```ts
 test('starts packaged Stockfish and returns a legal move', async ({ page }) => {
@@ -1277,7 +1454,7 @@ test('starts packaged Stockfish and returns a legal move', async ({ page }) => {
 
 - [ ] **Step 2: Extend browser-side Worker sequence and return the first `bestmove` line**
 
-Keep current auth stub, console capture, failed-request capture, and 15-second browser wait. Inside `page.evaluate`:
+Keep the current auth stub, console capture, failed-request capture, and 15-second browser wait. Replace the current exact-string waiter inside `page.evaluate` with:
 
 ```ts
 const waitForMessage = (predicate: (line: string) => boolean) =>
@@ -1300,7 +1477,7 @@ const waitForMessage = (predicate: (line: string) => boolean) =>
 	});
 ```
 
-Sequence:
+Use this exact sequence:
 
 ```ts
 try {
@@ -1319,7 +1496,9 @@ try {
 
 Do not parse UCI move syntax in browser code.
 
-- [ ] **Step 3: Parse and validate through Procyon rules in the test runner**
+- [ ] **Step 3: Parse and validate through Procyon rules in the Playwright test runner**
+
+After `page.evaluate` returns `bestMoveLine`:
 
 ```ts
 const parsed = parseBestMove(bestMoveLine);
@@ -1339,11 +1518,11 @@ const next = makeAIMove(
 expect(next).not.toBeNull();
 ```
 
-`createInitialGameState('human-vs-ai', 'white')` is the exact standard-start helper call: current player is White and `makeAIMove` validates the returned White move through the authoritative attempt-move path.
+`createInitialGameState('human-vs-ai', 'white')` is the exact standard-start helper call: White is the AI side and current player is White, so the returned Stockfish opening move is validated through the authoritative attempt-move path.
 
-Keep existing console-error and failed-asset-request assertions after the legality check. Do not assert one opening move.
+Keep existing console-error and failed-asset-request assertions after the legality check. Do not assert one exact opening move.
 
-- [ ] **Step 4: Run real packaged Worker smoke**
+- [ ] **Step 4: Run the real packaged Worker smoke**
 
 ```bash
 cd apps/web && bun run test:e2e:stockfish-assets
@@ -1359,7 +1538,7 @@ cd apps/web && bunx playwright test e2e/chess-rival.spec.ts
 
 Expected: PASS, including remembered preference, selector locking, mocked engine journey, and no Stockfish vendor request before explicit Start.
 
-- [ ] **Step 6: Commit smoke extension**
+- [ ] **Step 6: Commit the smoke extension**
 
 ```bash
 git add apps/web/e2e/stockfish-assets.spec.ts
@@ -1395,7 +1574,7 @@ cd apps/web && bun test src scripts
 
 Expected: PASS.
 
-- [ ] **Run static checks/build**
+- [ ] **Run static checks and build**
 
 ```bash
 cd apps/web && bun run typecheck
@@ -1425,7 +1604,7 @@ bun run build
 
 Expected: PASS across the workspace.
 
-- [ ] **Review the final diff against HPA-162 scope**
+- [ ] **Review the final implementation diff against HPA-162 scope**
 
 Confirm exactly:
 
