@@ -3,6 +3,8 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Status:** Written implementation plan complete; review feedback and self-review findings addressed. This document plans future implementation only; this PR contains no production/test-code implementation.  
+**Date:** 2026-08-11  
+**Linear:** HPA-162 — Finish local-rival MVP with simple difficulty and bounded failure recovery  
 **Goal:** Finish the local Stockfish rival MVP with three persisted/frozen difficulty presets and an engine-only 10-second move deadline that preserves the board and requires New Game after timeout.
 
 **Architecture:** Extend the existing HPA-161 `GameSetup` → `ActiveRivalSession` → provider flow. Difficulty stays mutable only in setup/preferences, is frozen into `EngineOpponent` at Start, and is forwarded through an explicit engine factory into `StockfishRivalProvider`; timeout stays in `useChessRivalSession`, which already owns provider/session/request staleness and disposal.
