@@ -254,7 +254,43 @@ test('late engine result after timeout cannot replace timeout state', async () =
 });
 ```
 
-- [ ] **Step 7: Add reset-before-deadline ownership test**
+- [ ] **Step 7: Add a late-rejection regression test**
+
+The provider-outcome wrapper exists specifically so a provider that rejects after the timeout is still observed. Add:
+
+```ts
+test('late engine rejection after timeout is handled and cannot replace timeout state', async () => {
+	const move = deferred<RivalMoveResult>();
+	const provider = new FakeRivalProvider('engine');
+	provider.onMakeMove = () => move.promise;
+	const { result } = renderSession({ createEngineProvider: mock(() => provider) });
+	await act(async () => void (await result.current.start(startInput())));
+
+	jest.useFakeTimers();
+	try {
+		let pending!: Promise<RivalMoveResult | null>;
+		act(() => {
+			pending = result.current.requestMove(makeContext(makeGameState()));
+		});
+		await act(async () => {
+			advanceTimers(ENGINE_MOVE_TIMEOUT_MS);
+			expect(await pending).toMatchObject({ ok: false, reason: 'timeout' });
+		});
+
+		await act(async () => {
+			move.reject(new Error('late worker rejection'));
+			await Promise.resolve();
+		});
+
+		expect(provider.disposeCount).toBe(1);
+		expect(result.current.rivalError).toMatchObject({ reason: 'timeout' });
+	} finally {
+		jest.useRealTimers();
+	}
+});
+```
+
+- [ ] **Step 8: Add reset-before-deadline ownership test**
 
 ```ts
 test('reset before engine deadline prevents stale timeout state', async () => {
@@ -284,7 +320,7 @@ test('reset before engine deadline prevents stale timeout state', async () => {
 });
 ```
 
-- [ ] **Step 8: Add old-deadline/new-provider ownership test**
+- [ ] **Step 9: Add old-deadline/new-provider ownership test**
 
 Use the existing `orderedEngineFactory` helper:
 
@@ -326,7 +362,7 @@ test('an old engine deadline never disposes a newer provider', async () => {
 
 Import `ActiveRivalSession` into the test file with the existing rival types.
 
-- [ ] **Step 9: Add explicit LLM-no-deadline test**
+- [ ] **Step 10: Add explicit LLM-no-deadline test**
 
 ```ts
 test('LLM move is not subject to the engine move deadline', async () => {
@@ -365,7 +401,7 @@ test('LLM move is not subject to the engine move deadline', async () => {
 });
 ```
 
-- [ ] **Step 10: Add dead-provider `clearError()` regression test**
+- [ ] **Step 11: Add dead-provider `clearError()` regression test**
 
 ```ts
 test('clearError cannot re-arm a timed-out committed engine session', async () => {
@@ -396,7 +432,7 @@ test('clearError cannot re-arm a timed-out committed engine session', async () =
 });
 ```
 
-- [ ] **Step 11: Make `clearError()` preserve a dead committed engine error**
+- [ ] **Step 12: Make `clearError()` preserve a dead committed engine error**
 
 ```ts
 const clearError = useCallback(() => {
@@ -412,7 +448,7 @@ const clearError = useCallback(() => {
 
 Do not expose provider liveness in `UseChessRivalSessionResult`.
 
-- [ ] **Step 12: Run session suite and typecheck**
+- [ ] **Step 13: Run session suite and typecheck**
 
 ```bash
 cd apps/web && bun test src/hooks/useChessRivalSession.test.tsx
@@ -421,7 +457,7 @@ cd apps/web && bun run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 13: Commit timeout ownership**
+- [ ] **Step 14: Commit timeout ownership**
 
 ```bash
 git add apps/web/src/lib/chess/rival/types.ts \
