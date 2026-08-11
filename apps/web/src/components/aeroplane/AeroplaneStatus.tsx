@@ -31,8 +31,6 @@ function statusCopy(
 			: 'Match ended.';
 	}
 	if (!isHumanTurn) {
-		if (state.phase === 'awaiting-choice' && legalMoves.length === 0)
-			return 'No legal moves — turn passes automatically.';
 		return state.phase === 'awaiting-choice'
 			? `${colorLabel[state.currentPlayer]} is choosing a move…`
 			: `${colorLabel[state.currentPlayer]} is rolling…`;

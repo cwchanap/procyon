@@ -424,7 +424,7 @@ describe('Aeroplane board interactions', () => {
 		expect(rollButton.getAttribute('disabled')).not.toBeNull();
 	});
 
-	test('shows the no-legal-moves pass message during an AI awaiting-choice turn with no moves', () => {
+	test('shows choosing-a-move copy during an AI awaiting-choice turn even when legalMoves is empty (hook filters to [] for AI turns)', () => {
 		const { getByText, queryByText } = render(
 			<AeroplaneBoard
 				state={fixtureState({
@@ -438,11 +438,10 @@ describe('Aeroplane board interactions', () => {
 				onSelectMove={mock(() => {})}
 			/>
 		);
+		expect(getByText(/yellow is choosing a move/i)).toBeTruthy();
 		expect(
-			getByText(/no legal moves — this turn passes automatically/i)
-		).toBeTruthy();
-		// The generic "choosing a move" copy must not appear when there are no moves.
-		expect(queryByText(/yellow is choosing a move/i)).toBeNull();
+			queryByText(/no legal moves — this turn passes automatically/i)
+		).toBeNull();
 	});
 
 	test('disables Roll and shows AI rolling copy during an AI awaiting-roll turn', () => {

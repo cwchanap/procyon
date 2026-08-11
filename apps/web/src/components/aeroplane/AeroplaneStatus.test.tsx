@@ -81,7 +81,7 @@ describe('Aeroplane status copy', () => {
 		).toBeGreaterThan(0);
 	});
 
-	test('shows the no-legal-moves pass message during an AI awaiting-choice turn with no moves', () => {
+	test('shows choosing-a-move copy during an AI awaiting-choice turn even when legalMoves is empty (hook filters to [] for AI turns)', () => {
 		const { getAllByText, queryAllByText } = render(
 			<AeroplaneStatus
 				state={fixtureState({
@@ -93,11 +93,12 @@ describe('Aeroplane status copy', () => {
 				isHumanTurn={false}
 			/>
 		);
+		expect(getAllByText(/yellow is choosing a move/i).length).toBeGreaterThan(
+			0
+		);
 		expect(
-			getAllByText(/no legal moves — turn passes automatically/i).length
-		).toBeGreaterThan(0);
-		// The generic "choosing a move" copy must not appear when there are no moves.
-		expect(queryAllByText(/yellow is choosing a move/i)).toHaveLength(0);
+			queryAllByText(/no legal moves — turn passes automatically/i)
+		).toHaveLength(0);
 	});
 
 	test('shows AI choosing-a-move copy during an AI awaiting-choice turn with moves', () => {
