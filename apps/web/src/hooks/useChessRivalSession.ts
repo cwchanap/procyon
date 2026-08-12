@@ -20,6 +20,14 @@ import {
  */
 export const ENGINE_START_TIMEOUT_MS = 60_000;
 
+/**
+ * Deadline for an engine's `makeMove()` to settle. An engine that has not
+ * produced a result within this window is treated as hung — its provider is
+ * disposed and the request fails with `'timeout'`. LLM providers are not
+ * subject to this deadline.
+ */
+export const ENGINE_MOVE_TIMEOUT_MS = 10_000;
+
 export interface StartRivalSessionInput {
 	setup: GameSetup;
 	userId: string | null;
@@ -84,6 +92,7 @@ const failureMessages: Record<RivalMoveFailureReason, string> = {
 	'invalid-response': 'The opponent returned an invalid response.',
 	'invalid-move': 'The opponent attempted an invalid move.',
 	'protocol-error': 'The opponent failed to communicate a move.',
+	timeout: 'The on-device computer took too long to move.',
 };
 
 function defaultCreateEngineProvider(): ChessRivalProvider {
@@ -347,19 +356,71 @@ export function useChessRivalSession(
 				}
 			};
 
-			let result: RivalMoveResult;
-			try {
-				result = await provider.makeMove(context.gameState, requestId);
-			} catch (error) {
+			type ProviderOutcome =
+				| { kind: 'result'; result: RivalMoveResult }
+				| { kind: 'error'; error: unknown };
+
+			// Rejection handler is attached before the race so a disposal-
+			// induced late rejection of the pending move waiter cannot surface
+			// as an unhandled rejection (the real Stockfish provider rejects
+			// its pending waiter on dispose).
+			const providerOutcome: Promise<ProviderOutcome> = provider
+				.makeMove(context.gameState, requestId)
+				.then(
+					result => ({ kind: 'result', result }) as const,
+					error => ({ kind: 'error', error }) as const
+				);
+
+			let outcome: ProviderOutcome | { kind: 'timeout' };
+			if (session.opponent.kind === 'engine') {
+				let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+				const deadline = new Promise<{ kind: 'timeout' }>(resolve => {
+					timeoutHandle = setTimeout(
+						() => resolve({ kind: 'timeout' }),
+						ENGINE_MOVE_TIMEOUT_MS
+					);
+				});
+				outcome = await Promise.race([providerOutcome, deadline]);
+				if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+			} else {
+				outcome = await providerOutcome;
+			}
+
+			if (outcome.kind === 'timeout') {
+				if (!isCurrent()) {
+					resolvePending();
+					return null;
+				}
+
+				if (pendingRequestRef.current === pending) {
+					pendingRequestRef.current = null;
+				}
+				if (providerRef.current === provider) {
+					providerRef.current = null;
+				}
+				setRivalThinking(false);
+				provider.dispose();
+
+				const message = failureMessages.timeout;
+				setRivalError({ kind: 'move-failed', reason: 'timeout', message });
+				return { ok: false, reason: 'timeout', message };
+			}
+
+			if (outcome.kind === 'error') {
 				if (!isCurrent()) {
 					resolvePending();
 					return null;
 				}
 				resolvePending();
-				const message = error instanceof Error ? error.message : String(error);
+				const message =
+					outcome.error instanceof Error
+						? outcome.error.message
+						: String(outcome.error);
 				setRivalError({ kind: 'unexpected', message });
 				return { ok: false, reason: 'protocol-error', message };
 			}
+
+			const result = outcome.result;
 
 			if (!isCurrent()) {
 				resolvePending();
