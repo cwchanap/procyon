@@ -1,12 +1,14 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
-import type {
-	ActiveRivalSession,
-	ChessSide,
-	EnginePreflight,
-	GameSetup,
-	LlmUsability,
-	RivalKind,
+import {
+	ENGINE_DIFFICULTIES,
+	type ActiveRivalSession,
+	type ChessSide,
+	type EngineDifficulty,
+	type EnginePreflight,
+	type GameSetup,
+	type LlmUsability,
+	type RivalKind,
 } from '../../lib/chess/rival/types';
 import RivalSetupSummary from './RivalSetupSummary';
 
@@ -20,6 +22,7 @@ interface ChessRivalSetupProps {
 	fallbackNotice?: string | null;
 	onSelectRival: (kind: RivalKind) => void;
 	onSelectHumanSide: (side: ChessSide) => void;
+	onSelectDifficulty: (difficulty: EngineDifficulty) => void;
 }
 
 interface OpponentCardProps {
@@ -99,6 +102,7 @@ const ChessRivalSetup: React.FC<ChessRivalSetupProps> = ({
 	fallbackNotice = null,
 	onSelectRival,
 	onSelectHumanSide,
+	onSelectDifficulty,
 }) => {
 	const llmModel =
 		llmUsability.status === 'available' ? llmUsability.model : undefined;
@@ -186,6 +190,43 @@ const ChessRivalSetup: React.FC<ChessRivalSetupProps> = ({
 					))}
 				</div>
 			</div>
+
+			{setup.rivalKind === 'engine' ? (
+				<fieldset className='space-y-2'>
+					<legend
+						className={cn(
+							'text-sm font-medium',
+							disabled ? 'text-ivory-dim/50' : 'text-ivory'
+						)}
+					>
+						Difficulty
+					</legend>
+					<div role='radiogroup' aria-label='Difficulty' className='flex gap-2'>
+						{ENGINE_DIFFICULTIES.map(option => (
+							<label
+								key={option.value}
+								className={cn(
+									'flex flex-1 items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm',
+									setup.engineDifficulty === option.value
+										? 'border-brass bg-brass text-ink-900'
+										: 'border-line text-ivory-dim'
+								)}
+							>
+								<input
+									type='radio'
+									name='engine-difficulty'
+									value={option.value}
+									aria-label={option.label}
+									checked={setup.engineDifficulty === option.value}
+									disabled={disabled}
+									onChange={() => onSelectDifficulty(option.value)}
+								/>
+								<span>{option.label}</span>
+							</label>
+						))}
+					</div>
+				</fieldset>
+			) : null}
 		</section>
 	);
 };

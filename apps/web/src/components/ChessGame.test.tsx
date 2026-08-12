@@ -105,7 +105,9 @@ describe('ChessGame — rival setup & preview', () => {
 		expect(engine.checked).toBe(true);
 		// Derived rival side: human plays White, so the computer plays Black.
 		expect(
-			view.getByText(/On-device computer · Computer plays Black · Unrated/i)
+			view.getByText(
+				/On-device computer · Casual · Computer plays Black · Unrated/i
+			)
 		).toBeTruthy();
 		// Once the resolved setup is revealed, the engine panel shows its status.
 		expect(view.getByText(/Ready to load/i)).toBeTruthy();
@@ -261,8 +263,11 @@ describe('ChessGame — rival setup & preview', () => {
 		try {
 			const view = render(<ChessGame />);
 			await waitForSetupResolved(view);
-			// Exercise a preview change (opponent + side) which must remain a
-			// pure preview — no engine Worker / provider construction.
+			// Exercise preview changes (opponent + difficulty + side) which
+			// must remain pure previews — no engine Worker / provider
+			// construction. Difficulty radios are engine-only, so select
+			// Strong while the engine rival is still selected.
+			fireEvent.click(view.getByRole('radio', { name: 'Strong' }));
 			fireEvent.click(view.getByRole('radio', { name: /Language model/i }));
 			fireEvent.click(view.getByRole('radio', { name: 'Black' }));
 
