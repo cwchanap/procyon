@@ -1,6 +1,6 @@
 # HPA-162 — Local Rival MVP Difficulty and Bounded Failure Design
 
-**Status:** Approved design; follow-up review incorporated. This PR remains docs-only.  
+**Status:** Approved design; follow-up review incorporated. This document is the design record for the implemented work (see `apps/web/src/lib/chess/rival/` and the HPA-162 plan).  
 **Date:** 2026-08-11  
 **Linear:** HPA-162 — Finish local-rival MVP with simple difficulty and bounded failure recovery  
 **Parent:** HPA-159 — Add a local non-LLM chess rival  
