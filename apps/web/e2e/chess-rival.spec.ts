@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
+import { RIVAL_PREFERENCES_STORAGE_KEY } from '../src/lib/chess/rival/preferences';
 import { AuthHelper, type TestUser } from './utils/auth-helpers';
 
 /**
@@ -18,7 +19,6 @@ import { AuthHelper, type TestUser } from './utils/auth-helpers';
  */
 
 const STOCKFISH_ASSET_MARKER = '/vendor/stockfish/';
-const RIVAL_PREFERENCES_STORAGE_KEY = 'procyon.chess.rival-preferences.v1';
 
 interface BoardOrientationSample {
 	hasBoard: boolean;
@@ -251,9 +251,10 @@ async function seedRememberedRival(
 			window.localStorage.setItem(
 				storageKey,
 				JSON.stringify({
-					version: 1,
+					version: 2,
 					lastRivalKind: rememberedKind,
 					humanSideByRival: { engine: 'white', llm: 'white' },
+					engineDifficulty: 'casual',
 				})
 			);
 		},
@@ -524,9 +525,7 @@ test.describe('Chess rival — configured language-model journey', () => {
 		const debugButton = page.getByRole('button', { name: /Debug Mode/i });
 		await expect(debugButton).toBeVisible();
 		await debugButton.click();
-		await expect(
-			page.getByRole('button', { name: /Debug ON/i })
-		).toBeVisible();
+		await expect(page.getByRole('button', { name: /Debug ON/i })).toBeVisible();
 
 		// Start uses the existing LLM path (no engine Worker constructed) and
 		// commits the session (human White → human to move first).

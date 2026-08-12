@@ -2,10 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import {
 	RIVAL_PREFERENCES_STORAGE_KEY,
 	readRivalPreferences,
+	persistEngineDifficulty,
 	persistHumanSide,
 	persistRivalKind,
 	type RivalPreferenceStorage,
-	type RivalPreferencesV1,
+	type RivalPreferencesV2,
 } from './preferences';
 
 function createMemoryStorage(
@@ -20,35 +21,53 @@ function createMemoryStorage(
 	};
 }
 
-const defaultPreferences: RivalPreferencesV1 = {
-	version: 1,
+const defaultPreferences: RivalPreferencesV2 = {
+	version: 2,
 	lastRivalKind: 'engine',
 	humanSideByRival: {
 		engine: 'white',
 		llm: 'white',
 	},
+	engineDifficulty: 'casual',
 };
 
+// The pre-V2 payload key, hard-coded here so the "only the V2 key is read"
+// isolation assertion does not depend on the module under test.
+const LEGACY_V1_STORAGE_KEY = 'procyon.chess.rival-preferences.v1';
+
 describe('rival preferences', () => {
-	test('missing storage returns defaults with both human sides white', () => {
+	test('missing V2 storage returns Casual defaults', () => {
 		const storage = createMemoryStorage();
 		expect(readRivalPreferences(storage)).toEqual(defaultPreferences);
 	});
 
-	test('valid V1 round-trips through storage', () => {
+	test('V2 round-trips rival, side, and difficulty independently', () => {
 		const storage = createMemoryStorage();
 		persistRivalKind(storage, 'llm');
 		persistHumanSide(storage, 'engine', 'black');
-		persistHumanSide(storage, 'llm', 'black');
+		persistEngineDifficulty(storage, 'strong');
 
 		expect(readRivalPreferences(storage)).toEqual({
-			version: 1,
+			version: 2,
 			lastRivalKind: 'llm',
 			humanSideByRival: {
 				engine: 'black',
-				llm: 'black',
+				llm: 'white',
 			},
+			engineDifficulty: 'strong',
 		});
+	});
+
+	test('invalid V2 difficulty falls back to full defaults', () => {
+		const storage = createMemoryStorage({
+			[RIVAL_PREFERENCES_STORAGE_KEY]: JSON.stringify({
+				version: 2,
+				lastRivalKind: 'llm',
+				humanSideByRival: { engine: 'black', llm: 'black' },
+				engineDifficulty: 'expert',
+			}),
+		});
+		expect(readRivalPreferences(storage)).toEqual(defaultPreferences);
 	});
 
 	test('corrupt JSON falls back to defaults', () => {
@@ -58,12 +77,13 @@ describe('rival preferences', () => {
 		expect(readRivalPreferences(storage)).toEqual(defaultPreferences);
 	});
 
-	test('wrong version falls back to defaults', () => {
+	test('future version falls back to defaults', () => {
 		const storage = createMemoryStorage({
 			[RIVAL_PREFERENCES_STORAGE_KEY]: JSON.stringify({
-				version: 2,
+				version: 3,
 				lastRivalKind: 'llm',
 				humanSideByRival: { engine: 'black', llm: 'black' },
+				engineDifficulty: 'strong',
 			}),
 		});
 		expect(readRivalPreferences(storage)).toEqual(defaultPreferences);
@@ -72,27 +92,24 @@ describe('rival preferences', () => {
 	test('invalid opponent and side values fall back to defaults', () => {
 		const storage = createMemoryStorage({
 			[RIVAL_PREFERENCES_STORAGE_KEY]: JSON.stringify({
-				version: 1,
+				version: 2,
 				lastRivalKind: 'cloud',
 				humanSideByRival: { engine: 'purple', llm: 'white' },
+				engineDifficulty: 'casual',
 			}),
 		});
 		expect(readRivalPreferences(storage)).toEqual(defaultPreferences);
 	});
 
-	test('deliberate changes persist independently', () => {
-		const storage = createMemoryStorage();
-		persistRivalKind(storage, 'llm');
-		persistHumanSide(storage, 'engine', 'black');
-
-		expect(readRivalPreferences(storage)).toEqual({
-			version: 1,
-			lastRivalKind: 'llm',
-			humanSideByRival: {
-				engine: 'black',
-				llm: 'white',
-			},
+	test('only the V2 key is read: a V1-key-only store returns defaults', () => {
+		const storage = createMemoryStorage({
+			[LEGACY_V1_STORAGE_KEY]: JSON.stringify({
+				version: 1,
+				lastRivalKind: 'llm',
+				humanSideByRival: { engine: 'black', llm: 'black' },
+			}),
 		});
+		expect(readRivalPreferences(storage)).toEqual(defaultPreferences);
 	});
 
 	test('automatic fallback does not update lastRivalKind', () => {
@@ -129,6 +146,9 @@ describe('rival preferences', () => {
 		expect(() => persistRivalKind(throwingStorage, 'llm')).not.toThrow();
 		expect(() =>
 			persistHumanSide(throwingStorage, 'engine', 'black')
+		).not.toThrow();
+		expect(() =>
+			persistEngineDifficulty(throwingStorage, 'strong')
 		).not.toThrow();
 	});
 });

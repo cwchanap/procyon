@@ -7,7 +7,7 @@ import {
 	persistRivalKind,
 	RIVAL_PREFERENCES_STORAGE_KEY,
 	type RivalPreferenceStorage,
-	type RivalPreferencesV1,
+	type RivalPreferencesV2,
 } from '../lib/chess/rival/preferences';
 import {
 	runEnginePreflight,
@@ -98,7 +98,7 @@ function getClientStorage(
 }
 
 function readPreferencesOnce(storage: RivalPreferenceStorage | null): {
-	preferences: RivalPreferencesV1;
+	preferences: RivalPreferencesV2;
 	rememberedKind: RivalKind | null;
 } {
 	if (storage === null) {
@@ -199,7 +199,7 @@ function startBlockedReasonFor(
 }
 
 function setupForResolution(
-	preferences: RivalPreferencesV1,
+	preferences: RivalPreferencesV2,
 	resolution: ResolvedSetupKind
 ): GameSetup {
 	return {
@@ -240,7 +240,7 @@ export function useChessRivalSetup({
 	const rememberedKindRef = useRef<RivalKind | null>(null);
 	const clearedFallbackNoticeRef = useRef<FallbackNotice | null>(null);
 	const [resolved, setResolved] = useState(false);
-	const [preferences, setPreferences] = useState<RivalPreferencesV1>(() =>
+	const [preferences, setPreferences] = useState<RivalPreferencesV2>(() =>
 		createDefaultRivalPreferences()
 	);
 	const [setup, setSetup] = useState<GameSetup>(defaultSetup);
@@ -357,7 +357,7 @@ export function useChessRivalSetup({
 			clearedFallbackNoticeRef.current = null;
 			setFallbackNotice(null);
 
-			const nextPreferences: RivalPreferencesV1 = {
+			const nextPreferences: RivalPreferencesV2 = {
 				...preferences,
 				lastRivalKind: kind,
 			};
@@ -384,7 +384,7 @@ export function useChessRivalSetup({
 			clearedFallbackNoticeRef.current = null;
 			setFallbackNotice(null);
 
-			const nextPreferences: RivalPreferencesV1 = {
+			const nextPreferences: RivalPreferencesV2 = {
 				...preferences,
 				humanSideByRival: {
 					...preferences.humanSideByRival,
