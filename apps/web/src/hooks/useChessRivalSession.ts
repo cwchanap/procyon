@@ -373,12 +373,18 @@ export function useChessRivalSession(
 				| { kind: 'result'; result: RivalMoveResult }
 				| { kind: 'error'; error: unknown };
 
-			// Rejection handler is attached before the race so a disposal-
-			// induced late rejection of the pending move waiter cannot surface
-			// as an unhandled rejection (the real Stockfish provider rejects
-			// its pending waiter on dispose).
-			const providerOutcome: Promise<ProviderOutcome> = provider
-				.makeMove(context.gameState, requestId)
+			// Wrapping makeMove in Promise.resolve().then(...) converts a
+			// synchronous throw into a rejected promise so the rejection
+			// handler below catches it. Without this wrap, a provider that
+			// throws synchronously would escape requestMove() entirely,
+			// bypassing the error cleanup path and leaving the board stuck
+			// in the thinking state. The rejection handler is attached
+			// before the race so a disposal-induced late rejection of the
+			// pending move waiter cannot surface as an unhandled rejection
+			// (the real Stockfish provider rejects its pending waiter on
+			// dispose).
+			const providerOutcome: Promise<ProviderOutcome> = Promise.resolve()
+				.then(() => provider.makeMove(context.gameState, requestId))
 				.then(
 					result => ({ kind: 'result', result }) as const,
 					error => ({ kind: 'error', error }) as const

@@ -797,6 +797,35 @@ describe('useChessRivalSession — move ownership', () => {
 		expect(result.current.rivalError?.message).toBe('worker crashed');
 	});
 
+	test('synchronous throw in makeMove is caught and surfaces an error', async () => {
+		// A provider that throws synchronously (instead of returning a
+		// rejected promise) must still be caught by requestMove's error
+		// path. Without the Promise.resolve().then(...) wrap the throw
+		// would escape requestMove() entirely, leaving the board stuck in
+		// the thinking state.
+		const provider = new FakeRivalProvider('engine');
+		provider.onMakeMove = (() => {
+			throw new Error('worker crashed');
+		}) as unknown as typeof provider.onMakeMove;
+		const { result } = await startedSession(provider);
+
+		let moveResult: unknown = 'unset';
+		await act(async () => {
+			moveResult = await result.current.requestMove(
+				makeContext(makeGameState())
+			);
+		});
+
+		expect(moveResult).toEqual({
+			ok: false,
+			reason: 'protocol-error',
+			message: 'worker crashed',
+		});
+		expect(result.current.rivalThinking).toBe(false);
+		expect(result.current.rivalError?.kind).toBe('unexpected');
+		expect(result.current.rivalError?.message).toBe('worker crashed');
+	});
+
 	test('clearError clears a surfaced rival error', async () => {
 		const provider = new FakeRivalProvider('engine');
 		provider.onMakeMove = async () => ({ ok: false, reason: 'no-move' });
