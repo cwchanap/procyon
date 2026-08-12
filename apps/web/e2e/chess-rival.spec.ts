@@ -376,10 +376,12 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 		const stockfishRequests = trackStockfishRequests(page);
 
 		await page.goto('/chess');
-		const initialBoardSample = await readBoardOrientationSample(page);
-		if (!initialBoardSample.hasBoard) {
-			await expect(page.getByTestId('board-loading-skeleton')).toBeVisible();
-		}
+		await expect
+			.poll(async () => {
+				const sample = await readBoardOrientationSample(page);
+				return sample.hasBoard || sample.hasSkeleton;
+			})
+			.toBe(true);
 		await waitForSetupResolved(page);
 		await expect(page.getByTestId('board-loading-skeleton')).toHaveCount(0);
 
@@ -402,7 +404,9 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 		await opponentRadio(page, 'Black').click();
 		await expect(opponentRadio(page, 'Black')).toBeChecked();
 		await expect(
-			page.getByText(/On-device computer · Computer plays White · Unrated/i)
+			page.getByText(
+				/On-device computer · Casual · Computer plays White · Unrated/i
+			)
 		).toBeVisible();
 
 		// (5) Orientation resolves to the chosen side (Black on the bottom):
@@ -584,7 +588,9 @@ test.describe('Chess rival — configured language-model journey', () => {
 		await opponentRadio(page, /On-device computer/i).click();
 		await expect(opponentRadio(page, /On-device computer/i)).toBeChecked();
 		await expect(
-			page.getByText(/On-device computer · Computer plays Black · Unrated/i)
+			page.getByText(
+				/On-device computer · Casual · Computer plays Black · Unrated/i
+			)
 		).toBeVisible();
 		await expect(square(page, 'Square 6-4')).toBeEnabled();
 
