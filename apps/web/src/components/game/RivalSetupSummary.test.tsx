@@ -20,7 +20,7 @@ describe('RivalSetupSummary', () => {
 		const { getByText } = render(<RivalSetupSummary setup={setup} />);
 
 		expect(
-			getByText('On-device computer · Computer plays Black · Unrated')
+			getByText('On-device computer · Casual · Computer plays Black · Unrated')
 		).toBeTruthy();
 	});
 
@@ -42,7 +42,7 @@ describe('RivalSetupSummary', () => {
 	test('freezes active engine summary from the active session', () => {
 		const session: ActiveRivalSession = {
 			id: 7,
-			opponent: { kind: 'engine', id: 'stockfish', difficulty: 'casual' },
+			opponent: { kind: 'engine', id: 'stockfish', difficulty: 'strong' },
 			humanSide: 'black',
 			rivalSide: 'white',
 			startedByUserId: null,
@@ -50,7 +50,7 @@ describe('RivalSetupSummary', () => {
 		const { getByText } = render(<RivalSetupSummary activeSession={session} />);
 
 		expect(
-			getByText('On-device computer · Computer plays White · Unrated')
+			getByText('On-device computer · Strong · Computer plays White · Unrated')
 		).toBeTruthy();
 	});
 

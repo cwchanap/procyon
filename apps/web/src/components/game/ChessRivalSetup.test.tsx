@@ -3,6 +3,7 @@ import { fireEvent, render } from '@testing-library/react';
 import React from 'react';
 import { setupReactDom } from '../../test/reactSetup';
 import type {
+	EngineDifficulty,
 	EnginePreflight,
 	GameSetup,
 	LlmUsability,
@@ -31,6 +32,7 @@ function renderSetup(
 		fallbackNotice: string | null;
 		onSelectRival: (kind: RivalKind) => void;
 		onSelectHumanSide: (side: 'white' | 'black') => void;
+		onSelectDifficulty: (difficulty: EngineDifficulty) => void;
 	}> = {}
 ) {
 	return render(
@@ -49,6 +51,7 @@ function renderSetup(
 			fallbackNotice={overrides.fallbackNotice ?? null}
 			onSelectRival={overrides.onSelectRival ?? (() => {})}
 			onSelectHumanSide={overrides.onSelectHumanSide ?? (() => {})}
+			onSelectDifficulty={overrides.onSelectDifficulty ?? (() => {})}
 		/>
 	);
 }
@@ -82,6 +85,33 @@ describe('ChessRivalSetup', () => {
 		expect(onSelectHumanSide).toHaveBeenCalledWith('black');
 	});
 
+	test('renders exactly the shared engine difficulty choices', () => {
+		const { getByRole } = renderSetup();
+		const group = getByRole('radiogroup', { name: /difficulty/i });
+		expect(group).toBeTruthy();
+		expect(getByRole('radio', { name: 'Casual' })).toBeTruthy();
+		expect(getByRole('radio', { name: 'Normal' })).toBeTruthy();
+		expect(getByRole('radio', { name: 'Strong' })).toBeTruthy();
+	});
+
+	test('difficulty is hidden for the language-model rival', () => {
+		const { queryByRole } = renderSetup({
+			setup: {
+				rivalKind: 'llm',
+				humanSide: 'white',
+				engineDifficulty: 'strong',
+			},
+		});
+		expect(queryByRole('radiogroup', { name: /difficulty/i })).toBeNull();
+	});
+
+	test('emits difficulty changes through onSelectDifficulty', () => {
+		const onSelectDifficulty = mock(() => {});
+		const { getByRole } = renderSetup({ onSelectDifficulty });
+		fireEvent.click(getByRole('radio', { name: 'Strong' }));
+		expect(onSelectDifficulty).toHaveBeenCalledWith('strong');
+	});
+
 	test('emits rival selection changes via onSelectRival', () => {
 		const onSelectRival = mock(() => {});
 		const { getByRole } = renderSetup({ onSelectRival });
@@ -104,6 +134,11 @@ describe('ChessRivalSetup', () => {
 		expect(
 			(getByRole('radio', { name: 'White' }) as HTMLInputElement).disabled
 		).toBe(true);
+		for (const label of ['Casual', 'Normal', 'Strong']) {
+			expect(
+				(getByRole('radio', { name: label }) as HTMLInputElement).disabled
+			).toBe(true);
+		}
 		expect(
 			getByText('Opponent settings are locked for the active game.')
 		).toBeTruthy();

@@ -982,6 +982,7 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 									}
 									onSelectRival={rivalSetup.selectRival}
 									onSelectHumanSide={rivalSetup.selectHumanSide}
+									onSelectDifficulty={rivalSetup.selectDifficulty}
 								/>
 							) : null}
 							{showEngineDetails ? (
