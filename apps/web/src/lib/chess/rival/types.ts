@@ -25,7 +25,11 @@ export function getEngineDifficultyLabel(value: EngineDifficulty): string {
 	return ENGINE_DIFFICULTIES.find(option => option.value === value)!.label;
 }
 
-export type EngineOpponent = { kind: 'engine'; id: 'stockfish' };
+export type EngineOpponent = {
+	kind: 'engine';
+	id: 'stockfish';
+	difficulty: EngineDifficulty;
+};
 export type LlmOpponent = {
 	kind: 'llm';
 	provider: string;
@@ -36,6 +40,7 @@ export type ChessOpponent = EngineOpponent | LlmOpponent;
 export interface GameSetup {
 	rivalKind: RivalKind;
 	humanSide: ChessSide;
+	engineDifficulty: EngineDifficulty;
 }
 
 export interface ActiveRivalSession {

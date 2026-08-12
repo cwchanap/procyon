@@ -8,6 +8,7 @@ import {
 	getRivalSide,
 	type ActiveRivalSession,
 	type ChessOpponent,
+	type EngineDifficulty,
 	type GameSetup,
 	type RivalMoveFailureReason,
 	type RivalMoveResult,
@@ -61,7 +62,9 @@ export interface RivalSessionError {
 }
 
 export interface UseChessRivalSessionOptions {
-	createEngineProvider?: () => ChessRivalProvider;
+	createEngineProvider?: (input: {
+		difficulty: EngineDifficulty;
+	}) => ChessRivalProvider;
 	createLlmProvider?: (input: { config: AIConfig }) => ChessRivalProvider;
 }
 
@@ -95,8 +98,12 @@ const failureMessages: Record<RivalMoveFailureReason, string> = {
 	timeout: 'The on-device computer took too long to move.',
 };
 
-function defaultCreateEngineProvider(): ChessRivalProvider {
-	return new StockfishRivalProvider();
+function defaultCreateEngineProvider({
+	difficulty,
+}: {
+	difficulty: EngineDifficulty;
+}): ChessRivalProvider {
+	return new StockfishRivalProvider({ difficulty });
 }
 
 function defaultCreateLlmProvider({
@@ -121,7 +128,11 @@ function isSetupUsable(input: StartRivalSessionInput): boolean {
 
 function opponentFor(setup: GameSetup, config: AIConfig): ChessOpponent {
 	if (setup.rivalKind === 'engine') {
-		return { kind: 'engine', id: 'stockfish' };
+		return {
+			kind: 'engine',
+			id: 'stockfish',
+			difficulty: setup.engineDifficulty,
+		};
 	}
 	return { kind: 'llm', provider: config.provider, model: config.model };
 }
@@ -209,7 +220,9 @@ export function useChessRivalSession(
 			try {
 				candidate =
 					input.setup.rivalKind === 'engine'
-						? engineFactoryRef.current()
+						? engineFactoryRef.current({
+								difficulty: input.setup.engineDifficulty,
+							})
 						: llmFactoryRef.current({ config: frozenConfig });
 			} catch {
 				if (currentAttemptRef.current === attemptId) {
