@@ -4,7 +4,7 @@ import { setupReactDom } from '../test/reactSetup';
 import {
 	RIVAL_PREFERENCES_STORAGE_KEY,
 	type RivalPreferenceStorage,
-	type RivalPreferencesV1,
+	type RivalPreferencesV2,
 } from '../lib/chess/rival/preferences';
 import type { EngineCapabilityEnvironment } from '../lib/chess/rival/engine-preflight';
 import type { EnginePreflight } from '../lib/chess/rival/types';
@@ -74,11 +74,12 @@ const availableAiConfig = {
 } satisfies ChessRivalAIConfigSnapshot;
 
 function storedPreferences(
-	overrides: Partial<RivalPreferencesV1> = {}
-): RivalPreferencesV1 {
+	overrides: Partial<RivalPreferencesV2> = {}
+): RivalPreferencesV2 {
 	return {
-		version: 1,
+		version: 2,
 		lastRivalKind: 'engine',
+		engineDifficulty: 'casual',
 		...overrides,
 		humanSideByRival: {
 			engine: 'white',
@@ -88,7 +89,7 @@ function storedPreferences(
 	};
 }
 
-function createStorage(initial?: RivalPreferencesV1) {
+function createStorage(initial?: RivalPreferencesV2) {
 	const store = new Map<string, string>();
 	if (initial) {
 		store.set(RIVAL_PREFERENCES_STORAGE_KEY, JSON.stringify(initial));
@@ -113,7 +114,7 @@ function createStorage(initial?: RivalPreferencesV1) {
 		read: () =>
 			JSON.parse(
 				store.get(RIVAL_PREFERENCES_STORAGE_KEY) ?? 'null'
-			) as RivalPreferencesV1 | null,
+			) as RivalPreferencesV2 | null,
 	};
 }
 

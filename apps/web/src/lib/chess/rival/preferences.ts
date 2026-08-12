@@ -1,27 +1,34 @@
-import type { ChessSide, RivalKind } from './types';
+import {
+	isEngineDifficulty,
+	type ChessSide,
+	type EngineDifficulty,
+	type RivalKind,
+} from './types';
 
 export const RIVAL_PREFERENCES_STORAGE_KEY =
-	'procyon.chess.rival-preferences.v1';
+	'procyon.chess.rival-preferences.v2';
 
 export interface RivalPreferenceStorage {
 	getItem(key: string): string | null;
 	setItem(key: string, value: string): void;
 }
 
-export interface RivalPreferencesV1 {
-	version: 1;
+export interface RivalPreferencesV2 {
+	version: 2;
 	lastRivalKind: RivalKind;
 	humanSideByRival: Record<RivalKind, ChessSide>;
+	engineDifficulty: EngineDifficulty;
 }
 
-export function createDefaultRivalPreferences(): RivalPreferencesV1 {
+export function createDefaultRivalPreferences(): RivalPreferencesV2 {
 	return {
-		version: 1,
+		version: 2,
 		lastRivalKind: 'engine',
 		humanSideByRival: {
 			engine: 'white',
 			llm: 'white',
 		},
+		engineDifficulty: 'casual',
 	};
 }
 
@@ -33,7 +40,7 @@ function isChessSide(value: unknown): value is ChessSide {
 	return value === 'white' || value === 'black';
 }
 
-export function parseRivalPreferences(raw: string): RivalPreferencesV1 | null {
+export function parseRivalPreferences(raw: string): RivalPreferencesV2 | null {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
@@ -46,7 +53,11 @@ export function parseRivalPreferences(raw: string): RivalPreferencesV1 | null {
 	}
 
 	const record = parsed as Record<string, unknown>;
-	if (record.version !== 1 || !isRivalKind(record.lastRivalKind)) {
+	if (
+		record.version !== 2 ||
+		!isRivalKind(record.lastRivalKind) ||
+		!isEngineDifficulty(record.engineDifficulty)
+	) {
 		return null;
 	}
 
@@ -61,18 +72,19 @@ export function parseRivalPreferences(raw: string): RivalPreferencesV1 | null {
 	}
 
 	return {
-		version: 1,
+		version: 2,
 		lastRivalKind: record.lastRivalKind,
 		humanSideByRival: {
 			engine: sideRecord.engine,
 			llm: sideRecord.llm,
 		},
+		engineDifficulty: record.engineDifficulty,
 	};
 }
 
 export function readRivalPreferences(
 	storage: RivalPreferenceStorage
-): RivalPreferencesV1 {
+): RivalPreferencesV2 {
 	let raw: string | null;
 	try {
 		raw = storage.getItem(RIVAL_PREFERENCES_STORAGE_KEY);
@@ -92,7 +104,7 @@ export function readRivalPreferences(
 
 function writeRivalPreferences(
 	storage: RivalPreferenceStorage,
-	preferences: RivalPreferencesV1
+	preferences: RivalPreferencesV2
 ): void {
 	try {
 		storage.setItem(RIVAL_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
@@ -125,5 +137,16 @@ export function persistHumanSide(
 			...preferences.humanSideByRival,
 			[rivalKind]: side,
 		},
+	});
+}
+
+export function persistEngineDifficulty(
+	storage: RivalPreferenceStorage,
+	difficulty: EngineDifficulty
+): void {
+	const preferences = readRivalPreferences(storage);
+	writeRivalPreferences(storage, {
+		...preferences,
+		engineDifficulty: difficulty,
 	});
 }
