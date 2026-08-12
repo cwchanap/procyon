@@ -10,6 +10,8 @@ import {
 	STOCKFISH_JS_SOURCE_ARCHIVE_SHA256,
 	STOCKFISH_LICENSE_FILENAME,
 } from '../scripts/stockfish-assets';
+import { createInitialGameState, makeAIMove } from '../src/lib/chess/game';
+import { parseBestMove } from '../src/lib/chess/rival/stockfish-protocol';
 
 const STOCKFISH_BASE_PATH = '/vendor/stockfish';
 const STOCKFISH_JS_PATH = `${STOCKFISH_BASE_PATH}/stockfish-18-lite-single.js`;
@@ -120,7 +122,7 @@ test.describe('Stockfish production asset delivery', () => {
 		);
 	});
 
-	test('starts a same-origin Stockfish worker and completes UCI readiness', async ({
+	test('starts the packaged Stockfish worker and returns one legal move', async ({
 		page,
 	}) => {
 		const consoleErrors: string[] = [];
@@ -169,12 +171,12 @@ test.describe('Stockfish production asset delivery', () => {
 			page.getByRole('heading', { name: 'Procyon Chess' })
 		).toBeVisible();
 
-		await page.evaluate(
+		const bestMoveLine = await page.evaluate(
 			async ({ scriptPath }) => {
 				const worker = new Worker(scriptPath);
 				const messages: string[] = [];
 
-				const waitForMessage = (expected: string): Promise<void> =>
+				const waitForMessage = (expected: string): Promise<string> =>
 					new Promise((resolve, reject) => {
 						const timeout = window.setTimeout(() => {
 							worker.removeEventListener('message', onMessage);
@@ -188,11 +190,12 @@ test.describe('Stockfish production asset delivery', () => {
 						}, 15_000);
 
 						function onMessage(event: MessageEvent<string>) {
-							messages.push(String(event.data));
-							if (String(event.data).includes(expected)) {
+							const line = String(event.data);
+							messages.push(line);
+							if (line.includes(expected)) {
 								window.clearTimeout(timeout);
 								worker.removeEventListener('message', onMessage);
-								resolve();
+								resolve(line);
 							}
 						}
 
@@ -204,12 +207,34 @@ test.describe('Stockfish production asset delivery', () => {
 					await waitForMessage('uciok');
 					worker.postMessage('isready');
 					await waitForMessage('readyok');
+					worker.postMessage('ucinewgame');
+					worker.postMessage('isready');
+					await waitForMessage('readyok');
+					worker.postMessage('position startpos');
+					worker.postMessage('go movetime 250');
+					return await waitForMessage('bestmove ');
 				} finally {
 					worker.terminate();
 				}
 			},
 			{ scriptPath: STOCKFISH_JS_PATH }
 		);
+
+		const parsed = parseBestMove(bestMoveLine);
+		expect(parsed).not.toBeNull();
+		expect(parsed?.ok).toBe(true);
+		if (!parsed || !parsed.ok) {
+			throw new Error(`Stockfish returned unusable bestmove: ${bestMoveLine}`);
+		}
+
+		const initial = createInitialGameState('human-vs-ai', 'white');
+		const next = makeAIMove(
+			initial,
+			parsed.move.from,
+			parsed.move.to,
+			parsed.move.promotion
+		);
+		expect(next).not.toBeNull();
 
 		expect(consoleErrors.filter(entry => !isKnownFaviconEntry(entry))).toEqual(
 			[]
