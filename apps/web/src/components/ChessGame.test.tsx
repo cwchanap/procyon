@@ -14,6 +14,8 @@ import { setupReactDom } from '../test/reactSetup';
 import ChessGame from './ChessGame';
 import { AUTH_CHANGE_EVENT, __resetSharedAuthUserForTests } from '../lib/auth';
 import { resetAIConfigStore, setConfig } from '../lib/ai/ai-config-store';
+import { ENGINE_MOVE_TIMEOUT_MS } from '../hooks/useChessRivalSession';
+import type { RivalMoveResult } from '../lib/chess/rival/types';
 import {
 	deferred,
 	engineOptions,
@@ -52,6 +54,13 @@ const clearRivalPreferences = sharedClearRivalPreferences;
 /** Wait for client-side preference hydration to resolve (setup revealed). */
 async function waitForSetupResolved(view: RenderResult): Promise<HTMLElement> {
 	return waitFor(() => view.getByRole('radiogroup', { name: /opponent/i }));
+}
+
+/** Advance fake timers (Bun's `jest` exposes no typed advanceTimersByTime). */
+function advanceTimers(ms: number): void {
+	(
+		jest as unknown as { advanceTimersByTime(ms: number): void }
+	).advanceTimersByTime(ms);
 }
 
 /** All board square buttons, in DOM (render) order. */
@@ -740,6 +749,87 @@ describe('ChessGame — atomic Start & rival session', () => {
 			(view.getByRole('button', { name: 'Square 6-4' }) as HTMLButtonElement)
 				.disabled
 		).toBe(false);
+	});
+
+	test('an engine move timeout surfaces New-Game-only recovery and a late move cannot apply', async () => {
+		const move = deferred<RivalMoveResult>();
+		const { options, instances } = engineOptions(() => ({
+			makeMove: () => move.promise,
+		}));
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
+
+		// Start the default game (human White), then play e2 → e4.
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		await waitFor(() => view.getByRole('button', { name: /new game/i }));
+
+		// Freeze timers BEFORE the engine move request starts, so the move
+		// deadline (and the rival-trigger UX delay ahead of it) are fake
+		// timers — Bun's fake timers do not capture timers scheduled earlier.
+		jest.useFakeTimers();
+		try {
+			fireEvent.click(view.getByRole('button', { name: 'Square 6-4' }));
+			fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
+
+			// Cross the rival-trigger UX delay so the engine request starts
+			// (and its 10s deadline is scheduled) under fake timers.
+			await act(async () => {
+				advanceTimers(1000);
+				for (let i = 0; i < 5; i++) {
+					await Promise.resolve();
+				}
+			});
+			expect(instances[0]?.makeMoveCount).toBe(1);
+
+			// Cross the engine move deadline.
+			await act(async () => {
+				advanceTimers(ENGINE_MOVE_TIMEOUT_MS);
+				// Flush the deadline race continuation, the hook's timeout
+				// state updates, and ChessGame's failure handling.
+				for (let i = 0; i < 5; i++) {
+					await Promise.resolve();
+				}
+			});
+
+			expect(view.getByText('Computer move timed out')).toBeTruthy();
+			expect(view.getByText(/Start a New Game/i)).toBeTruthy();
+
+			// The legal human e2→e4 move remains.
+			expect(view.getByRole('button', { name: 'Square 6-4' }).textContent).toBe(
+				''
+			);
+			expect(
+				view.getByRole('button', { name: 'Square 4-4' }).textContent
+			).toContain('♙');
+
+			// Resolve the fake after timeout with Black e7→e5.
+			await act(async () => {
+				move.resolve({ ok: true, move: { from: 'e7', to: 'e5' } });
+				await Promise.resolve();
+			});
+
+			// The late engine move never applies.
+			expect(
+				view.getByRole('button', { name: 'Square 1-4' }).textContent
+			).toContain('♟');
+			expect(view.getByRole('button', { name: 'Square 3-4' }).textContent).toBe(
+				''
+			);
+			expect(instances[0]?.makeMoveCount).toBe(1);
+		} finally {
+			jest.useRealTimers();
+		}
+
+		// New Game resets the dead session: selectors unlock and the timeout
+		// alert disappears.
+		fireEvent.click(view.getByRole('button', { name: /new game/i }));
+		await waitFor(() => {
+			expect(
+				(view.getByRole('radio', { name: 'White' }) as HTMLInputElement)
+					.disabled
+			).toBe(false);
+		});
+		expect(view.queryByText('Computer move timed out')).toBeNull();
 	});
 
 	test('an LLM Start is blocked until the model is configured', async () => {

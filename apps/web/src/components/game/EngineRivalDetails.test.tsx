@@ -90,6 +90,26 @@ describe('EngineRivalDetails', () => {
 		expect(getByText(/Computer is thinking/i)).toBeTruthy();
 	});
 
+	test('timeout tells the player to start a New Game and offers no retry', () => {
+		const view = render(
+			<EngineRivalDetails
+				enginePreflight={{ status: 'supported' }}
+				startState='idle'
+				rivalThinking={false}
+				rivalError={{
+					kind: 'move-failed',
+					reason: 'timeout',
+					message: 'The on-device computer took too long to move.',
+				}}
+				onRetry={() => {}}
+			/>
+		);
+
+		expect(view.getByText('Computer move timed out')).toBeTruthy();
+		expect(view.getByText(/Start a New Game/i)).toBeTruthy();
+		expect(view.queryByRole('button', { name: /try again/i })).toBeNull();
+	});
+
 	test('shows active failure with New Game guidance', () => {
 		const rivalError: RivalSessionError = {
 			kind: 'move-failed',

@@ -63,11 +63,13 @@ const EngineRivalDetails: React.FC<EngineRivalDetailsProps> = ({
 	}
 
 	if (rivalError) {
+		const errorHeading =
+			rivalError.reason === 'timeout'
+				? 'Computer move timed out'
+				: 'Computer move failed';
 		return (
 			<div className={panelClass} role='alert'>
-				<div className='font-semibold text-destructive'>
-					Computer move failed
-				</div>
+				<div className='font-semibold text-destructive'>{errorHeading}</div>
 				<p className='mt-1 text-ivory-dim'>{rivalError.message}</p>
 				<p className='mt-2 text-ivory-dim'>
 					Start a New Game to reset the computer opponent.
