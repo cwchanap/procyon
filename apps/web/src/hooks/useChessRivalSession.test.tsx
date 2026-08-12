@@ -9,6 +9,7 @@ import type { ChessRivalProvider } from '../lib/chess/rival/provider';
 import type { GameSetup, RivalMoveResult } from '../lib/chess/rival/types';
 import type { AIConfig } from '../lib/ai/types';
 import {
+	ENGINE_MOVE_TIMEOUT_MS,
 	ENGINE_START_TIMEOUT_MS,
 	useChessRivalSession,
 	type RivalMoveRequestContext,
@@ -819,5 +820,194 @@ describe('useChessRivalSession — move ownership', () => {
 		});
 		expect(provider.disposeCount).toBe(1);
 		expect(result.current.activeSession).toBeNull();
+	});
+});
+
+describe('useChessRivalSession — engine move deadline', () => {
+	test('engine move times out, disposes provider, and preserves the session', async () => {
+		const move = deferred<RivalMoveResult>();
+		const provider = new FakeRivalProvider('engine');
+		provider.onMakeMove = () => move.promise;
+		const { result } = renderSession({
+			createEngineProvider: mock(() => provider),
+		});
+
+		await act(async () => {
+			await result.current.start(startInput());
+		});
+		const sessionId = result.current.activeSession?.id;
+
+		jest.useFakeTimers();
+		try {
+			let pending!: Promise<RivalMoveResult | null>;
+			act(() => {
+				pending = result.current.requestMove(makeContext(makeGameState()));
+			});
+
+			let outcome: RivalMoveResult | null = null;
+			await act(async () => {
+				advanceTimers(ENGINE_MOVE_TIMEOUT_MS);
+				outcome = await pending;
+			});
+
+			expect<RivalMoveResult | null>(outcome).toEqual({
+				ok: false,
+				reason: 'timeout',
+				message: 'The on-device computer took too long to move.',
+			});
+			expect(provider.disposeCount).toBe(1);
+			expect<number | undefined>(result.current.activeSession?.id).toBe(
+				sessionId
+			);
+			expect(result.current.rivalThinking).toBe(false);
+			expect(result.current.rivalError).toMatchObject({
+				kind: 'move-failed',
+				reason: 'timeout',
+			});
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	test('late engine rejection after timeout is handled and cannot replace timeout state', async () => {
+		const move = deferred<RivalMoveResult>();
+		const provider = new FakeRivalProvider('engine');
+		provider.onMakeMove = () => move.promise;
+		const { result } = renderSession({
+			createEngineProvider: mock(() => provider),
+		});
+		await act(async () => void (await result.current.start(startInput())));
+
+		jest.useFakeTimers();
+		try {
+			let pending!: Promise<RivalMoveResult | null>;
+			act(() => {
+				pending = result.current.requestMove(makeContext(makeGameState()));
+			});
+			await act(async () => {
+				advanceTimers(ENGINE_MOVE_TIMEOUT_MS);
+				expect(await pending).toMatchObject({ ok: false, reason: 'timeout' });
+			});
+
+			await act(async () => {
+				move.reject(new Error('late worker rejection'));
+				await Promise.resolve();
+			});
+
+			expect(provider.disposeCount).toBe(1);
+			expect(result.current.rivalError).toMatchObject({ reason: 'timeout' });
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	test('reset before engine deadline prevents stale timeout state', async () => {
+		const move = deferred<RivalMoveResult>();
+		const provider = new FakeRivalProvider('engine');
+		provider.onMakeMove = () => move.promise;
+		const { result } = renderSession({
+			createEngineProvider: mock(() => provider),
+		});
+		await act(async () => void (await result.current.start(startInput())));
+
+		jest.useFakeTimers();
+		try {
+			act(() => {
+				void result.current.requestMove(makeContext(makeGameState()));
+			});
+			act(() => result.current.reset());
+			await act(async () => {
+				advanceTimers(ENGINE_MOVE_TIMEOUT_MS);
+				await Promise.resolve();
+			});
+
+			expect(result.current.activeSession).toBeNull();
+			expect(result.current.rivalError).toBeNull();
+			expect(provider.disposeCount).toBe(1);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	test('a stale engine deadline cannot touch a newer provider session', async () => {
+		const providerA = new FakeRivalProvider('engine');
+		const move = deferred<RivalMoveResult>();
+		providerA.onMakeMove = () => move.promise;
+		const providerB = new FakeRivalProvider('engine');
+		const { result } = renderSession({
+			createEngineProvider: orderedEngineFactory(providerA, providerB),
+		});
+		await act(async () => {
+			await result.current.start(startInput());
+		});
+
+		jest.useFakeTimers();
+		try {
+			act(() => {
+				void result.current.requestMove(makeContext(makeGameState()));
+			});
+
+			act(() => {
+				result.current.reset();
+			});
+			expect(providerA.disposeCount).toBe(1);
+
+			let secondSession:
+				| Awaited<ReturnType<typeof result.current.start>>
+				| undefined;
+			await act(async () => {
+				secondSession = await result.current.start(startInput());
+			});
+
+			await act(async () => {
+				advanceTimers(ENGINE_MOVE_TIMEOUT_MS);
+				await Promise.resolve();
+			});
+
+			expect(providerA.disposeCount).toBe(1);
+			expect(providerB.disposeCount).toBe(0);
+			expect<number | undefined>(result.current.activeSession?.id).toBe(
+				secondSession?.id
+			);
+			expect(result.current.rivalError).toBeNull();
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	test('LLM move is not subject to the engine move deadline', async () => {
+		const move = deferred<RivalMoveResult>();
+		const provider = new FakeRivalProvider('llm');
+		provider.onMakeMove = () => move.promise;
+		const { result } = renderSession({
+			createLlmProvider: mock(() => provider),
+		});
+		await act(async () => {
+			await result.current.start(startInput({ setup: llmSetup }));
+		});
+
+		jest.useFakeTimers();
+		try {
+			let settled = false;
+			const pending = result.current
+				.requestMove(makeContext(makeGameState()))
+				.finally(() => {
+					settled = true;
+				});
+
+			await act(async () => {
+				advanceTimers(ENGINE_MOVE_TIMEOUT_MS);
+				await Promise.resolve();
+			});
+			expect(settled).toBe(false);
+			expect(provider.disposeCount).toBe(0);
+
+			await act(async () => {
+				move.resolve({ ok: true, move: sampleMove });
+				await pending;
+			});
+		} finally {
+			jest.useRealTimers();
+		}
 	});
 });

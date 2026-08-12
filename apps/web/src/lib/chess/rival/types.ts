@@ -41,7 +41,8 @@ export type RivalMoveFailureReason =
 	| 'no-move'
 	| 'invalid-response'
 	| 'invalid-move'
-	| 'protocol-error';
+	| 'protocol-error'
+	| 'timeout';
 
 export interface RivalMoveMeta {
 	thinking?: string;
