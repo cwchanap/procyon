@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createInitialGameState } from '../game';
+import type { EngineDifficulty } from './types';
 import {
 	StockfishRivalProvider,
 	type WorkerFactory,
@@ -33,9 +34,13 @@ class FakeWorker implements WorkerLike {
 	}
 }
 
-function createHarness(options: { baseUrl?: string } = {}) {
+function createHarness(
+	difficulty: EngineDifficulty = 'casual',
+	options: { baseUrl?: string } = {}
+) {
 	const factoryHarness = createFactoryHarness();
 	const provider = new StockfishRivalProvider({
+		difficulty,
 		workerFactory: factoryHarness.workerFactory,
 		origin,
 		...options,
@@ -117,7 +122,7 @@ describe('StockfishRivalProvider', () => {
 	});
 
 	test('honors an injected Astro-style base path for the worker URL', () => {
-		const { urls } = createHarness({ baseUrl: '/games/' });
+		const { urls } = createHarness('casual', { baseUrl: '/games/' });
 
 		expect(urls[0]?.origin).toBe(origin);
 		expect(urls[0]?.pathname).toBe(
@@ -125,7 +130,7 @@ describe('StockfishRivalProvider', () => {
 		);
 	});
 
-	test('initializes UCI, configures Skill Level 0, and waits for readyok', async () => {
+	test('initializes UCI, configures Skill Level 0 for casual difficulty, and waits for readyok', async () => {
 		const { provider, worker } = createHarness();
 
 		const pending = provider.initialize();
@@ -147,6 +152,51 @@ describe('StockfishRivalProvider', () => {
 
 		worker.emit('readyok');
 		await expect(pending).resolves.toBeUndefined();
+	});
+
+	test('maps normal difficulty to Skill Level 8', async () => {
+		const { provider, worker } = createHarness('normal');
+
+		const pending = provider.initialize();
+		worker.emit(skillLevelOption);
+		worker.emit('uciok');
+		await flushProviderTasks();
+		expect(worker.commands).toContain('setoption name Skill Level value 8');
+
+		worker.emit('readyok');
+		await expect(pending).resolves.toBeUndefined();
+	});
+
+	test('maps strong difficulty to Skill Level 16', async () => {
+		const { provider, worker } = createHarness('strong');
+
+		const pending = provider.initialize();
+		worker.emit(skillLevelOption);
+		worker.emit('uciok');
+		await flushProviderTasks();
+		expect(worker.commands).toContain('setoption name Skill Level value 16');
+
+		worker.emit('readyok');
+		await expect(pending).resolves.toBeUndefined();
+	});
+
+	test('every difficulty still moves with go movetime 250', async () => {
+		for (const difficulty of ['casual', 'normal', 'strong'] as const) {
+			const { provider, worker } = createHarness(difficulty);
+			await initialize(provider, worker);
+			await beginGame(provider, worker);
+
+			const pending = provider.makeMove(
+				createInitialGameState('human-vs-ai', 'black'),
+				1
+			);
+			worker.emit('bestmove e7e5');
+			await expect(pending).resolves.toEqual({
+				ok: true,
+				move: { from: 'e7', to: 'e5' },
+			});
+			expect(worker.commands).toContain('go movetime 250');
+		}
 	});
 
 	test('fails initialization when Skill Level is not advertised', async () => {
@@ -206,6 +256,7 @@ describe('StockfishRivalProvider', () => {
 	test('a new provider instance owns a fresh worker for a repeated Start', async () => {
 		const harness = createFactoryHarness();
 		const first = new StockfishRivalProvider({
+			difficulty: 'casual',
 			workerFactory: harness.workerFactory,
 			origin,
 		});
@@ -215,6 +266,7 @@ describe('StockfishRivalProvider', () => {
 		first.dispose();
 
 		const second = new StockfishRivalProvider({
+			difficulty: 'casual',
 			workerFactory: harness.workerFactory,
 			origin,
 		});

@@ -6,7 +6,11 @@ import { deferred, FakeRivalProvider } from '../test/fakeRival';
 import { createInitialGameState } from '../lib/chess/game';
 import type { ChessMoveRequest, GameState } from '../lib/chess/types';
 import type { ChessRivalProvider } from '../lib/chess/rival/provider';
-import type { GameSetup, RivalMoveResult } from '../lib/chess/rival/types';
+import type {
+	EngineDifficulty,
+	GameSetup,
+	RivalMoveResult,
+} from '../lib/chess/rival/types';
 import type { AIConfig } from '../lib/ai/types';
 import {
 	ENGINE_MOVE_TIMEOUT_MS,
@@ -22,8 +26,16 @@ setupReactDom();
 const sampleMove: ChessMoveRequest = { from: 'e7', to: 'e5' };
 const alternateMove: ChessMoveRequest = { from: 'd7', to: 'd5' };
 
-const engineSetup: GameSetup = { rivalKind: 'engine', humanSide: 'white' };
-const llmSetup: GameSetup = { rivalKind: 'llm', humanSide: 'white' };
+const engineSetup: GameSetup = {
+	rivalKind: 'engine',
+	humanSide: 'white',
+	engineDifficulty: 'casual',
+};
+const llmSetup: GameSetup = {
+	rivalKind: 'llm',
+	humanSide: 'white',
+	engineDifficulty: 'casual',
+};
 
 const availableConfig: AIConfig = {
 	provider: 'openai',
@@ -302,7 +314,42 @@ describe('useChessRivalSession — Start transaction', () => {
 		expect(Object.isFrozen(session)).toBe(true);
 		expect(factory).toHaveBeenCalledTimes(1);
 		expect(result.current.activeSession).toEqual(session ?? null);
-		expect(session?.opponent).toEqual({ kind: 'engine', id: 'stockfish' });
+		expect(session?.opponent).toEqual({
+			kind: 'engine',
+			id: 'stockfish',
+			difficulty: 'casual',
+		});
+	});
+
+	test('engine Start passes and freezes the exact setup difficulty', async () => {
+		const provider = new FakeRivalProvider('engine');
+		let received: EngineDifficulty | undefined;
+		const { result } = renderSession({
+			createEngineProvider: mock(({ difficulty }) => {
+				received = difficulty;
+				return provider;
+			}),
+		});
+
+		const setup: GameSetup = {
+			rivalKind: 'engine',
+			humanSide: 'white',
+			engineDifficulty: 'strong',
+		};
+		let session: Awaited<ReturnType<typeof result.current.start>> | undefined;
+		await act(async () => {
+			session = await result.current.start(startInput({ setup }));
+		});
+
+		expect(received).toBe('strong');
+		expect(session?.opponent).toEqual({
+			kind: 'engine',
+			id: 'stockfish',
+			difficulty: 'strong',
+		});
+
+		setup.engineDifficulty = 'casual';
+		expect(session?.opponent).toMatchObject({ difficulty: 'strong' });
 	});
 
 	test('startedByUserId captures the current user or null', async () => {
@@ -341,6 +388,7 @@ describe('useChessRivalSession — Start transaction', () => {
 		const rivalWhiteSetup: GameSetup = {
 			rivalKind: 'engine',
 			humanSide: 'black',
+			engineDifficulty: 'casual',
 		};
 		const gameState = makeGameState({ currentPlayer: 'white' });
 

@@ -1,6 +1,10 @@
 import type { UseChessRivalSessionOptions } from '../hooks';
 import type { ChessRivalProvider } from '../lib/chess/rival/provider';
-import type { RivalKind, RivalMoveResult } from '../lib/chess/rival/types';
+import type {
+	EngineDifficulty,
+	RivalKind,
+	RivalMoveResult,
+} from '../lib/chess/rival/types';
 import type { GameState } from '../lib/chess/types';
 import { RIVAL_PREFERENCES_STORAGE_KEY } from '../lib/chess/rival/preferences';
 
@@ -94,11 +98,21 @@ export class FakeRivalProvider implements ChessRivalProvider {
  * An engine provider factory that records every constructed instance. Each
  * Start builds a fresh provider, so `instances.length` reflects retries.
  */
+export interface EngineFactoryCall {
+	difficulty: EngineDifficulty;
+}
+
 export function engineFactory(
 	makeCfg: (index: number) => FakeProviderConfig = () => ({})
-): { create: () => ChessRivalProvider; instances: FakeRivalProvider[] } {
+): {
+	create: (input: EngineFactoryCall) => ChessRivalProvider;
+	instances: FakeRivalProvider[];
+	calls: EngineFactoryCall[];
+} {
 	const instances: FakeRivalProvider[] = [];
-	const create = (): ChessRivalProvider => {
+	const calls: EngineFactoryCall[] = [];
+	const create = (input: EngineFactoryCall): ChessRivalProvider => {
+		calls.push(input);
 		const provider = new FakeRivalProvider({
 			...makeCfg(instances.length),
 			kind: 'engine',
@@ -106,7 +120,7 @@ export function engineFactory(
 		instances.push(provider);
 		return provider;
 	};
-	return { create, instances };
+	return { create, instances, calls };
 }
 
 export function engineOptions(
@@ -114,11 +128,13 @@ export function engineOptions(
 ): {
 	options: UseChessRivalSessionOptions;
 	instances: FakeRivalProvider[];
+	calls: EngineFactoryCall[];
 } {
 	const factory = engineFactory(makeCfg);
 	return {
 		options: { createEngineProvider: factory.create },
 		instances: factory.instances,
+		calls: factory.calls,
 	};
 }
 

@@ -12,13 +12,17 @@ import {
 	parseUciOption,
 	type BestMoveCollector,
 } from './stockfish-protocol';
-import type { RivalMoveResult } from './types';
+import type { RivalMoveResult, EngineDifficulty } from './types';
 
 const STOCKFISH_WORKER_ASSET = 'vendor/stockfish/stockfish-18-lite-single.js';
 const DEFAULT_ORIGIN = 'http://localhost';
 const DEFAULT_BASE_URL = '/';
 const STOCKFISH_MOVE_TIME_MS = 250;
-const STOCKFISH_SKILL_LEVEL = 0;
+const STOCKFISH_SKILL_LEVEL_BY_DIFFICULTY = {
+	casual: 0,
+	normal: 8,
+	strong: 16,
+} as const satisfies Record<EngineDifficulty, number>;
 
 type ImportMetaWithEnv = ImportMeta & {
 	env?: {
@@ -36,6 +40,7 @@ export interface WorkerLike {
 export type WorkerFactory = (url: URL) => WorkerLike;
 
 export interface StockfishRivalProviderOptions {
+	difficulty: EngineDifficulty;
 	workerFactory?: WorkerFactory;
 	origin?: string;
 	baseUrl?: string;
@@ -99,6 +104,7 @@ export function resolveStockfishWorkerUrl(
 export class StockfishRivalProvider implements ChessRivalProvider {
 	readonly kind = 'engine' as const;
 
+	private readonly difficulty: EngineDifficulty;
 	private readonly worker: WorkerLike;
 	private disposed = false;
 	private workerError: Error | null = null;
@@ -108,7 +114,8 @@ export class StockfishRivalProvider implements ChessRivalProvider {
 	private currentMoveRequestToken: number | null = null;
 	private skillLevelAdvertised = false;
 
-	constructor(options: StockfishRivalProviderOptions = {}) {
+	constructor(options: StockfishRivalProviderOptions) {
+		this.difficulty = options.difficulty;
 		const workerFactory = options.workerFactory ?? defaultWorkerFactory;
 		this.worker = workerFactory(resolveStockfishWorkerUrl(options));
 		this.worker.onmessage = event => {
@@ -128,7 +135,11 @@ export class StockfishRivalProvider implements ChessRivalProvider {
 			throw new Error('Stockfish did not advertise the Skill Level option');
 		}
 
-		this.postCommand(formatSetSkillLevelCommand(STOCKFISH_SKILL_LEVEL));
+		this.postCommand(
+			formatSetSkillLevelCommand(
+				STOCKFISH_SKILL_LEVEL_BY_DIFFICULTY[this.difficulty]
+			)
+		);
 		await this.requestReady();
 	}
 

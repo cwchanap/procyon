@@ -154,7 +154,19 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'engine',
 			humanSide: 'black',
+			engineDifficulty: 'casual',
 		});
+	});
+
+	test('restores stored engine difficulty into resolved setup', async () => {
+		const memory = createStorage(
+			storedPreferences({ engineDifficulty: 'strong' })
+		);
+		const { result } = renderHook(() =>
+			useChessRivalSetup(createOptions({ storage: memory.storage }))
+		);
+		await waitForResolved(result);
+		expect(result.current.setup.engineDifficulty).toBe('strong');
 	});
 
 	test('exposes unresolved setup before client preference read', async () => {
@@ -173,6 +185,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'engine',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 
 		await waitForResolved(result);
@@ -190,6 +203,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'engine',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 		expect(result.current.startBlockedReason).toBeNull();
 	});
@@ -211,6 +225,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'engine',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 		expect(result.current.startBlockedReason).toBeNull();
 	});
@@ -238,6 +253,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'llm',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 	});
 
@@ -292,6 +308,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'llm',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 	});
 
@@ -327,6 +344,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'llm',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 	});
 
@@ -348,6 +366,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'llm',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 		expect(result.current.llmUsability).toEqual({
 			status: 'available',
@@ -379,6 +398,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'llm',
 			humanSide: 'black',
+			engineDifficulty: 'casual',
 		});
 		expect(result.current.startBlockedReason).toContain('loading');
 	});
@@ -416,6 +436,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'llm',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 
 		act(() => {
@@ -426,6 +447,78 @@ describe('useChessRivalSetup', () => {
 			engine: 'black',
 			llm: 'black',
 		});
+	});
+
+	test('selectDifficulty persists and notifies the existing setup-change path', async () => {
+		const memory = createStorage();
+		const onSetupChange = mock(() => {});
+		const { result } = renderHook(() =>
+			useChessRivalSetup(
+				createOptions({ storage: memory.storage, onSetupChange })
+			)
+		);
+		await waitForResolved(result);
+
+		act(() => result.current.selectDifficulty('normal'));
+
+		expect(result.current.setup.engineDifficulty).toBe('normal');
+		expect(memory.read()?.engineDifficulty).toBe('normal');
+		expect(onSetupChange).toHaveBeenCalledWith({
+			rivalKind: 'engine',
+			humanSide: 'white',
+			engineDifficulty: 'normal',
+		});
+	});
+
+	test('engine difficulty persists across engine→LLM→engine switching', async () => {
+		const memory = createStorage();
+		const { result } = renderHook(() =>
+			useChessRivalSetup(createOptions({ storage: memory.storage }))
+		);
+		await waitForResolved(result);
+
+		act(() => result.current.selectDifficulty('normal'));
+		expect(result.current.setup.engineDifficulty).toBe('normal');
+
+		act(() => result.current.selectRival('llm'));
+		expect(result.current.setup).toEqual({
+			rivalKind: 'llm',
+			humanSide: 'white',
+			engineDifficulty: 'normal',
+		});
+
+		act(() => result.current.selectRival('engine'));
+		expect(result.current.setup).toEqual({
+			rivalKind: 'engine',
+			humanSide: 'white',
+			engineDifficulty: 'normal',
+		});
+		expect(memory.read()?.engineDifficulty).toBe('normal');
+	});
+
+	test('automatic fallback to engine does not change the stored difficulty', async () => {
+		const memory = createStorage(
+			storedPreferences({
+				lastRivalKind: 'llm',
+				engineDifficulty: 'strong',
+			})
+		);
+
+		const { result } = renderHook(() =>
+			useChessRivalSetup(
+				createOptions({
+					aiConfig: unconfiguredAiConfig,
+					storage: memory.storage,
+				})
+			)
+		);
+
+		await waitForResolved(result);
+
+		expect(result.current.setup.rivalKind).toBe('engine');
+		expect(result.current.setup.engineDifficulty).toBe('strong');
+		expect(memory.read()?.engineDifficulty).toBe('strong');
+		expect(memory.setItemCount()).toBe(0);
 	});
 
 	test('automatic fallback emits a notice without persisting the rival kind', async () => {
@@ -474,6 +567,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'llm',
 			humanSide: 'black',
+			engineDifficulty: 'casual',
 		});
 		expect(result.current.fallbackNotice).toBeNull();
 	});
@@ -519,6 +613,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'engine',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 		expect(result.current.fallbackNotice).toBeNull();
 		expect(memory.setItemCount()).toBe(0);
@@ -547,6 +642,7 @@ describe('useChessRivalSetup', () => {
 		expect(result.current.setup).toEqual({
 			rivalKind: 'llm',
 			humanSide: 'black',
+			engineDifficulty: 'casual',
 		});
 		expect(result.current.fallbackNotice).toBeNull();
 		expect(result.current.startBlockedReason).toContain('configure');
@@ -612,10 +708,12 @@ describe('useChessRivalSetup', () => {
 		expect(onSetupChange).toHaveBeenNthCalledWith(1, {
 			rivalKind: 'llm',
 			humanSide: 'white',
+			engineDifficulty: 'casual',
 		});
 		expect(onSetupChange).toHaveBeenNthCalledWith(2, {
 			rivalKind: 'llm',
 			humanSide: 'black',
+			engineDifficulty: 'casual',
 		});
 	});
 

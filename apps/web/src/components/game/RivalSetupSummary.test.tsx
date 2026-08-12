@@ -12,7 +12,11 @@ setupReactDom();
 
 describe('RivalSetupSummary', () => {
 	test('summarizes engine setup with side and unrated status', () => {
-		const setup: GameSetup = { rivalKind: 'engine', humanSide: 'white' };
+		const setup: GameSetup = {
+			rivalKind: 'engine',
+			humanSide: 'white',
+			engineDifficulty: 'casual',
+		};
 		const { getByText } = render(<RivalSetupSummary setup={setup} />);
 
 		expect(
@@ -21,7 +25,11 @@ describe('RivalSetupSummary', () => {
 	});
 
 	test('summarizes language-model setup with model and side', () => {
-		const setup: GameSetup = { rivalKind: 'llm', humanSide: 'black' };
+		const setup: GameSetup = {
+			rivalKind: 'llm',
+			humanSide: 'black',
+			engineDifficulty: 'casual',
+		};
 		const { getByText } = render(
 			<RivalSetupSummary setup={setup} llmModel='gpt-4o-mini' />
 		);
@@ -34,7 +42,7 @@ describe('RivalSetupSummary', () => {
 	test('freezes active engine summary from the active session', () => {
 		const session: ActiveRivalSession = {
 			id: 7,
-			opponent: { kind: 'engine', id: 'stockfish' },
+			opponent: { kind: 'engine', id: 'stockfish', difficulty: 'casual' },
 			humanSide: 'black',
 			rivalSide: 'white',
 			startedByUserId: null,

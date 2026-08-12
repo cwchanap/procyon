@@ -3,6 +3,7 @@ import type { AIConfig } from '../lib/ai/types';
 import {
 	createDefaultRivalPreferences,
 	parseRivalPreferences,
+	persistEngineDifficulty,
 	persistHumanSide,
 	persistRivalKind,
 	RIVAL_PREFERENCES_STORAGE_KEY,
@@ -19,6 +20,7 @@ import {
 } from '../lib/chess/rival/resolve-setup';
 import type {
 	ChessSide,
+	EngineDifficulty,
 	EnginePreflight,
 	GameSetup,
 	LlmUsability,
@@ -63,12 +65,14 @@ export interface UseChessRivalSetupResult {
 	startBlockedReason: string | null;
 	selectRival(kind: RivalKind): void;
 	selectHumanSide(side: ChessSide): void;
+	selectDifficulty(difficulty: EngineDifficulty): void;
 	clearFallbackNotice(): void;
 }
 
 const defaultSetup: GameSetup = {
 	rivalKind: 'engine',
 	humanSide: 'white',
+	engineDifficulty: 'casual',
 };
 
 const startBlockedMessages: Record<StartBlockedReasonCode, string> = {
@@ -205,12 +209,15 @@ function setupForResolution(
 	return {
 		rivalKind: resolution.kind,
 		humanSide: preferences.humanSideByRival[resolution.kind],
+		engineDifficulty: preferences.engineDifficulty,
 	};
 }
 
 function setupsEqual(left: GameSetup, right: GameSetup): boolean {
 	return (
-		left.rivalKind === right.rivalKind && left.humanSide === right.humanSide
+		left.rivalKind === right.rivalKind &&
+		left.humanSide === right.humanSide &&
+		left.engineDifficulty === right.engineDifficulty
 	);
 }
 
@@ -364,6 +371,7 @@ export function useChessRivalSetup({
 			const nextSetup: GameSetup = {
 				rivalKind: kind,
 				humanSide: nextPreferences.humanSideByRival[kind],
+				engineDifficulty: nextPreferences.engineDifficulty,
 			};
 
 			if (storageRef.current) {
@@ -411,6 +419,32 @@ export function useChessRivalSetup({
 		setFallbackNotice(null);
 	}, [fallbackNotice]);
 
+	const selectDifficulty = useCallback(
+		(difficulty: EngineDifficulty) => {
+			setupTouchedRef.current = true;
+			explicitKindRef.current = setup.rivalKind;
+			clearedFallbackNoticeRef.current = null;
+			setFallbackNotice(null);
+
+			const nextPreferences: RivalPreferencesV2 = {
+				...preferences,
+				engineDifficulty: difficulty,
+			};
+			const nextSetup: GameSetup = {
+				...setup,
+				engineDifficulty: difficulty,
+			};
+
+			if (storageRef.current) {
+				persistEngineDifficulty(storageRef.current, difficulty);
+			}
+			setPreferences(nextPreferences);
+			setSetup(nextSetup);
+			onSetupChange?.(nextSetup);
+		},
+		[onSetupChange, preferences, setup]
+	);
+
 	return {
 		resolved,
 		setup,
@@ -424,6 +458,7 @@ export function useChessRivalSetup({
 		),
 		selectRival,
 		selectHumanSide,
+		selectDifficulty,
 		clearFallbackNotice,
 	};
 }

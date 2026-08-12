@@ -40,7 +40,7 @@ describe('chess rival types', () => {
 	test('active sessions contain frozen ownership fields', () => {
 		const session: ActiveRivalSession = {
 			id: 1,
-			opponent: { kind: 'engine', id: 'stockfish' },
+			opponent: { kind: 'engine', id: 'stockfish', difficulty: 'casual' },
 			humanSide: 'white',
 			rivalSide: 'black',
 			startedByUserId: null,

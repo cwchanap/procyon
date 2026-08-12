@@ -35,7 +35,13 @@ function renderSetup(
 ) {
 	return render(
 		<ChessRivalSetup
-			setup={overrides.setup ?? { rivalKind: 'engine', humanSide: 'white' }}
+			setup={
+				overrides.setup ?? {
+					rivalKind: 'engine',
+					humanSide: 'white',
+					engineDifficulty: 'casual',
+				}
+			}
 			enginePreflight={overrides.enginePreflight ?? supportedEngine}
 			llmUsability={overrides.llmUsability ?? availableLlm}
 			disabled={overrides.disabled ?? false}
@@ -116,7 +122,11 @@ describe('ChessRivalSetup', () => {
 
 	test('keeps an explicit unusable opponent selected', () => {
 		const { getByRole, getByText } = renderSetup({
-			setup: { rivalKind: 'llm', humanSide: 'black' },
+			setup: {
+				rivalKind: 'llm',
+				humanSide: 'black',
+				engineDifficulty: 'casual',
+			},
 			llmUsability: { status: 'signed-out' },
 		});
 
