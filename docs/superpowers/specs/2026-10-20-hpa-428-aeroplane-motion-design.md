@@ -21,11 +21,11 @@ Give Aeroplane Chess legible, enjoyable motion: stepwise hops, a visible curved 
 ## Current code and reuse
 
 - `apps/web/src/hooks/useAeroplaneMatch.ts` commits and synchronously saves authoritative transitions **before** calling `enqueuePresentation`. The hook emits `presentationQueue` and separately retains `eventFeed`. `AEROPLANE_PRESENTATION_MS` is 650 ms and `skipAnimations()` currently clears route presentation only.
-- `apps/web/src/components/aeroplane/AeroplaneBoard.tsx` already maps position kinds to normalized 100×100 SVG coordinates. It renders authoritative plane glyphs immediately and draws static dashed routes for the queue.
+- `apps/web/src/components/aeroplane/AeroplaneBoard.tsx` already contains `positionAnchor`, `eventAnchor`, `routePath`, and `planeAnchor` helpers for normalized 100×100 SVG coordinates. Consolidate these into the pure presentation projector rather than maintaining two route→anchor mappings. The board already renders authoritative glyphs and dashed route previews.
 - `apps/web/src/lib/aeroplane/layout.ts` contains `TRACK_ANCHORS`, `HOME_PATHS`, `HANGAR_SLOTS`, `LAUNCH_PADS`, `FLIGHT_GUIDES`, and `STACK_OFFSETS`. `topology.ts` has `toPosition` and `FINISH_PROGRESS`.
 - `ResolvedMove.events` supports `move | jump | flight`; captures are `capturedPlaneIds`, **not** separate events. `move.distance` is the rolled step count, including possible bounce in the final home lane.
 - `AeroplaneGame.tsx` already passes presentation entries into the board, and `AeroplaneEventFeed.tsx` already owns the Skip animations button.
-- No installed animation package or existing Web Audio wrapper is needed. Use browser SVG + `requestAnimationFrame` and a small local sound helper.
+- No installed animation package or existing Web Audio wrapper is needed. Use browser SVG + `requestAnimationFrame` and a small local sound helper. For mute persistence, follow the existing browser/SSR boundary pattern in `apps/web/src/lib/theme.ts`, adding `try/catch` for unavailable storage.
 
 ## Core decisions
 
@@ -33,11 +33,11 @@ Give Aeroplane Chess legible, enjoyable motion: stepwise hops, a visible curved 
 
 `state`, action history, seeded RNG, checksum/replay, saved match, AI decisions, and game rules are **unchanged**. Render a temporary moving SVG glyph over the committed board, masking the matching committed glyph while it moves. For a capture, temporarily mask the committed hangar glyph and show a returning ghost. Keep all animation layers `pointerEvents="none"`; existing accessible legal-move buttons remain interactive.
 
-The board observes the **latest previously unseen** queue `id` (rather than replaying every entry on rerender). Newer queue items replace an unfinished visual, so AI or player actions never wait for animation. If a presentation is canceled, reset, skipped, superseded, or unmounted, dispose its frame loop and show the latest committed state. Presentation expiry does not cause a rules transition.
+The board observes the **latest previously unseen** queue `id` (rather than replaying every entry on rerender). Newer queue items replace an unfinished visual, so AI or player actions never wait for animation. Cancel an active movement overlay as soon as its `id` disappears from `presentationQueue`: expiry, Skip, reset, new match, and resume already remove queue entries. Also cancel on supersession, reduced-motion, or unmount. The board reveals the latest committed state; presentation expiry does not cause a rules transition.
 
 ### 2. One small pure timeline projector
 
-Add `apps/web/src/lib/aeroplane/presentation.ts` with an Aeroplane-specific pure `buildMoveTimeline(move, state)` (or equivalently small helpers) returning ordered normalized SVG points/segments, segment kinds, capture return paths, and durations. No generic animation engine or React-specific state machine.
+Add `apps/web/src/lib/aeroplane/presentation.ts` with an Aeroplane-specific pure `buildMoveTimeline(move, state)` (or equivalently small helpers) returning ordered normalized SVG points/segments, segment kinds, capture return paths, and durations. **Move and reuse** the current board-local `positionAnchor`, `eventAnchor`, and `routePath` projection logic here: both existing dashed preview/queue paths and the timed renderer must consume this one projection. `planeAnchor` should delegate via `positionAnchor(toPosition(plane.color, plane.progress), plane.id)` rather than duplicate progress→coordinate math. No generic animation engine or React-specific state machine.
 
 For `move`, expand logical progress one step at a time using `toPosition` and existing layout anchors, including the **bounce** rule: if a rolled step advances beyond progress 56, reflect it back toward 56. Do not simply tween from start to final endpoint, which cuts across the circular board or erases the bounce. A hangar-to-launch move uses its two endpoints. `jump` gets a visually lifted hop (without executing extra rules); `flight` follows the colour's quadratic flight guide. Respect the exact event order, including jump-then-flight. Final capture ghosts use the committed victims' IDs/colours and their fixed hangar slots.
 
@@ -45,16 +45,15 @@ Bound each presentation's complete visual timeline to **at most 600 ms**, with s
 
 ### 3. Minimal presentation lifecycle signals
 
-Keep `presentationQueue` as the source for route presentations. Add two **ephemeral, non-persisted** fields from `useAeroplaneMatch`:
+Keep `presentationQueue` as the source of route playback and cancellation: if the active route `id` is no longer present, cancel its frame loop. **Do not add `presentationEpoch`** or expose the controller's internal `generationRef`.
 
-- `rollPresentation: { id, face } | null`: updated inside `executeRoll` for human **and AI** rolls, independent of legal-move count. The board initially records the seen ID and never tumbles old saved action history on load.
-- `presentationEpoch: number`: incremented on Skip animations, new match/reset, and resume so board/die frame loops cancel even if an old queue item is still in local component state.
+Add one **ephemeral, non-persisted** `rollPresentation: { id, face, animate: boolean } | null` field from `useAeroplaneMatch`. `executeRoll` emits `{ id: nextId, face: actualRoll, animate: true }` for human **and AI** rolls, independent of legal-move count (the single-legal-move auto-select path appends a move immediately). The board initially has no roll presentation and never tumbles saved action history on load.
 
-The existing Skip animations control still clears the active queue without erasing `eventFeed`. An epoch change cancels active frame loops. Subsequent new moves can animate normally; Skip is not a persistent disable preference. Reduced-motion uses `matchMedia` with proper change-listener cleanup and makes animation duration zero.
+Skip animations clears route presentations without erasing `eventFeed` and changes the current `rollPresentation` to `{ ...rollPresentation, animate: false }` if present. That immediately stops the die tumble **even for a roll with no route in the queue**, while retaining the actual displayed face. Reset/new match/resume set `rollPresentation` to `null`, stopping any tumble and clearing the previous match's die. Later rolls get fresh IDs and can animate normally; Skip is not a persisted disable preference. Reduced-motion uses `matchMedia` with proper listener cleanup and makes both route/dice duration zero.
 
-### 4. Asset substitution with one simple theme object
+### 4. Two asset slots, no duplicate palette/theme registry
 
-Add `apps/web/src/components/aeroplane/presentationTheme.ts` containing `DEFAULT_AEROPLANE_THEME`: existing board and plane palette plus optional `boardBackgroundUrl` and per-colour `planeSpriteUrl` slots. Absence of an asset keeps the current SVG circles/plane silhouettes. Theme is **render-only**; no theme ID in match config, persistence, or API. HPA-437 can later fill those paths and SFX assets without changing the renderer contract. No skin store, generic plugin registry, asset pipeline, or style editor in HPA-428.
+Reuse `PLANE_FILL`, `PLANE_STROKE`, and the existing board colours in `AeroplaneBoard.tsx` directly. Extract a small SVG glyph helper that accepts an **optional per-colour plane sprite `href`**; support an **optional board background `<image>`** using a local constant or prop next to the board. If either URL is absent, retain the current SVG silhouettes and background. These two render-only slots let HPA-437 supply real assets later without changing rules. Do **not** introduce `presentationTheme.ts`, duplicate palettes, a theme ID in config/persistence/API, or a generic asset registry.
 
 ### 5. Tiny sound helper with local preference
 
@@ -67,6 +66,8 @@ A simple `Muted` toggle on the Aeroplane game screen is kept in component-level 
 - Animate the authoritative game state step by step: breaks deterministic replay, saves, and input timing.
 - Hold AI turns until prior animation completes: unrelated to game logic, slows matches, and creates cancellation races.
 - Add Framer Motion / a generic timeline or new package: extra surface area for one SVG board.
+- Add `presentationEpoch`: active route IDs are canceled by queue membership; the independent die tumble is canceled with `rollPresentation.animate`.
+- Copy the board palette into `presentationTheme.ts`: the only needed extensibility is two optional asset URLs on existing SVG rendering.
 - Generate plane illustrations or finalized sound files here: belongs in HPA-437.
 - Put mute into `AeroplaneConfig` or DB history: it is a local presentation preference, not a game rule.
 - Add skin selection/unlocks now: belongs in HPA-362.
@@ -77,7 +78,7 @@ A simple `Muted` toggle on the Aeroplane game screen is kept in component-level 
 2. Jump and flight use distinguishable motion, with the long flight following the existing quadratic guide.
 3. Capture briefly returns victim(s) to the correct hangar; the committed board remains correct throughout.
 4. Dice tumbles on both actors' rolls, including no-legal-move rolls, and displays the actual result.
-5. Skip, reduced-motion, superseding moves, reset/resume, and unmount cancel visual work without stale overlays or sound errors.
+5. Skip, reduced-motion, superseding moves, reset/resume, and unmount cancel visual work without stale overlays or sound errors; importantly, Skip also stops a die tumble when a roll produced no legal move and thus no queued route.
 6. Mute persists after remount/reload; browsers lacking audio/storage work silently; no account or API key needed.
 7. Current Aeroplane setup, rules, AI, history, and replay tests remain green; accessibility of plane controls is preserved.
 
