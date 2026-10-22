@@ -1,23 +1,37 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react';
 import {
 	FLIGHT_GUIDES,
 	HANGAR_SLOTS,
 	HOME_PATHS,
 	LAUNCH_PADS,
 	STACK_OFFSETS,
-	START_OFFSETS,
 	TRACK_ANCHORS,
 	type LayoutAnchor,
 } from '../../lib/aeroplane/layout';
+import {
+	buildMoveTimeline,
+	planeAnchor,
+	routePath,
+	type AeroplaneMotionSegment,
+	type AeroplaneMoveTimeline,
+} from '../../lib/aeroplane/presentation';
 import { Button } from '../ui/Button';
 import type {
 	AeroplaneColor,
-	AeroplaneEvent,
 	AeroplanePosition,
 	AeroplaneState,
 	PlaneState,
 	ResolvedMove,
 } from '../../lib/aeroplane/types';
+
+/** Cues emitted by the board's playback clock; `roll` belongs to the die. */
+export type AeroplaneBoardCue = 'hop' | 'capture' | 'finish' | 'win';
 
 export interface AeroplaneBoardProps {
 	state: AeroplaneState;
@@ -27,6 +41,10 @@ export interface AeroplaneBoardProps {
 		id: number;
 		move: ResolvedMove;
 	}[];
+	/** Skip tweening: committed positions render immediately. */
+	reducedMotion?: boolean;
+	/** Fired as the playback clock crosses each timeline segment boundary. */
+	onCue?: (cue: AeroplaneBoardCue) => void;
 	onRoll: () => void;
 	onSelectMove?: (move: ResolvedMove) => void;
 	onSelect?: (planeId: string) => void;
@@ -55,6 +73,12 @@ const colorLabel: Record<AeroplaneColor, string> = {
 	green: 'Green',
 };
 
+/** Render-only asset slot for HPA-437; absent URLs keep the SVG silhouettes. */
+const PLANE_SPRITE_HREFS: Partial<Record<AeroplaneColor, string>> = {};
+
+/** Render-only asset slot for HPA-437; absent URL keeps the painted board. */
+const BOARD_BACKGROUND_HREF: string | undefined = undefined;
+
 function planeIndex(planeId: string): number {
 	const value = Number(planeId.split('-').at(-1));
 	return Number.isInteger(value) && value >= 0 ? value : 0;
@@ -62,46 +86,6 @@ function planeIndex(planeId: string): number {
 
 function planeNumber(planeId: string): number {
 	return planeIndex(planeId) + 1;
-}
-
-function positionAnchor(
-	position: AeroplanePosition,
-	planeId?: string
-): LayoutAnchor {
-	switch (position.kind) {
-		case 'hangar':
-			return (
-				HANGAR_SLOTS[position.color][planeIndex(planeId ?? '')] ??
-				HANGAR_SLOTS[position.color][0]!
-			);
-		case 'launch':
-			return LAUNCH_PADS[position.color];
-		case 'track':
-			return TRACK_ANCHORS[position.globalIndex]!;
-		case 'home':
-			return (
-				HOME_PATHS[position.color][position.homeIndex] ??
-				HOME_PATHS[position.color][0]!
-			);
-		case 'finished':
-			return HOME_PATHS[position.color][5]!;
-	}
-}
-
-function planeAnchor(plane: PlaneState): LayoutAnchor {
-	if (plane.progress === null) {
-		return (
-			HANGAR_SLOTS[plane.color][planeIndex(plane.id)] ??
-			HANGAR_SLOTS[plane.color][0]!
-		);
-	}
-	if (plane.progress === 0) return LAUNCH_PADS[plane.color];
-	if (plane.progress <= 50) {
-		const globalIndex =
-			(START_OFFSETS[plane.color] + plane.progress - 1) % TRACK_ANCHORS.length;
-		return TRACK_ANCHORS[globalIndex]!;
-	}
-	return HOME_PATHS[plane.color][Math.min(5, plane.progress - 51)]!;
 }
 
 function endpointLabel(position: AeroplanePosition): string {
@@ -150,35 +134,158 @@ function moveLabel(
 	return `${prefix} Legal move: ${routeText} to ${endpoint}.`;
 }
 
-function eventAnchor(event: AeroplaneEvent): [LayoutAnchor, LayoutAnchor] {
-	return [
-		positionAnchor(event.from, event.planeId),
-		positionAnchor(event.to, event.planeId),
-	];
-}
-
-function routePath(move: ResolvedMove): string {
-	const points: LayoutAnchor[] = [];
-	for (const event of move.events) {
-		const [from, to] = eventAnchor(event);
-		if (points.length === 0) points.push(from);
-		points.push(to);
-	}
-	if (points.length === 0) {
-		points.push(
-			positionAnchor(move.start, move.planeId),
-			positionAnchor(move.finalEndpoint, move.planeId)
-		);
-	}
-	return points
-		.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-		.join(' ');
-}
-
 function isCoarsePointer(event: React.SyntheticEvent): boolean {
 	const native = event.nativeEvent as unknown as { pointerType?: string };
 	const pointerType = native.pointerType;
 	return pointerType === 'touch' || pointerType === 'pen';
+}
+
+/** Render-only plane glyph shared by the committed layer and motion overlays. */
+function PlaneGlyph({
+	x,
+	y,
+	color,
+	number,
+	spriteHref,
+}: {
+	x: number;
+	y: number;
+	color: AeroplaneColor;
+	number: number;
+	spriteHref?: string;
+}) {
+	return (
+		<>
+			{spriteHref ? (
+				<image href={spriteHref} x={x - 3} y={y - 3} width={6} height={6} />
+			) : (
+				<>
+					<circle
+						cx={x}
+						cy={y}
+						r='3'
+						fill={PLANE_FILL[color]}
+						stroke={PLANE_STROKE[color]}
+						strokeWidth='0.65'
+					/>
+					<path
+						d={`M ${x - 1.2} ${y + 0.8} L ${x} ${y - 1.8} L ${x + 1.2} ${y + 0.8} L ${x} ${y + 0.2} Z`}
+						fill='#17263A'
+						fillOpacity='0.72'
+					/>
+				</>
+			)}
+			<text
+				x={x}
+				y={y + 5.1}
+				fill='#FFF5D3'
+				fontSize='2.15'
+				fontWeight='600'
+				textAnchor='middle'
+			>
+				{number}
+			</text>
+		</>
+	);
+}
+
+function lerpAnchors(
+	from: LayoutAnchor,
+	to: LayoutAnchor,
+	progress: number
+): LayoutAnchor {
+	return {
+		x: from.x + (to.x - from.x) * progress,
+		y: from.y + (to.y - from.y) * progress,
+	};
+}
+
+function segmentPosition(
+	segment: AeroplaneMotionSegment,
+	progress: number
+): LayoutAnchor {
+	if (segment.control) {
+		const inverse = 1 - progress;
+		return {
+			x:
+				inverse * inverse * segment.from.x +
+				2 * inverse * progress * segment.control.x +
+				progress * progress * segment.to.x,
+			y:
+				inverse * inverse * segment.from.y +
+				2 * inverse * progress * segment.control.y +
+				progress * progress * segment.to.y,
+		};
+	}
+	// Jumps rise above the direct chord; hops stay on the board plane.
+	const lift =
+		segment.kind === 'jump' ? -2.5 * Math.sin(Math.PI * progress) : 0;
+	const base = lerpAnchors(segment.from, segment.to, progress);
+	return { x: base.x, y: base.y + lift };
+}
+
+interface MotionFrame {
+	mover: LayoutAnchor;
+	ghost: { planeId: string; x: number; y: number } | null;
+}
+
+interface PlaybackState {
+	id: number;
+	timeline: AeroplaneMoveTimeline;
+	frame: MotionFrame;
+}
+
+/**
+ * Overlay geometry at `elapsed` ms plus the active segment index (motion
+ * segments first, then capture returns), or null once the timeline completed.
+ */
+function frameAt(
+	timeline: AeroplaneMoveTimeline,
+	elapsed: number
+): { frame: MotionFrame; activeSegment: number | null } {
+	const landing = timeline.segments.at(-1)!.to;
+	let remaining = elapsed;
+	for (let index = 0; index < timeline.segments.length; index += 1) {
+		const segment = timeline.segments[index]!;
+		if (remaining < segment.durationMs) {
+			return {
+				frame: {
+					mover: segmentPosition(segment, remaining / segment.durationMs),
+					ghost: null,
+				},
+				activeSegment: index,
+			};
+		}
+		remaining -= segment.durationMs;
+	}
+	for (let index = 0; index < timeline.captures.length; index += 1) {
+		const capture = timeline.captures[index]!;
+		if (remaining < capture.durationMs) {
+			const position = lerpAnchors(
+				capture.from,
+				capture.to,
+				remaining / capture.durationMs
+			);
+			return {
+				frame: {
+					mover: landing,
+					ghost: { planeId: capture.planeId, x: position.x, y: position.y },
+				},
+				activeSegment: timeline.segments.length + index,
+			};
+		}
+		remaining -= capture.durationMs;
+	}
+	return { frame: { mover: landing, ghost: null }, activeSegment: null };
+}
+
+/** One terminal cue under zero-duration playback, win taking priority. */
+function terminalCue(
+	timeline: AeroplaneMoveTimeline,
+	won: boolean
+): AeroplaneBoardCue {
+	if (won) return 'win';
+	return timeline.captures.length > 0 ? 'capture' : 'finish';
 }
 
 export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
@@ -186,6 +293,8 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	legalMoves,
 	isHumanTurn = true,
 	presentationQueue = [],
+	reducedMotion = false,
+	onCue,
 	onRoll,
 	onSelectMove,
 	onSelect,
@@ -193,7 +302,113 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	const [hoveredPlaneId, setHoveredPlaneId] = useState<string | null>(null);
 	const [focusedPlaneId, setFocusedPlaneId] = useState<string | null>(null);
 	const [coarsePreviewId, setCoarsePreviewId] = useState<string | null>(null);
+	const [playback, setPlayback] = useState<PlaybackState | null>(null);
 	const suppressClickRef = useRef(false);
+	const playbackRef = useRef<PlaybackState | null>(null);
+	const frameRef = useRef<number | null>(null);
+	const startedAtRef = useRef<number | null>(null);
+	const cuedSegmentsRef = useRef(0);
+	const lastProcessedIdRef = useRef(0);
+	const onCueRef = useRef(onCue);
+	useEffect(() => {
+		onCueRef.current = onCue;
+	}, [onCue]);
+
+	const cancelPlayback = useCallback(() => {
+		if (
+			frameRef.current !== null &&
+			typeof cancelAnimationFrame === 'function'
+		) {
+			cancelAnimationFrame(frameRef.current);
+		}
+		frameRef.current = null;
+		startedAtRef.current = null;
+		cuedSegmentsRef.current = 0;
+		playbackRef.current = null;
+		setPlayback(null);
+	}, []);
+
+	// Cancellation on unmount regardless of queue state.
+	useEffect(() => () => cancelPlayback(), [cancelPlayback]);
+
+	useEffect(() => {
+		const newest = presentationQueue.at(-1);
+		const fresh =
+			newest !== undefined && newest.id !== lastProcessedIdRef.current;
+		const canAnimate =
+			!reducedMotion && typeof requestAnimationFrame === 'function';
+
+		if (fresh) {
+			lastProcessedIdRef.current = newest.id;
+			if (!canAnimate) {
+				// Zero-duration fallback: the committed state is already on screen;
+				// emit only the appropriate terminal cue, exactly once.
+				const frozen = buildMoveTimeline(newest.move, state, {
+					zeroMotion: true,
+				});
+				onCueRef.current?.(terminalCue(frozen, state.phase === 'finished'));
+				return;
+			}
+			cancelPlayback();
+			const timeline = buildMoveTimeline(newest.move, state);
+			const totalMs = timeline.totalMs;
+			const segmentCount = timeline.segments.length + timeline.captures.length;
+			const won = state.phase === 'finished';
+			// Cue each timeline boundary as the frame loop crosses it; hops for
+			// motion segments, capture for each captured-plane return.
+			const emitDueCues = (through: number) => {
+				while (
+					cuedSegmentsRef.current <= through &&
+					cuedSegmentsRef.current < segmentCount
+				) {
+					const index = cuedSegmentsRef.current;
+					onCueRef.current?.(
+						index < timeline.segments.length ? 'hop' : 'capture'
+					);
+					cuedSegmentsRef.current += 1;
+				}
+			};
+			const tick = (now: number) => {
+				const active = playbackRef.current;
+				if (!active || active.id !== newest.id) return;
+				if (startedAtRef.current === null) startedAtRef.current = now;
+				const elapsed = now - startedAtRef.current;
+				if (elapsed >= totalMs) {
+					emitDueCues(segmentCount - 1);
+					cancelPlayback();
+					onCueRef.current?.(won ? 'win' : 'finish');
+					return;
+				}
+				const { frame, activeSegment } = frameAt(timeline, elapsed);
+				if (activeSegment !== null) emitDueCues(activeSegment);
+				playbackRef.current = { ...active, frame };
+				setPlayback(playbackRef.current);
+				frameRef.current = requestAnimationFrame(tick);
+			};
+			playbackRef.current = {
+				id: newest.id,
+				timeline,
+				frame: {
+					mover: timeline.segments[0]!.from,
+					ghost: null,
+				},
+			};
+			setPlayback(playbackRef.current);
+			frameRef.current = requestAnimationFrame(tick);
+			return;
+		}
+
+		// Queue removal (expiry, Skip, reset, resume) or a reduced-motion
+		// switch cancels the clock and reveals the committed glyphs.
+		const activeId = playbackRef.current?.id;
+		if (
+			activeId !== undefined &&
+			(reducedMotion || !presentationQueue.some(item => item.id === activeId))
+		) {
+			cancelPlayback();
+		}
+	}, [presentationQueue, state, reducedMotion, cancelPlayback]);
+
 	const moveByPlane = useMemo(
 		() => new Map(legalMoves.map(move => [move.planeId, move])),
 		[legalMoves]
@@ -234,6 +449,10 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 		return { plane, anchor, offset };
 	});
 
+	const ghostPlane = playback?.frame.ghost
+		? state.planes.find(plane => plane.id === playback.frame.ghost!.planeId)
+		: undefined;
+
 	return (
 		<div
 			role='region'
@@ -266,6 +485,15 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 						strokeOpacity='0.3'
 						strokeWidth='0.7'
 					/>
+					{BOARD_BACKGROUND_HREF && (
+						<image
+							href={BOARD_BACKGROUND_HREF}
+							x='1'
+							y='1'
+							width='98'
+							height='98'
+						/>
+					)}
 					<circle
 						cx='50'
 						cy='50'
@@ -393,6 +621,14 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 						/>
 					))}
 					{planeNodes.map(({ plane, anchor, offset }) => {
+						// Airborne copies travel in the overlay above instead.
+						if (
+							playback &&
+							(playback.timeline.planeId === plane.id ||
+								playback.frame.ghost?.planeId === plane.id)
+						) {
+							return null;
+						}
 						const active = previewedPlaneId === plane.id;
 						const x = anchor.x + offset.x;
 						const y = anchor.y + offset.y;
@@ -414,29 +650,13 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 										className='motion-reduce:animate-none'
 									/>
 								)}
-								<circle
-									cx={x}
-									cy={y}
-									r='3'
-									fill={PLANE_FILL[plane.color]}
-									stroke={PLANE_STROKE[plane.color]}
-									strokeWidth='0.65'
-								/>
-								<path
-									d={`M ${x - 1.2} ${y + 0.8} L ${x} ${y - 1.8} L ${x + 1.2} ${y + 0.8} L ${x} ${y + 0.2} Z`}
-									fill='#17263A'
-									fillOpacity='0.72'
-								/>
-								<text
+								<PlaneGlyph
 									x={x}
-									y={y + 5.1}
-									fill='#FFF5D3'
-									fontSize='2.15'
-									fontWeight='600'
-									textAnchor='middle'
-								>
-									{planeNumber(plane.id)}
-								</text>
+									y={y}
+									color={plane.color}
+									number={planeNumber(plane.id)}
+									spriteHref={PLANE_SPRITE_HREFS[plane.color]}
+								/>
 							</g>
 						);
 					})}
@@ -451,6 +671,33 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 					>
 						AEROPLANE
 					</text>
+					{playback && (
+						<g
+							pointerEvents='none'
+							aria-hidden='true'
+							data-testid='aeroplane-motion-layer'
+						>
+							<g data-testid='aeroplane-motion-overlay'>
+								<PlaneGlyph
+									x={playback.frame.mover.x}
+									y={playback.frame.mover.y}
+									color={playback.timeline.color}
+									number={planeNumber(playback.timeline.planeId)}
+									spriteHref={PLANE_SPRITE_HREFS[playback.timeline.color]}
+								/>
+							</g>
+							{ghostPlane && playback.frame.ghost && (
+								<g data-testid='aeroplane-capture-ghost'>
+									<PlaneGlyph
+										x={playback.frame.ghost.x}
+										y={playback.frame.ghost.y}
+										color={ghostPlane.color}
+										number={planeNumber(ghostPlane.id)}
+									/>
+								</g>
+							)}
+						</g>
+					)}
 				</svg>
 			</div>
 			{isHumanTurn && legalMoves.length > 0 && (
