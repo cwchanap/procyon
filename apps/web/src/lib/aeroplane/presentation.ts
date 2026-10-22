@@ -70,9 +70,7 @@ export function planeAnchor(plane: PlaneState): LayoutAnchor {
 	return positionAnchor(toPosition(plane.color, plane.progress), plane.id);
 }
 
-export function eventAnchor(
-	event: AeroplaneEvent
-): [LayoutAnchor, LayoutAnchor] {
+function eventAnchor(event: AeroplaneEvent): [LayoutAnchor, LayoutAnchor] {
 	return [
 		positionAnchor(event.from, event.planeId),
 		positionAnchor(event.to, event.planeId),
@@ -171,6 +169,9 @@ function moveWaypoints(
 		}
 		return points;
 	}
+	// A base move with `to < from` is always a finish bounce in this ruleset
+	// (the only rule that lowers progress), so walk up to FINISH_PROGRESS
+	// and reflect back down.
 	for (
 		let progress = fromProgress + 1;
 		progress <= FINISH_PROGRESS;
@@ -229,9 +230,9 @@ export function buildMoveTimeline(
 		}
 		if (event.type === 'flight') {
 			// Reuse the board's colour-specific quadratic guide verbatim.
-			const guide =
-				FLIGHT_GUIDES.find(candidate => candidate.color === move.color) ??
-				FLIGHT_GUIDES[0]!;
+			const guide = FLIGHT_GUIDES.find(
+				candidate => candidate.color === move.color
+			)!;
 			segments.push({
 				kind: 'flight',
 				from: guide.from,
