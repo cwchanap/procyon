@@ -75,6 +75,17 @@ export interface AeroplanePresentation {
 	chatter?: string;
 }
 
+/**
+ * Ephemeral die presentation for the most recent roll.  It is controller UI
+ * state only: never persisted, never replayed from a save.
+ */
+export interface AeroplaneRollPresentation {
+	id: number;
+	face: number;
+	color: AeroplaneColor;
+	animate: boolean;
+}
+
 export interface ActiveAeroplaneMatch {
 	startedAt: string;
 	completedAt?: string;
@@ -138,6 +149,7 @@ export interface UseAeroplaneMatchResult {
 	legalMoves: ResolvedMove[];
 	presentationQueue: AeroplanePresentation[];
 	eventFeed: AeroplanePresentation[];
+	rollPresentation: AeroplaneRollPresentation | null;
 	isAnimating: boolean;
 	isHumanTurn: boolean;
 	roll(): void;
@@ -563,6 +575,8 @@ export function useAeroplaneMatch(
 		AeroplanePresentation[]
 	>([]);
 	const [eventFeed, setEventFeed] = useState<AeroplanePresentation[]>([]);
+	const [rollPresentation, setRollPresentation] =
+		useState<AeroplaneRollPresentation | null>(null);
 	const activeRef = useRef(activeMatch);
 	activeRef.current = activeMatch;
 	const setupRef = useRef(setup);
@@ -573,6 +587,7 @@ export function useAeroplaneMatch(
 		new Set<ReturnType<typeof setTimeout>>()
 	);
 	const presentationIdRef = useRef(0);
+	const rollIdRef = useRef(0);
 	const skipAnimationsRef = useRef(initial.overrides.skipAnimations ?? false);
 
 	const clearPresentation = useCallback(() => {
@@ -591,6 +606,7 @@ export function useAeroplaneMatch(
 		presentationTimersRef.current.clear();
 		setPresentationQueue([]);
 		setEventFeed([]);
+		setRollPresentation(null);
 	}, []);
 
 	const save = useCallback((match: ActiveAeroplaneMatch) => {
@@ -763,6 +779,12 @@ export function useAeroplaneMatch(
 				actions: [...current.actions, rollAction],
 			};
 			commit(rolled);
+			setRollPresentation({
+				id: (rollIdRef.current += 1),
+				face: result.roll,
+				color: current.state.currentPlayer,
+				animate: !skipAnimationsRef.current,
+			});
 			if (result.legalMoves.length === 0) return;
 			if (actor === 'human') {
 				if (result.legalMoves.length === 1) {
@@ -773,6 +795,21 @@ export function useAeroplaneMatch(
 			scheduleAiDecision(result.legalMoves, generationRef.current);
 		},
 		[applyMove, commit, scheduleAiDecision]
+	);
+
+	const scheduleAiRoll = useCallback(
+		(generation: number) => {
+			if (aiTimerRef.current !== null) return;
+			aiTimerRef.current = setTimeout(
+				() => {
+					aiTimerRef.current = null;
+					if (generationRef.current !== generation) return;
+					executeRoll('ai');
+				},
+				Math.max(0, aiDelayRef.current)
+			);
+		},
+		[executeRoll]
 	);
 
 	const roll = useCallback(() => executeRoll('human'), [executeRoll]);
@@ -867,12 +904,16 @@ export function useAeroplaneMatch(
 
 	const skipAnimations = useCallback(() => {
 		clearPresentation();
+		setRollPresentation(previous =>
+			previous === null ? null : { ...previous, animate: false }
+		);
 	}, [clearPresentation]);
 
 	// Persist a newly-created match and drive AI turns, including red-first
 	// turns when a human chooses yellow/blue/green. The generation guard keeps
 	// a timer from committing after reset or unmount. Rolling is authoritative
-	// immediately; only the AI decision/presentation pause is delayed.
+	// immediately; AI rolls and decisions share one paced timer slot so the
+	// previous die face stays visible.
 	useEffect(() => {
 		save(activeRef.current);
 	}, [save]);
@@ -882,7 +923,11 @@ export function useAeroplaneMatch(
 		if (isHumanTurn(current) || aiTimerRef.current !== null) return;
 		const generation = generationRef.current;
 		if (current.state.phase === 'awaiting-roll') {
-			executeRoll('ai');
+			if (skipAnimationsRef.current) {
+				executeRoll('ai');
+				return;
+			}
+			scheduleAiRoll(generation);
 			return;
 		}
 		if (
@@ -893,7 +938,7 @@ export function useAeroplaneMatch(
 		const legalMoves = getLegalMoves(current.state, current.state.pendingRoll);
 		if (legalMoves.length > 0) scheduleAiDecision(legalMoves, generation);
 		return undefined;
-	}, [activeMatch, executeRoll, scheduleAiDecision]);
+	}, [activeMatch, executeRoll, scheduleAiDecision, scheduleAiRoll]);
 
 	useEffect(() => {
 		return () => {
@@ -968,6 +1013,7 @@ export function useAeroplaneMatch(
 		legalMoves,
 		presentationQueue,
 		eventFeed,
+		rollPresentation,
 		isAnimating: presentationQueue.length > 0,
 		isHumanTurn: humanTurn,
 		roll,

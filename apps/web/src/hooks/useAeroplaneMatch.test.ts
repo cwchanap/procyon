@@ -464,8 +464,282 @@ describe('useAeroplaneMatch controller', () => {
 			null
 		);
 		const match = createHookHarness(fixture);
+		// The AI roll and its decision each wait one paced AI delay.
+		match.advanceTime(650);
 		match.advanceTime(650);
 		expect(match.state().currentPlayer).not.toBe('red');
+	});
+});
+
+describe('useAeroplaneMatch roll presentation and AI roll pacing', () => {
+	function blockedHumanRollPacedFixture(): AeroplaneE2EFixture {
+		const config: AeroplaneConfig = {
+			...CLASSIC_CONFIG,
+			rulePreset: 'custom',
+			stacking: true,
+			blockades: true,
+		};
+		const state = fixtureState(
+			'red',
+			[plane('red', 0, 1), plane('yellow', 0, 41), plane('yellow', 1, 41)],
+			config,
+			'awaiting-roll',
+			null
+		);
+		return {
+			seed: 39200,
+			config,
+			state,
+			diceRng: rngForRolls([3, 1, 1, 1]),
+			aiRng: { value: 33 },
+			skipAnimations: false,
+		};
+	}
+
+	function hangarNoMoveRollsFixture(currentPlayer: AeroplaneColor = 'red') {
+		return {
+			seed: 39300,
+			state: fixtureState(currentPlayer, []),
+			diceRng: rngForRolls([1, 1, 1, 1, 1]),
+			aiRng: { value: 33 },
+			skipAnimations: false,
+		} satisfies AeroplaneE2EFixture;
+	}
+
+	function autoSelectHumanRollPacedFixture(): AeroplaneE2EFixture {
+		return {
+			seed: 39101,
+			state: fixtureState('red', [plane('red', 0, 1)]),
+			diceRng: rngForRolls([1, 1]),
+			aiRng: { value: 33 },
+			skipAnimations: false,
+		};
+	}
+
+	test('two identical roll faces produce distinct monotonically increasing IDs', () => {
+		const match = createHookHarness(hangarNoMoveRollsFixture(), {
+			aiDelayMs: 100,
+		});
+		match.roll();
+		const first = match.result.current.rollPresentation!;
+		expect(first).toMatchObject({ face: 1, color: 'red', animate: true });
+		match.advanceTime(100);
+		match.advanceTime(100);
+		match.advanceTime(100);
+		expect(match.state().currentPlayer).toBe('red');
+		match.roll();
+		const second = match.result.current.rollPresentation!;
+		expect(second.face).toBe(first.face);
+		expect(second.id).toBeGreaterThan(first.id);
+	});
+
+	test('roll colour follows the roller across player advancement', () => {
+		const match = createHookHarness(hangarNoMoveRollsFixture(), {
+			aiDelayMs: 100,
+		});
+		const colors: AeroplaneColor[] = ['red', 'yellow', 'blue', 'green'];
+		match.roll();
+		expect(match.result.current.rollPresentation?.color).toBe('red');
+		for (const color of colors.slice(1)) {
+			match.advanceTime(100);
+			expect(match.result.current.rollPresentation?.color).toBe(color);
+		}
+	});
+
+	test('AI rolls and no-legal-move rolls are signaled without a queued route', () => {
+		const aiMatch = createHookHarness(aiTurnFixture(), { aiDelayMs: 100 });
+		expect(aiMatch.result.current.rollPresentation).toBeNull();
+		aiMatch.advanceTime(100);
+		expect(aiMatch.result.current.rollPresentation).toMatchObject({
+			face: 1,
+			color: 'yellow',
+			animate: true,
+		});
+
+		const blockedMatch = createHookHarness(blockedHumanRollPacedFixture(), {
+			aiDelayMs: 100,
+		});
+		blockedMatch.roll();
+		expect(blockedMatch.state().phase).toBe('awaiting-roll');
+		expect(blockedMatch.result.current.rollPresentation).toMatchObject({
+			face: 3,
+			color: 'red',
+			animate: true,
+		});
+		expect(blockedMatch.result.current.presentationQueue).toHaveLength(0);
+	});
+
+	test('the roll presentation is not persisted into the match snapshot', () => {
+		const match = createHookHarness(aiTurnFixture(), { aiDelayMs: 100 });
+		match.advanceTime(100);
+		const saved = JSON.parse(
+			match.storage.getItem(ACTIVE_MATCH_STORAGE_KEY) ?? '{}'
+		) as Record<string, unknown>;
+		expect(saved).not.toHaveProperty('rollPresentation');
+	});
+
+	test('a human no-move roll paces the next AI roll, which fires once', () => {
+		const match = createHookHarness(blockedHumanRollPacedFixture(), {
+			aiDelayMs: 100,
+		});
+		match.roll();
+		expect(match.result.current.actions.map(action => action.actor)).toEqual([
+			'human',
+		]);
+		match.advanceTime(99);
+		expect(match.result.current.actions).toHaveLength(1);
+		expect(match.result.current.rollPresentation?.color).toBe('red');
+		match.advanceTime(1);
+		expect(
+			match.result.current.actions.map(action => ({
+				kind: action.kind,
+				actor: action.actor,
+				color: action.color,
+			}))
+		).toEqual([
+			{ kind: 'roll', actor: 'human', color: 'red' },
+			{ kind: 'roll', actor: 'ai', color: 'yellow' },
+		]);
+		match.advanceTime(1000);
+		expect(
+			match.result.current.actions.filter(
+				action => action.kind === 'roll' && action.color === 'yellow'
+			)
+		).toHaveLength(1);
+	});
+
+	test('a human auto-select roll paces the next AI roll despite the appended move', () => {
+		const match = createHookHarness(autoSelectHumanRollPacedFixture(), {
+			aiDelayMs: 100,
+		});
+		match.roll();
+		// The roll is signaled even though auto-select already committed a move.
+		expect(match.result.current.rollPresentation).toMatchObject({
+			face: 1,
+			color: 'red',
+		});
+		expect(match.result.current.actions.at(-1)?.kind).toBe('move');
+		match.advanceTime(99);
+		expect(match.result.current.actions).toHaveLength(2);
+		match.advanceTime(1);
+		expect(match.result.current.actions.at(-1)).toMatchObject({
+			kind: 'roll',
+			actor: 'ai',
+			color: 'yellow',
+		});
+	});
+
+	test('consecutive AI no-move rolls are paced by the same delay', () => {
+		const match = createHookHarness(hangarNoMoveRollsFixture('yellow'), {
+			aiDelayMs: 100,
+		});
+		match.advanceTime(100);
+		expect(
+			match.result.current.actions.filter(action => action.kind === 'roll')
+		).toHaveLength(1);
+		match.advanceTime(99);
+		expect(
+			match.result.current.actions.filter(action => action.kind === 'roll')
+		).toHaveLength(1);
+		match.advanceTime(1);
+		match.advanceTime(100);
+		expect(
+			match.result.current.actions
+				.filter(action => action.kind === 'roll')
+				.map(action => action.color)
+		).toEqual(['yellow', 'blue', 'green']);
+		expect(match.state().currentPlayer).toBe('red');
+		expect(match.state().phase).toBe('awaiting-roll');
+	});
+
+	test('the skipAnimations fixture keeps AI roll execution immediate', () => {
+		const fixture = aiTurnFixture();
+		fixture.skipAnimations = true;
+		const match = createHookHarness(fixture);
+		expect(match.state().phase).toBe('awaiting-choice');
+		expect(match.result.current.rollPresentation).toMatchObject({
+			color: 'yellow',
+			animate: false,
+		});
+	});
+
+	test('reset invalidates a pending AI roll timer', () => {
+		const match = createHookHarness(aiTurnFixture(), { aiDelayMs: 100 });
+		act(() => match.result.current.reset());
+		expect(match.result.current.rollPresentation).toBeNull();
+		match.advanceTime(1000);
+		expect(match.state().turnNumber).toBe(1);
+		expect(match.state().currentPlayer).toBe('red');
+		expect(match.state().phase).toBe('awaiting-roll');
+		expect(match.result.current.actions).toHaveLength(0);
+	});
+
+	test('unmount invalidates a pending AI roll timer', () => {
+		const match = createHookHarness(aiTurnFixture(), { aiDelayMs: 100 });
+		match.unmount();
+		match.advanceTime(1000);
+		const saved = JSON.parse(
+			match.storage.getItem(ACTIVE_MATCH_STORAGE_KEY) ?? '{}'
+		) as PersistedAeroplaneMatchV1;
+		expect((saved.actions ?? []).filter(a => a.actor === 'ai')).toHaveLength(0);
+	});
+
+	test('skip cancels queued routes and the die tumble while preserving feed and state', () => {
+		const match = createHookHarness(oneLegalHumanMoveFixture());
+		match.roll();
+		expect(match.result.current.presentationQueue).toHaveLength(1);
+		expect(match.result.current.eventFeed).toHaveLength(1);
+		const before = match.state();
+		const presentationBefore = match.result.current.rollPresentation;
+		expect(presentationBefore).toMatchObject({
+			face: 1,
+			color: 'red',
+			animate: true,
+		});
+		match.skipAnimations();
+		expect(match.result.current.presentationQueue).toHaveLength(0);
+		expect(match.result.current.eventFeed).toHaveLength(1);
+		expect(match.state()).toEqual(before);
+		expect(match.result.current.rollPresentation).toEqual({
+			...presentationBefore!,
+			animate: false,
+		});
+	});
+
+	test('skip stops a no-route die tumble and later rolls animate again', () => {
+		const match = createHookHarness(blockedHumanRollPacedFixture(), {
+			aiDelayMs: 100,
+		});
+		match.roll();
+		expect(match.result.current.presentationQueue).toHaveLength(0);
+		const presentationBefore = match.result.current.rollPresentation;
+		expect(presentationBefore).toMatchObject({ face: 3, animate: true });
+		match.skipAnimations();
+		expect(match.result.current.rollPresentation).toEqual({
+			...presentationBefore!,
+			animate: false,
+		});
+		match.advanceTime(100);
+		expect(match.result.current.rollPresentation).toMatchObject({
+			color: 'yellow',
+			animate: true,
+		});
+	});
+
+	test('reset and resume clear the roll presentation', () => {
+		const match = createHookHarness(blockedHumanRollPacedFixture(), {
+			aiDelayMs: 100,
+		});
+		match.roll();
+		expect(match.result.current.rollPresentation).not.toBeNull();
+		act(() => match.result.current.reset());
+		expect(match.result.current.rollPresentation).toBeNull();
+		match.roll();
+		expect(match.result.current.rollPresentation).not.toBeNull();
+		act(() => {
+			expect(match.result.current.resume()).toBe(true);
+		});
+		expect(match.result.current.rollPresentation).toBeNull();
 	});
 });
 
