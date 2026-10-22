@@ -1,16 +1,22 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Panel from '../ui/Panel';
+import { AEROPLANE_VISUAL_MAX_MS } from '../../lib/aeroplane/presentation';
 import type {
 	AeroplaneColor,
 	AeroplaneState,
 	ResolvedMove,
 } from '../../lib/aeroplane/types';
+import type { AeroplaneRollPresentation } from '../../hooks/useAeroplaneMatch';
 
 export interface AeroplaneStatusProps {
 	state: AeroplaneState;
 	legalMoves?: readonly ResolvedMove[];
 	isHumanTurn?: boolean;
 	isAnimating?: boolean;
+	/** Latest roll signal; its face outranks `state.pendingRoll` when present. */
+	rollPresentation?: AeroplaneRollPresentation | null;
+	/** Shared reduced-motion flag; disables the decorative die tumble. */
+	reducedMotion?: boolean;
 }
 
 const colorLabel: Record<AeroplaneColor, string> = {
@@ -50,9 +56,46 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 	legalMoves = [],
 	isHumanTurn = true,
 	isAnimating = false,
+	rollPresentation = null,
+	reducedMotion = false,
 }) => {
-	const die = state.pendingRoll === null ? '—' : String(state.pendingRoll);
+	const face = rollPresentation?.face ?? state.pendingRoll;
+	const roller = rollPresentation?.color ?? state.currentPlayer;
+	const die = face === null ? '—' : String(face);
 	const message = statusCopy(state, legalMoves, isHumanTurn);
+
+	// Decorative tumble keyed to the roll id. It never alters the displayed
+	// outcome: the authoritative face stays in the live region (sr-only while
+	// frames run) and frames themselves are aria-hidden. Canceled — settling
+	// on the real face — by Skip (animate=false), null, reduced motion,
+	// missing rAF, or unmount, and bounded like board motion.
+	const [tumbleFace, setTumbleFace] = useState<number | null>(null);
+	const rollId = rollPresentation?.id ?? null;
+	const tumbleEnabled = rollPresentation?.animate === true && !reducedMotion;
+
+	useEffect(() => {
+		if (!tumbleEnabled || typeof requestAnimationFrame !== 'function') return;
+		let frame: number | null = null;
+		let startedAt: number | null = null;
+		let step = 0;
+		const tick = (now: number) => {
+			if (startedAt === null) startedAt = now;
+			if (now - startedAt >= AEROPLANE_VISUAL_MAX_MS) {
+				setTumbleFace(null);
+				return;
+			}
+			step += 1;
+			setTumbleFace(((step + (rollId ?? 0)) % 6) + 1);
+			frame = requestAnimationFrame(tick);
+		};
+		frame = requestAnimationFrame(tick);
+		return () => {
+			if (frame !== null && typeof cancelAnimationFrame === 'function') {
+				cancelAnimationFrame(frame);
+			}
+			setTumbleFace(null);
+		};
+	}, [tumbleEnabled, rollId]);
 
 	return (
 		<Panel
@@ -74,12 +117,36 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 						{colorLabel[state.currentPlayer]}
 					</p>
 				</div>
-				<div className='shrink-0'>
+				<div className='shrink-0' data-testid='aeroplane-status-die'>
 					<p className='text-xs font-mono uppercase tracking-[0.18em] text-ivory-dim'>
 						Die
 					</p>
-					<p className='text-center font-mono text-xl font-semibold text-aeroplane'>
-						{die}
+					{tumbleFace === null ? (
+						<p
+							data-testid='aeroplane-die-face'
+							className='text-center font-mono text-xl font-semibold text-aeroplane'
+						>
+							{die}
+						</p>
+					) : (
+						<>
+							<p data-testid='aeroplane-die-face' className='sr-only'>
+								{die}
+							</p>
+							<p
+								aria-hidden='true'
+								data-testid='aeroplane-die-tumble'
+								className='text-center font-mono text-xl font-semibold text-ivory-dim'
+							>
+								{tumbleFace}
+							</p>
+						</>
+					)}
+					<p
+						data-testid='aeroplane-die-roller'
+						className='text-center text-xs font-mono uppercase tracking-[0.18em] text-ivory-dim'
+					>
+						Rolled by {colorLabel[roller]}
 					</p>
 				</div>
 				<div className='hidden min-w-0 basis-full border-t border-line pt-2 text-sm text-ivory-dim sm:block'>

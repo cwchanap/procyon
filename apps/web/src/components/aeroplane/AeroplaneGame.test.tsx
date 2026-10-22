@@ -2,16 +2,29 @@ import { describe, expect, test, mock } from 'bun:test';
 import { act, fireEvent, render } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { setupReactDom } from '../../test/reactSetup';
+import { installFrameClock } from '../../test/frameClock';
 import { CLASSIC_CONFIG, QUICK_CONFIG } from '../../lib/aeroplane/game';
 import { applyResolvedMove, resolveLegalMove } from '../../lib/aeroplane/rules';
 import { toPosition } from '../../lib/aeroplane/topology';
 import { positionAnchor } from '../../lib/aeroplane/presentation';
+import { rollFair } from '../../lib/aeroplane/dice';
+import {
+	AEROPLANE_MUTED_STORAGE_KEY,
+	resetAeroplaneAudioForTest,
+} from '../../lib/aeroplane/sound';
+import type { AeroplaneStorage } from '../../lib/aeroplane/persistence';
+import type { RngState } from '../../lib/aeroplane/rng';
 import type {
 	AeroplaneActionActor,
 	AeroplaneEvent,
 	AeroplaneState,
+	PlaneState,
 	ResolvedMove,
 } from '../../lib/aeroplane/types';
+import type {
+	AeroplaneE2EFixture,
+	UseAeroplaneMatchOptions,
+} from '../../hooks/useAeroplaneMatch';
 import {
 	FLIGHT_GUIDES,
 	HANGAR_SLOTS,
@@ -20,6 +33,7 @@ import {
 	STACK_OFFSETS,
 	TRACK_ANCHORS,
 } from '../../lib/aeroplane/layout';
+import AeroplaneGame from '../AeroplaneGame';
 import AeroplaneBoard, { type AeroplaneBoardCue } from './AeroplaneBoard';
 import AeroplaneEventFeed, {
 	type AeroplanePresentationLike,
@@ -941,35 +955,6 @@ describe('Aeroplane setup selects', () => {
 	});
 });
 
-/** Controllable requestAnimationFrame clock; Bun fake timers do not run rAF. */
-function installFrameClock() {
-	const pending = new Map<number, (now: number) => void>();
-	let nextId = 0;
-	let now = 0;
-	const globals = globalThis as unknown as Record<string, unknown>;
-	globals.requestAnimationFrame = (callback: (now: number) => void) => {
-		nextId += 1;
-		pending.set(nextId, callback);
-		return nextId;
-	};
-	globals.cancelAnimationFrame = (id: number) => {
-		pending.delete(id);
-	};
-	return {
-		advance(ms: number) {
-			now += ms;
-			const callbacks = [...pending.values()];
-			pending.clear();
-			for (const callback of callbacks) callback(now);
-		},
-		uninstall() {
-			pending.clear();
-			delete globals.requestAnimationFrame;
-			delete globals.cancelAnimationFrame;
-		},
-	};
-}
-
 function motionState(
 	progressById: Record<string, number>,
 	patch: Partial<AeroplaneState> = {}
@@ -1438,6 +1423,271 @@ describe('Aeroplane board motion playback', () => {
 			expect(cueNames(animated)).toEqual(['hop', 'win']);
 		} finally {
 			clock.uninstall();
+		}
+	});
+});
+
+function diceStateForRoll(roll: number): RngState {
+	for (let value = 1; value <= 100_000; value += 1) {
+		const result = rollFair({ value });
+		if (result.roll === roll) return { value };
+	}
+	throw new Error(`no deterministic seed for roll ${roll}`);
+}
+
+function hangarPlanes(): PlaneState[] {
+	return COLORS.flatMap(color =>
+		Array.from({ length: 4 }, (_, index) => ({
+			id: `${color}-${index}`,
+			color,
+			progress: null as number | null,
+		}))
+	);
+}
+
+function gameFixture(
+	diceRoll: number,
+	planes?: PlaneState[]
+): AeroplaneE2EFixture {
+	return {
+		seed: 4242,
+		state: fixtureState({
+			phase: 'awaiting-roll',
+			pendingRoll: null,
+			planes: planes ?? hangarPlanes(),
+		}),
+		diceRng: diceStateForRoll(diceRoll),
+		aiRng: { value: 33 },
+		skipAnimations: false,
+	};
+}
+
+function launchReadyPlanes(): PlaneState[] {
+	return hangarPlanes().map(plane =>
+		plane.id === 'red-0' ? { ...plane, progress: 1 } : plane
+	);
+}
+
+function gameOptions(fixture: AeroplaneE2EFixture): UseAeroplaneMatchOptions {
+	const storage: AeroplaneStorage = {
+		getItem: () => null,
+		setItem: () => undefined,
+		removeItem: () => undefined,
+	};
+	return { fixture, dev: true, storage };
+}
+
+function renderGame(fixture: AeroplaneE2EFixture) {
+	return render(<AeroplaneGame controllerOptions={gameOptions(fixture)} />);
+}
+
+/** Recording AudioContext stub; frequencies double as cue names. */
+function installCueAudioStub(): number[] {
+	const frequencies: number[] = [];
+	class StubOscillator {
+		type = '';
+		frequency = { value: 0 };
+		onended: (() => void) | null = null;
+		connect() {
+			return this;
+		}
+		start() {
+			frequencies.push(this.frequency.value);
+		}
+		stop() {}
+		disconnect() {}
+	}
+	class StubAudioContext {
+		destination = {};
+		currentTime = 0;
+		state = 'running';
+		resume() {
+			return Promise.resolve();
+		}
+		createGain() {
+			return {
+				gain: {
+					setValueAtTime() {},
+					exponentialRampToValueAtTime() {},
+				},
+				connect() {},
+				disconnect() {},
+			};
+		}
+		createOscillator() {
+			return new StubOscillator();
+		}
+	}
+	(globalThis as Record<string, unknown>).AudioContext = StubAudioContext;
+	return frequencies;
+}
+
+function uninstallCueAudioStub() {
+	delete (globalThis as Record<string, unknown>).AudioContext;
+	resetAeroplaneAudioForTest();
+}
+
+describe('Aeroplane game composition', () => {
+	test('renders exactly one status die readout', () => {
+		const { getAllByTestId } = renderGame(gameFixture(3));
+		expect(getAllByTestId('aeroplane-status-die')).toHaveLength(1);
+	});
+
+	test('plays one roll cue per roll id plus board cues, never duplicated on rerender', () => {
+		const clock = installFrameClock();
+		const frequencies = installCueAudioStub();
+		try {
+			const fixture = gameFixture(1, launchReadyPlanes());
+			const { rerender, getByRole } = renderGame(fixture);
+			fireEvent.click(getByRole('button', { name: /roll die/i }));
+			// The roll cue fires once for the roll id, before any board frame.
+			expect(frequencies).toEqual([340]);
+			act(() => clock.advance(1)); // first frame crosses the initial hop
+			expect(frequencies).toEqual([340, 500]);
+			act(() => clock.advance(600)); // playback completes (hop + jump + finish)
+			// Both motion segments cue 'hop'; the move ends on finish.
+			expect(frequencies).toEqual([340, 500, 500, 640]);
+			rerender(<AeroplaneGame controllerOptions={gameOptions(fixture)} />);
+			act(() => clock.advance(600));
+			expect(frequencies).toEqual([340, 500, 500, 640]);
+		} finally {
+			clock.uninstall();
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('the mute toggle round-trips through localStorage and silences cues immediately', () => {
+		const frequencies = installCueAudioStub();
+		window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+		try {
+			const fixture = gameFixture(3);
+			const first = renderGame(fixture);
+			const toggle = first.getByTestId('aeroplane-mute-toggle');
+			expect(toggle.getAttribute('aria-pressed')).toBe('false');
+			fireEvent.click(first.getByRole('button', { name: /roll die/i }));
+			expect(frequencies).toEqual([340]);
+			fireEvent.click(toggle);
+			expect(toggle.getAttribute('aria-pressed')).toBe('true');
+			expect(window.localStorage.getItem(AEROPLANE_MUTED_STORAGE_KEY)).toBe(
+				'1'
+			);
+			first.unmount();
+
+			// The preference survives remount and suppresses the next roll cue.
+			const second = renderGame(fixture);
+			expect(
+				second.getByTestId('aeroplane-mute-toggle').getAttribute('aria-pressed')
+			).toBe('true');
+			fireEvent.click(second.getByRole('button', { name: /roll die/i }));
+			expect(frequencies).toEqual([340]);
+			// Muting never affects the authoritative action.
+			expect(second.getByTestId('aeroplane-die-face').textContent).toBe('3');
+			fireEvent.click(second.getByTestId('aeroplane-mute-toggle'));
+			expect(window.localStorage.getItem(AEROPLANE_MUTED_STORAGE_KEY)).toBe(
+				'0'
+			);
+		} finally {
+			window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('the die keeps the roller colour after the turn advances', () => {
+		const { getByRole, getByTestId, getAllByText } = renderGame(gameFixture(3));
+		fireEvent.click(getByRole('button', { name: /roll die/i }));
+		expect(getByTestId('aeroplane-die-face').textContent).toBe('3');
+		expect(getByTestId('aeroplane-die-roller').textContent).toContain('Red');
+		// The no-move roll already passed the turn to yellow.
+		expect(getAllByText('Yellow').length).toBeGreaterThan(0);
+	});
+
+	test('skip during a no-route roll stops the tumble and preserves the face', () => {
+		const clock = installFrameClock();
+		try {
+			const view = renderGame(gameFixture(3));
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			act(() => clock.advance(10));
+			expect(view.queryByTestId('aeroplane-die-tumble')).not.toBeNull();
+			fireEvent.click(view.getByRole('button', { name: /skip animations/i }));
+			expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
+			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('3');
+			act(() => clock.advance(700)); // no late tumble frames
+			expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('blocked Web Audio and storage errors never interrupt play', () => {
+		class BlockedAudioContext {
+			constructor() {
+				throw new Error('autoplay blocked');
+			}
+		}
+		(globalThis as Record<string, unknown>).AudioContext = BlockedAudioContext;
+		const originalDescriptor = Object.getOwnPropertyDescriptor(
+			window,
+			'localStorage'
+		);
+		Object.defineProperty(window, 'localStorage', {
+			configurable: true,
+			get() {
+				throw new Error('storage blocked');
+			},
+		});
+		try {
+			const view = renderGame(gameFixture(3));
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('3');
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Red'
+			);
+			fireEvent.click(view.getByTestId('aeroplane-mute-toggle'));
+			expect(
+				view.getByTestId('aeroplane-mute-toggle').getAttribute('aria-pressed')
+			).toBe('true');
+		} finally {
+			if (originalDescriptor) {
+				Object.defineProperty(window, 'localStorage', originalDescriptor);
+			}
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('missing rAF or reduced motion settles the move and die without an exception', () => {
+		// Baseline environment has no global rAF.
+		expect(globalThis.requestAnimationFrame).toBeUndefined();
+		const view = renderGame(gameFixture(1, launchReadyPlanes()));
+		fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+		expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
+		expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
+		expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+		expect(view.getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
+		view.unmount();
+
+		// Reduced motion with rAF available settles the same way.
+		const clock = installFrameClock();
+		const windowWithMedia = window as unknown as {
+			matchMedia: unknown;
+		};
+		const originalMatchMedia = windowWithMedia.matchMedia;
+		windowWithMedia.matchMedia = (query: string) => ({
+			matches: query.includes('prefers-reduced-motion'),
+			addEventListener() {},
+			removeEventListener() {},
+			addListener() {},
+			removeListener() {},
+		});
+		try {
+			const reduced = renderGame(gameFixture(1, launchReadyPlanes()));
+			fireEvent.click(reduced.getByRole('button', { name: /roll die/i }));
+			expect(reduced.getByTestId('aeroplane-die-face').textContent).toBe('1');
+			expect(reduced.queryByTestId('aeroplane-die-tumble')).toBeNull();
+			expect(reduced.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(reduced.getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
+		} finally {
+			clock.uninstall();
+			windowWithMedia.matchMedia = originalMatchMedia;
 		}
 	});
 });
