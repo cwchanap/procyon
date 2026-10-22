@@ -1,9 +1,23 @@
-import { beforeEach, describe, expect, mock, afterEach, test } from 'bun:test';
+import {
+	beforeEach,
+	describe,
+	expect,
+	jest,
+	mock,
+	afterEach,
+	test,
+} from 'bun:test';
 import { act, fireEvent, render } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { setupReactDom } from '../../test/reactSetup';
 import { installFrameClock } from '../../test/frameClock';
-import { CLASSIC_CONFIG, QUICK_CONFIG } from '../../lib/aeroplane/game';
+import {
+	CLASSIC_CONFIG,
+	QUICK_CONFIG,
+	playResolvedMove,
+	rollTurn,
+} from '../../lib/aeroplane/game';
+import { checksumState } from '../../lib/aeroplane/checksum';
 import { applyResolvedMove, resolveLegalMove } from '../../lib/aeroplane/rules';
 import { toPosition } from '../../lib/aeroplane/topology';
 import { positionAnchor } from '../../lib/aeroplane/presentation';
@@ -16,6 +30,7 @@ import type { AeroplaneStorage } from '../../lib/aeroplane/persistence';
 import type { RngState } from '../../lib/aeroplane/rng';
 import type {
 	AeroplaneActionActor,
+	AeroplaneColor,
 	AeroplaneEvent,
 	AeroplaneState,
 	PlaneState,
@@ -1469,17 +1484,100 @@ function launchReadyPlanes(): PlaneState[] {
 	);
 }
 
-function gameOptions(fixture: AeroplaneE2EFixture): UseAeroplaneMatchOptions {
+function gameOptions(
+	fixture: AeroplaneE2EFixture,
+	extra: Partial<
+		Pick<UseAeroplaneMatchOptions, 'aiDelayMs' | 'presentationMs'>
+	> = {}
+): UseAeroplaneMatchOptions {
 	const storage: AeroplaneStorage = {
 		getItem: () => null,
 		setItem: () => undefined,
 		removeItem: () => undefined,
 	};
-	return { fixture, dev: true, storage };
+	return { fixture, dev: true, storage, ...extra };
 }
 
-function renderGame(fixture: AeroplaneE2EFixture) {
-	return render(<AeroplaneGame controllerOptions={gameOptions(fixture)} />);
+function renderGame(
+	fixture: AeroplaneE2EFixture,
+	extra?: Parameters<typeof gameOptions>[1]
+) {
+	return render(
+		<AeroplaneGame controllerOptions={gameOptions(fixture, extra)} />
+	);
+}
+
+/** Deterministic dice seed whose next rolls are exactly `rolls`. */
+function rngForRolls(rolls: readonly number[]): RngState {
+	for (let value = 1; value <= 1_000_000; value += 1) {
+		let rng: RngState = { value };
+		let matches = true;
+		for (const expected of rolls) {
+			const result = rollFair(rng);
+			if (result.roll !== expected) {
+				matches = false;
+				break;
+			}
+			rng = result.rng;
+		}
+		if (matches) return { value };
+	}
+	throw new Error(`no deterministic dice sequence: ${rolls}`);
+}
+
+function gameFixtureForRolls(
+	rolls: readonly number[],
+	planes?: PlaneState[],
+	currentPlayer: AeroplaneColor = 'red'
+): AeroplaneE2EFixture {
+	return {
+		seed: 4242,
+		state: fixtureState({
+			currentPlayer,
+			phase: 'awaiting-roll',
+			pendingRoll: null,
+			planes: planes ?? hangarPlanes(),
+		}),
+		diceRng: rngForRolls(rolls),
+		aiRng: { value: 33 },
+		skipAnimations: false,
+	};
+}
+
+function finishedFixture(): AeroplaneE2EFixture {
+	const config = { ...CLASSIC_CONFIG, victoryTarget: 2 as const };
+	return {
+		seed: 4242,
+		state: fixtureState({
+			config,
+			phase: 'finished',
+			pendingRoll: null,
+			winner: 'red',
+			planes: hangarPlanes().map(plane =>
+				plane.id === 'red-0' || plane.id === 'red-1'
+					? { ...plane, progress: 56 }
+					: plane
+			),
+			stats: {
+				capturesMade: { red: 0, yellow: 0, blue: 0, green: 0 },
+				capturesSuffered: { red: 0, yellow: 0, blue: 0, green: 0 },
+				finished: { red: 1, yellow: 0, blue: 0, green: 0 },
+			},
+		}),
+		diceRng: { value: 4242 },
+		aiRng: { value: 33 },
+		skipAnimations: false,
+	};
+}
+
+/** Advance the hook's paced timers (fake timers) inside act. */
+function advanceTimers(ms: number): void {
+	act(() => {
+		// Bun's `jest` exposes no typed advanceTimersByTime (ChessGame pattern).
+		(
+			jest as unknown as { advanceTimersByTime(ms: number): void }
+		).advanceTimersByTime(ms);
+	});
 }
 
 /** Recording AudioContext stub; frequencies double as cue names. */
@@ -1548,6 +1646,9 @@ describe('Aeroplane game composition', () => {
 	});
 
 	afterEach(() => {
+		// bun:test fake timers leak across tests in a file; restore real ones so
+		// timer-free tests below stay timer-free regardless of order.
+		jest.useRealTimers();
 		if (hadInitialAuthUser) {
 			window.__PROCYON_INITIAL_AUTH_USER__ = originalInitialAuthUser ?? null;
 		} else {
@@ -1715,6 +1816,353 @@ describe('Aeroplane game composition', () => {
 		} finally {
 			clock.uninstall();
 			windowWithMedia.matchMedia = originalMatchMedia;
+		}
+	});
+
+	test('a human no-move roll keeps its face until the paced AI roll replaces it', () => {
+		jest.useFakeTimers();
+		const clock = installFrameClock();
+		try {
+			const view = renderGame(gameFixtureForRolls([1, 1, 1, 1]), {
+				aiDelayMs: 100,
+			});
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Red'
+			);
+			// The turn already passed; the face is not replaced before the AI delay.
+			// The rolling status renders in the board hint and both status panels.
+			expect(view.getAllByText(/yellow is rolling/i).length).toBeGreaterThan(0);
+			advanceTimers(99);
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Red'
+			);
+			advanceTimers(1);
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Yellow'
+			);
+			// Blue and green cascade one delay each (each roll's scheduling flushes
+			// with the act that rolled), then the human returns.
+			advanceTimers(100);
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Blue'
+			);
+			advanceTimers(100);
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Green'
+			);
+			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
+			advanceTimers(100);
+			expect(
+				view.getByRole('button', { name: /roll die/i }).getAttribute('disabled')
+			).toBeNull();
+			// Rolls fire exactly once per delay.
+			advanceTimers(1000);
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Green'
+			);
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('a human auto-select roll shows its face and paces the next AI roll', () => {
+		jest.useFakeTimers();
+		const clock = installFrameClock();
+		try {
+			const view = renderGame(
+				gameFixtureForRolls([1, 1, 1, 1], launchReadyPlanes()),
+				{ aiDelayMs: 100 }
+			);
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			// The roll is signalled even though the single legal move auto-committed.
+			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Red'
+			);
+			act(() => clock.advance(1));
+			expect(view.queryByTestId('aeroplane-motion-overlay')).not.toBeNull();
+			expect(view.queryByTestId('aeroplane-plane-control-red-0')).toBeNull();
+			// The appended move does not accelerate the next AI roll.
+			advanceTimers(99);
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Red'
+			);
+			expect(view.getAllByText(/yellow is rolling/i).length).toBeGreaterThan(0);
+			advanceTimers(1);
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Yellow'
+			);
+			// Expiry (at 650ms) reveals the committed move without artifacts; the
+			// pending tumble frames are never advanced so nothing decorative shows.
+			advanceTimers(700);
+			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
+			// The mover is back on the board at its committed (non-airborne) spot.
+			expect(view.getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
+			// The cascade finishes green's roll before the human may roll again.
+			advanceTimers(100);
+			expect(
+				view.getByRole('button', { name: /roll die/i }).getAttribute('disabled')
+			).toBeNull();
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('a complete move-and-capture flow preserves the authoritative state, checksums, and original feed output', () => {
+		jest.useFakeTimers();
+		const clock = installFrameClock();
+		const writes: string[] = [];
+		const storage: AeroplaneStorage = {
+			getItem: () => null,
+			setItem: (_key, value) => {
+				writes.push(value);
+			},
+			removeItem: () => undefined,
+		};
+		try {
+			const fixture = gameFixtureForRolls(
+				[1, 1, 1, 1],
+				launchReadyPlanes().map(plane =>
+					plane.id === 'blue-0' ? { ...plane, progress: 32 } : plane
+				)
+			);
+			// Pure-rules reference for the same seeded roll and auto-selected move.
+			const rolled = rollTurn(fixture.state!, fixture.diceRng!);
+			const reference = playResolvedMove(
+				rolled.state,
+				rolled.legalMoves[0]!
+			).state;
+			const view = render(
+				<AeroplaneGame
+					controllerOptions={{ fixture, dev: true, storage, aiDelayMs: 100 }}
+				/>
+			);
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			// The original event-feed output is unchanged.
+			expect(
+				view.getByText('You: Red plane 1 via jump to track 6.')
+			).toBeTruthy();
+			// The persisted envelope equals the pure engine outcome, checksums included.
+			const saved = JSON.parse(writes.at(-1)!) as {
+				state: AeroplaneState;
+				actions: { kind: string; checksum: string }[];
+			};
+			expect(saved.actions.map(action => action.kind)).toEqual([
+				'roll',
+				'move',
+			]);
+			expect(saved.actions[0]!.checksum).toBe(checksumState(rolled.state));
+			expect(saved.actions[1]!.checksum).toBe(checksumState(reference));
+			expect(saved.state).toEqual(reference);
+			// Playback completes and reveals exactly the committed board: the mover
+			// landed and the captured plane returned to its hangar slot.
+			act(() => clock.advance(1));
+			act(() => clock.advance(700));
+			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(view.queryByTestId('aeroplane-capture-ghost')).toBeNull();
+			expect(view.getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
+			expect(view.getByTestId('aeroplane-plane-control-blue-0')).toBeTruthy();
+			// The flow continues across actors: paced AI rolls return the turn one
+			// link per paced step, and the presentation envelope settles at 650ms.
+			advanceTimers(100);
+			advanceTimers(100);
+			advanceTimers(100);
+			advanceTimers(400);
+			expect(
+				view.getByRole('button', { name: /roll die/i }).getAttribute('disabled')
+			).toBeNull();
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('AI no-move rolls cascade through each rival back to the human', () => {
+		jest.useFakeTimers();
+		const view = renderGame(
+			gameFixtureForRolls([1, 1, 1, 1], undefined, 'yellow'),
+			{ aiDelayMs: 100 }
+		);
+		expect(view.getByTestId('aeroplane-die-face').textContent).toBe('—');
+		expect(view.getAllByText(/yellow is rolling/i).length).toBeGreaterThan(0);
+		const rollButton = view.getByRole('button', { name: /roll die/i });
+		expect(rollButton.getAttribute('disabled')).not.toBeNull();
+		advanceTimers(100);
+		expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+			'Yellow'
+		);
+		advanceTimers(100);
+		expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+			'Blue'
+		);
+		advanceTimers(100);
+		expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+			'Green'
+		);
+		advanceTimers(100);
+		expect(
+			view.getByRole('button', { name: /roll die/i }).getAttribute('disabled')
+		).toBeNull();
+		expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
+	});
+
+	test('a rapid AI move supersedes the in-flight human presentation without late cues', () => {
+		jest.useFakeTimers();
+		const clock = installFrameClock();
+		window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+		const frequencies = installCueAudioStub();
+		try {
+			const fixture = gameFixtureForRolls(
+				[1, 1],
+				launchReadyPlanes().map(plane =>
+					plane.id === 'yellow-0' ? { ...plane, progress: 1 } : plane
+				)
+			);
+			const view = renderGame(fixture, {
+				aiDelayMs: 100,
+				// Keep the human route alive past the AI move so supersession is real.
+				presentationMs: 5000,
+			});
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			// Roll cue, then the human timeline's first hop.
+			act(() => clock.advance(1));
+			act(() => clock.advance(40));
+			expect(frequencies).toEqual([340, 500]);
+			// The paced AI roll and its auto-selected move supersede the overlay.
+			advanceTimers(200);
+			act(() => clock.advance(1));
+			const yellowStart = positionAnchor(toPosition('yellow', 1), 'yellow-0');
+			const position = overlayAnchor(
+				testId => view.queryByTestId(testId),
+				'aeroplane-motion-overlay'
+			);
+			expect(position).toEqual(yellowStart);
+			// Only the newest timeline's cues fire: the yellow roll cue (one per
+			// roll id) plus its hops and finish; the superseded red hop, jump,
+			// capture, and finish never do.
+			act(() => clock.advance(1000));
+			expect(frequencies).toEqual([340, 500, 340, 500, 500, 640]);
+			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			// Both moves committed in order in the unchanged original feed.
+			expect(
+				view.getByText('You: Red plane 1 via jump to track 6.')
+			).toBeTruthy();
+			expect(
+				view.getByText('AI: Yellow plane 1 via jump to track 6.')
+			).toBeTruthy();
+		} finally {
+			window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+			clock.uninstall();
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('the status live region carries only the authoritative face and route state', () => {
+		jest.useFakeTimers();
+		const clock = installFrameClock();
+		try {
+			const view = renderGame(
+				gameFixtureForRolls([1, 1, 1, 1], launchReadyPlanes()),
+				{ aiDelayMs: 100 }
+			);
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			act(() => clock.advance(10));
+			// The decorative tumble is aria-hidden; the spoken face stays authoritative.
+			expect(
+				view.getByTestId('aeroplane-die-tumble').getAttribute('aria-hidden')
+			).toBe('true');
+			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
+			const regions = view.getAllByRole('status');
+			expect(regions).toHaveLength(2);
+			const dieRegion = regions.find(region =>
+				region.querySelector('[data-testid="aeroplane-status-die"]')
+			)!;
+			const gameRegion = regions.find(region => region !== dieRegion)!;
+			expect(dieRegion.textContent).toContain('Rolled by Red');
+			expect(gameRegion.textContent).toContain('A route is being presented.');
+			expect(dieRegion.textContent).toContain('Route in flight');
+			// Settling and expiry clear the decorative and ephemeral announcements.
+			act(() => clock.advance(700));
+			expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
+			advanceTimers(700);
+			expect(gameRegion.textContent).not.toContain(
+				'A route is being presented.'
+			);
+			expect(dieRegion.textContent).not.toContain('Route in flight');
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('the skipAnimations fixture path settles immediately and cascades AI rolls without timers', () => {
+		const clock = installFrameClock();
+		try {
+			const fixture = gameFixtureForRolls([1, 1, 1, 1], launchReadyPlanes());
+			fixture.skipAnimations = true;
+			const view = renderGame(fixture);
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			// No tumble, no route playback, no queue entry — the fast fixture path.
+			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
+			expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
+			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(view.getByText('Your flight log will appear here.')).toBeTruthy();
+			// The whole AI cascade (yellow→blue→green) executed synchronously
+			// inside the click's act, without advancing any clock.
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Green'
+			);
+			act(() => clock.advance(500)); // never produces late artifacts
+			expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
+			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Green'
+			);
+			expect(
+				view.getByRole('button', { name: /roll die/i }).getAttribute('disabled')
+			).toBeNull();
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('a completed match announces the winner and reset starts clean without artifacts', () => {
+		const clock = installFrameClock();
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () =>
+			new Response('{}', {
+				status: 201,
+				headers: { 'Content-Type': 'application/json' },
+			})) as unknown as typeof fetch;
+		try {
+			const view = renderGame(finishedFixture());
+			// The winner is announced; a finished match has no motion artifacts.
+			// The status copy renders in both status panels.
+			expect(view.getAllByText(/red wins the match/i).length).toBeGreaterThan(
+				0
+			);
+			const regions = view.getAllByRole('status');
+			const gameRegion = regions.find(
+				region => !region.querySelector('[data-testid="aeroplane-status-die"]')
+			)!;
+			expect(gameRegion.textContent).toContain('red wins.');
+			act(() => clock.advance(300));
+			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
+			// One reset starts a fresh match without animation artifacts.
+			fireEvent.click(view.getByRole('button', { name: /reset match/i }));
+			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('—');
+			expect(view.getByText('Your flight log will appear here.')).toBeTruthy();
+			expect(
+				view.getByRole('button', { name: /roll die/i }).getAttribute('disabled')
+			).toBeNull();
+			act(() => clock.advance(300));
+			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
+		} finally {
+			globalThis.fetch = originalFetch;
+			clock.uninstall();
 		}
 	});
 });
