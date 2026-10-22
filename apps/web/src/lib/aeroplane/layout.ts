@@ -90,14 +90,15 @@ export const HANGAR_SLOTS: Readonly<
 	),
 });
 
-// Red's private lane moves from the southern edge of the shared track toward
-// the centre.  The other lanes are quarter-turn projections of this path.
+// Red's private lane steps inward from the shared track toward the centre,
+// nearest-the-centre last so the lane visually approaches the finish.  The
+// other lanes are quarter-turn projections of this path.
 const RED_HOME_PATH: readonly LayoutAnchor[] = [
-	{ x: 50, y: 43 },
-	{ x: 50, y: 39 },
-	{ x: 50, y: 35 },
-	{ x: 50, y: 31 },
 	{ x: 50, y: 27 },
+	{ x: 50, y: 31 },
+	{ x: 50, y: 35 },
+	{ x: 50, y: 39 },
+	{ x: 50, y: 43 },
 	{ x: 50, y: 50 },
 ];
 
