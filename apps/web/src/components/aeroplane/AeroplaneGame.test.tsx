@@ -1,8 +1,11 @@
 import { describe, expect, test, mock } from 'bun:test';
-import { fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { setupReactDom } from '../../test/reactSetup';
 import { CLASSIC_CONFIG, QUICK_CONFIG } from '../../lib/aeroplane/game';
+import { applyResolvedMove, resolveLegalMove } from '../../lib/aeroplane/rules';
+import { toPosition } from '../../lib/aeroplane/topology';
+import { positionAnchor } from '../../lib/aeroplane/presentation';
 import type {
 	AeroplaneActionActor,
 	AeroplaneEvent,
@@ -17,7 +20,7 @@ import {
 	STACK_OFFSETS,
 	TRACK_ANCHORS,
 } from '../../lib/aeroplane/layout';
-import AeroplaneBoard from './AeroplaneBoard';
+import AeroplaneBoard, { type AeroplaneBoardCue } from './AeroplaneBoard';
 import AeroplaneEventFeed, {
 	type AeroplanePresentationLike,
 } from './AeroplaneEventFeed';
@@ -935,5 +938,506 @@ describe('Aeroplane setup selects', () => {
 			/>
 		);
 		expect(getByText(/custom rules/i)).toBeTruthy();
+	});
+});
+
+/** Controllable requestAnimationFrame clock; Bun fake timers do not run rAF. */
+function installFrameClock() {
+	const pending = new Map<number, (now: number) => void>();
+	let nextId = 0;
+	let now = 0;
+	const globals = globalThis as unknown as Record<string, unknown>;
+	globals.requestAnimationFrame = (callback: (now: number) => void) => {
+		nextId += 1;
+		pending.set(nextId, callback);
+		return nextId;
+	};
+	globals.cancelAnimationFrame = (id: number) => {
+		pending.delete(id);
+	};
+	return {
+		advance(ms: number) {
+			now += ms;
+			const callbacks = [...pending.values()];
+			pending.clear();
+			for (const callback of callbacks) callback(now);
+		},
+		uninstall() {
+			pending.clear();
+			delete globals.requestAnimationFrame;
+			delete globals.cancelAnimationFrame;
+		},
+	};
+}
+
+function motionState(
+	progressById: Record<string, number>,
+	patch: Partial<AeroplaneState> = {}
+): AeroplaneState {
+	const base = fixtureState();
+	return fixtureState({
+		...patch,
+		planes: base.planes.map(plane =>
+			plane.id in progressById
+				? { ...plane, progress: progressById[plane.id]! }
+				: plane
+		),
+	});
+}
+
+/** Resolve a legal move and the committed post-move state it lands in. */
+function committedMove(
+	state: AeroplaneState,
+	planeId: string,
+	roll: number
+): { move: ResolvedMove; committed: AeroplaneState } {
+	const resolved = resolveLegalMove(state, planeId, roll);
+	if (!resolved)
+		throw new Error(`expected a legal move for ${planeId} +${roll}`);
+	return {
+		move: resolved,
+		committed: applyResolvedMove(state, resolved).state,
+	};
+}
+
+function overlayAnchor(
+	queryByTestId: (id: string) => Element | null,
+	testId = 'aeroplane-motion-overlay'
+): { x: number; y: number } | null {
+	const circle = queryByTestId(testId)?.querySelector('circle');
+	if (!circle) return null;
+	return {
+		x: Number(circle.getAttribute('cx')),
+		y: Number(circle.getAttribute('cy')),
+	};
+}
+
+function cueNames(onCue: ReturnType<typeof mock>): AeroplaneBoardCue[] {
+	return onCue.mock.calls.map(([cue]) => cue);
+}
+
+describe('Aeroplane board motion playback', () => {
+	test('animates hops in order and emits a cue at each segment boundary', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState({ 'red-0': 30 }),
+				'red-0',
+				3
+			);
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { getByTestId, queryByTestId } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move }]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			// The committed mover glyph is masked while the overlay travels.
+			expect(queryByTestId('aeroplane-plane-control-red-0')).toBeNull();
+			act(() => clock.advance(1));
+			// First frame sits on the move's start anchor (progress 30 → node 29).
+			expect(overlayAnchor(queryByTestId)).toEqual({
+				x: TRACK_ANCHORS[29]!.x,
+				y: TRACK_ANCHORS[29]!.y,
+			});
+			expect(cueNames(onCue)).toEqual(['hop']);
+			act(() => clock.advance(239));
+			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop']);
+			expect(queryByTestId('aeroplane-motion-overlay')).not.toBeNull();
+			act(() => clock.advance(1));
+			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop', 'finish']);
+			expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('interpolates the long flight on its quadratic guide midpoint', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState({ 'red-0': 16 }),
+				'red-0',
+				2
+			);
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { queryByTestId } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move }]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			// Two 80 ms hops then a 240 ms flight; the midpoint lands 280 ms in.
+			act(() => clock.advance(1)); // first frame starts the clock at 0
+			act(() => clock.advance(280));
+			const guide = FLIGHT_GUIDES[0]!;
+			const landing = positionAnchor(toPosition('red', 30), 'red-0');
+			const midpoint = {
+				x: 0.25 * guide.from.x + 0.5 * guide.control.x + 0.25 * landing.x,
+				y: 0.25 * guide.from.y + 0.5 * guide.control.y + 0.25 * landing.y,
+			};
+			const position = overlayAnchor(queryByTestId);
+			expect(position).not.toBeNull();
+			expect(Math.abs(position!.x - midpoint.x)).toBeLessThan(1e-6);
+			expect(Math.abs(position!.y - midpoint.y)).toBeLessThan(1e-6);
+			act(() => clock.advance(120));
+			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop', 'finish']);
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('returns a captured plane to its hangar and masks it while airborne', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState({ 'red-0': 26, 'yellow-1': 14 }),
+				'red-0',
+				1
+			);
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { getByTestId, queryByTestId } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move }]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(1)); // playback starts on the first frame
+			act(() => clock.advance(80)); // hop done, capture return begins
+			expect(cueNames(onCue)).toEqual(['hop', 'capture']);
+			expect(queryByTestId('aeroplane-capture-ghost')).not.toBeNull();
+			// The victim's committed hangar glyph is masked by its ghost.
+			expect(queryByTestId('aeroplane-plane-control-yellow-1')).toBeNull();
+			act(() => clock.advance(159));
+			const ghost = overlayAnchor(queryByTestId, 'aeroplane-capture-ghost');
+			expect(ghost).not.toBeNull();
+			// Capture return is a straight lerp from node 26 to the hangar slot.
+			const ghostFrom = TRACK_ANCHORS[26]!;
+			const ghostTo = HANGAR_SLOTS.yellow[1]!;
+			const ghostProgress = 159 / 160;
+			expect(ghost!.x).toBeCloseTo(
+				ghostFrom.x + (ghostTo.x - ghostFrom.x) * ghostProgress,
+				6
+			);
+			expect(ghost!.y).toBeCloseTo(
+				ghostFrom.y + (ghostTo.y - ghostFrom.y) * ghostProgress,
+				6
+			);
+			act(() => clock.advance(1));
+			expect(cueNames(onCue)).toEqual(['hop', 'capture', 'finish']);
+			expect(queryByTestId('aeroplane-capture-ghost')).toBeNull();
+			expect(getByTestId('aeroplane-plane-control-yellow-1')).toBeTruthy();
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('stacked landings resolve to the committed glyph offset without a snap', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState(
+					{ 'red-0': 11, 'red-1': 9 },
+					{ config: { ...CLASSIC_CONFIG, stacking: true } }
+				),
+				'red-1',
+				2
+			);
+			const { queryByTestId, getByTestId } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move }]}
+					onRoll={mock(() => {})}
+				/>
+			);
+			const base = positionAnchor(toPosition('red', 11), 'red-0');
+			const offset = STACK_OFFSETS[1]!;
+			act(() => clock.advance(1)); // playback starts on the first frame
+			act(() => clock.advance(159)); // last hop nearly finished (160 ms total)
+			const position = overlayAnchor(queryByTestId);
+			expect(position).not.toBeNull();
+			expect(Math.abs(position!.x - (base.x + offset.x))).toBeLessThan(0.15);
+			expect(Math.abs(position!.y - (base.y + offset.y))).toBeLessThan(0.15);
+			act(() => clock.advance(1));
+			expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			// The revealed committed glyph sits exactly where the overlay ended.
+			const revealed = overlayAnchor(
+				testId => getByTestId(testId),
+				'aeroplane-plane-control-red-1'
+			);
+			expect(revealed).toEqual({ x: base.x + offset.x, y: base.y + offset.y });
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('keeps move controls live and non-intercepting during playback', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState({ 'red-0': 30 }),
+				'red-0',
+				3
+			);
+			const onSelectMove = mock((_move: ResolvedMove) => {});
+			const { getByRole, getByTestId } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[move]}
+					presentationQueue={[{ id: 1, move }]}
+					onRoll={mock(() => {})}
+					onSelectMove={onSelectMove}
+				/>
+			);
+			act(() => clock.advance(40));
+			expect(
+				getByTestId('aeroplane-motion-layer').getAttribute('pointer-events')
+			).toBe('none');
+			fireEvent.click(getByRole('button', { name: /Red plane 1/i }));
+			expect(onSelectMove).toHaveBeenCalledTimes(1);
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('a newer presentation id supersedes the in-flight one', () => {
+		const clock = installFrameClock();
+		try {
+			const pre = motionState({ 'red-0': 30, 'red-1': 38 });
+			const first = committedMove(pre, 'red-0', 3);
+			const second = committedMove(pre, 'red-1', 2);
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { rerender, queryByTestId } = render(
+				<AeroplaneBoard
+					state={first.committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move: first.move }]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(40));
+			expect(cueNames(onCue)).toEqual(['hop']);
+			rerender(
+				<AeroplaneBoard
+					state={second.committed}
+					legalMoves={[]}
+					presentationQueue={[
+						{ id: 1, move: first.move },
+						{ id: 2, move: second.move },
+					]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(1));
+			// Playback restarts on the newest move's first segment (red-1 at 38).
+			const position = overlayAnchor(queryByTestId);
+			expect(Math.abs(position!.x - TRACK_ANCHORS[37]!.x)).toBeLessThan(0.1);
+			expect(Math.abs(position!.y - TRACK_ANCHORS[37]!.y)).toBeLessThan(0.1);
+			act(() => clock.advance(160));
+			// The superseded move never emits further cues; the completion frame
+			// crosses the newest move's final hop boundary before finishing.
+			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop', 'finish']);
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('removing the active id from the queue cancels playback without late cues', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState({ 'red-0': 30 }),
+				'red-0',
+				3
+			);
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { rerender, getByTestId, queryByTestId } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move }]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(40));
+			expect(cueNames(onCue)).toEqual(['hop']);
+			rerender(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
+			act(() => clock.advance(500));
+			expect(cueNames(onCue)).toEqual(['hop']);
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('unmount cancels playback and emits no late cues', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState({ 'red-0': 30 }),
+				'red-0',
+				3
+			);
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { unmount } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move }]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(40));
+			unmount();
+			act(() => clock.advance(500));
+			expect(cueNames(onCue)).toEqual(['hop']);
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('reduced motion cancels playback and emits one terminal cue per move', () => {
+		const clock = installFrameClock();
+		try {
+			const pre = motionState({ 'red-0': 30, 'red-1': 38 });
+			const first = committedMove(pre, 'red-0', 3);
+			const second = committedMove(pre, 'red-1', 2);
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { rerender, queryByTestId } = render(
+				<AeroplaneBoard
+					state={first.committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move: first.move }]}
+					reducedMotion={false}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(40));
+			rerender(
+				<AeroplaneBoard
+					state={first.committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move: first.move }]}
+					reducedMotion={true}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			act(() => clock.advance(500));
+			expect(cueNames(onCue)).toEqual(['hop']);
+			// A fresh presentation under reduced motion never tweens: one cue.
+			rerender(
+				<AeroplaneBoard
+					state={second.committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 2, move: second.move }]}
+					reducedMotion={true}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			act(() => clock.advance(500));
+			expect(cueNames(onCue)).toEqual(['hop', 'finish']);
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('emits exactly one terminal cue without any global rAF', () => {
+		expect(globalThis.requestAnimationFrame).toBeUndefined();
+		const { move, committed } = committedMove(
+			motionState({ 'red-0': 30 }),
+			'red-0',
+			3
+		);
+		const onCue = mock((_cue: AeroplaneBoardCue) => {});
+		const { queryByTestId, getByTestId } = render(
+			<AeroplaneBoard
+				state={committed}
+				legalMoves={[]}
+				presentationQueue={[{ id: 1, move }]}
+				onCue={onCue}
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(cueNames(onCue)).toEqual(['finish']);
+		expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
+		expect(getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
+	});
+
+	test('a winning move emits win as the terminal cue, once per playback', () => {
+		const finishedState = fixtureState({
+			phase: 'finished',
+			winner: 'red',
+		});
+		const presentationMove = move('red-0', 30);
+		const onCue = mock((_cue: AeroplaneBoardCue) => {});
+		const { queryByTestId } = render(
+			<AeroplaneBoard
+				state={finishedState}
+				legalMoves={[]}
+				presentationQueue={[{ id: 1, move: presentationMove }]}
+				onCue={onCue}
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(cueNames(onCue)).toEqual(['win']);
+		expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
+
+		// Animated playback also ends on a single win cue.
+		const clock = installFrameClock();
+		try {
+			const animated = mock((_cue: AeroplaneBoardCue) => {});
+			const { rerender } = render(
+				<AeroplaneBoard
+					state={finishedState}
+					legalMoves={[]}
+					presentationQueue={[]}
+					onCue={animated}
+					onRoll={mock(() => {})}
+				/>
+			);
+			rerender(
+				<AeroplaneBoard
+					state={finishedState}
+					legalMoves={[]}
+					presentationQueue={[{ id: 7, move: presentationMove }]}
+					onCue={animated}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(1000)); // first frame starts the clock
+			act(() => clock.advance(200)); // crosses the single hop, then wins
+			expect(cueNames(animated)).toEqual(['hop', 'win']);
+		} finally {
+			clock.uninstall();
+		}
 	});
 });
