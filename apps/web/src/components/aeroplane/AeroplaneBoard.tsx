@@ -341,6 +341,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 		if (fresh) {
 			lastProcessedIdRef.current = newest.id;
 			if (!canAnimate) {
+				cancelPlayback();
 				// Zero-duration fallback: the committed state is already on screen;
 				// emit only the appropriate terminal cue, exactly once.
 				const frozen = buildMoveTimeline(newest.move, state, {
