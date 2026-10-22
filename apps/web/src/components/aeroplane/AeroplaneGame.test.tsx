@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from 'bun:test';
+import { beforeEach, describe, expect, mock, afterEach, test } from 'bun:test';
 import { act, fireEvent, render } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { setupReactDom } from '../../test/reactSetup';
@@ -25,6 +25,7 @@ import type {
 	AeroplaneE2EFixture,
 	UseAeroplaneMatchOptions,
 } from '../../hooks/useAeroplaneMatch';
+import type { AuthUser } from '../../lib/auth-helpers';
 import {
 	FLIGHT_GUIDES,
 	HANGAR_SLOTS,
@@ -1528,6 +1529,32 @@ function uninstallCueAudioStub() {
 }
 
 describe('Aeroplane game composition', () => {
+	// Composed mounts run the real `useAuth`. Seeding the SSR initial-user
+	// hook (the ChessGame.test.tsx convention) resolves auth synchronously
+	// inside render's act() instead of via an async `fetchSession()` whose
+	// setState lands outside act after the synchronous test body.
+	const TEST_AUTH_USER: AuthUser = {
+		id: 'user-a',
+		email: 'a@test.com',
+		username: 'userA',
+	};
+	let hadInitialAuthUser = false;
+	let originalInitialAuthUser: AuthUser | null | undefined;
+
+	beforeEach(() => {
+		hadInitialAuthUser = '__PROCYON_INITIAL_AUTH_USER__' in window;
+		originalInitialAuthUser = window.__PROCYON_INITIAL_AUTH_USER__;
+		window.__PROCYON_INITIAL_AUTH_USER__ = TEST_AUTH_USER;
+	});
+
+	afterEach(() => {
+		if (hadInitialAuthUser) {
+			window.__PROCYON_INITIAL_AUTH_USER__ = originalInitialAuthUser ?? null;
+		} else {
+			delete window.__PROCYON_INITIAL_AUTH_USER__;
+		}
+	});
+
 	test('renders exactly one status die readout', () => {
 		const { getAllByTestId } = renderGame(gameFixture(3));
 		expect(getAllByTestId('aeroplane-status-die')).toHaveLength(1);
