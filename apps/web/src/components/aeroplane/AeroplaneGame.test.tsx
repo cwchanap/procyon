@@ -1508,7 +1508,13 @@ function renderGame(
 }
 
 /** Deterministic dice seed whose next rolls are exactly `rolls`. */
+// Memoized per rolls-key: the brute-force search is expensive and the same
+// roll sequences recur across tests in this file.
+const rollsSeedCache = new Map<string, RngState>();
 function rngForRolls(rolls: readonly number[]): RngState {
+	const key = rolls.join(',');
+	const cached = rollsSeedCache.get(key);
+	if (cached) return cached;
 	for (let value = 1; value <= 1_000_000; value += 1) {
 		let rng: RngState = { value };
 		let matches = true;
@@ -1520,7 +1526,11 @@ function rngForRolls(rolls: readonly number[]): RngState {
 			}
 			rng = result.rng;
 		}
-		if (matches) return { value };
+		if (matches) {
+			const seed = { value };
+			rollsSeedCache.set(key, seed);
+			return seed;
+		}
 	}
 	throw new Error(`no deterministic dice sequence: ${rolls}`);
 }
@@ -1561,7 +1571,7 @@ function finishedFixture(): AeroplaneE2EFixture {
 			stats: {
 				capturesMade: { red: 0, yellow: 0, blue: 0, green: 0 },
 				capturesSuffered: { red: 0, yellow: 0, blue: 0, green: 0 },
-				finished: { red: 1, yellow: 0, blue: 0, green: 0 },
+				finished: { red: 2, yellow: 0, blue: 0, green: 0 },
 			},
 		}),
 		diceRng: { value: 4242 },
@@ -1649,8 +1659,8 @@ describe('Aeroplane game composition', () => {
 		// bun:test fake timers leak across tests in a file; restore real ones so
 		// timer-free tests below stay timer-free regardless of order.
 		jest.useRealTimers();
-		if (hadInitialAuthUser) {
-			window.__PROCYON_INITIAL_AUTH_USER__ = originalInitialAuthUser ?? null;
+		if (hadInitialAuthUser && originalInitialAuthUser !== undefined) {
+			window.__PROCYON_INITIAL_AUTH_USER__ = originalInitialAuthUser;
 		} else {
 			delete window.__PROCYON_INITIAL_AUTH_USER__;
 		}
@@ -1965,6 +1975,11 @@ describe('Aeroplane game composition', () => {
 			expect(view.queryByTestId('aeroplane-capture-ghost')).toBeNull();
 			expect(view.getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
 			expect(view.getByTestId('aeroplane-plane-control-blue-0')).toBeTruthy();
+			// The captured blue-0's committed glyph sits exactly on its hangar anchor.
+			const blueHangar = positionAnchor(toPosition('blue', null), 'blue-0');
+			expect(
+				overlayAnchor(view.queryByTestId, 'aeroplane-plane-control-blue-0')
+			).toEqual({ x: blueHangar.x, y: blueHangar.y });
 			// The flow continues across actors: paced AI rolls return the turn one
 			// link per paced step, and the presentation envelope settles at 650ms.
 			advanceTimers(100);

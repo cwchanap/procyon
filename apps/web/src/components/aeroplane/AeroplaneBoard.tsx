@@ -693,6 +693,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 										y={playback.frame.ghost.y}
 										color={ghostPlane.color}
 										number={planeNumber(ghostPlane.id)}
+										spriteHref={PLANE_SPRITE_HREFS[ghostPlane.color]}
 									/>
 								</g>
 							)}

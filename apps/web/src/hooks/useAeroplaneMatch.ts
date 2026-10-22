@@ -806,6 +806,10 @@ export function useAeroplaneMatch(
 					if (generationRef.current !== generation) return;
 					executeRoll('ai');
 				},
+				// Unlike scheduleAiDecision (where skipAnimations forces 0 because
+				// decisions can be scheduled while animations are skipped), the
+				// awaiting-roll effect already short-circuits to the immediate path
+				// before this runs, so the plain delay suffices.
 				Math.max(0, aiDelayRef.current)
 			);
 		},

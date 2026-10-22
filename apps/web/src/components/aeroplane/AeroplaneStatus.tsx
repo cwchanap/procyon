@@ -142,12 +142,14 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 							</p>
 						</>
 					)}
-					<p
-						data-testid='aeroplane-die-roller'
-						className='text-center text-xs font-mono uppercase tracking-[0.18em] text-ivory-dim'
-					>
-						Rolled by {colorLabel[roller]}
-					</p>
+					{face !== null && (
+						<p
+							data-testid='aeroplane-die-roller'
+							className='text-center text-xs font-mono uppercase tracking-[0.18em] text-ivory-dim'
+						>
+							Rolled by {colorLabel[roller]}
+						</p>
+					)}
 				</div>
 				<div className='hidden min-w-0 basis-full border-t border-line pt-2 text-sm text-ivory-dim sm:block'>
 					{message}
