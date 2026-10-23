@@ -134,7 +134,7 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 					<button
 						type='button'
 						onClick={toggleMuted}
-						aria-pressed={muted}
+						aria-pressed={!muted}
 						data-testid='aeroplane-mute-toggle'
 						className='min-h-11 w-full rounded-md border border-line px-4 py-2 text-sm font-medium text-ivory-dim transition-colors hover:border-line-brass hover:bg-ink-600 hover:text-ivory motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900'
 					>

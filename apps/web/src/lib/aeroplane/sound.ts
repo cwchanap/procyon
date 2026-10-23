@@ -25,6 +25,21 @@ const CUE_TONES: Record<AeroplaneCue, CueTone> = {
 
 let cachedContext: AudioContext | null = null;
 
+/**
+ * Without any user activation the autoplay policy holds the context
+ * suspended; cues requested that early must be dropped rather than queued,
+ * or every pre-gesture AI sound fires as one blast on the first click.
+ * Stacks lacking the API fall through to the suspended-state check below.
+ */
+function userHasActivated(): boolean {
+	const activation = (
+		globalThis as typeof globalThis & {
+			navigator?: { userActivation?: { hasBeenActive?: boolean } };
+		}
+	).navigator?.userActivation;
+	return activation?.hasBeenActive !== false;
+}
+
 function audioContext(): AudioContext | null {
 	if (cachedContext) return cachedContext;
 	const root = globalThis as typeof globalThis & {
@@ -58,10 +73,14 @@ export function primeAeroplaneAudio(): void {
 export function playAeroplaneCue(cue: AeroplaneCue, muted = false): void {
 	if (muted) return;
 	try {
+		if (!userHasActivated()) return;
 		const context = audioContext();
 		if (!context) return;
-		if (context.state === 'suspended') {
-			void context.resume().catch(() => undefined);
+		if (context.state !== 'running') {
+			if (context.state === 'suspended') {
+				void context.resume().catch(() => undefined);
+			}
+			return;
 		}
 		const tone = CUE_TONES[cue];
 		const seconds = tone.durationMs / 1000;

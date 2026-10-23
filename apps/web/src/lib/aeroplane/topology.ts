@@ -50,6 +50,23 @@ export function toGlobalTrackIndex(
 	return (offset + progress - 1) % SHARED_NODE_COUNT;
 }
 
+/** Logical progress represented by a position; hangars carry none. */
+export function progressFromPosition(
+	position: AeroplanePosition
+): number | null {
+	switch (position.kind) {
+		case 'hangar':
+			return null;
+		case 'launch':
+			return 0;
+		case 'track':
+		case 'home':
+			return position.progress;
+		case 'finished':
+			return FINISH_PROGRESS;
+	}
+}
+
 /** Return the logical position used by rule events and board projections. */
 export function toPosition(
 	color: AeroplaneColor,

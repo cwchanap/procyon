@@ -542,6 +542,109 @@ test.describe('Aeroplane Chess critical journey', () => {
 		await authHelper.logout();
 	});
 
+	test('persists the sound mute toggle across reload', async ({ page }) => {
+		await gotoAeroplane(page, fixtureFrom(CLASSIC_CONFIG, 41900));
+		const toggle = page.getByTestId('aeroplane-mute-toggle');
+		await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+		// The SSR button is visible before hydration attaches onClick; keep
+		// clicking until the press registers.
+		await expect
+			.poll(async () => {
+				if ((await toggle.getAttribute('aria-pressed')) !== 'false') {
+					await toggle.click();
+				}
+				return toggle.getAttribute('aria-pressed');
+			})
+			.toBe('false');
+		await expect
+			.poll(async () =>
+				page.evaluate(
+					key => localStorage.getItem(key),
+					'procyon.aeroplane.muted'
+				)
+			)
+			.toBe('1');
+
+		await page.reload();
+		await expect(
+			page.getByRole('heading', { name: 'Aeroplane Chess', exact: true })
+		).toBeVisible({ timeout: 15000 });
+		const reloaded = page.getByTestId('aeroplane-mute-toggle');
+		await expect(reloaded).toHaveAttribute('aria-pressed', 'false');
+		await expect(reloaded).toHaveText('Sound muted');
+
+		// Toggling back unmutes and persists the release as well.
+		await expect
+			.poll(async () => {
+				if ((await reloaded.getAttribute('aria-pressed')) !== 'true') {
+					await reloaded.click();
+				}
+				return reloaded.getAttribute('aria-pressed');
+			})
+			.toBe('true');
+		await expect
+			.poll(async () =>
+				page.evaluate(
+					key => localStorage.getItem(key),
+					'procyon.aeroplane.muted'
+				)
+			)
+			.toBe('0');
+	});
+
+	test('paces the AI roll instead of rolling instantly after the human move', async ({
+		page,
+	}) => {
+		const fixture = fixtureFrom(
+			CLASSIC_CONFIG,
+			41950,
+			{ currentPlayer: 'red', phase: 'awaiting-roll', pendingRoll: null },
+			// Animations on so the paced AI delay path runs (skipAnimations
+			// would cascade the AI synchronously).
+			{ diceRng: rngForRolls([1, 1, 1, 1]), skipAnimations: false }
+		);
+		fixture.state = withPlaneProgress(fixture.state!, { 'red-0': 1 });
+		await gotoAeroplane(page, fixture);
+		// Measure the real gap between the human move commit and the AI roll
+		// commit inside the page; robust regardless of CI polling latency.
+		const pacing = page.evaluate(async key => {
+			const actions = () => {
+				try {
+					const raw = localStorage.getItem(key);
+					return raw
+						? (JSON.parse(raw).actions as { actor: string; kind: string }[])
+						: [];
+				} catch {
+					return [];
+				}
+			};
+			let humanMoveAt = -1;
+			const deadline = Date.now() + 15_000;
+			while (Date.now() < deadline) {
+				const seen = actions();
+				if (
+					humanMoveAt < 0 &&
+					seen.some(
+						action => action.actor === 'human' && action.kind === 'move'
+					)
+				) {
+					humanMoveAt = Date.now();
+				}
+				if (
+					seen.some(action => action.actor === 'ai' && action.kind === 'roll')
+				) {
+					return Date.now() - humanMoveAt;
+				}
+				await new Promise(resolve => setTimeout(resolve, 25));
+			}
+			return -1;
+		}, ACTIVE_MATCH_STORAGE_KEY);
+		await page.getByRole('button', { name: 'Roll die' }).click();
+		// The 650 ms paced delay means the AI roll lands well after the human
+		// move; an unpaced implementation commits within milliseconds.
+		expect(await pacing).toBeGreaterThanOrEqual(500);
+	});
+
 	test('does not render provider configuration on desktop or mobile Aeroplane', async ({
 		page,
 	}) => {

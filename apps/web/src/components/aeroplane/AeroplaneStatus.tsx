@@ -65,16 +65,36 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 	const message = statusCopy(state, legalMoves, isHumanTurn);
 
 	// Decorative tumble keyed to the roll id. It never alters the displayed
-	// outcome: the authoritative face stays in the live region (sr-only while
-	// frames run) and frames themselves are aria-hidden. Canceled — settling
-	// on the real face — by Skip (animate=false), null, reduced motion,
-	// missing rAF, or unmount, and bounded like board motion.
+	// outcome: the tumble is drawn outside the live region (over the die
+	// column), and the authoritative face lives in one fixed die element that
+	// only ever mutates its text once per roll. Canceled — settling on the
+	// real face — by Skip (animate=false), null, reduced motion, missing rAF,
+	// or unmount, and bounded like board motion.
 	const [tumbleFace, setTumbleFace] = useState<number | null>(null);
 	const rollId = rollPresentation?.id ?? null;
 	const tumbleEnabled = rollPresentation?.animate === true && !reducedMotion;
 
+	// Start the tumble during render so the settled face never flashes for
+	// one frame before the first tick; without rAF nothing tumbles at all.
+	const [seenRollId, setSeenRollId] = useState<number | null>(rollId);
+	if (rollId !== seenRollId) {
+		setSeenRollId(rollId);
+		setTumbleFace(
+			tumbleEnabled && typeof requestAnimationFrame === 'function'
+				? ((rollId ?? 0) % 6) + 1
+				: null
+		);
+	}
+
 	useEffect(() => {
-		if (!tumbleEnabled || typeof requestAnimationFrame !== 'function') return;
+		if (
+			!tumbleEnabled ||
+			rollId === null ||
+			typeof requestAnimationFrame !== 'function'
+		) {
+			setTumbleFace(null);
+			return;
+		}
 		let frame: number | null = null;
 		let startedAt: number | null = null;
 		let step = 0;
@@ -85,7 +105,7 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 				return;
 			}
 			step += 1;
-			setTumbleFace(((step + (rollId ?? 0)) % 6) + 1);
+			setTumbleFace(((step + rollId) % 6) + 1);
 			frame = requestAnimationFrame(tick);
 		};
 		frame = requestAnimationFrame(tick);
@@ -103,45 +123,58 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 			className='overflow-hidden'
 			aria-label='Aeroplane match status'
 		>
-			<div
-				role='status'
-				aria-live='polite'
-				aria-atomic='true'
-				className='flex flex-wrap items-center gap-x-5 gap-y-2 p-3 sm:p-4'
-			>
-				<div className='min-w-0 flex-1'>
-					<p className='text-xs font-mono uppercase tracking-[0.18em] text-ivory-dim'>
-						Current turn
-					</p>
-					<p className='truncate font-display text-xl font-semibold text-ivory'>
-						{colorLabel[state.currentPlayer]}
-					</p>
+			<div className='flex flex-wrap items-center gap-x-5 gap-y-2 p-3 sm:p-4'>
+				<div
+					role='status'
+					aria-live='polite'
+					aria-atomic='true'
+					className='contents'
+				>
+					<div className='order-1 min-w-0 flex-1'>
+						<p className='text-xs font-mono uppercase tracking-[0.18em] text-ivory-dim'>
+							Current turn
+						</p>
+						<p className='truncate font-display text-xl font-semibold text-ivory'>
+							{colorLabel[state.currentPlayer]}
+						</p>
+					</div>
+					<p className='sr-only'>{`Die ${die}${face === null ? '' : `, rolled by ${colorLabel[roller]}`}`}</p>
+					<div className='order-3 hidden min-w-0 basis-full border-t border-line pt-2 text-sm text-ivory-dim sm:block'>
+						{message}
+						{isAnimating && (
+							<span className='ml-2 text-aeroplane'>Route in flight…</span>
+						)}
+					</div>
+					<div className='order-3 min-w-0 basis-full border-t border-line pt-2 text-sm text-ivory-dim sm:hidden'>
+						<span>{message}</span>
+						{isAnimating && (
+							<span className='ml-2 text-aeroplane'>In flight</span>
+						)}
+					</div>
 				</div>
-				<div className='shrink-0' data-testid='aeroplane-status-die'>
+				<div className='order-2 shrink-0' data-testid='aeroplane-status-die'>
 					<p className='text-xs font-mono uppercase tracking-[0.18em] text-ivory-dim'>
 						Die
 					</p>
-					{tumbleFace === null ? (
+					<div className='relative'>
 						<p
 							data-testid='aeroplane-die-face'
-							className='text-center font-mono text-xl font-semibold text-aeroplane'
+							className={`text-center font-mono text-xl font-semibold ${
+								tumbleFace === null ? 'text-aeroplane' : 'sr-only'
+							}`}
 						>
 							{die}
 						</p>
-					) : (
-						<>
-							<p data-testid='aeroplane-die-face' className='sr-only'>
-								{die}
-							</p>
+						{tumbleFace !== null && (
 							<p
 								aria-hidden='true'
 								data-testid='aeroplane-die-tumble'
-								className='text-center font-mono text-xl font-semibold text-ivory-dim'
+								className='absolute inset-0 text-center font-mono text-xl font-semibold text-ivory-dim'
 							>
 								{tumbleFace}
 							</p>
-						</>
-					)}
+						)}
+					</div>
 					{face !== null && (
 						<p
 							data-testid='aeroplane-die-roller'
@@ -149,18 +182,6 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 						>
 							Rolled by {colorLabel[roller]}
 						</p>
-					)}
-				</div>
-				<div className='hidden min-w-0 basis-full border-t border-line pt-2 text-sm text-ivory-dim sm:block'>
-					{message}
-					{isAnimating && (
-						<span className='ml-2 text-aeroplane'>Route in flight…</span>
-					)}
-				</div>
-				<div className='min-w-0 basis-full border-t border-line pt-2 text-sm text-ivory-dim sm:hidden'>
-					<span>{message}</span>
-					{isAnimating && (
-						<span className='ml-2 text-aeroplane'>In flight</span>
 					)}
 				</div>
 			</div>

@@ -14,9 +14,11 @@ import {
 	LAUNCH_PADS,
 	STACK_OFFSETS,
 	TRACK_ANCHORS,
+	planeIndex,
 	type LayoutAnchor,
 } from './layout';
-import { FINISH_PROGRESS, toPosition } from './topology';
+import { isFinishBounce } from './rules';
+import { FINISH_PROGRESS, progressFromPosition, toPosition } from './topology';
 import type {
 	AeroplaneColor,
 	AeroplaneEvent,
@@ -35,11 +37,6 @@ const JUMP_WEIGHT = 1.5;
 const FLIGHT_WEIGHT = 3;
 const CAPTURE_WEIGHT = 2;
 
-function planeIndex(planeId: string): number {
-	const value = Number(planeId.split('-').at(-1));
-	return Number.isInteger(value) && value >= 0 ? value : 0;
-}
-
 /** Project any logical position onto its normalized 100×100 SVG anchor. */
 export function positionAnchor(
 	position: AeroplanePosition,
@@ -54,7 +51,7 @@ export function positionAnchor(
 		case 'launch':
 			return LAUNCH_PADS[position.color];
 		case 'track':
-			return TRACK_ANCHORS[position.globalIndex]!;
+			return TRACK_ANCHORS[position.globalIndex] ?? TRACK_ANCHORS[0]!;
 		case 'home':
 			return (
 				HOME_PATHS[position.color][position.homeIndex] ??
@@ -65,9 +62,52 @@ export function positionAnchor(
 	}
 }
 
+/**
+ * Persisted progress is trusted but not assumed: out-of-range values clamp
+ * back into the legal span and non-numeric ones fall back to the hangar, so
+ * a damaged save still renders instead of crashing the board.
+ */
+function saneProgress(progress: number | null): number | null {
+	if (progress === null || !Number.isFinite(progress) || progress < 0)
+		return null;
+	return Math.min(FINISH_PROGRESS, Math.round(progress));
+}
+
 /** Committed planes project through their logical progress, never raw math. */
 export function planeAnchor(plane: PlaneState): LayoutAnchor {
-	return positionAnchor(toPosition(plane.color, plane.progress), plane.id);
+	return positionAnchor(
+		toPosition(plane.color, saneProgress(plane.progress)),
+		plane.id
+	);
+}
+
+export interface StackedPlanePlacement {
+	plane: PlaneState;
+	anchor: LayoutAnchor;
+	offset: LayoutAnchor;
+}
+
+/**
+ * Committed glyph positions in array order: planes sharing one anchor take
+ * successive STACK_OFFSETS entries. This is the single copy of the stacking
+ * rule — the committed layer and the playback endpoints both consume it.
+ */
+export function stackedPlanePlacements(
+	planes: readonly PlaneState[]
+): StackedPlanePlacement[] {
+	const countByAnchor = new Map<string, number>();
+	return planes.map(plane => {
+		const anchor = planeAnchor(plane);
+		const key = anchorKey(anchor);
+		const index = countByAnchor.get(key) ?? 0;
+		countByAnchor.set(key, index + 1);
+		const offset = STACK_OFFSETS[index % STACK_OFFSETS.length]!;
+		return { plane, anchor, offset };
+	});
+}
+
+function anchorKey(anchor: LayoutAnchor): string {
+	return `${anchor.x.toFixed(3)}:${anchor.y.toFixed(3)}`;
 }
 
 function eventAnchor(event: AeroplaneEvent): [LayoutAnchor, LayoutAnchor] {
@@ -128,20 +168,6 @@ export interface AeroplaneTimelineOptions {
 	zeroMotion?: boolean;
 }
 
-function progressOf(position: AeroplanePosition): number | null {
-	switch (position.kind) {
-		case 'hangar':
-			return null;
-		case 'launch':
-			return 0;
-		case 'track':
-		case 'home':
-			return position.progress;
-		case 'finished':
-			return FINISH_PROGRESS;
-	}
-}
-
 /**
  * Expand one base move into per-step anchors. Bounce reflects progress past
  * the finish (54 + 5 follows 55→56→55→54→53) instead of interpolating a
@@ -152,23 +178,17 @@ function moveWaypoints(
 	event: AeroplaneEvent
 ): LayoutAnchor[] {
 	const points: LayoutAnchor[] = [positionAnchor(event.from, event.planeId)];
-	const fromProgress = progressOf(event.from);
-	const toProgress = progressOf(event.to);
+	const fromProgress = progressFromPosition(event.from);
+	const toProgress = progressFromPosition(event.to);
 	if (fromProgress === null || toProgress === null) {
 		// Launch (or a non-progress endpoint): a single direct hop.
 		points.push(positionAnchor(event.to, event.planeId));
 		return points;
 	}
 	// Endpoint comparison alone misses a bounce whose overshoot lands at or
-	// ahead of the start (54 +3 settles on 55, 54 +4 returns to 54). The
-	// resolver stamps the rolled distance on every move event, so an overshoot
-	// is travelled progress past FINISH_PROGRESS; events without a distance
-	// (hand-authored) fall back to the endpoint check.
-	const overshot =
-		toProgress < fromProgress ||
-		(event.distance !== undefined &&
-			fromProgress + event.distance > FINISH_PROGRESS);
-	if (!overshot) {
+	// ahead of the start (54 +3 settles on 55, 54 +4 returns to 54); the
+	// rule's overshoot check is shared with the resolver via isFinishBounce.
+	if (!isFinishBounce(fromProgress, toProgress, event.distance)) {
 		for (
 			let progress = fromProgress + 1;
 			progress <= toProgress;
@@ -207,12 +227,30 @@ function committedGlyphAnchor(
 ): LayoutAnchor | null {
 	const index = state.planes.findIndex(plane => plane.id === planeId);
 	if (index < 0) return null;
-	const anchor = planeAnchor(state.planes[index]!);
-	const key = `${anchor.x.toFixed(3)}:${anchor.y.toFixed(3)}`;
+	const { anchor, offset } = stackedPlanePlacements(state.planes)[index]!;
+	return { x: anchor.x + offset.x, y: anchor.y + offset.y };
+}
+
+/**
+ * Anchor of the mover's glyph before the move, stacking offset included, so
+ * a plane leaving a stack departs from its rendered slot rather than the
+ * bare square. Stackmates still occupying that anchor post-commit are the
+ * ones counted; captured victims can never share the mover's start node (a
+ * valid state never mixes colours), so the committed state suffices.
+ */
+function departureGlyphAnchor(
+	state: AeroplaneState,
+	move: ResolvedMove
+): LayoutAnchor | null {
+	const moverIndex = state.planes.findIndex(plane => plane.id === move.planeId);
+	if (moverIndex < 0) return null;
+	const anchor = positionAnchor(move.start, move.planeId);
+	const key = anchorKey(anchor);
 	let stackIndex = 0;
-	for (let before = 0; before < index; before += 1) {
-		const other = planeAnchor(state.planes[before]!);
-		if (`${other.x.toFixed(3)}:${other.y.toFixed(3)}` === key) stackIndex += 1;
+	for (let index = 0; index < moverIndex; index += 1) {
+		if (anchorKey(planeAnchor(state.planes[index]!)) === key) {
+			stackIndex += 1;
+		}
 	}
 	const offset = STACK_OFFSETS[stackIndex % STACK_OFFSETS.length]!;
 	return { x: anchor.x + offset.x, y: anchor.y + offset.y };
@@ -271,12 +309,16 @@ export function buildMoveTimeline(
 
 	const captureFrom = positionAnchor(move.finalEndpoint, move.planeId);
 	const captures: AeroplaneCaptureReturn[] = [];
-	for (const victimId of move.capturedPlaneIds) {
+	for (const [victimIndex, victimId] of move.capturedPlaneIds.entries()) {
 		const victim = state.planes.find(plane => plane.id === victimId);
 		if (!victim) continue;
+		// Victims keep their pre-move stack slots while parked, in captured
+		// order (the resolver emits them in board order), so several captured
+		// planes fan out instead of hiding each other.
+		const offset = STACK_OFFSETS[victimIndex % STACK_OFFSETS.length]!;
 		captures.push({
 			planeId: victimId,
-			from: captureFrom,
+			from: { x: captureFrom.x + offset.x, y: captureFrom.y + offset.y },
 			to: positionAnchor(toPosition(victim.color, null), victim.id),
 			durationMs: 0,
 		});
@@ -303,9 +345,13 @@ export function buildMoveTimeline(
 		capture.durationMs = duration(CAPTURE_WEIGHT);
 	}
 
-	// Playback must land on the committed glyph, stacking offset included.
+	// Playback departs from and lands on the rendered glyphs, stacking
+	// offsets included at both ends.
+	const departure = departureGlyphAnchor(state, move);
 	const landing = committedGlyphAnchor(state, move.planeId);
+	const first = segments[0];
 	const last = segments.at(-1);
+	if (departure && first) first.from = departure;
 	if (landing && last) last.to = landing;
 
 	const totalMs =

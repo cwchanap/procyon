@@ -443,6 +443,21 @@ describe('useAeroplaneMatch controller', () => {
 		expect(saved.actions.at(-1)?.kind).toBe('move');
 	});
 
+	test('a failed resume keeps the live pending AI timer running', () => {
+		const storage = memoryStorage();
+		const match = createHookHarness(aiTurnFixture(), { storage });
+		expect(match.state().phase).toBe('awaiting-roll');
+		// Corrupt the persisted match so the explicit resume fails.
+		storage.setItem(ACTIVE_MATCH_STORAGE_KEY, '{corrupt');
+		act(() => {
+			expect(match.result.current.resume()).toBe(false);
+		});
+		// The paced AI roll scheduled before resume() still fires; the AI is
+		// not stranded awaiting-roll forever.
+		match.advanceTime(650);
+		expect(match.state().phase).toBe('awaiting-choice');
+	});
+
 	test('setup preset mutation applies the complete preset contract', () => {
 		const match = createHookHarness(oneLegalHumanMoveFixture());
 		act(() => match.result.current.setSetup({ rulePreset: 'quick-chill' }));

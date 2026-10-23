@@ -5,6 +5,7 @@ import {
 	SHARED_PROGRESS_MAX,
 	isNormalJumpSquare,
 	isSharedTrackProgress,
+	progressFromPosition,
 	toGlobalTrackIndex,
 	toPosition,
 } from './topology';
@@ -287,18 +288,21 @@ export function getLegalMoves(
 	return getLegalMovesForColor(state, state.currentPlayer, roll);
 }
 
-function progressFromPosition(position: AeroplanePosition): number | null {
-	switch (position.kind) {
-		case 'hangar':
-			return null;
-		case 'launch':
-			return 0;
-		case 'track':
-		case 'home':
-			return position.progress;
-		case 'finished':
-			return FINISH_PROGRESS;
-	}
+/**
+ * Whether a resolved step reflects an overshoot past the finish cell. The
+ * resolver stamps the rolled distance on every move event, so an overshoot
+ * is travelled progress past FINISH_PROGRESS; events without a distance
+ * (hand-authored) fall back to the endpoint check.
+ */
+export function isFinishBounce(
+	fromProgress: number,
+	toProgress: number,
+	distance?: number
+): boolean {
+	return (
+		toProgress < fromProgress ||
+		(distance !== undefined && fromProgress + distance > FINISH_PROGRESS)
+	);
 }
 
 /** Apply a previously resolved move without mutating the source state. */
