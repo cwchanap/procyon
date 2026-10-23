@@ -215,6 +215,34 @@ describe('Aeroplane presentation projection', () => {
 		]);
 	});
 
+	test('bounce animates the full arc when overshoot lands at or ahead of the start', () => {
+		// 54 +3 settles on 55 but still travels 55 → 56 → 55.
+		const { timeline: three } = timelineFor(
+			stateWhere({ 'red-0': 54 }, { finishRule: 'bounce' }),
+			'red-0',
+			3
+		);
+		expect(three.segments.map(segment => segment.to.y)).toEqual([43, 50, 43]);
+
+		// 54 +4 returns to 54 via 55 → 56 → 55 → 54, not a stationary segment.
+		const { timeline: four } = timelineFor(
+			stateWhere({ 'red-0': 54 }, { finishRule: 'bounce' }),
+			'red-0',
+			4
+		);
+		expect(four.segments.map(segment => segment.to.y)).toEqual([
+			43, 50, 43, 39,
+		]);
+
+		// 55 +2 settles back on 55 via 56 → 55.
+		const { timeline: two } = timelineFor(
+			stateWhere({ 'red-0': 55 }, { finishRule: 'bounce' }),
+			'red-0',
+			2
+		);
+		expect(two.segments.map(segment => segment.to.y)).toEqual([50, 43]);
+	});
+
 	test('jump then flight events play in resolution order', () => {
 		const { move, timeline } = timelineFor(
 			stateWhere({ 'red-0': 12 }),

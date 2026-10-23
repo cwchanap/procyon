@@ -1143,6 +1143,41 @@ describe('Aeroplane board motion playback', () => {
 		}
 	});
 
+	test('keeps the victim parked at the capture anchor until its return begins', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState({ 'red-0': 26, 'yellow-1': 14 }),
+				'red-0',
+				1
+			);
+			const { getByTestId, queryByTestId } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move }]}
+					onRoll={mock(() => {})}
+				/>
+			);
+			// The committed state already places the victim in its hangar, so it
+			// must be masked while a parked copy waits at the capture anchor.
+			expect(queryByTestId('aeroplane-plane-control-yellow-1')).toBeNull();
+			expect(overlayAnchor(queryByTestId, 'aeroplane-capture-parked')).toEqual({
+				x: TRACK_ANCHORS[26]!.x,
+				y: TRACK_ANCHORS[26]!.y,
+			});
+			act(() => clock.advance(1));
+			act(() => clock.advance(80)); // hop done, capture return begins
+			expect(queryByTestId('aeroplane-capture-parked')).toBeNull();
+			expect(queryByTestId('aeroplane-capture-ghost')).not.toBeNull();
+			act(() => clock.advance(160));
+			expect(queryByTestId('aeroplane-capture-ghost')).toBeNull();
+			expect(getByTestId('aeroplane-plane-control-yellow-1')).toBeTruthy();
+		} finally {
+			clock.uninstall();
+		}
+	});
+
 	test('stacked landings resolve to the committed glyph offset without a snap', () => {
 		const clock = installFrameClock();
 		try {
