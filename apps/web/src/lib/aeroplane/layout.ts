@@ -139,6 +139,12 @@ export const FLIGHT_GUIDES: readonly FlightGuide[] = Object.freeze(
 	})
 );
 
+/** Numeric suffix of a plane id selects its hangar slot / display number. */
+export function planeIndex(planeId: string): number {
+	const value = Number(planeId.split('-').at(-1));
+	return Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
 /** Small, normalized offsets that keep stacked planes individually visible. */
 export const STACK_OFFSETS: readonly LayoutAnchor[] = Object.freeze([
 	Object.freeze({ x: 0, y: 0 }),

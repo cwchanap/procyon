@@ -1,6 +1,7 @@
 import React, {
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -10,14 +11,14 @@ import {
 	HANGAR_SLOTS,
 	HOME_PATHS,
 	LAUNCH_PADS,
-	STACK_OFFSETS,
 	TRACK_ANCHORS,
+	planeIndex,
 	type LayoutAnchor,
 } from '../../lib/aeroplane/layout';
 import {
 	buildMoveTimeline,
-	planeAnchor,
 	routePath,
+	stackedPlanePlacements,
 	type AeroplaneMotionSegment,
 	type AeroplaneMoveTimeline,
 } from '../../lib/aeroplane/presentation';
@@ -78,11 +79,6 @@ const PLANE_SPRITE_HREFS: Partial<Record<AeroplaneColor, string>> = {};
 
 /** Render-only asset slot for HPA-437; absent URL keeps the painted board. */
 const BOARD_BACKGROUND_HREF: string | undefined = undefined;
-
-function planeIndex(planeId: string): number {
-	const value = Number(planeId.split('-').at(-1));
-	return Number.isInteger(value) && value >= 0 ? value : 0;
-}
 
 function planeNumber(planeId: string): number {
 	return planeIndex(planeId) + 1;
@@ -188,6 +184,193 @@ function PlaneGlyph({
 		</>
 	);
 }
+
+/**
+ * The painted board art (track, hangars, pads, lanes, guides). It never
+ * changes between frames, so playback's per-frame renders skip it.
+ */
+const BoardSurface = React.memo(function BoardSurface() {
+	return (
+		<>
+			<rect
+				x='1'
+				y='1'
+				width='98'
+				height='98'
+				rx='5'
+				fill='#17263A'
+				stroke='#4F8FD8'
+				strokeOpacity='0.3'
+				strokeWidth='0.7'
+			/>
+			{BOARD_BACKGROUND_HREF && (
+				<image
+					href={BOARD_BACKGROUND_HREF}
+					x='1'
+					y='1'
+					width='98'
+					height='98'
+				/>
+			)}
+			<circle
+				cx='50'
+				cy='50'
+				r='26'
+				fill='none'
+				stroke='#4F8FD8'
+				strokeOpacity='0.2'
+				strokeWidth='4'
+			/>
+			{TRACK_ANCHORS.map((anchor, index) => (
+				<circle
+					key={`track-${index}`}
+					cx={anchor.x}
+					cy={anchor.y}
+					r='1.6'
+					fill={index % 13 === 0 ? '#C8A24B' : '#2F4967'}
+					stroke='#A6C4E8'
+					strokeOpacity='0.25'
+					strokeWidth='0.35'
+				/>
+			))}
+			{COLORS.flatMap(color =>
+				HANGAR_SLOTS[color].map((anchor, index) => (
+					<circle
+						key={`hangar-${color}-${index}`}
+						data-testid='aeroplane-hangar-slot'
+						cx={anchor.x}
+						cy={anchor.y}
+						r='3.8'
+						fill='#17263A'
+						fillOpacity='0.72'
+						stroke={PLANE_FILL[color]}
+						strokeOpacity='0.72'
+						strokeWidth='0.65'
+					/>
+				))
+			)}
+			{COLORS.map(color => {
+				const pad = LAUNCH_PADS[color];
+				return (
+					<g
+						key={`pad-${color}`}
+						aria-label={`${colorLabel[color]} launch pad`}
+					>
+						<circle
+							cx={pad.x}
+							cy={pad.y}
+							r='4.5'
+							fill={PLANE_FILL[color]}
+							fillOpacity='0.2'
+							stroke={PLANE_STROKE[color]}
+							strokeOpacity='0.7'
+							strokeWidth='0.65'
+						/>
+						<text
+							x={pad.x}
+							y={pad.y + 1}
+							fill={PLANE_STROKE[color]}
+							fontSize='2.4'
+							textAnchor='middle'
+						>
+							{colorLabel[color].slice(0, 1)}
+						</text>
+					</g>
+				);
+			})}
+			{HOME_PATHS.red.map((anchor, index) => (
+				<circle
+					key={`home-red-${index}`}
+					cx={anchor.x}
+					cy={anchor.y}
+					r='1.45'
+					fill={index === 5 ? '#C8A24B' : '#4F8FD8'}
+					fillOpacity={index === 5 ? 0.85 : 0.38}
+				/>
+			))}
+			{COLORS.slice(1).map(color =>
+				HOME_PATHS[color].map((anchor, index) => (
+					<circle
+						key={`home-${color}-${index}`}
+						cx={anchor.x}
+						cy={anchor.y}
+						r='1.45'
+						fill={PLANE_FILL[color]}
+						fillOpacity={index === 5 ? 0.85 : 0.38}
+					/>
+				))
+			)}
+			{FLIGHT_GUIDES.map(guide => (
+				<path
+					key={`guide-${guide.color}`}
+					d={`M ${guide.from.x} ${guide.from.y} Q ${guide.control.x} ${guide.control.y} ${guide.to.x} ${guide.to.y}`}
+					fill='none'
+					stroke={PLANE_FILL[guide.color]}
+					strokeDasharray='1.5 1.5'
+					strokeOpacity='0.32'
+					strokeWidth='0.7'
+					className='motion-reduce:animate-none'
+				/>
+			))}
+		</>
+	);
+});
+
+/**
+ * Committed plane glyphs at their stacked anchors. `hiddenIds` are masked
+ * while the motion overlay carries them: airborne movers, mid-return
+ * ghosts, and victims parked at the capture anchor. Memoized so playback's
+ * per-frame renders only rebuild it when the masking actually changes.
+ */
+const CommittedPlanes = React.memo(function CommittedPlanes({
+	planes,
+	hiddenIds,
+	previewedPlaneId,
+}: {
+	planes: readonly PlaneState[];
+	hiddenIds: ReadonlySet<string>;
+	previewedPlaneId: string | null;
+}) {
+	return (
+		<>
+			{stackedPlanePlacements(planes).map(({ plane, anchor, offset }) => {
+				if (hiddenIds.has(plane.id)) return null;
+				const active = previewedPlaneId === plane.id;
+				const x = anchor.x + offset.x;
+				const y = anchor.y + offset.y;
+				return (
+					<g
+						key={plane.id}
+						aria-hidden='true'
+						pointerEvents='none'
+						data-testid={`aeroplane-plane-control-${plane.id}`}
+					>
+						{active && (
+							<circle
+								cx={x}
+								cy={y}
+								r='4.3'
+								fill='none'
+								stroke='#FFF5D3'
+								strokeWidth='0.8'
+								className='motion-reduce:animate-none'
+							/>
+						)}
+						<PlaneGlyph
+							x={x}
+							y={y}
+							color={plane.color}
+							number={planeNumber(plane.id)}
+							spriteHref={PLANE_SPRITE_HREFS[plane.color]}
+						/>
+					</g>
+				);
+			})}
+		</>
+	);
+});
+
+const NO_HIDDEN_PLANES: ReadonlySet<string> = new Set();
 
 function lerpAnchors(
 	from: LayoutAnchor,
@@ -297,14 +480,21 @@ function frameAt(
 	};
 }
 
-/** One terminal cue under zero-duration playback, win taking priority. */
-function terminalCue(
-	timeline: AeroplaneMoveTimeline,
-	won: boolean
-): AeroplaneBoardCue {
+/**
+ * One terminal cue under zero-duration playback, win taking priority. The
+ * finish tone is reserved for a plane that actually reached the finish
+ * cell; a plain move falls back to a single hop.
+ */
+function terminalCue(move: ResolvedMove, won: boolean): AeroplaneBoardCue {
 	if (won) return 'win';
-	return timeline.captures.length > 0 ? 'capture' : 'finish';
+	if (move.finalEndpoint.kind === 'finished') return 'finish';
+	return move.capturedPlaneIds.length > 0 ? 'capture' : 'hop';
 }
+
+// Playback begins synchronously so the committed destination never paints a
+// frame before the overlay starts; SSR keeps useEffect.
+const useIsomorphicLayoutEffect =
+	typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	state,
@@ -349,7 +539,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	// Cancellation on unmount regardless of queue state.
 	useEffect(() => () => cancelPlayback(), [cancelPlayback]);
 
-	useEffect(() => {
+	useIsomorphicLayoutEffect(() => {
 		const newest = presentationQueue.at(-1);
 		const fresh =
 			newest !== undefined && newest.id !== lastProcessedIdRef.current;
@@ -362,10 +552,9 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 				cancelPlayback();
 				// Zero-duration fallback: the committed state is already on screen;
 				// emit only the appropriate terminal cue, exactly once.
-				const frozen = buildMoveTimeline(newest.move, state, {
-					zeroMotion: true,
-				});
-				onCueRef.current?.(terminalCue(frozen, state.phase === 'finished'));
+				onCueRef.current?.(
+					terminalCue(newest.move, state.phase === 'finished')
+				);
 				return;
 			}
 			cancelPlayback();
@@ -374,18 +563,14 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 			const segmentCount = timeline.segments.length + timeline.captures.length;
 			const won = state.phase === 'finished';
 			// Cue each timeline boundary as the frame loop crosses it; hops for
-			// motion segments, capture for each captured-plane return.
+			// motion segments, capture for each captured-plane return. A slow
+			// frame can cross several boundaries at once: emit only the latest
+			// cue rather than stacking them into one instant.
 			const emitDueCues = (through: number) => {
-				while (
-					cuedSegmentsRef.current <= through &&
-					cuedSegmentsRef.current < segmentCount
-				) {
-					const index = cuedSegmentsRef.current;
-					onCueRef.current?.(
-						index < timeline.segments.length ? 'hop' : 'capture'
-					);
-					cuedSegmentsRef.current += 1;
-				}
+				const due = Math.min(through, segmentCount - 1);
+				if (due < cuedSegmentsRef.current) return;
+				onCueRef.current?.(due < timeline.segments.length ? 'hop' : 'capture');
+				cuedSegmentsRef.current = due + 1;
 			};
 			const tick = (now: number) => {
 				const active = playbackRef.current;
@@ -395,7 +580,9 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 				if (elapsed >= totalMs) {
 					emitDueCues(segmentCount - 1);
 					cancelPlayback();
-					onCueRef.current?.(won ? 'win' : 'finish');
+					if (won) onCueRef.current?.('win');
+					else if (newest.move.finalEndpoint.kind === 'finished')
+						onCueRef.current?.('finish');
 					return;
 				}
 				const { frame, activeSegment } = frameAt(timeline, elapsed);
@@ -459,15 +646,23 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 		applyMove(legalMove);
 	};
 
-	const planesByAnchor = new Map<string, number>();
-	const planeNodes = state.planes.map(plane => {
-		const anchor = planeAnchor(plane);
-		const key = `${anchor.x.toFixed(3)}:${anchor.y.toFixed(3)}`;
-		const offsetIndex = planesByAnchor.get(key) ?? 0;
-		planesByAnchor.set(key, offsetIndex + 1);
-		const offset = STACK_OFFSETS[offsetIndex % STACK_OFFSETS.length]!;
-		return { plane, anchor, offset };
-	});
+	// Masked ids stay referentially stable across a playback's frames so the
+	// committed layer memoizes; the set only changes when a ghost/parked
+	// boundary is crossed.
+	const ghostPlaneId = playback?.frame.ghost?.planeId ?? null;
+	const parkedKey = playback
+		? playback.frame.parked.map(parked => parked.planeId).join(',')
+		: '';
+	const moverPlaneId = playback?.timeline.planeId ?? null;
+	const hiddenIds = useMemo(() => {
+		if (moverPlaneId === null) return NO_HIDDEN_PLANES;
+		const ids = new Set<string>([moverPlaneId]);
+		if (ghostPlaneId) ids.add(ghostPlaneId);
+		for (const id of parkedKey.split(',')) {
+			if (id) ids.add(id);
+		}
+		return ids;
+	}, [moverPlaneId, ghostPlaneId, parkedKey]);
 
 	const ghostPlane = playback?.frame.ghost
 		? state.planes.find(plane => plane.id === playback.frame.ghost!.planeId)
@@ -494,126 +689,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 						52-node clockwise track with four private home lanes. Use the legal
 						plane controls below the board to move.
 					</desc>
-					<rect
-						x='1'
-						y='1'
-						width='98'
-						height='98'
-						rx='5'
-						fill='#17263A'
-						stroke='#4F8FD8'
-						strokeOpacity='0.3'
-						strokeWidth='0.7'
-					/>
-					{BOARD_BACKGROUND_HREF && (
-						<image
-							href={BOARD_BACKGROUND_HREF}
-							x='1'
-							y='1'
-							width='98'
-							height='98'
-						/>
-					)}
-					<circle
-						cx='50'
-						cy='50'
-						r='26'
-						fill='none'
-						stroke='#4F8FD8'
-						strokeOpacity='0.2'
-						strokeWidth='4'
-					/>
-					{TRACK_ANCHORS.map((anchor, index) => (
-						<circle
-							key={`track-${index}`}
-							cx={anchor.x}
-							cy={anchor.y}
-							r='1.6'
-							fill={index % 13 === 0 ? '#C8A24B' : '#2F4967'}
-							stroke='#A6C4E8'
-							strokeOpacity='0.25'
-							strokeWidth='0.35'
-						/>
-					))}
-					{COLORS.flatMap(color =>
-						HANGAR_SLOTS[color].map((anchor, index) => (
-							<circle
-								key={`hangar-${color}-${index}`}
-								data-testid='aeroplane-hangar-slot'
-								cx={anchor.x}
-								cy={anchor.y}
-								r='3.8'
-								fill='#17263A'
-								fillOpacity='0.72'
-								stroke={PLANE_FILL[color]}
-								strokeOpacity='0.72'
-								strokeWidth='0.65'
-							/>
-						))
-					)}
-					{COLORS.map(color => {
-						const pad = LAUNCH_PADS[color];
-						return (
-							<g
-								key={`pad-${color}`}
-								aria-label={`${colorLabel[color]} launch pad`}
-							>
-								<circle
-									cx={pad.x}
-									cy={pad.y}
-									r='4.5'
-									fill={PLANE_FILL[color]}
-									fillOpacity='0.2'
-									stroke={PLANE_STROKE[color]}
-									strokeOpacity='0.7'
-									strokeWidth='0.65'
-								/>
-								<text
-									x={pad.x}
-									y={pad.y + 1}
-									fill={PLANE_STROKE[color]}
-									fontSize='2.4'
-									textAnchor='middle'
-								>
-									{colorLabel[color].slice(0, 1)}
-								</text>
-							</g>
-						);
-					})}
-					{HOME_PATHS.red.map((anchor, index) => (
-						<circle
-							key={`home-red-${index}`}
-							cx={anchor.x}
-							cy={anchor.y}
-							r='1.45'
-							fill={index === 5 ? '#C8A24B' : '#4F8FD8'}
-							fillOpacity={index === 5 ? 0.85 : 0.38}
-						/>
-					))}
-					{COLORS.slice(1).map(color =>
-						HOME_PATHS[color].map((anchor, index) => (
-							<circle
-								key={`home-${color}-${index}`}
-								cx={anchor.x}
-								cy={anchor.y}
-								r='1.45'
-								fill={PLANE_FILL[color]}
-								fillOpacity={index === 5 ? 0.85 : 0.38}
-							/>
-						))
-					)}
-					{FLIGHT_GUIDES.map(guide => (
-						<path
-							key={`guide-${guide.color}`}
-							d={`M ${guide.from.x} ${guide.from.y} Q ${guide.control.x} ${guide.control.y} ${guide.to.x} ${guide.to.y}`}
-							fill='none'
-							stroke={PLANE_FILL[guide.color]}
-							strokeDasharray='1.5 1.5'
-							strokeOpacity='0.32'
-							strokeWidth='0.7'
-							className='motion-reduce:animate-none'
-						/>
-					))}
+					<BoardSurface />
 					{previewMove && (
 						<path
 							data-testid='aeroplane-route-preview'
@@ -640,51 +716,11 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 							className='motion-reduce:animate-none'
 						/>
 					))}
-					{planeNodes.map(({ plane, anchor, offset }) => {
-						// Airborne copies travel in the overlay above instead; captured
-						// victims stay masked until their return completes so the
-						// committed hangar glyph never appears early.
-						if (
-							playback &&
-							(playback.timeline.planeId === plane.id ||
-								playback.frame.ghost?.planeId === plane.id ||
-								playback.frame.parked.some(
-									parked => parked.planeId === plane.id
-								))
-						) {
-							return null;
-						}
-						const active = previewedPlaneId === plane.id;
-						const x = anchor.x + offset.x;
-						const y = anchor.y + offset.y;
-						return (
-							<g
-								key={plane.id}
-								aria-hidden='true'
-								pointerEvents='none'
-								data-testid={`aeroplane-plane-control-${plane.id}`}
-							>
-								{active && (
-									<circle
-										cx={x}
-										cy={y}
-										r='4.3'
-										fill='none'
-										stroke='#FFF5D3'
-										strokeWidth='0.8'
-										className='motion-reduce:animate-none'
-									/>
-								)}
-								<PlaneGlyph
-									x={x}
-									y={y}
-									color={plane.color}
-									number={planeNumber(plane.id)}
-									spriteHref={PLANE_SPRITE_HREFS[plane.color]}
-								/>
-							</g>
-						);
-					})}
+					<CommittedPlanes
+						planes={state.planes}
+						hiddenIds={hiddenIds}
+						previewedPlaneId={previewedPlaneId}
+					/>
 					<circle cx='50' cy='50' r='8' fill='#C8A24B' fillOpacity='0.14' />
 					<text
 						x='50'

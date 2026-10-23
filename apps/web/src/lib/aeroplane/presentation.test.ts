@@ -16,6 +16,7 @@ import {
 	buildMoveTimeline,
 	positionAnchor,
 	routePath,
+	stackedPlanePlacements,
 } from './presentation';
 import { applyResolvedMove, resolveLegalMove } from './rules';
 import { toPosition } from './topology';
@@ -307,6 +308,43 @@ describe('Aeroplane presentation projection', () => {
 		expect(timeline.captures[0]!.to).toEqual(HANGAR_SLOTS.yellow[1]!);
 		expect(timeline.captures[1]!.planeId).toBe('green-2');
 		expect(timeline.captures[1]!.to).toEqual(HANGAR_SLOTS.green[2]!);
+		// Victims fan out across the stack instead of overlapping on the tile.
+		expect(timeline.captures[0]!.from).toEqual({
+			x: TRACK_ANCHORS[26]!.x + STACK_OFFSETS[0]!.x,
+			y: TRACK_ANCHORS[26]!.y + STACK_OFFSETS[0]!.y,
+		});
+		expect(timeline.captures[1]!.from).toEqual({
+			x: TRACK_ANCHORS[26]!.x + STACK_OFFSETS[1]!.x,
+			y: TRACK_ANCHORS[26]!.y + STACK_OFFSETS[1]!.y,
+		});
+	});
+
+	test('a mover departs from its stacked glyph, not the bare square anchor', () => {
+		const { timeline } = timelineFor(
+			stateWhere({ 'red-0': 10, 'red-1': 10 }, { stacking: true }),
+			'red-1',
+			1
+		);
+		const base = positionAnchor(toPosition('red', 10));
+		expect(timeline.segments[0]!.from).toEqual({
+			x: base.x + STACK_OFFSETS[1]!.x,
+			y: base.y + STACK_OFFSETS[1]!.y,
+		});
+	});
+
+	test('malformed persisted progress clamps or parks instead of throwing', () => {
+		const placements = stackedPlanePlacements([
+			plane('red-0', 999),
+			plane('red-1', Number.NaN),
+			plane('red-2', -4),
+			plane('red-3', null),
+		]);
+		expect(placements.map(entry => entry.anchor)).toEqual([
+			positionAnchor(toPosition('red', 56)),
+			HANGAR_SLOTS.red[1]!,
+			HANGAR_SLOTS.red[2]!,
+			HANGAR_SLOTS.red[3]!,
+		]);
 	});
 
 	test('stacked landings end at the committed glyph offset, not the bare tile', () => {

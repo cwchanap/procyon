@@ -883,12 +883,14 @@ export function useAeroplaneMatch(
 	);
 
 	const resume = useCallback((): boolean => {
-		invalidateTimers();
 		const restored = restoreActiveMatch(
 			storageRef.current,
 			diagnosticsRef.current
 		);
+		// A failed restore must leave the live match untouched — including any
+		// pending AI timer, which generation-bumping here would strand.
 		if (restored.kind !== 'ok') return false;
+		invalidateTimers();
 		const next = activeFromPersisted(restored.match);
 		const editableSetup = { ...next.config };
 		setSetupState(editableSetup);

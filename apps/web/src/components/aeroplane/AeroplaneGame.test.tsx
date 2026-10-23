@@ -1046,10 +1046,13 @@ describe('Aeroplane board motion playback', () => {
 			});
 			expect(cueNames(onCue)).toEqual(['hop']);
 			act(() => clock.advance(239));
-			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop']);
+			// One slow frame crossed two boundaries; only the latest cue plays.
+			expect(cueNames(onCue)).toEqual(['hop', 'hop']);
 			expect(queryByTestId('aeroplane-motion-overlay')).not.toBeNull();
 			act(() => clock.advance(1));
-			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop', 'finish']);
+			// A non-capture move that does not reach the finish emits no
+			// terminal cue at all.
+			expect(cueNames(onCue)).toEqual(['hop', 'hop']);
 			expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
 			expect(getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
 		} finally {
@@ -1089,7 +1092,7 @@ describe('Aeroplane board motion playback', () => {
 			expect(Math.abs(position!.x - midpoint.x)).toBeLessThan(1e-6);
 			expect(Math.abs(position!.y - midpoint.y)).toBeLessThan(1e-6);
 			act(() => clock.advance(120));
-			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop', 'finish']);
+			expect(cueNames(onCue)).toEqual(['hop', 'hop']);
 		} finally {
 			clock.uninstall();
 		}
@@ -1135,7 +1138,7 @@ describe('Aeroplane board motion playback', () => {
 				6
 			);
 			act(() => clock.advance(1));
-			expect(cueNames(onCue)).toEqual(['hop', 'capture', 'finish']);
+			expect(cueNames(onCue)).toEqual(['hop', 'capture']);
 			expect(queryByTestId('aeroplane-capture-ghost')).toBeNull();
 			expect(getByTestId('aeroplane-plane-control-yellow-1')).toBeTruthy();
 		} finally {
@@ -1284,8 +1287,8 @@ describe('Aeroplane board motion playback', () => {
 			expect(Math.abs(position!.y - TRACK_ANCHORS[37]!.y)).toBeLessThan(0.1);
 			act(() => clock.advance(160));
 			// The superseded move never emits further cues; the completion frame
-			// crosses the newest move's final hop boundary before finishing.
-			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop', 'finish']);
+			// crosses the newest move's final hop boundary before ending.
+			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop']);
 		} finally {
 			clock.uninstall();
 		}
@@ -1400,7 +1403,7 @@ describe('Aeroplane board motion playback', () => {
 			);
 			expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
 			act(() => clock.advance(500));
-			expect(cueNames(onCue)).toEqual(['hop', 'finish']);
+			expect(cueNames(onCue)).toEqual(['hop', 'hop']);
 		} finally {
 			clock.uninstall();
 		}
@@ -1423,7 +1426,7 @@ describe('Aeroplane board motion playback', () => {
 				onRoll={mock(() => {})}
 			/>
 		);
-		expect(cueNames(onCue)).toEqual(['finish']);
+		expect(cueNames(onCue)).toEqual(['hop']);
 		expect(queryByTestId('aeroplane-motion-overlay')).toBeNull();
 		expect(getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
 	});
@@ -1717,12 +1720,13 @@ describe('Aeroplane game composition', () => {
 			expect(frequencies).toEqual([340]);
 			act(() => clock.advance(1)); // first frame crosses the initial hop
 			expect(frequencies).toEqual([340, 500]);
-			act(() => clock.advance(600)); // playback completes (hop + jump + finish)
-			// Both motion segments cue 'hop'; the move ends on finish.
-			expect(frequencies).toEqual([340, 500, 500, 640]);
+			act(() => clock.advance(600)); // playback completes (hop + jump)
+			// Both motion segments cue 'hop'; a non-finishing move has no
+			// terminal cue.
+			expect(frequencies).toEqual([340, 500, 500]);
 			rerender(<AeroplaneGame controllerOptions={gameOptions(fixture)} />);
 			act(() => clock.advance(600));
-			expect(frequencies).toEqual([340, 500, 500, 640]);
+			expect(frequencies).toEqual([340, 500, 500]);
 		} finally {
 			clock.uninstall();
 			uninstallCueAudioStub();
@@ -1736,11 +1740,11 @@ describe('Aeroplane game composition', () => {
 			const fixture = gameFixture(3);
 			const first = renderGame(fixture);
 			const toggle = first.getByTestId('aeroplane-mute-toggle');
-			expect(toggle.getAttribute('aria-pressed')).toBe('false');
+			expect(toggle.getAttribute('aria-pressed')).toBe('true');
 			fireEvent.click(first.getByRole('button', { name: /roll die/i }));
 			expect(frequencies).toEqual([340]);
 			fireEvent.click(toggle);
-			expect(toggle.getAttribute('aria-pressed')).toBe('true');
+			expect(toggle.getAttribute('aria-pressed')).toBe('false');
 			expect(window.localStorage.getItem(AEROPLANE_MUTED_STORAGE_KEY)).toBe(
 				'1'
 			);
@@ -1750,7 +1754,7 @@ describe('Aeroplane game composition', () => {
 			const second = renderGame(fixture);
 			expect(
 				second.getByTestId('aeroplane-mute-toggle').getAttribute('aria-pressed')
-			).toBe('true');
+			).toBe('false');
 			fireEvent.click(second.getByRole('button', { name: /roll die/i }));
 			expect(frequencies).toEqual([340]);
 			// Muting never affects the authoritative action.
@@ -1818,7 +1822,7 @@ describe('Aeroplane game composition', () => {
 			fireEvent.click(view.getByTestId('aeroplane-mute-toggle'));
 			expect(
 				view.getByTestId('aeroplane-mute-toggle').getAttribute('aria-pressed')
-			).toBe('true');
+			).toBe('false');
 		} finally {
 			if (originalDescriptor) {
 				Object.defineProperty(window, 'localStorage', originalDescriptor);
@@ -2090,10 +2094,10 @@ describe('Aeroplane game composition', () => {
 			);
 			expect(position).toEqual(yellowStart);
 			// Only the newest timeline's cues fire: the yellow roll cue (one per
-			// roll id) plus its hops and finish; the superseded red hop, jump,
-			// capture, and finish never do.
+			// roll id) plus its hops; the superseded red hop, jump, capture, and
+			// terminal cue never do, and a non-finishing move has none either.
 			act(() => clock.advance(1000));
-			expect(frequencies).toEqual([340, 500, 340, 500, 500, 640]);
+			expect(frequencies).toEqual([340, 500, 340, 500, 500]);
 			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
 			// Both moves committed in order in the unchanged original feed.
 			expect(
@@ -2126,11 +2130,13 @@ describe('Aeroplane game composition', () => {
 			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
 			const regions = view.getAllByRole('status');
 			expect(regions).toHaveLength(2);
+			// The die column sits outside the live region; the region announces
+			// the roll through a stable sr-only line instead.
 			const dieRegion = regions.find(region =>
-				region.querySelector('[data-testid="aeroplane-status-die"]')
+				region.closest('[aria-label="Aeroplane match status"]')
 			)!;
 			const gameRegion = regions.find(region => region !== dieRegion)!;
-			expect(dieRegion.textContent).toContain('Rolled by Red');
+			expect(dieRegion.textContent).toContain('rolled by Red');
 			expect(gameRegion.textContent).toContain('A route is being presented.');
 			expect(dieRegion.textContent).toContain('Route in flight');
 			// Settling and expiry clear the decorative and ephemeral announcements.
@@ -2194,7 +2200,7 @@ describe('Aeroplane game composition', () => {
 			);
 			const regions = view.getAllByRole('status');
 			const gameRegion = regions.find(
-				region => !region.querySelector('[data-testid="aeroplane-status-die"]')
+				region => !region.closest('[aria-label="Aeroplane match status"]')
 			)!;
 			expect(gameRegion.textContent).toContain('red wins.');
 			act(() => clock.advance(300));

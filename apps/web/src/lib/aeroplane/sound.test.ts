@@ -128,6 +128,43 @@ describe('aeroplane sound helper', () => {
 		expect(resumes).toHaveLength(1);
 	});
 
+	test('cues requested before user activation never create or queue audio', () => {
+		const { oscillators, resumes } = installAudioContextStub({
+			state: 'suspended',
+		});
+		const nav = globalThis.navigator as Navigator & {
+			userActivation?: { hasBeenActive: boolean };
+		};
+		Object.defineProperty(nav, 'userActivation', {
+			value: { hasBeenActive: false },
+			configurable: true,
+		});
+		try {
+			playAeroplaneCue('roll');
+			playAeroplaneCue('hop');
+			// Pre-gesture cues drop instead of queuing; otherwise they would
+			// erupt together on the first click as one blast.
+			expect(oscillators).toHaveLength(0);
+			expect(resumes).toHaveLength(0);
+		} finally {
+			delete (nav as { userActivation?: unknown }).userActivation;
+		}
+	});
+
+	test('a cue on a suspended context resumes once but schedules no tone', () => {
+		const { oscillators, resumes } = installAudioContextStub({
+			state: 'suspended',
+		});
+		playAeroplaneCue('roll');
+		expect(resumes).toHaveLength(1);
+		expect(oscillators).toHaveLength(0);
+		// Once running, later cues play normally.
+		const { oscillators: runningOscillators } = installAudioContextStub();
+		resetAeroplaneAudioForTest();
+		playAeroplaneCue('hop');
+		expect(runningOscillators).toHaveLength(1);
+	});
+
 	test('mute preference round-trips through localStorage', () => {
 		window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
 		expect(readAeroplaneMuted()).toBe(false);
