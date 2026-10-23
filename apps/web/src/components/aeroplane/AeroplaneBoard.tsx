@@ -227,6 +227,8 @@ function segmentPosition(
 interface MotionFrame {
 	mover: LayoutAnchor;
 	ghost: { planeId: string; x: number; y: number } | null;
+	/** Captured victims still waiting at the capture anchor for their return. */
+	parked: { planeId: string; x: number; y: number }[];
 }
 
 interface PlaybackState {
@@ -239,6 +241,17 @@ interface PlaybackState {
  * Overlay geometry at `elapsed` ms plus the active segment index (motion
  * segments first, then capture returns), or null once the timeline completed.
  */
+function parkedVictims(
+	timeline: AeroplaneMoveTimeline,
+	startIndex: number
+): MotionFrame['parked'] {
+	return timeline.captures.slice(startIndex).map(capture => ({
+		planeId: capture.planeId,
+		x: capture.from.x,
+		y: capture.from.y,
+	}));
+}
+
 function frameAt(
 	timeline: AeroplaneMoveTimeline,
 	elapsed: number
@@ -252,6 +265,7 @@ function frameAt(
 				frame: {
 					mover: segmentPosition(segment, remaining / segment.durationMs),
 					ghost: null,
+					parked: parkedVictims(timeline, 0),
 				},
 				activeSegment: index,
 			};
@@ -270,13 +284,17 @@ function frameAt(
 				frame: {
 					mover: landing,
 					ghost: { planeId: capture.planeId, x: position.x, y: position.y },
+					parked: parkedVictims(timeline, index + 1),
 				},
 				activeSegment: timeline.segments.length + index,
 			};
 		}
 		remaining -= capture.durationMs;
 	}
-	return { frame: { mover: landing, ghost: null }, activeSegment: null };
+	return {
+		frame: { mover: landing, ghost: null, parked: [] },
+		activeSegment: null,
+	};
 }
 
 /** One terminal cue under zero-duration playback, win taking priority. */
@@ -392,6 +410,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 				frame: {
 					mover: timeline.segments[0]!.from,
 					ghost: null,
+					parked: parkedVictims(timeline, 0),
 				},
 			};
 			setPlayback(playbackRef.current);
@@ -622,11 +641,16 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 						/>
 					))}
 					{planeNodes.map(({ plane, anchor, offset }) => {
-						// Airborne copies travel in the overlay above instead.
+						// Airborne copies travel in the overlay above instead; captured
+						// victims stay masked until their return completes so the
+						// committed hangar glyph never appears early.
 						if (
 							playback &&
 							(playback.timeline.planeId === plane.id ||
-								playback.frame.ghost?.planeId === plane.id)
+								playback.frame.ghost?.planeId === plane.id ||
+								playback.frame.parked.some(
+									parked => parked.planeId === plane.id
+								))
 						) {
 							return null;
 						}
@@ -698,6 +722,26 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 									/>
 								</g>
 							)}
+							{playback.frame.parked.map(parked => {
+								const victim = state.planes.find(
+									plane => plane.id === parked.planeId
+								);
+								if (!victim) return null;
+								return (
+									<g
+										key={parked.planeId}
+										data-testid='aeroplane-capture-parked'
+									>
+										<PlaneGlyph
+											x={parked.x}
+											y={parked.y}
+											color={victim.color}
+											number={planeNumber(victim.id)}
+											spriteHref={PLANE_SPRITE_HREFS[victim.color]}
+										/>
+									</g>
+								);
+							})}
 						</g>
 					)}
 				</svg>

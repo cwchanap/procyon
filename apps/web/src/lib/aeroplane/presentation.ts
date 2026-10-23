@@ -159,7 +159,16 @@ function moveWaypoints(
 		points.push(positionAnchor(event.to, event.planeId));
 		return points;
 	}
-	if (toProgress >= fromProgress) {
+	// Endpoint comparison alone misses a bounce whose overshoot lands at or
+	// ahead of the start (54 +3 settles on 55, 54 +4 returns to 54). The
+	// resolver stamps the rolled distance on every move event, so an overshoot
+	// is travelled progress past FINISH_PROGRESS; events without a distance
+	// (hand-authored) fall back to the endpoint check.
+	const overshot =
+		toProgress < fromProgress ||
+		(event.distance !== undefined &&
+			fromProgress + event.distance > FINISH_PROGRESS);
+	if (!overshot) {
 		for (
 			let progress = fromProgress + 1;
 			progress <= toProgress;
@@ -169,9 +178,8 @@ function moveWaypoints(
 		}
 		return points;
 	}
-	// A base move with `to < from` is always a finish bounce in this ruleset
-	// (the only rule that lowers progress), so walk up to FINISH_PROGRESS
-	// and reflect back down.
+	// A finish bounce is the only rule that lowers progress, so walk up to
+	// FINISH_PROGRESS and reflect back down to the settled endpoint.
 	for (
 		let progress = fromProgress + 1;
 		progress <= FINISH_PROGRESS;
