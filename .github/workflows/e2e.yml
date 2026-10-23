@@ -12,7 +12,6 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     permissions:
       contents: read
-      packages: read
     runs-on: ubuntu-latest
     env:
       E2E_TEST_USER_EMAIL: test-procyon@cwchanap.dev
@@ -49,13 +48,6 @@ jobs:
         uses: supabase/setup-cli@v3
         with:
           version: 2.121.0
-
-      - name: Log in to GHCR
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Authenticated pulls avoid GHCR anonymous rate limits (94346ee), but
-        # the images are public — a login failure must not fail the job.
-        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin || echo "::warning::GHCR login failed; pulling images anonymously"
 
       - name: Start Supabase (local)
         run: |
