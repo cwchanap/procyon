@@ -2,80 +2,87 @@
 
 Design: [Sky Tycoon design](../specs/2026-10-23-hpa-429-sky-tycoon-design.md)  
 Issue: https://linear.app/cwchanap/issue/HPA-429/aeroplane-sky-tycoon-mode-monopoly-style-tiles-coins-airports  
-Branch: docs/hpa-429-sky-tycoon-design-plan  
-Baseline: main inspected 2026-10-23. The motion/rendering changes from HPA-428 are already on main.
+Branch: `docs/hpa-429-sky-tycoon-design-plan`  
+Baseline: `main@6b1b220`, reviewed 2026-10-24 after HPA-428 motion landed.
 
-## Delivery and scope policy
+## Delivery
 
-**One ticket = one PR.** This draft PR begins with only the design and implementation plan. Implement and test HPA-429 on this very branch in reviewable, independently tested commits, then mark this PR ready; do not create a second implementation PR. Keep asset generation HPA-437 and progression HPA-362 outside this PR. Use existing game/runtime primitives; no generic tile engine, event bus, new React state manager or backend schema.
+**Exactly one PR for HPA-429.** The design/plan docs are the first commits; implementation, tests and responses to review go in this **same draft PR**, in reviewable commits. Keep art/SFX generation in HPA-437 and stars/skins in HPA-362. No new game engine, event bus, Redux/store, database migration or general-purpose tile framework.
 
-## Step 0 — existing reuse survey and invariants
+## Reuse-first inventory
 
-Read the implementation and relevant tests before modifying these paths:
+- `apps/web/src/lib/aeroplane/{types,game,rules,topology,rng,ai,checksum,persistence,replay,presentation}.ts`: one move engine and pure path/projector, two existing persistent seeded RNG streams, canonical whole-state checksums and replay. `finalSharedOccupancy` and `finalHomeOccupancy` currently live in `rules.ts`; export/reuse just what the effect resolver needs.
+- `apps/web/src/hooks/useAeroplaneMatch.ts`: frozen setup, sync save, AI scheduling, `applyMove`→`enqueuePresentation(move,action)`, event feed and dev fixture.
+- `apps/web/src/components/AeroplaneGame.tsx` and `components/aeroplane/{AeroplaneSetup,AeroplaneBoard,AeroplaneStatus,AeroplaneEventFeed}.tsx`: SVG node layout, HPA-428 tween/die/cue, user controls and readable move history.
+- `apps/api/src/routes/play-history.ts`, `apps/api/src/types/play-history.ts`, `apps/api/src/routes/play-history.test.ts`: server-side Zod history parsing and JSON details. The API strips unrecognized detail keys; update it with the client.
+- `apps/web/e2e/aeroplane.spec.ts`: injected fixtures and `nearVictoryFixture`, preferred over long uncontrolled games.
 
-- apps/web/src/lib/aeroplane/{types,game,rules,topology,rng,ai,checksum,persistence,replay}.ts
-- apps/web/src/hooks/useAeroplaneMatch.ts
-- apps/web/src/components/{AeroplaneGame.tsx,aeroplane/AeroplaneSetup.tsx,aeroplane/AeroplaneBoard.tsx,aeroplane/AeroplaneStatus.tsx,aeroplane/AeroplaneEventFeed.tsx}
-- apps/web/e2e/aeroplane.spec.ts; existing aeroplane *.test.ts and controller/component tests.
+## Step 0 — pin Standard outcomes BEFORE changing rules
 
-Reuse rule ownership in game.ts and rules.ts, 52-node topology, the **two existing seeded RNG streams** (add a third for effects), action checksums, frozen setup, synchronous save, AI timers, and disposable presentation. Do not transplant any of these into tycoon.ts. The latter should contain only the static map, card list, and pure single-trigger economic/effect resolution.
+Add one small deterministic, **four-seat** baseline test, using a fixed root seed and explicit test-only AI decision policy for the nominal human seat. Run both `CLASSIC_CONFIG` and `QUICK_CONFIG` to termination using the existing `rollTurn`, `chooseAiMove` and `playResolvedMove`. Record and assert literal values for **winner, turnNumber, every plane's progress and complete stats**. Keep the run bounded, use a known finishing seed, and record the chosen seed/policy in the test.
 
-## Step 1 — mode, static content and typed pure effects
+This test **must land as the first implementation commit**, before modifying rule behavior. Do **not** pin action-checksum hexes: current tests compute correct checksums dynamically and only hardcode intentionally invalid tamper values. Future `config.mode`/v2 schema edits may change serialized bytes without changing gameplay outcomes.
 
-- In types.ts add independent mode and TycoonState. Keep positional `AeroplaneEvent` and `ResolvedMove.events` unchanged. Add a separate non-positional `TycoonEffectEvent` discriminant; use `(AeroplaneEvent | TycoonEffectEvent)[]` in action/transition events (including skipped-roll actions), with no optional/fake `from`/`to`. Use a type guard for movement-only presentation.
-- In game.ts initialize tycoon state only when mode is enabled; preserve Classic and Quick defaults and config normalizer. In rng.ts derive a third effectRng from the same seed with a distinct salt.
-- Add lib/aeroplane/tycoon.ts with tile definitions keyed by global track index (eight paired airports, fixed boon/trap/Chance locations), a ten-card shuffled deck, immutable coin transfers and one-shot tile resolution. Reuse toGlobalTrackIndex and TURN_ORDER. The static map must be the only location source for rules and SVG.
-- Keep constants simple and explicit in this module: starting coins 10, departure +3, airport price 5, toll 2/double-pair 4, Customs 3 and Tax 2. No configuration UI for rates. The unlimited bank is deliberately non-zero-sum; capture/Crash give no instant refund, but a later successful departure pays +3 again (Storm only when retreat reaches launch).
+## Step 1 — small pure Tycoon model, tile map and shield legality
 
-Tests: creation and config-preservation, seeded deck permutation/re-shuffle, every tile/card, coin caps, airport ownership/toll, deterministic richest-opponent tie, duplicate shield pickup, wormhole exit eligibility and forced movement/collision safeguards.
+1. In `types.ts`, add independent `config.mode`, `state.tycoon` and typed `TycoonEffectEvent`. Keep `AeroplaneEvent` positional; add a distinct `warp` event for a direct off-track relocation. `ResolvedMove.events` stays positional, while action events may contain either movement or effect information.
+2. In `game.ts`, initialize Tycoon only when mode is selected. Add an initial ten-card Fisher–Yates shuffle from a distinct salted effects seed derived from `rootSeed` (extend `deriveRngStreams` or use a small local helper). **Discard the temporary effects seed** once `chanceOrder` is initialized; draws are `chanceOrder[chanceCursor % 10]`. Keep existing diceRng and aiRng unchanged. No `effectRng` parameter/field in active match, fixture, save or replay.
+3. Add only `lib/aeroplane/tycoon.ts`: one static global-index table shared by rule resolution and board, exact values and paired airports as in the design, ten card definitions, immutable transfers and one-shot `resolveLanding` helper. Preserve **all** named tile kinds, including exactly two Crash placements. Deliberately accept the documented asymmetry across 13-square starts; no balancing engine.
+4. In `rules.ts`, reuse/export `finalSharedOccupancy` and relevant occupancy/path checks. An enemy destination containing **any** shielded defender is illegal (same logic as a blockade); multiple friendly defenders cannot be partially captured. Expire the shield when its plane next moves; never implement attacker knockback. This automatically updates preview, threat detection and AI's legal capture scoring.
 
-## Step 2 — integrate effects at authoritative game boundary
+Focused tests: tile-index uniqueness and reachable pairs, coin caps/autobuy/tolls, each named tile and ten cards, deterministic shuffled deck/cycling, shield pickup/protected stacks/expire-on-move, invalid occupancy, no chained effects. Prove input state immutability.
 
-- In rules.ts keep original legal move enumeration unaware of randomness; factor/shared-use the existing final occupancy/capture logic where needed instead of copying it into tycoon.ts.
-- In game.ts, after validating the selected move, apply shield-sensitive capture handling and a single tile/card effect; emit positional `AeroplaneEvent`s for real moves (including forced movement and shield knockback) and separate `TycoonEffectEvent`s for economic/turn feedback in one action-event union. Return updated effectRng. Re-evaluate finish and decide exactly one bonus turn for six or Tailwind. In Standard mode gameplay outcomes must remain identical.
-- Handle skipNextRoll in rollTurn: visibly consume the die, clear skip, advance regardless of a six, append missed-roll event and return no legal moves. Avoid a new action kind and avoid clock/timer changes.
-- Award departure only for a launch-pad-to-track move, including a subsequent relaunch, never when launching from the hangar.
+## Step 2 — authoritative effective move and presentation
 
-Tests: full transition sequences including shield before capture, forced movement landing on protected/occupied squares, Chance no-chain, Tailwind/skip/roll-six ordering, home/finish and post-effect victory; do not modify caller input. Standard-mode snapshot assertions before/after.
+1. `playResolvedMove` validates the original **selected** `ResolvedMove` against `getLegalMoves`, as today, then applies normal motion/captures and exactly one tile/card resolution. Extend its returned `transition.move` to an **effective** `ResolvedMove`: original `start` and route plus actual appended relocation events, committed `finalEndpoint` and real `capturedPlaneIds`. Never count rejected/reversed captures. Call `updateStats` with the **effective** move.
+2. Keep `move | jump | flight` for ordinary path segments. Add `warp` positional events for Wormhole, Storm, Crash: extend `presentation.ts` so `warp` is rendered as **one direct segment** without `moveWaypoints`/finish-bounce logic; Boost adds an ordinary forward `move` with correct blockade/path and home occupancy checks. Since Boost triggers only on progress 1–50, it reaches at most 53; no effect-based finish/overshoot branches.
+3. In `useAeroplaneMatch.applyMove`, pass **`transition.move`**, not the selected move, to `enqueuePresentation` (one-line ownership fix). The board/timeline, move destination feed, cues and chatter now consume the actual effective result. Keep informational `TycoonEffectEvent` in `action.events` alongside positional events; the motion projector never reads the mixed action list and requires **no positional type guard**.
+4. In `rollTurn`, a Customs skip shows and consumes the real die then forces turn handoff (even on six), but **does not increment `noMoveStreak`**, which influences relaxed dice; include a typed informational skip in the roll action. Tailwind and six grant **one**, not two, bonus rolls. Existing AI timer remains the sole scheduler.
+5. Reuse `resolveLanding` for forced placement legality. If a Boost/warp destination or path is blocked by occupancy/blockade, keep the original legal tile landing and consume the effect. Forced relocations never cascade through another tile.
 
-## Step 3 — persistence, deterministic replay and controller
+Focused tests: selected-versus-effective move, actual capture/stat accounting, no shields falsely reported captured, terminal cue on actual endpoint, Storm `warp` never going via progress 56, home occupancy when Boost starts at 48–50, blocked path, Tailwind/six, Customs skip streak/extra-turn, no tile recursion. Run the pinned Step 0 Standard test unchanged.
 
-- In persistence.ts and types.ts make the saved envelope v2 (update storage key/fixture contract in the same change), validate all TycoonState fields and both event variants (positional events still require `from`/`to`). Explicitly reject unsupported v1 without migration. Continue using existing `checksumState` over the full state; do not add checksum infrastructure. Regenerate hardcoded Standard action checksum and persistence fixtures for the intentional `config.mode`/v2 shape changes.
-- In replay.ts use the same effect resolver, seeded card order and effectRng, compare post-effect events/checksums per action, and verify final effectRng as well as diceRng and aiRng.
-- In useAeroplaneMatch.ts carry effectRng in ActiveAeroplaneMatch, restore/fresh creation, candidate E2E fixture, synchronous committed state and action records; structurally filter mixed committed action/transition events to positional `AeroplaneEvent[]` for the existing motion projector, including any actual post-tile relocations. Never animate informational events or uncommitted preview effects. Integrate skip with the existing scheduled AI roll/decision effect, without a second scheduler.
-- In buildAeroplaneHistoryPayload add mode and the terminal coin balances/details consumed later by HPA-362; no star math yet.
+## Step 3 — v2 persistence, replay, controller and API history
 
-Tests: reload at awaiting-choice and after Chance, mismatched altered events/checksum/RNG, deterministic replay of consecutive AI turns, invalid v2 content, Standard persistence and authenticated history payload shape. Simulate missing localStorage gracefully through existing helpers.
+- Upgrade `PersistedAeroplaneMatchV1` → v2 type/key (rename its references and fixtures together). v1 restores fail loudly with no migration. Validate `mode`, `state.tycoon`, Chance order/cursor and the discriminated `AeroplaneActionRecord.events: (AeroplaneEvent | TycoonEffectEvent)[]`; movement events must still have `from`/`to` and `warp` is positional.
+- Existing `checksumState` hashes all state; no custom checksum work. `replay.ts` regenerates the same shuffled deck from root seed, replays cyclic cards and compares action events/checksums plus the existing **two** dice/AI RNG continuations.
+- `useAeroplaneMatch.ts` synchronously commits the effective authoritative state/action and exposes actual resulting move for presentation. Reuse current `AeroplaneE2EFixture`, roll presentation and AI timing; never add `effectRng`. Extend the feed's current entry model minimally so a committed Customs skip roll is displayed **without fabricating a move**.
+- `buildAeroplaneHistoryPayload` submits `mode` and `coins`. **Also update the API**: `apps/api/src/routes/play-history.ts` `aeroplaneHistoryDetailsSchema` and `apps/api/src/types/play-history.ts` `AeroplaneHistoryDetails` accept both; coins are optional for Standard and a validated four-colour nonnegative integer balance for Tycoon. Keep the current JSON column; no SQL migration.
+- Add an **API POST→GET route integration test** in `apps/api/src/routes/play-history.test.ts` proving Sky Tycoon mode and coins survive Zod parsing, database write and read. A client payload-shape test alone is insufficient.
 
-## Step 4 — UI, AI heuristic and accessible feedback
+Focused tests: tampered serialized event/state/card cursor, two RNG continuations, v1 reject/v2 restore, awaiting-choice reload before Chance, restored next draw, API history save/read, and Standard game baseline.
 
-- AeroplaneSetup.tsx: separate Standard/Sky Tycoon choice from Classic/Quick/Custom rules. Change mergeSetup in hook so switching preset does not unset mode; changes remain frozen once match begins.
-- AeroplaneStatus.tsx: add four colour coin balances with labels; display skips/shields when relevant. AeroplaneBoard.tsx: project tile map onto existing TRACK_ANCHORS, add simple accessible glyph labels and ownership rings/tint, preserving existing plane hit targets, sprites, and HPA-428 route playback. No new assets in this task.
-- AeroplaneEventFeed.tsx/AeroplaneGame.tsx: consume typed effect events from committed action; readable buy/toll/bonus/Chance/impound text. Keep Skip/reduced-motion semantics.
-- ai.ts: use current scoreAiMove with small per-personality expected tile value; no hidden RNG draws, card look-ahead or search expansion.
+## Step 4 — UI and simple AI heuristics
 
-Tests: setup state transitions, standard board untouched, Tycoon tiles and status, event wording and ARIA labels, reduced-motion and skip, deterministic AI choices.
+- `AeroplaneSetup.tsx` and `mergeSetup`: Standard/Sky Tycoon control independent of Classic/Quick/Custom. Display simple automatic-purchase/finish rules.
+- `AeroplaneBoard.tsx`: show tile markers using the same `tycoon.ts` map and `TRACK_ANCHORS`, subtle ownership tint and accessible labels. Preserve legal-move buttons, HPA-428 animations, reduced-motion/Skip, and sprite slots.
+- `AeroplaneStatus.tsx`: display per-colour coin balances and shield/skip indicators.
+- `AeroplaneEventFeed.tsx`: render **effective** move destinations/captures and typed committed economic events; add an entry for skipped-roll actions. `AeroplaneGame.tsx` wires these through the existing controller.
+- `ai.ts`: add small tile expectation weights to current personality score calculation; never simulate cards or add RNG draws/search.
 
-## Step 5 — end-to-end and quality gate
+Tests: independent mode/preset controls, actual effective route/arrival and audio cue, economic feed and roll-only skip, board labels, AI choices, reduced-motion/Skip, no effect on Standard UI.
 
-- Extend apps/web/e2e/aeroplane.spec.ts with seeded Tycoon scenario including AI turns, property purchases/tolls, Chance, save/reload and completion. Keep existing Standard journey.
-- Focused unit tests first: `bun test src/lib/aeroplane src/hooks/useAeroplaneMatch.test.ts` (from apps/web). Then run in apps/web: `bun run test`, `bun run typecheck`, `bun run lint`, `bun run test:e2e e2e/aeroplane.spec.ts` (`test:e2e` directly invokes `playwright test`; **no `--` separator**).
-- At repository root run bun run format:check; run broader bun run test / build before marking ready when environment/dependencies permit.
-- If the runtime dependencies or e2e browser are unavailable, report which checks could not run rather than claiming success.
+## Step 5 — scoped test and review gate
 
-## Acceptance checklist
+- Extend `apps/web/e2e/aeroplane.spec.ts` with **injected** near-airport/Chance fixtures, reload continuity and a short terminal route using existing `nearVictoryFixture`. Do not run a full seeded three-AI match to completion in browser E2E: slow and fragile.
+- In `apps/web`, run focused `bun test src/lib/aeroplane src/hooks/useAeroplaneMatch.test.ts`, then `bun run test`, `bun run typecheck`, `bun run lint`, and `bun run test:e2e e2e/aeroplane.spec.ts` (**no `--`**; the package script directly invokes Playwright).
+- In `apps/api`, run the changed play-history route test and the API suite. At repository root run `bun run format:check`, `bun run test` and `bun run build` as dependencies/environment permit; report any unavailable verification honestly.
+- Commit in coherent steps, preserving the baseline test evidence. Review each commit in the **same PR**; no mandate to change repo merge strategy.
 
-- [ ] Sky Tycoon is selectable, independent of base rule preset, and playable through victory with one human and three current AIs.
-- [ ] Each specified boon, trap, property mechanic and 10-card deck has deterministic pure tests; no negative coins, recursive tile chains, invalid collisions or extra AI RNG consumption.
-- [ ] Replay, checksum and reload validate full game/effects state and independent RNG streams; v1 handling is explicitly unsupported.
-- [ ] Standard gameplay outcomes, dice, route animation, controls and history remain unaffected by Tycoon; only serialized config/envelope/checksum fixture bytes intentionally change.
-- [ ] UI conveys balances, property owners and effect results with keyboard/reader-friendly labels; placeholder visuals are sufficient.
-- [ ] History stores final coins for HPA-362; no star/skin changes and no actual artwork or SFX generation.
-- [ ] Code and tests are committed to this original HPA-429 PR; no additional implementation PR.
+## Acceptance
 
-## Design risks to review before coding
+- [ ] Pinned Standard Classic and Quick gameplay outcomes stay identical after Tycoon implementation.
+- [ ] Tycoon is selectable and deterministic; explicit 52-track map retains eight airports, four Chance and all named special tiles; no effects chain.
+- [ ] Shield makes defended endpoints illegal until owner moves, with valid mixed-stack and AI threat handling; no attacker knockback.
+- [ ] Boost/warp effect changes appear in **effective move** animation, feed, captures/stats and sounds; Storm timeline never treats backward movement as finish bounce.
+- [ ] Customs skip does not mutate relaxed-dice no-move streak; no duplicate bonus turns or negative coins.
+- [ ] Seeded cyclic deck, v2 recovery, replay/action events and **two** RNG continuations pass determinism checks; no saved effects stream or v1 compatibility path.
+- [ ] API POST→GET round trip preserves `mode` and terminal `coins` in JSON details for HPA-362.
+- [ ] Existing placeholders used; no HPA-437 art/SFX or HPA-362 reward implementation.
+- [ ] Implementation and tests land on this same PR; CI and targeted E2E results are documented.
 
-1. **Departure vs recurring Pass GO:** finite topology has no full circuit; one bonus per departure/redeparture is the implementable rule.
-2. **Forced relocation and shields:** settle deterministic collisions in the pure resolver before changing UI. Specifically test own occupied destinations, shield cancellation and changed final endpoints.
-3. **Informational vs motion events:** retain `AeroplaneEvent` exclusively for positional motion, with `TycoonEffectEvent` in the same action/transition stream; a structural type guard passes only positional entries to HPA-428 animations. Never create fake positions for card/coin events.
-4. **Snapshot v2:** consciously discard active v1 saves, with no migration or compatibility scaffolding.
+## Review decisions
+
+Round 1: separate positional vs informational events; clarify non-zero-sum bank; keep Standard *gameplay* invariants, not byte-identical v1 saves; fix Playwright CLI.
+
+Round 2: accept effective move as presentation/stats authority, cyclic Chance deck, shared-legal-move shield, API schema/test, pinned Standard baseline, impossible finish-test removal, and Customs streak semantics. **Tile placement choice:** use the explicit global indices in the design and consciously accept limited asymmetry rather than reduce the original ticket's named tile kinds. Keep the solution lightweight and one PR.
