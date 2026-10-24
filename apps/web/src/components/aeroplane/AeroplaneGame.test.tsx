@@ -1943,10 +1943,15 @@ describe('Aeroplane game composition', () => {
 			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
 				'Yellow'
 			);
-			// Expiry (at 650ms) reveals the committed move without artifacts; the
-			// pending tumble frames are never advanced so nothing decorative shows.
+			// Expiry (at 650ms) reveals the committed move without artifacts.
 			advanceTimers(700);
 			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			// The latest roll's tumble runs on the frame clock, not the fake
+			// timers; drain it past its bound so only the settled face remains.
+			act(() => {
+				clock.advance(1);
+				clock.advance(600);
+			});
 			expect(view.queryByTestId('aeroplane-die-tumble')).toBeNull();
 			// The mover is back on the board at its committed (non-airborne) spot.
 			expect(view.getByTestId('aeroplane-plane-control-red-0')).toBeTruthy();
