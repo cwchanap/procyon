@@ -2,84 +2,109 @@
 
 Issue: https://linear.app/cwchanap/issue/HPA-429/aeroplane-sky-tycoon-mode-monopoly-style-tiles-coins-airports  
 Related: HPA-362 (rewards; blocked by this ticket), HPA-437 (art/SFX; independent).  
-Baseline: Procyon main, inspected 2026-10-23, after the HPA-428 motion work. This PR starts with documentation and will contain implementation and tests **in the same PR**.
+Baseline: Procyon `main@6b1b220`, reviewed 2026-10-24. This is a docs-first **single PR**, with implementation and tests added to the same branch after review.
 
-## Goal and product boundary
+## Goal and boundaries
 
-Add a playful, deterministic coin-and-tile layer to local Aeroplane Chess without changing Standard games. One human still plays three existing personality AIs; planes still win by reaching the existing victory target. Sky Tycoon has no manual purchase dialogs, trading, elimination, real art, new database tables, or star/unlock system.
+Add a playful coin, airport and tile layer to local Aeroplane Chess. One human plays the existing three personality AIs. Victory still requires finishing planes. Standard gameplay outcomes must not change. No network mode, database migration, purchase dialogs, trading, skins, rewards, generated art/SFX or generic tile framework.
 
-### Explicit adaptation: “Pass GO” on a non-lapping track
+Select `config.mode: 'standard' | 'sky-tycoon'` independently of `rulePreset: 'classic' | 'quick-chill' | 'custom'`. Switching a rule preset retains the mode; editing house rules does not disable Tycoon. The match freezes both configuration choices.
 
-The existing logical route goes from launch progress 0 through shared progress 1–50 and home progress 51–56. It does **not** make recurring laps past the player's own launch point. Therefore +3 coins is a **Departure / Pass GO bonus whenever a plane successfully leaves its launch pad for the shared track (progress 0 to 1+)**, including relaunch after capture. Merely placing a plane on its launch pad does not pay. This is a deliberate interpretation of the issue, not a fictitious full-lap trigger. Label it “Departure +3” in the event feed.
+### Departure bonus and economy
 
-The economy is **intentionally non-zero-sum**, with an unlimited bank: Departure and positive Chance cards mint coins, airport purchases/Customs/Tax burn coins, and tolls/steals only transfer available balances. Capture or Crash sends a plane to hangar, so the next successful launch-pad departure grants +3 again; Storm does the same only if it retreats all the way to the launch pad. This is an intentional mild rubber-band after setbacks, **not** an immediate payout/refund on capture, Crash or Storm.
+The existing route runs from launch progress 0 across track progress 1–50 and home progress 51–56, **not** repeated laps. Adapt “Pass GO” to **Departure +3** only on a successful launch-pad-to-track transition (0 → 1+), including another departure after capture/relaunch. Hangar → launch alone pays nothing.
 
-## Reuse first — current ownership boundaries
+Each player begins with 10 coins. Balances never go negative; the bank is unlimited and the economy is intentionally **non-zero-sum**. Departure/positive Chance cards mint coins; airport purchases, Customs and Tax burn them; tolls/steals transfer available balances. Capture or Crash sends a plane to hangar and may indirectly lead to another Departure +3 on a *later* relaunch; Storm does likewise **only** if it retreats to the launch pad. There is **no immediate refund** on any punishment. This is intentional mild rubber-banding.
 
-- game.ts owns match creation, immutable config, rollTurn, advanceAfterTurn and playResolvedMove. rules.ts owns resolveLegalMove/applyResolvedMove and normal jump, flight, capture, finish.
-- topology.ts owns the single 52-node track mapping (toGlobalTrackIndex) and player-relative progress; reuse it for shared, fixed tile locations. Do not duplicate board geometry in a second engine.
-- rng.ts already derives separate dice and AI streams from one seed. Add an independent effects stream, not Math.random() or chance consumption from dice/AI.
-- useAeroplaneMatch.ts owns authoritative commit, synchronous save, AI timing and the disposable presentation queue. Keep those ownership rules.
-- persistence.ts, replay.ts and checksum.ts already validate, serialize and replay rolls/moves and detect divergence. Extend these paths rather than adding an independent event log.
-- AeroplaneSetup/Board/Status/EventFeed and AeroplaneGame already own the UI. The HPA-428 board motion queue accepts movement events; tile notifications must not be mistaken for geometric motion.
+## Reuse survey and authority
 
-## Mode and state contract
+- `game.ts` owns `createAeroplaneMatch`, `rollTurn`, `advanceAfterTurn`, `playResolvedMove`, victory and stats. `rules.ts` owns `resolveLegalMove`, `applyResolvedMove`, `finalSharedOccupancy`, captures and blockades. Export/reuse occupancy logic instead of duplicating it.
+- `topology.ts` owns `toGlobalTrackIndex` and the 52-node track. One fixed `tycoon.ts` tile map is shared by board and resolver; no new topology engine.
+- `rng.ts` already derives dice and AI RNG streams from `rootSeed`. Derive a **temporary** third salted seed only for the initial Chance deck shuffle, then discard it. No effect RNG in state, fixtures or persistence.
+- `checksum.ts` already hashes full authoritative state; `replay.ts` rebuilds from root seed. `persistence.ts` validates authoritative saves. Extend current paths; do not build a second log or checksum algorithm.
+- `useAeroplaneMatch.ts` commits and synchronously persists authoritative transitions before transient presentation. `AeroplaneBoard` and `presentation.ts` animate `ResolvedMove`, not arbitrary action events; `AeroplaneEventFeed` also reads the `move` field. Keep that contract, but supply the **effective** move.
+- API history also has an explicit Zod `aeroplaneHistoryDetailsSchema` in `apps/api/src/routes/play-history.ts`. Updating only the client would silently strip new mode/coin fields.
 
-Add config.mode: 'standard' | 'sky-tycoon' (default 'standard'), independent of the existing rulePreset: 'classic' | 'quick-chill' | 'custom'. Switching the base rule preset must retain the selected game mode; editing a house rule must not silently disable Sky Tycoon. New matches freeze both.
+## State and persistence
 
-Add state.tycoon: SkyTycoonState | null; null for Standard. Tycoon state has:
-- coins: per-colour integer balances (10 initially; never negative);
-- airports: fixed track-global-index to owner-colour map (unowned by absence);
-- shields: plane IDs with a one-use shield (per plane, no stacking);
-- skipNextRoll: per-colour boolean flags;
-- chanceOrder: a permutation of ten card IDs and chanceCursor: number.
+Add `state.tycoon: SkyTycoonState | null`, null in Standard mode:
 
-Extend the match envelope with effectRng. Use the existing rootSeed to derive it independently, including the initial seeded Fisher–Yates deck shuffle. Store its continuation alongside diceRng and aiRng. A depleted deck is reshuffled using only effectRng. There is no need for a deck service or global store.
+- `coins`: nonnegative integer per colour; initially 10;
+- `airports`: tile global-index → owner-colour map; absent means unowned;
+- `shields`: set/list of plane IDs protected **until those planes next move**;
+- `skipNextRoll`: boolean per colour;
+- `chanceOrder`: shuffled permutation of ten unique card IDs;
+- `chanceCursor`: nonnegative integer, incremented on each draw.
 
-**Persistence breaking change:** use a v2 envelope/storage key and update all call sites, tests and developer fixtures in this single PR. Do not write a v1 migration or compatibility branch; old in-progress saves are intentionally not resumable. Extend structural validation, action-event validation, and final RNG comparison. Reuse the existing `checksumState` implementation: it already hashes the whole state (including `state.tycoon`), so no new checksum algorithm is needed. The added `config.mode` and v2 envelope necessarily change serialized state/checksum fixtures even for Standard matches.
+For each match, shuffle the ten-card deck once via seeded Fisher–Yates; cycle drawn cards to the bottom with `chanceOrder[chanceCursor % 10]`. No reshuffle or mutable RNG continuation after setup. The order/cursor are authoritative state, covered by the existing checksum. Dice and AI RNG streams remain independent.
 
-## Tile map and simple economic constants
+Bump the local recovery envelope/storage key to **v2**, rejecting v1 without migration or compatibility logic. Validate Tycoon state/event discriminants and preserve the two existing end-of-replay RNG comparisons. The added `config.mode` changes serialized state, but **do not regenerate fictional hardcoded Standard checksum baselines**: existing checksum literals are intentional tamper fixtures. Instead add real pinned Standard gameplay regression tests before modifying rules.
 
-Create one static tile map in a small tycoon.ts module keyed by global track indices 0–51, reused by resolver and SVG board. Placement is deterministic, fixed across colours, with non-overlapping entries: 8 airports (four explicit pairs), 2 each of Boost, Tailwind, Shield, Wormhole, Storm, Customs, Tax, Crash, and 4 Chance tiles. Other cells are ordinary; tiles only trigger on final shared-track landing, never on home, hangar, launch or finish. Ordinary jump/flight resolution happens first.
+## Fixed tile map (global indices 0–51)
 
-- Airport: price 5 from bank; landing on unowned property auto-buys when affordable. Otherwise it remains unowned. Landing on an opponent's property transfers up to 2 coins (4 if the owner holds the other property in its designated pair); pay only available coins. Owner landing has no fee.
-- Boost: move the landing plane forward 3 logical steps, respecting exact/bounce finish. If exact finish would overshoot, keep the pre-boost landing.
-- Tailwind: one extra roll after this move; it does not stack with a rolled six.
-- Shield: give the landing plane one-use capture protection; repeated pickups do not stack.
-- Wormhole: move to the next wormhole farther ahead on this plane's remaining player-relative shared path. If none exists, stay put. No backwards warp or wrap-around.
-- Storm: retreat 3 logical progress steps, stopping at the launch pad if necessary.
-- Customs: if coins >= 3, pay 3 to bank immediately; otherwise mark the player to miss their next roll opportunity. No manual prompt.
-- Tax: pay up to 2 coins to bank.
-- Crash: send the landing plane to its hangar (two Crash locations, max).
-- Chance: draw the next seeded card. Ten fixed cards: +4, +2, -2 coins; steal up to 3 from the richest opponent (ties broken by TURN_ORDER); Boost; Tailwind; Shield; Storm; Customs; Crash. Each card applies its named effect once.
+Use the following **exact, non-overlapping** global track indices in `tycoon.ts`, not a new configurable layout or inferred quarter placement. This preserves all named tile types and only two Crash tiles from HPA-429.
 
-Forced relocations from a tile/card do not trigger another tile, jump, flight or card (no effect chains). Reuse collision/capture resolution at any resulting shared-track endpoint. A shielded defending plane consumes its shield and sends the would-be captor to hangar, avoiding opposing pieces sharing a square; shield does not prevent Storm/Crash. If forced relocation is blocked by friendly occupancy under current stacking/blockade rules, leave the plane at its prior legal endpoint and still consume the triggering tile/card. Test these contracts explicitly.
+| Tile | Global indices |
+| --- | --- |
+| Airport matching pairs | (0, 26), (6, 32), (13, 39), (19, 45) |
+| Chance | 3, 16, 29, 42 |
+| Boost | 2, 28 |
+| Tailwind | 5, 31 |
+| Shield | 8, 34 |
+| Wormhole | 11, 37 |
+| Storm | 15, 41 |
+| Customs | 18, 44 |
+| Tax | 21, 47 |
+| Crash | 24, 50 |
 
-## Pure authoritative transition order
+Airport/Chance counts repeat at each 13-square player-start offset, while the other kinds form opposite 26-node pairs. **Perfect four-colour symmetry is not claimed**: two copies of a kind cannot repeat every 13 indices. We accept that simple asymmetry for this casual mode rather than silently removing the ticket's tile types or introducing a balance engine. Test all index sets, pairing, reachability and basic seeded playability.
 
-1. rollTurn remains the only dice owner. When skipNextRoll applies, consume the actual die result for a visible roll, clear that player's skip flag, force handoff even on a six, and issue a typed missed-turn event in the **roll** action. Never call a hidden second timer or roll RNG from effects.
-2. resolveLegalMove remains the legal-move authority; do not apply tile effects or consume chance RNG during legal move preview or move enumeration.
-3. playResolvedMove validates the selected original move, applies normal motion/captures with shields accounted for, awards Departure bonus if eligible, then resolves a single landing tile/card through a pure helper using effectRng and returns state, effects RNG continuation, movement events and descriptive tile events.
-4. Evaluate victory on final post-effect plane progress. Otherwise advance the same turn owner on six or Tailwind; for both, only one additional turn results. Preserve Standard mode behaviour byte-for-byte as far as gameplay outcomes.
-5. Record effect events and resulting checksum in the existing action history. Replay regenerates tile effects and shuffled cards from seed and checks every event/checksum and final effectRng. Save/reload at awaiting-choice must not consume a chance card before selection.
+A tile triggers once after the **selected move's normal final shared-track landing**, including its ordinary jump/flight; it never triggers from launch, hangar, private home lane or finish. A forced relocation does **not** trigger another tile, flight, jump or card.
 
-Keep `AeroplaneEvent` **strictly positional** (`move | jump | flight` with required `from`/`to`). Introduce a separate discriminated `TycoonEffectEvent` (e.g. `type: 'tycoon-effect'` with typed effect kind, actor/target and optional amount, **no fabricated coordinates**). Store both in the same authoritative `AeroplaneActionRecord.events: (AeroplaneEvent | TycoonEffectEvent)[]`, and use that union for transition/roll action outputs. `ResolvedMove.events` remains positional. An actual relocation caused by Boost/Storm/Wormhole/Crash or a shield knockback emits a positional movement event **in addition to** any informational event, so animations reflect committed movement. Extend the existing event validator/replay comparison for the union; use a structural type guard (`'from' in event && 'to' in event`) before passing only `AeroplaneEvent[]` to the HPA-428 motion projector. The feed renders descriptive economic events from the same committed action, without a second event log.
+### Effects and constants
 
-## AI and interface
+- **Airport:** price 5 from bank; auto-buy if unowned and affordable. Other colours pay the owner toll 2 or 4 if they own the matched pair, capped by payer's coins. Owner pays nothing.
+- **Boost:** advance three logical progress squares. Since the trigger endpoint is at most progress 50, Boost can reach at most home progress **53**, never finish (56) or overshoot. Reuse blockade/path and friendly occupancy rules; on a blocked path or occupied home cell, remain on the original tile and consume the effect.
+- **Tailwind:** grant one more roll after this move; it does not stack with a natural six.
+- **Shield:** the shielded plane's shared-track square is **illegal for opponents to land on**, using the existing blockade/occupancy check. The shield expires when that plane next moves; repeated pickups do not stack. This is the intentionally simplified implementation of “blocks next capture” rather than knockback/consume-on-attack. If multiple friendly defenders share a square and any is shielded, opposing landing is illegal. AI and threat previews automatically respect the same legal-move authority. Storm/Crash can still relocate a shielded plane.
+- **Wormhole:** warp to the next wormhole further along the plane's remaining player-relative shared route; no wrap or backwards warp. If none, stay put.
+- **Storm:** retreat up to 3 progress steps, stopping at the launch pad.
+- **Customs:** auto-pay 3 to bank if affordable; otherwise mark the player to skip their next roll opportunity (no prompt).
+- **Tax:** pay up to 2 coins to bank.
+- **Crash:** return the mover to hangar (two Crash tiles, no third).
+- **Chance:** draw a cyclic seeded card. Exactly ten cards: +4, +2, -2 coins; steal up to 3 from the richest opponent (ties broken by `TURN_ORDER`); Boost, Tailwind, Shield, Storm, Customs, Crash. Resolve exactly once; never chain to the card's destination tile.
 
-- Keep the existing three AI personalities and the scoreAiMove path. Add a small expected tile-utility term (coins, airport buy/toll, safety/penalty, finish), without simulating draws or consuming effectRng. Cautious favours shields/avoids Crash; aggressive values property and opponent payment; unpredictable keeps its existing seeded jitter. No tree search or economy optimizer.
-- Setup: explicit Standard / Sky Tycoon selector independent of rulePreset; one explanatory sentence describing automatic purchases and win condition.
-- Status: coin balances for four seats, optional skip/shield indicators. Board: placeholder ASCII/SVG glyphs for tile kind, subtle airport ownership tint, preserving clickable plane hit targets and HPA-428 animation.
-- Feed: authoritative, understandable effect messages (purchase, toll payer/receiver, launch bonus, shield, chance card, forced move, missed roll). Screen-reader labels describe tile and ownership. If reduced-motion / Skip animations is enabled, outcomes still show immediately.
-- Match completion: put mode and final coin balances in existing play-history details so HPA-362 can later convert coins to bonus stars; do not compute or display stars in HPA-429. Signed-out matches remain playable.
+Reuse `finalSharedOccupancy`, `finalHomeOccupancy` and blockade/path checks for forced destinations. A forced relocation blocked by occupants or blockades leaves the plane at its original legal tile endpoint, with the effect consumed. No mixed-colour stacks.
 
-## Testing and acceptance
+## Authoritative moves, events, animation and stats
 
-- Standard regression: seeded rolls/moves, finish, extra six and AI **gameplay outcomes** stay unchanged. Regenerate hardcoded Standard checksum fixtures and v1 persistence fixtures for the deliberate `config.mode`/v2 serialization changes, rather than preserving byte-identical snapshots.
-- Tycoon pure unit tests: each tile and ten cards, ownership pair/tolls/insufficient funds, repeat Departure bonus after relaunch, double effects prevented, shield/collision, capture→launch, two Crash placements, no-negative-coins, Tailwind vs six, Customs skip despite six, finish after Boost, stuck exact finish, no chaining and deterministic ties.
-- Two independent seeded simulations should match action events, state checksums, deck order and three RNG continuations. Replay catches an edited coin balance, ownership, event or effectRng. Restore mid-game and awaiting-choice gives identical future draws.
-- Component/E2E: mode/preset independence, human vs 3 AI completion, all balances and tile glyphs, accessible feed and reduced-motion/Skip, reload continuity.
+1. `rollTurn` is the only dice authority. A Customs skip still consumes/shows a real die result, clears the flag and advances to the next player **even on six**. Emit an informational event in the committed roll action, but **do not increment `noMoveStreak`**: the player was forced to skip, not unable to move. That counter influences relaxed dice.
+2. `resolveLegalMove` stays random-free and authoritative. Shielded enemy destinations are illegal in `finalSharedOccupancy`, so previews, threat probes, AI, gameplay and replay agree.
+3. `playResolvedMove` validates the **selected** move, applies normal rules, Departure and one Tycoon effect, and returns `transition.move` as the **effective** `ResolvedMove` (same existing type). Preserve the selected `start` and original positional events; append any real post-landing positional relocation event, update `finalEndpoint` to the committed destination, and populate `capturedPlaneIds` with **actual**, not hypothetical, captures. `updateStats` uses this effective move.
+4. Keep `AeroplaneEvent` positional with required `from`/`to` and kinds `move | jump | flight | warp`. `warp` is a direct segment, **never** processed by `moveWaypoints` or mistaken for a finish bounce. Use `move` for Boost's ordinary forward steps; use `warp` for Storm/Wormhole/Crash. No extra capture/knockback branch for Shield.
+5. Keep `ResolvedMove.events: AeroplaneEvent[]`. Introduce a separate coordinate-free discriminant `TycoonEffectEvent` for money, ownership, cards, shields, skip, etc. Persist all movement plus informational events on `AeroplaneActionRecord.events: (AeroplaneEvent | TycoonEffectEvent)[]`. Validate and compare that union in replay; never invent positional coordinates for coin changes.
+6. In `useAeroplaneMatch.applyMove`, pass **`transition.move`** (not the selected move) to `enqueuePresentation`, which feeds `buildMoveTimeline`, destination/capture copy, chatter and terminal sound cues. The projector receives the effective move's **positional-only** `events` and therefore needs no filter. The feed separately consumes committed informational `action.events`. It must also show a skipped-roll informational action without fabricating a movement entry; reuse the current feed/controller, not a second authoritative log.
+7. Ordinary rules are the only path to finish: Tycoon tile/card moves cannot reach progress 56. Keep normal victory evaluation and exactly one bonus turn for six or Tailwind (no stacking). Preserve existing Standard outcomes.
 
-## Explicitly out of scope
+## History integration and UX
 
-Actual sprite/icon/music/SFX generation and theme asset integration belong to HPA-437. Stars, skin unlocks, end-screen celebrations and progression belong to HPA-362 (which HPA-429 unblocks). No migrations, new packages, new tables, network game, real estate upgrades, trading or modal buy choices.
+The client `buildAeroplaneHistoryPayload` must include `mode` and terminal four-colour `coins` for Sky Tycoon. Extend **both** `apps/api/src/routes/play-history.ts`'s `aeroplaneHistoryDetailsSchema` and `apps/api/src/types/play-history.ts`'s `AeroplaneHistoryDetails`. Coins are optional for Standard history and validated as four nonnegative integer colour balances when present; Tycoon submissions must supply them. The existing `details` JSON column needs **no migration**. Test authenticated POST then GET to prove the fields survive parsing and storage for HPA-362.
+
+- Setup: independent mode selector, description of auto-purchases and planes-first victory.
+- Board: placeholder accessible tile glyphs and airport ownership tint, preserving HPA-428 sprite slots/controls/motion.
+- Status: coin balances and relevant skip/shield indicators.
+- Feed: actual effective move destination/captures, readable economic/Chance messages and roll-only Customs skips. Honor reduced-motion and Skip animations.
+- AI: small per-personality utility weight on the existing `scoreAiMove`; no chance simulation, search, new AI engine or RNG side effect.
+- Store final coins only; **do not** add HPA-362 stars/skins or HPA-437 art/SFX.
+
+## Tests and acceptance
+
+- **First, before rule edits:** one seeded deterministic four-seat Standard simulation each for Classic and Quick, using a documented test-only choice policy for the nominal human seat. Pin literal `winner`, `turnNumber`, every plane's progress and complete `stats`. Do not pin checksum hexes.
+- Pure tests: exact tile map/airport pairings, ten cards/cyclic deck, amounts, blocked/unaffordable payments, shielded stacked defenders and expire-on-move, Storm warp never visiting finish 56, Boost blocked by shared blockade or occupied home progress 51–53, skip vs relaxed no-move streak, no chain, valid collision/turn outcomes.
+- Determinism/replay: independent seeded runs match state, action events, Chance order/cursor, checksum and **two** RNG continuations; invalid v2 payloads and tampered effects are detected; awaiting-choice resume does not advance deck.
+- UI/E2E: one or more injected near-airport/Chance fixtures and existing `nearVictoryFixture` pattern for short terminal coverage; test reload, feedback, visible balances and reduced-motion. Do **not** require a long full game against three AIs to finish in E2E.
+- API: POST→GET authenticated history route preserves `mode` and `coins`, with Standard mode supported.
+
+## Explicit exclusions
+
+No second PR for HPA-429, no v1 migrations, no third saved RNG, no knockback shield, no finish-after-Boost edge case, no tile chains, new tables, general-purpose economic engine or real asset generation. HPA-437 remains art/SFX only; HPA-362 remains progression/rewards only.
