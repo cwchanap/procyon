@@ -12,6 +12,8 @@ Add a playful, deterministic coin-and-tile layer to local Aeroplane Chess withou
 
 The existing logical route goes from launch progress 0 through shared progress 1–50 and home progress 51–56. It does **not** make recurring laps past the player's own launch point. Therefore +3 coins is a **Departure / Pass GO bonus whenever a plane successfully leaves its launch pad for the shared track (progress 0 to 1+)**, including relaunch after capture. Merely placing a plane on its launch pad does not pay. This is a deliberate interpretation of the issue, not a fictitious full-lap trigger. Label it “Departure +3” in the event feed.
 
+The economy is **intentionally non-zero-sum**, with an unlimited bank: Departure and positive Chance cards mint coins, airport purchases/Customs/Tax burn coins, and tolls/steals only transfer available balances. Capture or Crash sends a plane to hangar, so the next successful launch-pad departure grants +3 again; Storm does the same only if it retreats all the way to the launch pad. This is an intentional mild rubber-band after setbacks, **not** an immediate payout/refund on capture, Crash or Storm.
+
 ## Reuse first — current ownership boundaries
 
 - game.ts owns match creation, immutable config, rollTurn, advanceAfterTurn and playResolvedMove. rules.ts owns resolveLegalMove/applyResolvedMove and normal jump, flight, capture, finish.
@@ -34,7 +36,7 @@ Add state.tycoon: SkyTycoonState | null; null for Standard. Tycoon state has:
 
 Extend the match envelope with effectRng. Use the existing rootSeed to derive it independently, including the initial seeded Fisher–Yates deck shuffle. Store its continuation alongside diceRng and aiRng. A depleted deck is reshuffled using only effectRng. There is no need for a deck service or global store.
 
-**Persistence breaking change:** use a v2 envelope/storage key and update all call sites, tests and developer fixtures in this single PR. Do not write a v1 migration or compatibility branch; old in-progress saves are intentionally not resumable. Extend structural validation, action-event validation, final RNG comparison and action checksums.
+**Persistence breaking change:** use a v2 envelope/storage key and update all call sites, tests and developer fixtures in this single PR. Do not write a v1 migration or compatibility branch; old in-progress saves are intentionally not resumable. Extend structural validation, action-event validation, and final RNG comparison. Reuse the existing `checksumState` implementation: it already hashes the whole state (including `state.tycoon`), so no new checksum algorithm is needed. The added `config.mode` and v2 envelope necessarily change serialized state/checksum fixtures even for Standard matches.
 
 ## Tile map and simple economic constants
 
@@ -61,7 +63,7 @@ Forced relocations from a tile/card do not trigger another tile, jump, flight or
 4. Evaluate victory on final post-effect plane progress. Otherwise advance the same turn owner on six or Tailwind; for both, only one additional turn results. Preserve Standard mode behaviour byte-for-byte as far as gameplay outcomes.
 5. Record effect events and resulting checksum in the existing action history. Replay regenerates tile effects and shuffled cards from seed and checks every event/checksum and final effectRng. Save/reload at awaiting-choice must not consume a chance card before selection.
 
-Use a tagged informational event (e.g. 'tile-effect' with a typed kind, amount/actor/target metadata) within AeroplaneEvent alongside existing move/jump/flight, not an unstructured UI-only log. Keep motion events in ResolvedMove.events; apply the authoritative post-effect route to the presentation queue only when movement occurred. Filter out informational events before the board's motion timeline; the event feed renders readable coin/property/effect messages.
+Keep `AeroplaneEvent` **strictly positional** (`move | jump | flight` with required `from`/`to`). Introduce a separate discriminated `TycoonEffectEvent` (e.g. `type: 'tycoon-effect'` with typed effect kind, actor/target and optional amount, **no fabricated coordinates**). Store both in the same authoritative `AeroplaneActionRecord.events: (AeroplaneEvent | TycoonEffectEvent)[]`, and use that union for transition/roll action outputs. `ResolvedMove.events` remains positional. An actual relocation caused by Boost/Storm/Wormhole/Crash or a shield knockback emits a positional movement event **in addition to** any informational event, so animations reflect committed movement. Extend the existing event validator/replay comparison for the union; use a structural type guard (`'from' in event && 'to' in event`) before passing only `AeroplaneEvent[]` to the HPA-428 motion projector. The feed renders descriptive economic events from the same committed action, without a second event log.
 
 ## AI and interface
 
@@ -73,7 +75,7 @@ Use a tagged informational event (e.g. 'tile-effect' with a typed kind, amount/a
 
 ## Testing and acceptance
 
-- Standard regression: seeded rolls/moves, finish, extra six, AI and saved/replayed games unchanged except intentional v2 schema.
+- Standard regression: seeded rolls/moves, finish, extra six and AI **gameplay outcomes** stay unchanged. Regenerate hardcoded Standard checksum fixtures and v1 persistence fixtures for the deliberate `config.mode`/v2 serialization changes, rather than preserving byte-identical snapshots.
 - Tycoon pure unit tests: each tile and ten cards, ownership pair/tolls/insufficient funds, repeat Departure bonus after relaunch, double effects prevented, shield/collision, capture→launch, two Crash placements, no-negative-coins, Tailwind vs six, Customs skip despite six, finish after Boost, stuck exact finish, no chaining and deterministic ties.
 - Two independent seeded simulations should match action events, state checksums, deck order and three RNG continuations. Replay catches an edited coin balance, ownership, event or effectRng. Restore mid-game and awaiting-choice gives identical future draws.
 - Component/E2E: mode/preset independence, human vs 3 AI completion, all balances and tile glyphs, accessible feed and reduced-motion/Skip, reload continuity.
