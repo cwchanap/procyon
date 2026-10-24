@@ -222,6 +222,9 @@ describe('Aeroplane status die', () => {
 					rollPresentation={rollPresentation({ id: 2, face: 3 })}
 				/>
 			);
+			// The new roll's tumble must survive the previous effect's cleanup;
+			// asserting before the first tick would mask a settled-face flash.
+			expect(queryByTestId('aeroplane-die-tumble')).not.toBeNull();
 			act(() => clock.advance(1));
 			expect(queryByTestId('aeroplane-die-tumble')).not.toBeNull();
 		} finally {

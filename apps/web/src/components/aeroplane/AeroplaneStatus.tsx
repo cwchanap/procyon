@@ -113,7 +113,6 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 			if (frame !== null && typeof cancelAnimationFrame === 'function') {
 				cancelAnimationFrame(frame);
 			}
-			setTumbleFace(null);
 		};
 	}, [tumbleEnabled, rollId]);
 
