@@ -168,7 +168,7 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 							<p
 								aria-hidden='true'
 								data-testid='aeroplane-die-tumble'
-								className='absolute inset-0 text-center font-mono text-xl font-semibold text-ivory-dim'
+								className='text-center font-mono text-xl font-semibold text-ivory-dim'
 							>
 								{tumbleFace}
 							</p>

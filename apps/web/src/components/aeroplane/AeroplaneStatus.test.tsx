@@ -203,6 +203,27 @@ describe('Aeroplane status die', () => {
 		}
 	});
 
+	test('the tumble stays in normal flow so the die row keeps its height', () => {
+		// Regression: an absolutely positioned tumble left the die wrapper
+		// with no in-flow child (the settled face is sr-only), collapsing the
+		// row and overlapping the "Rolled by" label until the tumble settled.
+		const clock = installFrameClock();
+		try {
+			const { getByTestId } = render(
+				<AeroplaneStatus
+					state={fixtureState({ pendingRoll: null })}
+					rollPresentation={rollPresentation({ id: 4, face: 2 })}
+				/>
+			);
+			act(() => clock.advance(1));
+			const tumble = getByTestId('aeroplane-die-tumble');
+			expect(tumble.className).not.toContain('absolute');
+			expect(getByTestId('aeroplane-die-face').className).toContain('sr-only');
+		} finally {
+			clock.uninstall();
+		}
+	});
+
 	test('consecutive equal-face rolls with distinct ids restart the tumble', () => {
 		const clock = installFrameClock();
 		try {
