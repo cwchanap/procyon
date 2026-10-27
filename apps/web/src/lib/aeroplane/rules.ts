@@ -335,6 +335,7 @@ export function applyResolvedMove(
 		state: nextState,
 		move,
 		events: move.events.map(item => ({ ...item })),
+		effectEvents: [],
 		capturedPlaneIds: [...move.capturedPlaneIds],
 	};
 }

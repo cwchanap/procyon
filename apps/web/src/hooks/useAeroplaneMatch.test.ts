@@ -20,7 +20,9 @@ import type {
 	AiSeat,
 	PersistedAeroplaneMatchV1,
 	PlaneState,
+	SkyTycoonState,
 } from '../lib/aeroplane/types';
+import { TYCOON_CHANCE_CARDS } from '../lib/aeroplane/types';
 import {
 	readDevOverrides,
 	useAeroplaneMatch,
@@ -1249,5 +1251,107 @@ describe('Aeroplane DEV fixture contract', () => {
 	test('non-DEV mode ignores the fixture entirely', () => {
 		const fixture = oneLegalHumanMoveFixture();
 		expect(readDevOverrides({ dev: false, fixture })).toEqual({});
+	});
+});
+
+describe('useAeroplaneMatch Sky Tycoon effective moves', () => {
+	function tycoonStateFor(
+		planes: PlaneState[],
+		skyTycoon: SkyTycoonState
+	): AeroplaneState {
+		const config: AeroplaneConfig = {
+			...CLASSIC_CONFIG,
+			mode: 'sky-tycoon',
+		};
+		return {
+			...fixtureState('red', planes, config),
+			tycoon: skyTycoon,
+		};
+	}
+
+	function plainTycoon(patch: Partial<SkyTycoonState> = {}): SkyTycoonState {
+		return {
+			coins: { red: 10, yellow: 10, blue: 10, green: 10 },
+			airports: {},
+			shields: [],
+			skipNextRoll: { red: false, yellow: false, blue: false, green: false },
+			chanceOrder: [...TYCOON_CHANCE_CARDS],
+			chanceCursor: 0,
+			...patch,
+		};
+	}
+
+	test('the committed feed consumes the effective move, not the selection', async () => {
+		// red rolls 2 onto the Storm tile (progress 16) and retreats to 13.
+		const fixture: AeroplaneE2EFixture = {
+			seed: 39109,
+			state: tycoonStateFor([plane('red', 0, 14)], plainTycoon()),
+			diceRng: diceStateForRoll(2),
+			aiRng: { value: 33 },
+			skipAnimations: false,
+		};
+		const match = createHookHarness(fixture, {
+			presentationMs: 1,
+			aiDelayMs: 10_000,
+		});
+		match.roll();
+		await match.flushPresentation();
+
+		const entry = match
+			.eventFeed()
+			.find(presentation => presentation.action.actor === 'human');
+		expect(entry).toBeDefined();
+		// The selection ended on the Storm tile; the feed animates the retreat.
+		expect(entry!.move.finalEndpoint).toMatchObject({ progress: 13 });
+		expect(entry!.move.events.at(-1)).toMatchObject({ type: 'warp' });
+		// The committed action mixes positional and informational events.
+		const eventTypes = entry!.action.events.map(event => event.type);
+		expect(eventTypes).toContain('warp');
+		expect(eventTypes).toContain('relocation');
+		expect(
+			match.state().planes.find(plane => plane.id === 'red-0')?.progress
+		).toBe(13);
+	});
+
+	test('a Customs skip roll commits the die and the skip without a move', () => {
+		const fixture: AeroplaneE2EFixture = {
+			seed: 39111,
+			state: tycoonStateFor(
+				[plane('red', 0, 1)],
+				plainTycoon({
+					skipNextRoll: {
+						red: true,
+						yellow: false,
+						blue: false,
+						green: false,
+					},
+				})
+			),
+			diceRng: diceStateForRoll(6),
+			aiRng: { value: 33 },
+			// Animated so the 10s AI delay holds yellow's roll for inspection.
+			skipAnimations: false,
+		};
+		const match = createHookHarness(fixture, { aiDelayMs: 10_000 });
+		match.roll();
+
+		// The real die was shown for the skipping player.
+		expect(match.result.current.rollPresentation).toMatchObject({
+			face: 6,
+			color: 'red',
+		});
+		const skipAction = match.result.current.actions[0]!;
+		expect(skipAction).toMatchObject({
+			kind: 'roll',
+			actor: 'human',
+			color: 'red',
+			roll: 6,
+			events: [{ type: 'skip', color: 'red' }],
+		});
+		// Even a six hands over; the streak stays untouched.
+		expect(match.state().currentPlayer).toBe('yellow');
+		expect(match.state().phase).toBe('awaiting-roll');
+		expect(match.state().noMoveStreak.red).toBe(0);
+		expect(match.state().tycoon?.skipNextRoll.red).toBe(false);
 	});
 });

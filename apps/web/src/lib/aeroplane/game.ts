@@ -1,12 +1,20 @@
 import { applyResolvedMove, getLegalMoves } from './rules';
 import { rollDice, type DiceResult } from './dice';
-import { TURN_ORDER, FINISH_PROGRESS } from './topology';
+import { TURN_ORDER, FINISH_PROGRESS, toPosition } from './topology';
 import { canonicalSerialize } from './checksum';
 import { deriveRngStreams, normalizeRngState, type RngState } from './rng';
-import { initialTycoonState } from './tycoon';
+import {
+	TYCOON_BOOST_STEPS,
+	TYCOON_DEPARTURE_BONUS,
+	addCoins,
+	clearPlaneShield,
+	initialTycoonState,
+	resolveLanding,
+} from './tycoon';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
+	AeroplaneEvent,
 	AeroplaneState,
 	AeroplaneStats,
 	AeroplaneTransition,
@@ -14,6 +22,8 @@ import type {
 	Personality,
 	PlaneState,
 	ResolvedMove,
+	SkyTycoonState,
+	TycoonEffectEvent,
 } from './types';
 
 export const CLASSIC_CONFIG: AeroplaneConfig = {
@@ -55,6 +65,8 @@ export interface AeroplaneRollResult {
 	roll: number;
 	legalMoves: ResolvedMove[];
 	rng: RngState | null;
+	/** Coordinate-free Sky Tycoon effects for the action record; empty in Standard. */
+	effectEvents: TycoonEffectEvent[];
 }
 
 function cloneStats(stats: AeroplaneStats): AeroplaneStats {
@@ -203,9 +215,11 @@ function boundaryLastPlaceRounds(
 function advanceAfterTurn(
 	state: AeroplaneState,
 	roll: number,
-	noMove: boolean
+	noMove: boolean,
+	/** Tailwind feeds the same single-shot bonus as a natural six; never both. */
+	bonusRoll: boolean = roll === 6
 ): AeroplaneState {
-	const samePlayer = roll === 6;
+	const samePlayer = bonusRoll;
 	const crossesRound = !samePlayer && state.currentPlayer === 'green';
 	const nextRoundNumber = state.roundNumber + (crossesRound ? 1 : 0);
 	const nextPlayer = samePlayer
@@ -256,6 +270,23 @@ export function rollTurn(
 	const { roll, rng } = parseRollInput(state, rngOrFixedRoll);
 	if (!isValidRoll(roll))
 		throw new RangeError('Aeroplane roll must be 1 through 6');
+	const skipped = state.currentPlayer;
+	if (state.tycoon?.skipNextRoll[skipped]) {
+		// A Customs skip consumes a real die but is a forced pass, not an
+		// inability to move: the streak stays untouched and even a six hands
+		// the turn over.
+		const tycoon: SkyTycoonState = {
+			...state.tycoon,
+			skipNextRoll: { ...state.tycoon.skipNextRoll, [skipped]: false },
+		};
+		return {
+			state: advanceAfterTurn({ ...state, tycoon }, roll, false, false),
+			roll,
+			legalMoves: [],
+			rng,
+			effectEvents: [{ type: 'skip', color: skipped }],
+		};
+	}
 	const legalMoves = getLegalMoves(state, roll);
 	if (legalMoves.length === 0) {
 		return {
@@ -263,6 +294,7 @@ export function rollTurn(
 			roll,
 			legalMoves,
 			rng,
+			effectEvents: [],
 		};
 	}
 	return {
@@ -276,6 +308,7 @@ export function rollTurn(
 		roll,
 		legalMoves,
 		rng,
+		effectEvents: [],
 	};
 }
 
@@ -302,7 +335,9 @@ function finishedCount(state: AeroplaneState, color: AeroplaneColor): number {
 /**
  * Apply a selected move only when it is still legal for the current player and
  * pending roll. This is the gameplay ownership boundary around the pure rules
- * resolver.
+ * resolver: normal motion/captures first, then Departure and exactly one
+ * Sky Tycoon tile/card resolution whose forced relocation (never cascading)
+ * extends the returned move into the authoritative effective move.
  */
 export function playResolvedMove(
 	state: AeroplaneState,
@@ -322,12 +357,85 @@ export function playResolvedMove(
 		throw new Error('Move is not legal for the current player and roll');
 	}
 
-	const transition = applyResolvedMove(state, legalMove);
-	const stats = updateStats(state, legalMove);
-	const finished = finishedCount(transition.state, legalMove.color);
+	const base = applyResolvedMove(state, legalMove);
+	let planes = base.state.planes;
+	let tycoon = state.tycoon;
+	const effects: TycoonEffectEvent[] = [];
+	const relocations: AeroplaneEvent[] = [];
+	let finalEndpoint = legalMove.finalEndpoint;
+
+	if (state.config.mode === 'sky-tycoon' && tycoon) {
+		// A plane's own shield expires the moment it moves, before any landing
+		// resolution so a shield tile pickup still yields exactly one shield.
+		tycoon = clearPlaneShield(tycoon, legalMove.planeId);
+		if (legalMove.start.kind === 'launch') {
+			// Departure pays only on the launch-pad-to-track hop (0 → 1+);
+			// hangar → launch alone pays nothing.
+			tycoon = addCoins(tycoon, legalMove.color, TYCOON_DEPARTURE_BONUS);
+			effects.push({
+				type: 'coins',
+				color: legalMove.color,
+				amount: TYCOON_DEPARTURE_BONUS,
+				reason: 'departure',
+			});
+		}
+		// Exactly one tile/card resolution on the final shared-track landing;
+		// launch, hangar, home lane and finish never qualify.
+		if (legalMove.finalEndpoint.kind === 'track') {
+			const landing = resolveLanding(
+				{ ...base.state, tycoon },
+				{
+					planeId: legalMove.planeId,
+					color: legalMove.color,
+					progress: legalMove.finalEndpoint.progress,
+				}
+			);
+			if (landing) {
+				tycoon = landing.tycoon;
+				effects.push(...landing.events);
+				if (landing.relocation) {
+					// resolveLanding already checked forced-placement legality; a
+					// blocked effect returns no relocation and the plane stays put.
+					const progress =
+						landing.relocation.kind === 'progress'
+							? landing.relocation.progress
+							: null;
+					planes = planes.map(plane =>
+						plane.id === legalMove.planeId ? { ...plane, progress } : plane
+					);
+					finalEndpoint = toPosition(legalMove.color, progress);
+					const boost = landing.events.some(
+						item => item.type === 'relocation' && item.effect === 'boost'
+					);
+					// Boost travels ordinary forward steps; Wormhole/Storm/Crash
+					// warp directly and must never enter waypoint/bounce math.
+					relocations.push({
+						type: boost ? 'move' : 'warp',
+						planeId: legalMove.planeId,
+						from: legalMove.finalEndpoint,
+						to: finalEndpoint,
+						...(boost ? { distance: TYCOON_BOOST_STEPS } : {}),
+					});
+				}
+			}
+		}
+	}
+
+	const moved: AeroplaneState = { ...base.state, planes };
+	// The effective move keeps the selected start/route and reports the actual
+	// captures and committed destination, never hypothetical ones.
+	const effectiveMove: ResolvedMove = {
+		...legalMove,
+		finalEndpoint,
+		events: [...legalMove.events, ...relocations],
+		capturedPlaneIds: base.capturedPlaneIds,
+	};
+	const stats = updateStats(state, effectiveMove);
+	const finished = finishedCount(moved, legalMove.color);
 	const hasWon = finished >= state.config.victoryTarget;
 	let nextState: AeroplaneState = {
-		...transition.state,
+		...moved,
+		tycoon,
 		stats,
 		noMoveStreak: {
 			...state.noMoveStreak,
@@ -343,11 +451,20 @@ export function playResolvedMove(
 			turnNumber: state.turnNumber + 1,
 		};
 	} else {
-		nextState = advanceAfterTurn(nextState, legalMove.roll, false);
+		const tailwind = effects.some(item => item.type === 'tailwind');
+		nextState = advanceAfterTurn(
+			nextState,
+			legalMove.roll,
+			false,
+			legalMove.roll === 6 || tailwind
+		);
 	}
 
 	return {
-		...transition,
 		state: nextState,
+		move: effectiveMove,
+		events: effectiveMove.events,
+		effectEvents: effects,
+		capturedPlaneIds: base.capturedPlaneIds,
 	};
 }
