@@ -19,6 +19,8 @@ export interface AeroplaneStatusProps {
 	reducedMotion?: boolean;
 }
 
+const COLORS: readonly AeroplaneColor[] = ['red', 'yellow', 'blue', 'green'];
+
 const colorLabel: Record<AeroplaneColor, string> = {
 	red: 'Red',
 	yellow: 'Yellow',
@@ -183,6 +185,45 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 						</p>
 					)}
 				</div>
+				{state.tycoon && (
+					<ul
+						aria-label='Sky Tycoon balances'
+						className='order-4 grid basis-full grid-cols-2 gap-2 border-t border-line pt-2 text-sm sm:grid-cols-4'
+					>
+						{COLORS.map(color => {
+							const tycoon = state.tycoon!;
+							const shields = state.planes.filter(
+								plane =>
+									plane.color === color && tycoon.shields.includes(plane.id)
+							).length;
+							return (
+								<li
+									key={color}
+									data-testid={`aeroplane-coins-${color}`}
+									className='min-w-0 text-ivory-dim'
+								>
+									<span className='font-semibold text-ivory'>
+										{colorLabel[color]}
+									</span>{' '}
+									<span className='font-mono text-aeroplane'>
+										{tycoon.coins[color]}
+									</span>{' '}
+									coins
+									{shields > 0 && (
+										<span className='block text-xs'>
+											{shields === 1
+												? '1 shielded plane'
+												: `${shields} shielded planes`}
+										</span>
+									)}
+									{tycoon.skipNextRoll[color] && (
+										<span className='block text-xs'>Skips next roll</span>
+									)}
+								</li>
+							);
+						})}
+					</ul>
+				)}
 			</div>
 		</Panel>
 	);

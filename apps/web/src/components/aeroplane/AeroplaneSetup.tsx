@@ -66,6 +66,46 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 			</div>
 
 			<fieldset className='space-y-2'>
+				<legend className='text-sm font-semibold text-ivory'>Mode</legend>
+				<div className='grid grid-cols-2 gap-2'>
+					{(
+						[
+							['standard', 'Standard'],
+							['sky-tycoon', 'Sky Tycoon'],
+						] as const
+					).map(([value, text]) => (
+						<button
+							key={value}
+							type='button'
+							aria-pressed={setup.mode === value}
+							onClick={() => {
+								onChange({ mode: value });
+							}}
+							className={`min-h-11 rounded-md border px-2 text-sm font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900 ${
+								setup.mode === value
+									? 'border-brass bg-brass text-ink-900'
+									: 'border-line bg-ink-700 text-ivory-dim hover:bg-ink-600 hover:text-ivory'
+							}`}
+						>
+							{text}
+						</button>
+					))}
+				</div>
+				{setup.mode === 'sky-tycoon' && (
+					<p
+						data-testid='aeroplane-tycoon-rules'
+						className='text-xs leading-relaxed text-ivory-dim'
+					>
+						Every colour starts with 10 coins and earns 3 per departure. Landing
+						on an unowned airport buys it automatically for 5 coins when
+						affordable; rivals pay a 2-coin toll (4 for a matched pair). Other
+						tiles and Chance cards trigger once per landing. Coins never decide
+						the winner: finishing planes does.
+					</p>
+				)}
+			</fieldset>
+
+			<fieldset className='space-y-2'>
 				<legend className='text-sm font-semibold text-ivory'>Preset</legend>
 				<div className='grid grid-cols-3 gap-2'>
 					{(
@@ -242,6 +282,7 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 				</Button>
 			)}
 			<p className='text-xs leading-relaxed text-ivory-dim'>
+				{setup.mode === 'sky-tycoon' ? 'Sky Tycoon · ' : ''}
 				{labelize(setup.rulePreset)} rules · You control the{' '}
 				{colorLabel[setup.humanColor]} planes; Red starts.
 			</p>

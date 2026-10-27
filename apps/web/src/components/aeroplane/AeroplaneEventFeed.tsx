@@ -5,9 +5,14 @@ import type {
 	AeroplaneActionRecord,
 	AeroplaneColor,
 	AeroplaneEvent,
+	AeroplaneEventType,
 	AeroplanePosition,
 	ResolvedMove,
+	TycoonChanceCard,
+	TycoonCoinReason,
+	TycoonEffectEvent,
 } from '../../lib/aeroplane/types';
+import { toPosition } from '../../lib/aeroplane/topology';
 
 export interface AeroplanePresentationLike {
 	id: number;
@@ -48,6 +53,100 @@ function endpointCopy(position: AeroplanePosition): string {
 		case 'finished':
 			return 'finish';
 	}
+}
+
+const coinReasonLabel: Record<TycoonCoinReason, string> = {
+	departure: 'departure bonus',
+	'airport-buy': 'airport purchase',
+	chance: 'Chance',
+	customs: 'Customs',
+	tax: 'Tax',
+};
+
+const cardLabel: Record<TycoonChanceCard, string> = {
+	'gain-4': 'gain 4 coins',
+	'gain-2': 'gain 2 coins',
+	'lose-2': 'lose 2 coins',
+	'steal-3': 'steal 3 coins',
+	boost: 'Boost',
+	tailwind: 'Tailwind',
+	shield: 'Shield',
+	storm: 'Storm',
+	customs: 'Customs',
+	crash: 'Crash',
+};
+
+function coins(amount: number): string {
+	return amount === 1 ? '1 coin' : `${amount} coins`;
+}
+
+function planeName(planeId: string): string {
+	const color = planeId.split('-')[0] as AeroplaneColor;
+	const number = Number(planeId.split('-').at(-1) ?? 0) + 1;
+	return `${colorLabel[color]} plane ${number}`;
+}
+
+const POSITIONAL_EVENT_TYPES: ReadonlySet<string> = new Set<AeroplaneEventType>(
+	['move', 'jump', 'flight', 'warp']
+);
+
+function isTycoonEffect(
+	event: AeroplaneEvent | TycoonEffectEvent
+): event is TycoonEffectEvent {
+	return !POSITIONAL_EVENT_TYPES.has(event.type);
+}
+
+/** Readable copy for one committed, coordinate-free Sky Tycoon effect. */
+function effectCopy(event: TycoonEffectEvent): string {
+	switch (event.type) {
+		case 'coins':
+			return event.amount >= 0
+				? `${colorLabel[event.color]} gains ${coins(event.amount)} (${coinReasonLabel[event.reason]}).`
+				: `${colorLabel[event.color]} pays ${coins(-event.amount)} (${coinReasonLabel[event.reason]}).`;
+		case 'transfer':
+			return event.reason === 'steal'
+				? `${colorLabel[event.to]} steals ${coins(event.amount)} from ${colorLabel[event.from]}.`
+				: `${colorLabel[event.from]} pays ${colorLabel[event.to]} ${coins(event.amount)} in airport toll.`;
+		case 'airport':
+			return `${colorLabel[event.owner]} now owns the airport on square ${event.tile + 1}.`;
+		case 'card':
+			return `${colorLabel[event.color]} draws Chance: ${cardLabel[event.card]}.`;
+		case 'shield':
+			return `${planeName(event.planeId)} is shielded until it next moves.`;
+		case 'skip':
+			return `${colorLabel[event.color]} cannot pay Customs and skips the next roll.`;
+		case 'tailwind':
+			return `${colorLabel[event.color]} catches a Tailwind: one more roll.`;
+		case 'relocation': {
+			const plane = planeName(event.planeId);
+			const color = event.planeId.split('-')[0] as AeroplaneColor;
+			const to = endpointCopy(toPosition(color, event.toProgress));
+			switch (event.effect) {
+				case 'boost':
+					return `Boost carries ${plane} to ${to}.`;
+				case 'wormhole':
+					return `Wormhole warps ${plane} to ${to}.`;
+				case 'storm':
+					return `Storm pushes ${plane} back to ${to}.`;
+				case 'crash':
+					return `Crash sends ${plane} to the ${to}.`;
+			}
+		}
+	}
+}
+
+/** Capture and economy details shown under the main move line. */
+function detailCopy(presentation: AeroplanePresentationLike): string[] {
+	const move = presentation.move;
+	// A roll-only skip entry's single skip event is its main line.
+	if (move === null) return [];
+	const captures = move.capturedPlaneIds.map(
+		planeId => `Captured ${planeName(planeId)}.`
+	);
+	const effects = (presentation.action.events ?? [])
+		.filter(isTycoonEffect)
+		.map(effectCopy);
+	return [...captures, ...effects];
 }
 
 function eventCopy(presentation: AeroplanePresentationLike): string {
@@ -162,19 +261,38 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 					feed
 						.slice()
 						.reverse()
-						.map(presentation => (
-							<div
-								key={presentation.id}
-								className='px-3 py-3 text-sm text-ivory-dim sm:px-4'
-							>
-								<p>{eventCopy(presentation)}</p>
-								{presentation.chatter && (
-									<p className='mt-1 text-xs italic text-aeroplane'>
-										{presentation.chatter}
-									</p>
-								)}
-							</div>
-						))
+						.map(presentation => {
+							const details = detailCopy(presentation);
+							return (
+								<div
+									key={presentation.id}
+									className='px-3 py-3 text-sm text-ivory-dim sm:px-4'
+								>
+									{presentation.move === null ? (
+										<p
+											data-testid='aeroplane-feed-skip'
+											className='border-l-2 border-brass pl-2 text-ivory'
+										>
+											{eventCopy(presentation)}
+										</p>
+									) : (
+										<p>{eventCopy(presentation)}</p>
+									)}
+									{details.length > 0 && (
+										<ul className='mt-1 space-y-0.5 text-xs text-ivory'>
+											{details.map((detail, index) => (
+												<li key={index}>{detail}</li>
+											))}
+										</ul>
+									)}
+									{presentation.chatter && (
+										<p className='mt-1 text-xs italic text-aeroplane'>
+											{presentation.chatter}
+										</p>
+									)}
+								</div>
+							);
+						})
 				)}
 			</div>
 		</section>

@@ -20,6 +20,7 @@ import {
 import { checksumState } from '../../lib/aeroplane/checksum';
 import { applyResolvedMove, resolveLegalMove } from '../../lib/aeroplane/rules';
 import { toPosition } from '../../lib/aeroplane/topology';
+import { TYCOON_TILES, initialTycoonState } from '../../lib/aeroplane/tycoon';
 import { positionAnchor } from '../../lib/aeroplane/presentation';
 import { rollFair } from '../../lib/aeroplane/dice';
 import {
@@ -35,6 +36,8 @@ import type {
 	AeroplaneState,
 	PlaneState,
 	ResolvedMove,
+	SkyTycoonState,
+	TycoonEffectEvent,
 } from '../../lib/aeroplane/types';
 import type {
 	AeroplaneE2EFixture,
@@ -198,6 +201,48 @@ describe('Aeroplane setup interactions', () => {
 		});
 	});
 
+	test('the mode control is independent of the preset and describes Sky Tycoon', () => {
+		const changes: Partial<typeof CLASSIC_CONFIG>[] = [];
+		const { getByRole, queryByTestId, rerender, getByText } = render(
+			<AeroplaneSetup
+				setup={CLASSIC_CONFIG}
+				onChange={patch => changes.push(patch)}
+				onStart={mock(() => {})}
+			/>
+		);
+		expect(
+			getByRole('button', { name: 'Standard' }).getAttribute('aria-pressed')
+		).toBe('true');
+		expect(queryByTestId('aeroplane-tycoon-rules')).toBeNull();
+		fireEvent.click(getByRole('button', { name: 'Sky Tycoon' }));
+		// Mode patches never touch the preset.
+		expect(changes.at(-1)).toEqual({ mode: 'sky-tycoon' });
+
+		const tycoon = { ...QUICK_CONFIG, mode: 'sky-tycoon' as const };
+		rerender(
+			<AeroplaneSetup
+				setup={tycoon}
+				onChange={patch => changes.push(patch)}
+				onStart={mock(() => {})}
+			/>
+		);
+		expect(
+			getByRole('button', { name: 'Sky Tycoon' }).getAttribute('aria-pressed')
+		).toBe('true');
+		expect(
+			getByRole('button', { name: /quick & chill/i }).getAttribute(
+				'aria-pressed'
+			)
+		).toBe('true');
+		expect(queryByTestId('aeroplane-tycoon-rules')?.textContent).toMatch(
+			/buys it automatically for 5 coins[\s\S]*finishing planes does/
+		);
+		expect(getByText(/Sky Tycoon · Quick Chill rules/)).toBeTruthy();
+		// Preset clicks never carry a mode, so the hook retains Tycoon.
+		fireEvent.click(getByRole('button', { name: 'Classic' }));
+		expect(changes.at(-1)).toEqual({ rulePreset: 'classic' });
+	});
+
 	test('manual edits are marked Custom', () => {
 		const changes: Partial<typeof CLASSIC_CONFIG>[] = [];
 		const { getByRole } = render(
@@ -349,6 +394,60 @@ describe('Aeroplane board interactions', () => {
 			getByRole('region', { name: /aeroplane chess board/i })
 		).toBeTruthy();
 		expect(getByRole('button', { name: /Red plane 1/i })).toBeTruthy();
+	});
+
+	test('labels every shared-map Sky Tycoon tile with a tinted airport owner', () => {
+		const tycoon = {
+			...initialTycoonState(1),
+			airports: { 6: 'blue' as const },
+		};
+		const { getByRole, getByTestId, queryAllByTestId } = render(
+			<AeroplaneBoard
+				state={fixtureState({
+					config: { ...CLASSIC_CONFIG, mode: 'sky-tycoon' },
+					tycoon,
+				})}
+				legalMoves={[]}
+				onRoll={mock(() => {})}
+			/>
+		);
+		const items = getByRole('list', {
+			name: 'Sky Tycoon tiles',
+		}).querySelectorAll('li');
+		expect(items).toHaveLength(TYCOON_TILES.size);
+		expect(items[0]!.textContent).toBe('Square 1: Airport, unowned');
+		expect([...items].map(item => item.textContent)).toContain(
+			'Square 7: Airport, owned by Blue'
+		);
+		expect([...items].map(item => item.textContent)).toContain(
+			'Square 25: Crash'
+		);
+		// Markers sit on the shared track anchors; only owned airports tint.
+		const owned = getByTestId('aeroplane-tycoon-tile-6');
+		expect(owned.getAttribute('aria-label')).toBe(
+			'Square 7: Airport, owned by Blue'
+		);
+		expect(owned.querySelector('circle')?.getAttribute('cx')).toBe(
+			String(TRACK_ANCHORS[6]!.x)
+		);
+		expect(
+			getByTestId('aeroplane-tycoon-tile-0').querySelector('circle')
+		).toBeNull();
+		expect(queryAllByTestId(/^aeroplane-tycoon-tile-/)).toHaveLength(
+			TYCOON_TILES.size
+		);
+	});
+
+	test('Standard boards render no Sky Tycoon markers', () => {
+		const { queryByRole, queryAllByTestId } = render(
+			<AeroplaneBoard
+				state={fixtureState()}
+				legalMoves={[]}
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(queryByRole('list', { name: 'Sky Tycoon tiles' })).toBeNull();
+		expect(queryAllByTestId(/^aeroplane-tycoon-tile-/)).toHaveLength(0);
 	});
 
 	test('keeps all sixteen hangar slots visible after planes launch', () => {
@@ -791,6 +890,117 @@ describe('Aeroplane event feed', () => {
 			expect(getByText(/to track 12/i)).toBeTruthy();
 			expect(getByText(/to home 2/i)).toBeTruthy();
 			expect(getByText(/to finish/i)).toBeTruthy();
+		});
+	});
+
+	test('renders effective captures, every Sky Tycoon effect and a styled roll-only skip', () => {
+		withDesktopMatchMedia(() => {
+			const effects: TycoonEffectEvent[] = [
+				{ type: 'coins', color: 'red', amount: 3, reason: 'departure' },
+				{ type: 'coins', color: 'red', amount: -5, reason: 'airport-buy' },
+				{ type: 'airport', tile: 6, owner: 'red' },
+				{
+					type: 'transfer',
+					from: 'red',
+					to: 'blue',
+					amount: 4,
+					reason: 'airport-toll',
+				},
+				{ type: 'card', color: 'red', card: 'steal-3' },
+				{
+					type: 'transfer',
+					from: 'yellow',
+					to: 'red',
+					amount: 1,
+					reason: 'steal',
+				},
+				{ type: 'shield', planeId: 'red-0' },
+				{ type: 'skip', color: 'red' },
+				{ type: 'tailwind', color: 'red' },
+				{
+					type: 'relocation',
+					planeId: 'red-0',
+					effect: 'boost',
+					toProgress: 33,
+				},
+				{
+					type: 'relocation',
+					planeId: 'red-0',
+					effect: 'wormhole',
+					toProgress: 38,
+				},
+				{
+					type: 'relocation',
+					planeId: 'red-0',
+					effect: 'storm',
+					toProgress: 0,
+				},
+				{
+					type: 'relocation',
+					planeId: 'red-0',
+					effect: 'crash',
+					toProgress: null,
+				},
+			];
+			const { getByText, getByTestId } = render(
+				<AeroplaneEventFeed
+					events={[
+						{
+							id: 1,
+							move: { ...move('red-0', 13), capturedPlaneIds: ['blue-2'] },
+							events: [],
+							action: {
+								kind: 'move',
+								actor: 'human',
+								color: 'red',
+								roll: 3,
+								selectedPlaneId: 'red-0',
+								events: [...move('red-0', 13).events, ...effects],
+								checksum: '00000000',
+							},
+						},
+						{
+							id: 2,
+							move: null,
+							events: [],
+							action: {
+								kind: 'roll',
+								actor: 'ai',
+								color: 'yellow',
+								roll: 6,
+								selectedPlaneId: null,
+								events: [{ type: 'skip', color: 'yellow' }],
+								checksum: '00000000',
+							},
+						},
+					]}
+				/>
+			);
+			for (const line of [
+				'You: Red plane 1 to track 13.',
+				'Captured Blue plane 3.',
+				'Red gains 3 coins (departure bonus).',
+				'Red pays 5 coins (airport purchase).',
+				'Red now owns the airport on square 7.',
+				'Red pays Blue 4 coins in airport toll.',
+				'Red draws Chance: steal 3 coins.',
+				'Red steals 1 coin from Yellow.',
+				'Red plane 1 is shielded until it next moves.',
+				'Red cannot pay Customs and skips the next roll.',
+				'Red catches a Tailwind: one more roll.',
+				'Boost carries Red plane 1 to track 33.',
+				'Wormhole warps Red plane 1 to track 38.',
+				'Storm pushes Red plane 1 back to launch pad.',
+				'Crash sends Red plane 1 to the hangar.',
+			]) {
+				expect(getByText(line)).toBeTruthy();
+			}
+			// The roll-only skip keeps its real die and fabricates no movement.
+			const skip = getByTestId('aeroplane-feed-skip');
+			expect(skip.textContent).toBe(
+				'AI: Yellow rolled 6 and skips this turn at Customs.'
+			);
+			expect(skip.parentElement?.querySelector('ul')).toBeNull();
 		});
 	});
 
@@ -2226,5 +2436,178 @@ describe('Aeroplane game composition', () => {
 			globalThis.fetch = originalFetch;
 			clock.uninstall();
 		}
+	});
+
+	function tycoonFixture(
+		rolls: readonly number[],
+		planes: PlaneState[],
+		patch: Partial<SkyTycoonState> = {}
+	): AeroplaneE2EFixture {
+		const fixture = gameFixtureForRolls(rolls, planes);
+		const config = { ...CLASSIC_CONFIG, mode: 'sky-tycoon' as const };
+		return {
+			...fixture,
+			state: {
+				...fixture.state!,
+				config,
+				tycoon: { ...initialTycoonState(4242), ...patch },
+			},
+		};
+	}
+
+	test('Sky Tycoon animates and cues the effective Storm arrival', () => {
+		const clock = installFrameClock();
+		const frequencies = installCueAudioStub();
+		try {
+			// red-0 rolls 2 from 14 onto Storm (16) and retreats to 13.
+			const view = renderGame(
+				tycoonFixture(
+					[2],
+					hangarPlanes().map(plane =>
+						plane.id === 'red-0' ? { ...plane, progress: 14 } : plane
+					)
+				),
+				{ aiDelayMs: 10_000 }
+			);
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(view.getByText('You: Red plane 1 to track 13.')).toBeTruthy();
+			expect(
+				view.getByText('Storm pushes Red plane 1 back to track 13.')
+			).toBeTruthy();
+			expect(frequencies).toEqual([340]);
+			act(() => clock.advance(1));
+			expect(view.getByTestId('aeroplane-motion-overlay')).toBeTruthy();
+			act(() => clock.advance(800));
+			// Two route hops then the warp: cues stay hop-only, no terminal cue.
+			expect(frequencies).toEqual([340, 500, 500]);
+			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			const arrival = positionAnchor(toPosition('red', 13), 'red-0');
+			expect(
+				overlayAnchor(view.queryByTestId, 'aeroplane-plane-control-red-0')
+			).toEqual({ x: arrival.x, y: arrival.y });
+		} finally {
+			clock.uninstall();
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('Sky Tycoon departure buys an airport and updates feed, balances and tint', () => {
+		// red-0 departs the launch pad with a 1 onto the airport at square 1.
+		const view = renderGame(
+			tycoonFixture(
+				[1],
+				hangarPlanes().map(plane =>
+					plane.id === 'red-0' ? { ...plane, progress: 0 } : plane
+				)
+			),
+			{ aiDelayMs: 10_000 }
+		);
+		expect(view.getByTestId('aeroplane-coins-red').textContent).toBe(
+			'Red 10 coins'
+		);
+		fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+		expect(view.getByText('Red gains 3 coins (departure bonus).')).toBeTruthy();
+		expect(view.getByText('Red pays 5 coins (airport purchase).')).toBeTruthy();
+		expect(
+			view.getByText('Red now owns the airport on square 1.')
+		).toBeTruthy();
+		expect(view.getByTestId('aeroplane-coins-red').textContent).toBe(
+			'Red 8 coins'
+		);
+		expect(
+			view.getByTestId('aeroplane-tycoon-tile-0').getAttribute('aria-label')
+		).toBe('Square 1: Airport, owned by Red');
+	});
+
+	test('a Customs skip shows a styled roll-only feed entry and the indicator clears', () => {
+		const view = renderGame(
+			tycoonFixture(
+				[6],
+				hangarPlanes().map(plane =>
+					plane.id === 'red-0' ? { ...plane, progress: 1 } : plane
+				),
+				{
+					skipNextRoll: { red: true, yellow: false, blue: false, green: false },
+				}
+			),
+			{ aiDelayMs: 10_000 }
+		);
+		expect(view.getByTestId('aeroplane-coins-red').textContent).toBe(
+			'Red 10 coinsSkips next roll'
+		);
+		fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+		expect(view.getByTestId('aeroplane-feed-skip').textContent).toBe(
+			'You: Red rolled 6 and skips this turn at Customs.'
+		);
+		expect(view.getByTestId('aeroplane-die-face').textContent).toBe('6');
+		expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+		expect(view.getByTestId('aeroplane-coins-red').textContent).toBe(
+			'Red 10 coins'
+		);
+	});
+
+	test('Sky Tycoon honours reduced motion and Skip animations', () => {
+		const clock = installFrameClock();
+		const frequencies = installCueAudioStub();
+		const windowWithMedia = window as unknown as { matchMedia: unknown };
+		const originalMatchMedia = windowWithMedia.matchMedia;
+		windowWithMedia.matchMedia = (query: string) => ({
+			matches: query.includes('prefers-reduced-motion'),
+			addEventListener() {},
+			removeEventListener() {},
+			addListener() {},
+			removeListener() {},
+		});
+		const stormPlanes = hangarPlanes().map(plane =>
+			plane.id === 'red-0' ? { ...plane, progress: 14 } : plane
+		);
+		try {
+			const reduced = renderGame(tycoonFixture([2], stormPlanes), {
+				aiDelayMs: 10_000,
+			});
+			fireEvent.click(reduced.getByRole('button', { name: /roll die/i }));
+			// Settled at the effective arrival with one terminal cue.
+			expect(reduced.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			// The board's layout-effect terminal cue lands before the roll cue.
+			expect(frequencies).toEqual([500, 340]);
+			const arrival = positionAnchor(toPosition('red', 13), 'red-0');
+			expect(
+				overlayAnchor(reduced.queryByTestId, 'aeroplane-plane-control-red-0')
+			).toEqual({ x: arrival.x, y: arrival.y });
+			reduced.unmount();
+			windowWithMedia.matchMedia = originalMatchMedia;
+
+			const skipped = renderGame(tycoonFixture([2], stormPlanes), {
+				aiDelayMs: 10_000,
+			});
+			fireEvent.click(skipped.getByRole('button', { name: /roll die/i }));
+			expect(skipped.getByTestId('aeroplane-motion-overlay')).toBeTruthy();
+			fireEvent.click(
+				skipped.getByRole('button', { name: /skip animations/i })
+			);
+			expect(skipped.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			expect(
+				overlayAnchor(skipped.queryByTestId, 'aeroplane-plane-control-red-0')
+			).toEqual({ x: arrival.x, y: arrival.y });
+		} finally {
+			windowWithMedia.matchMedia = originalMatchMedia;
+			clock.uninstall();
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('Standard matches show no Sky Tycoon UI', () => {
+		const view = renderGame(gameFixture(3));
+		expect(view.queryByRole('list', { name: 'Sky Tycoon tiles' })).toBeNull();
+		expect(
+			view.queryByRole('list', { name: 'Sky Tycoon balances' })
+		).toBeNull();
+		expect(view.queryAllByTestId(/^aeroplane-tycoon-tile-/)).toHaveLength(0);
+		expect(view.queryByTestId('aeroplane-tycoon-rules')).toBeNull();
+		expect(
+			view
+				.getByRole('button', { name: 'Standard' })
+				.getAttribute('aria-pressed')
+		).toBe('true');
 	});
 });

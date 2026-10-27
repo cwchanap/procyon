@@ -5,7 +5,9 @@ import {
 	chooseAiMove,
 	countImmediateCaptureThreats,
 	extractAiMoveFeatures,
+	TYCOON_TILE_UTILITY,
 } from './ai';
+import { initialTycoonState } from './tycoon';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
@@ -338,4 +340,57 @@ test('chooseAiMove rejects an empty legal move set', () => {
 	expect(() =>
 		chooseAiMove(fixture.state, [], 'cautious', { value: 7 })
 	).toThrow(RangeError);
+});
+
+function tycoonStateWithPlanes(
+	planes: PlaneState[],
+	tycoon = initialTycoonState(1)
+): AeroplaneState {
+	return {
+		...stateWithPlanes(planes, { mode: 'sky-tycoon' }),
+		tycoon,
+	};
+}
+
+test('tycoon tile weights steer away from Crash; inert in Standard', () => {
+	// red-crash lands on progress 25 (global 24, Crash); red-safe on plain 11.
+	const planes = [plane('red-crash', 22), plane('red-safe', 8)];
+	const standard = stateWithPlanes(planes);
+	const tycoon = tycoonStateWithPlanes(planes);
+	const moves = [
+		legalMove(standard, 'red-crash', 3),
+		legalMove(standard, 'red-safe', 3),
+	];
+
+	expect(extractAiMoveFeatures(standard, moves[0]!).tycoonTile).toBe(0);
+	expect(extractAiMoveFeatures(tycoon, moves[0]!).tycoonTile).toBe(
+		TYCOON_TILE_UTILITY.crash
+	);
+	expect(extractAiMoveFeatures(tycoon, moves[1]!).tycoonTile).toBe(0);
+
+	for (const personality of ['cautious', 'aggressive'] as const) {
+		expect(
+			chooseAiMove(tycoon, moves, personality, { value: 5 }).move.planeId
+		).toBe('red-safe');
+	}
+});
+
+test('tycoon airport weight prefers buying or own airports and avoids rival tolls', () => {
+	// red lands on progress 7 (global 6, an airport).
+	const planes = [plane('red-flyer', 4)];
+	const move = legalMove(stateWithPlanes(planes), 'red-flyer', 3);
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 6 });
+	const base = initialTycoonState(1);
+	const utility = (tycoon: typeof base) =>
+		extractAiMoveFeatures(tycoonStateWithPlanes(planes, tycoon), move)
+			.tycoonTile;
+
+	expect(utility(base)).toBe(TYCOON_TILE_UTILITY['airport-buy']);
+	expect(utility({ ...base, coins: { ...base.coins, red: 4 } })).toBe(0);
+	expect(utility({ ...base, airports: { 6: 'red' } })).toBe(
+		TYCOON_TILE_UTILITY['airport-own']
+	);
+	expect(utility({ ...base, airports: { 6: 'blue' } })).toBe(
+		TYCOON_TILE_UTILITY['airport-toll']
+	);
 });

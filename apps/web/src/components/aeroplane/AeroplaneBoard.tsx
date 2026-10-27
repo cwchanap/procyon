@@ -22,6 +22,7 @@ import {
 	type AeroplaneMotionSegment,
 	type AeroplaneMoveTimeline,
 } from '../../lib/aeroplane/presentation';
+import { TYCOON_TILES, type TycoonTileKind } from '../../lib/aeroplane/tycoon';
 import { Button } from '../ui/Button';
 import type {
 	AeroplaneColor,
@@ -29,6 +30,7 @@ import type {
 	AeroplaneState,
 	PlaneState,
 	ResolvedMove,
+	SkyTycoonState,
 } from '../../lib/aeroplane/types';
 
 /** Cues emitted by the board's playback clock; `roll` belongs to the die. */
@@ -312,6 +314,104 @@ const BoardSurface = React.memo(function BoardSurface() {
 					className='motion-reduce:animate-none'
 				/>
 			))}
+		</>
+	);
+});
+
+/** Placeholder text glyphs per Sky Tycoon tile; HPA-437 owns real art. */
+const TILE_GLYPH: Record<TycoonTileKind, string> = {
+	airport: '\u2708',
+	chance: '?',
+	boost: '\u00BB',
+	tailwind: '\u21BB',
+	shield: '\u25C6',
+	wormhole: '\u25CE',
+	storm: '\u2248',
+	customs: '$',
+	tax: '%',
+	crash: '\u2716',
+};
+
+const TILE_NAME: Record<TycoonTileKind, string> = {
+	airport: 'Airport',
+	chance: 'Chance',
+	boost: 'Boost',
+	tailwind: 'Tailwind',
+	shield: 'Shield',
+	wormhole: 'Wormhole',
+	storm: 'Storm',
+	customs: 'Customs',
+	tax: 'Tax',
+	crash: 'Crash',
+};
+
+/** Shared-map tiles in board order, labelled with any airport owner. */
+function tycoonTiles(airports: SkyTycoonState['airports']) {
+	return [...TYCOON_TILES.entries()]
+		.sort((left, right) => left[0] - right[0])
+		.map(([index, kind]) => {
+			const owner = kind === 'airport' ? airports[index] : undefined;
+			const ownership =
+				kind !== 'airport'
+					? ''
+					: owner
+						? `, owned by ${colorLabel[owner]}`
+						: ', unowned';
+			return {
+				index,
+				kind,
+				owner,
+				label: `Square ${index + 1}: ${TILE_NAME[kind]}${ownership}`,
+			};
+		});
+}
+
+/**
+ * Sky Tycoon tile markers from the shared `tycoon.ts` map, drawn on the
+ * track anchors with a subtle owner tint. Memoized on the airport map,
+ * which only changes identity on a purchase.
+ */
+const TycoonTileMarkers = React.memo(function TycoonTileMarkers({
+	airports,
+}: {
+	airports: SkyTycoonState['airports'];
+}) {
+	return (
+		<>
+			{tycoonTiles(airports).map(({ index, kind, owner, label }) => {
+				const anchor = TRACK_ANCHORS[index]!;
+				return (
+					<g
+						key={`tile-${index}`}
+						aria-label={label}
+						data-testid={`aeroplane-tycoon-tile-${index}`}
+						data-owner={owner}
+					>
+						{owner && (
+							<circle
+								cx={anchor.x}
+								cy={anchor.y}
+								r='2.3'
+								fill={PLANE_FILL[owner]}
+								fillOpacity='0.35'
+								stroke={PLANE_FILL[owner]}
+								strokeOpacity='0.8'
+								strokeWidth='0.35'
+							/>
+						)}
+						<text
+							x={anchor.x}
+							y={anchor.y + 0.6}
+							fill='#FFF5D3'
+							fillOpacity='0.85'
+							fontSize='1.7'
+							textAnchor='middle'
+						>
+							{TILE_GLYPH[kind]}
+						</text>
+					</g>
+				);
+			})}
 		</>
 	);
 });
@@ -690,6 +790,9 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 						plane controls below the board to move.
 					</desc>
 					<BoardSurface />
+					{state.tycoon && (
+						<TycoonTileMarkers airports={state.tycoon.airports} />
+					)}
 					{previewMove && (
 						<path
 							data-testid='aeroplane-route-preview'
@@ -782,6 +885,13 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 					)}
 				</svg>
 			</div>
+			{state.tycoon && (
+				<ul aria-label='Sky Tycoon tiles' className='sr-only'>
+					{tycoonTiles(state.tycoon.airports).map(tile => (
+						<li key={tile.index}>{tile.label}</li>
+					))}
+				</ul>
+			)}
 			{isHumanTurn && legalMoves.length > 0 && (
 				<div
 					role='list'

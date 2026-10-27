@@ -1,6 +1,11 @@
 import { nextUint32, type RngState } from './rng';
 import { applyResolvedMove, resolveLegalMove } from './rules';
 import { FINISH_PROGRESS, toGlobalTrackIndex } from './topology';
+import {
+	TYCOON_AIRPORT_PRICE,
+	tycoonTileKindAt,
+	type TycoonTileKind,
+} from './tycoon';
 import type {
 	AiMoveChoice,
 	AeroplanePosition,
@@ -19,6 +24,8 @@ export interface AiMoveFeatures {
 	blockade: number;
 	progress: number;
 	exposure: number;
+	/** Sky Tycoon landing-tile utility; always 0 in Standard mode. */
+	tycoonTile: number;
 }
 
 export const AI_WEIGHTS = {
@@ -32,6 +39,7 @@ export const AI_WEIGHTS = {
 		blockade: 140,
 		progress: 2,
 		exposure: -150,
+		tycoonTile: 1,
 	},
 	aggressive: {
 		finish: 10000,
@@ -43,6 +51,7 @@ export const AI_WEIGHTS = {
 		blockade: 25,
 		progress: 4,
 		exposure: -35,
+		tycoonTile: 1,
 	},
 	unpredictable: {
 		finish: 10000,
@@ -54,8 +63,31 @@ export const AI_WEIGHTS = {
 		blockade: 70,
 		progress: 3,
 		exposure: -75,
+		tycoonTile: 1,
 	},
 } as const satisfies Record<Personality, Record<keyof AiMoveFeatures, number>>;
+
+/**
+ * Small flat expectation per Sky Tycoon landing tile, shared by every
+ * personality. Chance is a flat guess: cards are never simulated or drawn.
+ */
+export const TYCOON_TILE_UTILITY = {
+	'airport-buy': 30,
+	'airport-own': 5,
+	'airport-toll': -25,
+	chance: 10,
+	boost: 25,
+	tailwind: 30,
+	shield: 20,
+	wormhole: 25,
+	storm: -25,
+	customs: -20,
+	tax: -10,
+	crash: -60,
+} as const satisfies Record<
+	Exclude<TycoonTileKind, 'airport'> | `airport-${'buy' | 'own' | 'toll'}`,
+	number
+>;
 
 const JITTER_MIN = -120;
 const JITTER_MAX = 120;
@@ -140,6 +172,21 @@ export function countImmediateCaptureThreats(
 	return threats;
 }
 
+function tycoonTileUtility(state: AeroplaneState, move: ResolvedMove): number {
+	const tycoon = state.tycoon;
+	if (!tycoon || move.finalEndpoint.kind !== 'track') return 0;
+	const tile = move.finalEndpoint.globalIndex;
+	const kind = tycoonTileKindAt(tile);
+	if (kind === null) return 0;
+	if (kind !== 'airport') return TYCOON_TILE_UTILITY[kind];
+	const owner = tycoon.airports[tile];
+	if (owner === move.color) return TYCOON_TILE_UTILITY['airport-own'];
+	if (owner !== undefined) return TYCOON_TILE_UTILITY['airport-toll'];
+	return tycoon.coins[move.color] >= TYCOON_AIRPORT_PRICE
+		? TYCOON_TILE_UTILITY['airport-buy']
+		: 0;
+}
+
 export function extractAiMoveFeatures(
 	state: AeroplaneState,
 	move: ResolvedMove
@@ -162,6 +209,7 @@ export function extractAiMoveFeatures(
 		blockade: formsBlockade(state, move, afterState),
 		progress: finalProgress - startProgress,
 		exposure: countImmediateCaptureThreats(afterState, move.planeId),
+		tycoonTile: tycoonTileUtility(state, move),
 	};
 }
 
@@ -179,7 +227,8 @@ export function scoreAiMove(
 		features.launch * weights.launch +
 		features.blockade * weights.blockade +
 		features.progress * weights.progress +
-		features.exposure * weights.exposure
+		features.exposure * weights.exposure +
+		features.tycoonTile * weights.tycoonTile
 	);
 }
 
