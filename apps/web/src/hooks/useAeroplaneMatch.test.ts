@@ -472,6 +472,29 @@ describe('useAeroplaneMatch controller', () => {
 		expect(match.result.current.setup.finishRule).toBe('bounce');
 	});
 
+	test('Sky Tycoon mode is independent of the rule preset', () => {
+		const match = createHookHarness(oneLegalHumanMoveFixture());
+		const setup = () => match.result.current.setup;
+		// Choosing the mode keeps the preset.
+		act(() => match.result.current.setSetup({ mode: 'sky-tycoon' }));
+		expect(setup().mode).toBe('sky-tycoon');
+		expect(setup().rulePreset).toBe('classic');
+		// Switching preset keeps the mode.
+		act(() => match.result.current.setSetup({ rulePreset: 'quick-chill' }));
+		expect(setup().mode).toBe('sky-tycoon');
+		expect(setup().victoryTarget).toBe(2);
+		// Editing house rules keeps the mode.
+		act(() =>
+			match.result.current.setSetup({ stacking: true, rulePreset: 'custom' })
+		);
+		expect(setup().mode).toBe('sky-tycoon');
+		expect(setup().rulePreset).toBe('custom');
+		act(() => match.result.current.setSetup({ mode: 'standard' }));
+		expect(setup().mode).toBe('standard');
+		expect(setup().rulePreset).toBe('custom');
+		expect(setup().stacking).toBe(true);
+	});
+
 	test('red-first AI turns run automatically when human is not red', () => {
 		const fixture = aiTurnFixture();
 		fixture.config = { ...CLASSIC_CONFIG, humanColor: 'green' };

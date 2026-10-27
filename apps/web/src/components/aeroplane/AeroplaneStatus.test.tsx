@@ -3,6 +3,7 @@ import { act, render } from '@testing-library/react';
 import { setupReactDom } from '../../test/reactSetup';
 import { installFrameClock } from '../../test/frameClock';
 import { CLASSIC_CONFIG } from '../../lib/aeroplane/game';
+import { initialTycoonState } from '../../lib/aeroplane/tycoon';
 import type { AeroplaneRollPresentation } from '../../hooks/useAeroplaneMatch';
 import type {
 	AeroplaneEvent,
@@ -306,5 +307,39 @@ describe('Aeroplane status die', () => {
 		);
 		expect(noRaf.queryByTestId('aeroplane-die-tumble')).toBeNull();
 		expect(noRaf.getByTestId('aeroplane-die-face').textContent).toBe('6');
+	});
+});
+
+describe('Aeroplane status Sky Tycoon balances', () => {
+	test('shows per-colour coins plus shield and skip indicators', () => {
+		const tycoon = initialTycoonState(1);
+		const { getByRole, getByTestId } = render(
+			<AeroplaneStatus
+				state={fixtureState({
+					config: { ...CLASSIC_CONFIG, mode: 'sky-tycoon' },
+					tycoon: {
+						...tycoon,
+						coins: { red: 13, yellow: 0, blue: 7, green: 10 },
+						shields: ['red-0'],
+						skipNextRoll: { ...tycoon.skipNextRoll, yellow: true },
+					},
+				})}
+			/>
+		);
+		expect(getByRole('list', { name: 'Sky Tycoon balances' })).toBeTruthy();
+		expect(getByTestId('aeroplane-coins-red').textContent).toBe(
+			'Red 13 coins1 shielded plane'
+		);
+		expect(getByTestId('aeroplane-coins-yellow').textContent).toBe(
+			'Yellow 0 coinsSkips next roll'
+		);
+		expect(getByTestId('aeroplane-coins-blue').textContent).toBe(
+			'Blue 7 coins'
+		);
+	});
+
+	test('Standard matches render no balances', () => {
+		const { queryByRole } = render(<AeroplaneStatus state={fixtureState()} />);
+		expect(queryByRole('list', { name: 'Sky Tycoon balances' })).toBeNull();
 	});
 });

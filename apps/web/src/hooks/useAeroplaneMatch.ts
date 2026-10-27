@@ -452,15 +452,18 @@ function mergeSetup(
 		const preset = normalizeConfig({ rulePreset: patch.rulePreset });
 		return normalizeConfig({
 			...preset,
+			mode: patch.mode ?? previous.mode,
 			humanColor: patch.humanColor ?? previous.humanColor,
 			chatter: patch.chatter ?? previous.chatter,
 			...patch,
 		});
 	}
+	// Mode is independent of the rule preset: a mode-only patch keeps it.
+	const modeOnly = Object.keys(patch).every(key => key === 'mode');
 	return normalizeConfig({
 		...previous,
 		...patch,
-		rulePreset: patch.rulePreset ?? 'custom',
+		rulePreset: patch.rulePreset ?? (modeOnly ? previous.rulePreset : 'custom'),
 	});
 }
 
