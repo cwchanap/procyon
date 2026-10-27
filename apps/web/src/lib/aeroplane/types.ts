@@ -8,8 +8,11 @@ export type LaunchRule = 'six' | 'five-or-six';
 export type FinishRule = 'exact' | 'bounce';
 export type AeroplanePhase = 'awaiting-roll' | 'awaiting-choice' | 'finished';
 export type AeroplaneRulePreset = 'classic' | 'quick-chill' | 'custom';
+/** Independent gameplay mode; Sky Tycoon layers coins/tiles over standard rules. */
+export type AeroplaneMode = 'standard' | 'sky-tycoon';
 
 export interface AeroplaneConfig {
+	mode: AeroplaneMode;
 	rulePreset: AeroplaneRulePreset;
 	victoryTarget: 2 | 4;
 	diceMode: DiceMode;
@@ -44,7 +47,7 @@ export type AeroplanePosition =
 	| { kind: 'home'; color: AeroplaneColor; progress: number; homeIndex: number }
 	| { kind: 'finished'; color: AeroplaneColor };
 
-export type AeroplaneEventType = 'move' | 'jump' | 'flight';
+export type AeroplaneEventType = 'move' | 'jump' | 'flight' | 'warp';
 
 /**
  * A logical movement event. Coordinates are deliberately absent: renderers
@@ -70,6 +73,83 @@ export interface ResolvedMove {
 	capturedPlaneIds: string[];
 }
 
+/**
+ * Exactly ten Sky Tycoon Chance cards, drawn cyclically from one seeded
+ * shuffle. Movement cards reuse the matching tile semantics without chaining.
+ */
+export const TYCOON_CHANCE_CARDS = [
+	'gain-4',
+	'gain-2',
+	'lose-2',
+	'steal-3',
+	'boost',
+	'tailwind',
+	'shield',
+	'storm',
+	'customs',
+	'crash',
+] as const;
+export type TycoonChanceCard = (typeof TYCOON_CHANCE_CARDS)[number];
+
+/** Why a colour's coin balance changed against the unlimited bank. */
+export type TycoonCoinReason =
+	| 'departure'
+	| 'airport-buy'
+	| 'chance'
+	| 'customs'
+	| 'tax';
+
+/**
+ * Coordinate-free, informational Sky Tycoon effect. Movement keeps its own
+ * positional `AeroplaneEvent`; these never carry board coordinates so feeds
+ * can render money, ownership, cards, shields and skips without positions.
+ */
+export type TycoonEffectEvent =
+	| {
+			type: 'coins';
+			color: AeroplaneColor;
+			amount: number;
+			reason: TycoonCoinReason;
+	  }
+	| {
+			type: 'transfer';
+			from: AeroplaneColor;
+			to: AeroplaneColor;
+			amount: number;
+			reason: 'airport-toll' | 'steal';
+	  }
+	| { type: 'airport'; tile: number; owner: AeroplaneColor }
+	| { type: 'card'; color: AeroplaneColor; card: TycoonChanceCard }
+	| { type: 'shield'; planeId: string }
+	| { type: 'skip'; color: AeroplaneColor }
+	| { type: 'tailwind'; color: AeroplaneColor }
+	| {
+			type: 'relocation';
+			planeId: string;
+			effect: 'boost' | 'wormhole' | 'storm' | 'crash';
+			/** Committed progress, or null when the plane went to the hangar. */
+			toProgress: number | null;
+	  };
+
+/**
+ * Sky Tycoon economy layer; null in Standard mode. Only `chanceOrder` and
+ * `chanceCursor` carry randomness: the deck is shuffled once at match start
+ * from a discarded salted seed and drawn cyclically, so no RNG persists.
+ */
+export interface SkyTycoonState {
+	/** Nonnegative integer balance per colour; every match starts at 10. */
+	coins: Record<AeroplaneColor, number>;
+	/** Airport global-index → owner colour; absent keys are unowned. */
+	airports: Partial<Record<number, AeroplaneColor>>;
+	/** Plane IDs protected until each plane next moves; pickups never stack. */
+	shields: string[];
+	skipNextRoll: Record<AeroplaneColor, boolean>;
+	/** Shuffled permutation of the ten unique card IDs. */
+	chanceOrder: TycoonChanceCard[];
+	/** Nonnegative draw cursor; `chanceOrder[cursor % 10]` is next. */
+	chanceCursor: number;
+}
+
 /** The selected local-AI move and the immutable AI stream continuation. */
 export interface AiMoveChoice {
 	move: ResolvedMove;
@@ -93,7 +173,8 @@ export interface AeroplaneActionRecord {
 	color: AeroplaneColor;
 	roll: number;
 	selectedPlaneId?: string | null;
-	events: AeroplaneEvent[];
+	/** Positional movement plus coordinate-free Tycoon effect information. */
+	events: (AeroplaneEvent | TycoonEffectEvent)[];
 	checksum: string;
 }
 
@@ -115,6 +196,8 @@ export interface AeroplaneState {
 	lastPlaceRounds: Record<AeroplaneColor, number>;
 	roundNumber: number;
 	stats: AeroplaneStats;
+	/** Sky Tycoon economy layer; null when config.mode is 'standard'. */
+	tycoon: SkyTycoonState | null;
 }
 
 export interface AeroplaneTransition {

@@ -3,6 +3,7 @@ import { rollDice, type DiceResult } from './dice';
 import { TURN_ORDER, FINISH_PROGRESS } from './topology';
 import { canonicalSerialize } from './checksum';
 import { deriveRngStreams, normalizeRngState, type RngState } from './rng';
+import { initialTycoonState } from './tycoon';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
@@ -16,6 +17,7 @@ import type {
 } from './types';
 
 export const CLASSIC_CONFIG: AeroplaneConfig = {
+	mode: 'standard',
 	rulePreset: 'classic',
 	victoryTarget: 4,
 	diceMode: 'fair',
@@ -28,6 +30,7 @@ export const CLASSIC_CONFIG: AeroplaneConfig = {
 };
 
 export const QUICK_CONFIG: AeroplaneConfig = {
+	mode: 'standard',
 	rulePreset: 'quick-chill',
 	victoryTarget: 2,
 	diceMode: 'relaxed',
@@ -139,6 +142,10 @@ export function createAeroplaneMatch(
 		lastPlaceRounds: { red: 0, yellow: 0, blue: 0, green: 0 },
 		roundNumber: 1,
 		stats: zeroStats(),
+		// The deck shuffle derives and discards a salted effects seed; only
+		// chanceOrder/chanceCursor persist, and no third RNG stream exists.
+		tycoon:
+			config.mode === 'sky-tycoon' ? initialTycoonState(normalizedSeed) : null,
 	};
 	return {
 		rootSeed: normalizedSeed,

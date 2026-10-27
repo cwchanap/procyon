@@ -94,6 +94,7 @@ function fixtureState(
 		lastPlaceRounds: { red: 0, yellow: 0, blue: 0, green: 0 },
 		roundNumber: 1,
 		stats: STATS,
+		tycoon: null,
 	};
 }
 

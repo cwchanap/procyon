@@ -9,6 +9,7 @@ import {
 	seatAIs,
 } from './game';
 import { TURN_ORDER } from './topology';
+import { TYCOON_CHANCE_CARDS } from './types';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
@@ -43,6 +44,7 @@ function stateWithPlanes(
 		lastPlaceRounds: { red: 0, yellow: 0, blue: 0, green: 0 },
 		roundNumber: 1,
 		stats: STATS,
+		tycoon: null,
 		...extra,
 	};
 }
@@ -259,4 +261,45 @@ test('playResolvedMove rejects a move outside the awaiting-choice phase', () => 
 	if (!move) return;
 
 	expect(() => playResolvedMove(state, move)).toThrow(/awaiting-choice/);
+});
+
+test('sky-tycoon matches initialize coins and a shuffled ten-card deck', () => {
+	const { state } = createAeroplaneMatch(
+		{ ...CLASSIC_CONFIG, mode: 'sky-tycoon' },
+		4242
+	);
+	const tycoon = state.tycoon;
+	expect(tycoon).not.toBeNull();
+	expect(tycoon!.coins).toEqual({ red: 10, yellow: 10, blue: 10, green: 10 });
+	expect(tycoon!.airports).toEqual({});
+	expect(tycoon!.shields).toEqual([]);
+	expect(tycoon!.skipNextRoll).toEqual({
+		red: false,
+		yellow: false,
+		blue: false,
+		green: false,
+	});
+	expect(tycoon!.chanceCursor).toBe(0);
+	expect([...tycoon!.chanceOrder].sort()).toEqual(
+		[...TYCOON_CHANCE_CARDS].sort()
+	);
+});
+
+test('standard matches keep tycoon null with untouched RNG streams', () => {
+	const standard = createAeroplaneMatch(CLASSIC_CONFIG, 4242);
+	expect(standard.state.tycoon).toBeNull();
+	const tycoon = createAeroplaneMatch(
+		{ ...CLASSIC_CONFIG, mode: 'sky-tycoon' },
+		4242
+	);
+	expect(tycoon.diceRng).toEqual(standard.diceRng);
+	expect(tycoon.aiRng).toEqual(standard.aiRng);
+});
+
+test('the chance deck is seeded: same root seed, same order', () => {
+	const order = (seed: number) =>
+		createAeroplaneMatch({ ...CLASSIC_CONFIG, mode: 'sky-tycoon' }, seed).state
+			.tycoon!.chanceOrder;
+	expect(order(4242)).toEqual(order(4242));
+	expect(order(4242)).not.toEqual(order(4243));
 });
