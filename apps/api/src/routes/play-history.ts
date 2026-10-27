@@ -35,7 +35,19 @@ export const UUID_REGEX =
 
 export const NUMERIC_ID_REGEX = /^\d+$/;
 
+const aeroplaneColorCoinSchema = z.number().int().nonnegative();
+
 const aeroplaneHistoryDetailsSchema = z.object({
+	// Absent mode means a Standard submission from a pre-Tycoon client.
+	mode: z.enum(['standard', 'sky-tycoon']).optional(),
+	coins: z
+		.object({
+			red: aeroplaneColorCoinSchema,
+			yellow: aeroplaneColorCoinSchema,
+			blue: aeroplaneColorCoinSchema,
+			green: aeroplaneColorCoinSchema,
+		})
+		.optional(),
 	rulePreset: z.enum(['classic', 'quick-chill', 'custom']),
 	victoryTarget: z.union([z.literal(2), z.literal(4)]),
 	diceMode: z.enum(['fair', 'relaxed']),
@@ -147,6 +159,16 @@ const createPlayHistorySchema = z
 						code: z.ZodIssueCode.custom,
 						message: 'Aeroplane AI players must each use a distinct colour',
 						path: ['details', 'aiPlayers'],
+					});
+				}
+				if (
+					data.details.mode === 'sky-tycoon' &&
+					data.details.coins === undefined
+				) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: 'Sky Tycoon history requires final coins',
+						path: ['details', 'coins'],
 					});
 				}
 				if (aiColors.includes(data.details.humanColor)) {

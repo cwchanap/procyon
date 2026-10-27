@@ -1,4 +1,8 @@
 export interface AeroplaneHistoryDetails {
+	/** Absent on pre-Tycoon Standard submissions. */
+	mode?: 'standard' | 'sky-tycoon';
+	/** Terminal four-colour balances; required for Sky Tycoon. */
+	coins?: Record<'red' | 'yellow' | 'blue' | 'green', number>;
 	rulePreset: 'classic' | 'quick-chill' | 'custom';
 	victoryTarget: 2 | 4;
 	diceMode: 'fair' | 'relaxed';
