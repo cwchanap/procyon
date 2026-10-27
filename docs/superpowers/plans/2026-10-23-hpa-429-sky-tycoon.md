@@ -83,6 +83,6 @@ Tests: independent mode/preset controls, actual effective route/arrival and audi
 
 ## Review decisions
 
-Round 1: separate positional vs informational events; clarify non-zero-sum bank; keep Standard *gameplay* invariants, not byte-identical v1 saves; fix Playwright CLI.
+Round 1: separate positional vs informational events; clarify non-zero-sum bank; keep Standard _gameplay_ invariants, not byte-identical v1 saves; fix Playwright CLI.
 
 Round 2: accept effective move as presentation/stats authority, cyclic Chance deck, shared-legal-move shield, API schema/test, pinned Standard baseline, impossible finish-test removal, and Customs streak semantics. **Tile placement choice:** use the explicit global indices in the design and consciously accept limited asymmetry rather than reduce the original ticket's named tile kinds. Keep the solution lightweight and one PR.
