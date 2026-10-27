@@ -859,4 +859,57 @@ describe('play-history routes - Aeroplane (unrated) games', () => {
 		expect(body.playHistory).toHaveLength(1);
 		expect(body.playHistory[0]?.details).toEqual(validAeroplaneDetails);
 	});
+
+	async function postThenGetDetails(details: unknown): Promise<unknown> {
+		const postRes = await postAeroplane({ details });
+		expect(postRes.status).toBe(201);
+		const getRes = await playHistoryRoutes.request(
+			`${BASE_URL}/`,
+			{ headers: AUTH_HEADER },
+			CF_ENV
+		);
+		expect(getRes.status).toBe(200);
+		const body = (await getRes.json()) as {
+			playHistory: Array<{ gameId: string; details: unknown }>;
+		};
+		expect(body.playHistory).toHaveLength(1);
+		expect(body.playHistory[0]?.gameId).toBe('aeroplane');
+		return body.playHistory[0]?.details;
+	}
+
+	test('Sky Tycoon mode and final coins survive POST, storage and GET', async () => {
+		const details = {
+			...validAeroplaneDetails,
+			mode: 'sky-tycoon',
+			coins: { red: 14, yellow: 0, blue: 7, green: 22 },
+		};
+		expect(await postThenGetDetails(details)).toEqual(details);
+	});
+
+	test('Standard mode without coins survives POST, storage and GET', async () => {
+		const details = { ...validAeroplaneDetails, mode: 'standard' };
+		expect(await postThenGetDetails(details)).toEqual(details);
+	});
+
+	test.each([
+		['Sky Tycoon without coins', { mode: 'sky-tycoon' }],
+		['an unknown mode', { mode: 'casino' }],
+		[
+			'negative coins',
+			{ mode: 'sky-tycoon', coins: { red: -1, yellow: 0, blue: 0, green: 0 } },
+		],
+		[
+			'fractional coins',
+			{ mode: 'sky-tycoon', coins: { red: 1.5, yellow: 0, blue: 0, green: 0 } },
+		],
+		[
+			'a missing colour balance',
+			{ mode: 'sky-tycoon', coins: { red: 1, yellow: 0, blue: 0 } },
+		],
+	] as const)('Aeroplane rejects %s', async (_label, patch) => {
+		const res = await postAeroplane({
+			details: { ...validAeroplaneDetails, ...patch },
+		});
+		expect(res.status).toBe(400);
+	});
 });
