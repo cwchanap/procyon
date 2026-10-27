@@ -18,14 +18,18 @@ import {
 	routePath,
 	stackedPlanePlacements,
 } from './presentation';
+import { playResolvedMove } from './game';
 import { applyResolvedMove, resolveLegalMove } from './rules';
+import { initialTycoonState } from './tycoon';
 import { toPosition } from './topology';
 import { AEROPLANE_COLORS } from './types';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
+	AeroplaneEvent,
 	AeroplaneState,
 	PlaneState,
+	ResolvedMove,
 } from './types';
 
 const CLASSIC_CONFIG: AeroplaneConfig = {
@@ -416,5 +420,96 @@ describe('Aeroplane presentation projection', () => {
 		buildMoveTimeline(move, committed);
 		expect(move).toEqual(moveSnapshot);
 		expect(committed).toEqual(stateSnapshot);
+	});
+});
+
+describe('Sky Tycoon effective-move presentation', () => {
+	function warpTimeline(
+		final: Record<string, number | null>,
+		...events: AeroplaneEvent[]
+	) {
+		const move: ResolvedMove = {
+			planeId: 'red-0',
+			color: 'red',
+			roll: 2,
+			start: events[0]!.from,
+			baseEndpoint: events[0]!.to,
+			finalEndpoint: events.at(-1)!.to,
+			events,
+			capturedPlaneIds: [],
+		};
+		return { move, timeline: buildMoveTimeline(move, stateWhere(final)) };
+	}
+
+	test('a Storm warp is one direct segment that never routes via the finish', () => {
+		const landing = toPosition('red', 16);
+		const retreat = toPosition('red', 13);
+		const { timeline } = warpTimeline(
+			{ 'red-0': 13 },
+			{
+				type: 'move',
+				planeId: 'red-0',
+				from: toPosition('red', 14),
+				to: landing,
+				distance: 2,
+			},
+			{ type: 'warp', planeId: 'red-0', from: landing, to: retreat }
+		);
+
+		expect(timeline.segments.map(segment => segment.kind)).toEqual([
+			'hop',
+			'hop',
+			'hop',
+		]);
+		// Two ordinary hops to the Storm tile, then ONE direct chord back.
+		expect(timeline.segments.map(segment => segment.to)).toEqual([
+			TRACK_ANCHORS[14]!,
+			TRACK_ANCHORS[15]!,
+			TRACK_ANCHORS[12]!,
+		]);
+		expect(timeline.segments[2]!.from).toEqual(TRACK_ANCHORS[15]!);
+		// A naive bounce read of the backward segment would visit progress 56.
+		for (const segment of timeline.segments) {
+			expect(segment.to).not.toEqual(TRACK_ANCHORS[51]!);
+		}
+	});
+
+	test('a Crash warp lands on the committed hangar glyph as the terminal cue', () => {
+		const landing = toPosition('red', 25);
+		const hangar = toPosition('red', null);
+		const { timeline } = warpTimeline(
+			{ 'red-0': null },
+			{
+				type: 'move',
+				planeId: 'red-0',
+				from: toPosition('red', 24),
+				to: landing,
+				distance: 1,
+			},
+			{ type: 'warp', planeId: 'red-0', from: landing, to: hangar }
+		);
+
+		expect(timeline.segments).toHaveLength(2);
+		// The final segment ends where the mover is actually committed.
+		expect(timeline.segments[1]!.to).toEqual(HANGAR_SLOTS.red[0]!);
+	});
+
+	test('captures return from the selected landing, not the warp destination', () => {
+		// red +1 lands on the Storm tile (global 15) over yellow-0, then retreats.
+		const state: AeroplaneState = {
+			...stateWhere({ 'red-0': 15, 'yellow-0': 3 }, { mode: 'sky-tycoon' }),
+			pendingRoll: 1,
+			tycoon: initialTycoonState(1),
+		};
+		const selected = resolveLegalMove(state, 'red-0', 1)!;
+		const transition = playResolvedMove(state, selected);
+		const timeline = buildMoveTimeline(transition.move, transition.state);
+
+		expect(transition.move.finalEndpoint).toMatchObject({ progress: 13 });
+		expect(timeline.captures[0]!.from).toEqual({
+			x: TRACK_ANCHORS[15]!.x + STACK_OFFSETS[0]!.x,
+			y: TRACK_ANCHORS[15]!.y + STACK_OFFSETS[0]!.y,
+		});
+		expect(timeline.segments.at(-1)!.to).toEqual(TRACK_ANCHORS[12]!);
 	});
 });

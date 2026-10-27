@@ -36,6 +36,7 @@ import type {
 	AiSeat,
 	PersistedAeroplaneMatchV1,
 	ResolvedMove,
+	TycoonEffectEvent,
 } from '../lib/aeroplane/types';
 
 export const AEROPLANE_AI_DELAY_MS = 650;
@@ -381,7 +382,7 @@ function actionRecord(
 	state: AeroplaneState,
 	options: {
 		selectedPlaneId?: string | null;
-		events?: AeroplaneEvent[];
+		events?: (AeroplaneEvent | TycoonEffectEvent)[];
 	} = {}
 ): AeroplaneActionRecord {
 	return {
@@ -704,7 +705,7 @@ export function useAeroplaneMatch(
 				transition.state,
 				{
 					selectedPlaneId: move.planeId,
-					events: transition.events,
+					events: [...transition.events, ...transition.effectEvents],
 				}
 			);
 			const next: ActiveAeroplaneMatch = {
@@ -721,7 +722,8 @@ export function useAeroplaneMatch(
 			// Commit both authoritative state and its action before exposing any
 			// route animation. A renderer can therefore be interrupted safely.
 			commit(next);
-			enqueuePresentation(move, action);
+			// The board/feed/cues animate the effective result, not the selection.
+			enqueuePresentation(transition.move, action);
 			return true;
 		},
 		[commit, enqueuePresentation]
@@ -770,7 +772,8 @@ export function useAeroplaneMatch(
 				actor,
 				current.state.currentPlayer,
 				result.roll,
-				result.state
+				result.state,
+				{ events: result.effectEvents }
 			);
 			const rolled: ActiveAeroplaneMatch = {
 				...current,

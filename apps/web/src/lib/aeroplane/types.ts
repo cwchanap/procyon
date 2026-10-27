@@ -202,8 +202,12 @@ export interface AeroplaneState {
 
 export interface AeroplaneTransition {
 	state: AeroplaneState;
+	/** The effective move: selected route plus any committed relocation. */
 	move: ResolvedMove;
+	/** Positional movement events only; effects ride in `effectEvents`. */
 	events: AeroplaneEvent[];
+	/** Coordinate-free Sky Tycoon effects for the action record; empty in Standard. */
+	effectEvents: TycoonEffectEvent[];
 	capturedPlaneIds: string[];
 }
 

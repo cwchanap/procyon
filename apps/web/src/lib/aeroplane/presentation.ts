@@ -269,6 +269,13 @@ export function buildMoveTimeline(
 	const segments: AeroplaneMotionSegment[] = [];
 
 	for (const event of move.events) {
+		if (event.type === 'warp') {
+			// Wormhole/Storm/Crash relocate directly: exactly one segment, never
+			// the per-progress waypoint walk or finish-bounce reflection.
+			const [from, to] = eventAnchor(event);
+			segments.push({ kind: 'hop', from, to, durationMs: 0 });
+			continue;
+		}
 		if (event.type === 'jump') {
 			const [from, to] = eventAnchor(event);
 			segments.push({ kind: 'jump', from, to, durationMs: 0 });
@@ -307,7 +314,14 @@ export function buildMoveTimeline(
 		});
 	}
 
-	const captureFrom = positionAnchor(move.finalEndpoint, move.planeId);
+	// Captures happen where the selected route landed (its move plus any
+	// jump/flight), before an effective Tycoon relocation carried the mover on.
+	let captureAt = move.events[0]?.to ?? move.finalEndpoint;
+	for (const event of move.events.slice(1)) {
+		if (event.type !== 'jump' && event.type !== 'flight') break;
+		captureAt = event.to;
+	}
+	const captureFrom = positionAnchor(captureAt, move.planeId);
 	const captures: AeroplaneCaptureReturn[] = [];
 	for (const [victimIndex, victimId] of move.capturedPlaneIds.entries()) {
 		const victim = state.planes.find(plane => plane.id === victimId);
