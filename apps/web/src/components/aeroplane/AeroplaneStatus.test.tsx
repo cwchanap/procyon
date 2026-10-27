@@ -38,6 +38,7 @@ function fixtureState(patch: Partial<AeroplaneState> = {}): AeroplaneState {
 			capturesSuffered: { red: 0, yellow: 0, blue: 0, green: 0 },
 			finished: { red: 0, yellow: 0, blue: 0, green: 0 },
 		},
+		tycoon: null,
 		...patch,
 	};
 }

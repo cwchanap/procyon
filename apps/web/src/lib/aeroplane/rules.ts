@@ -47,7 +47,7 @@ function effectiveBlockades(state: AeroplaneState): boolean {
 	return state.config.blockades;
 }
 
-function pathCrossesBlockade(
+export function pathCrossesBlockade(
 	state: AeroplaneState,
 	color: AeroplaneColor,
 	fromProgress: number,
@@ -96,7 +96,7 @@ function event(
 	};
 }
 
-function finalSharedOccupancy(
+export function finalSharedOccupancy(
 	state: AeroplaneState,
 	plane: PlaneState,
 	endpoint: Extract<AeroplanePosition, { kind: 'track' }>
@@ -122,10 +122,20 @@ function finalSharedOccupancy(
 	// Enemy blockades are not capturable. A one-plane enemy endpoint is a legal
 	// capture regardless of whether stacking is otherwise enabled.
 	if (effectiveBlockades(state) && enemy.length >= 2) return null;
+	// Sky Tycoon: any shielded defender makes the endpoint illegal, exactly like
+	// a blockade. Whole stacks are still captured together (never partially);
+	// there is no attacker knockback and the shield expires when its plane moves.
+	const shields = state.tycoon?.shields;
+	if (
+		enemy.some(
+			candidate => shields !== undefined && shields.includes(candidate.id)
+		)
+	)
+		return null;
 	return enemy.map(candidate => candidate.id);
 }
 
-function finalHomeOccupancy(
+export function finalHomeOccupancy(
 	state: AeroplaneState,
 	plane: PlaneState,
 	progress: number

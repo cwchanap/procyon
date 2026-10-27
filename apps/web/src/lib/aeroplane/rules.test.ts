@@ -5,14 +5,17 @@ import {
 	getLegalMovesForColor,
 	resolveLegalMove,
 } from './rules';
+import { addShield, initialTycoonState } from './tycoon';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
 	AeroplaneState,
 	PlaneState,
+	SkyTycoonState,
 } from './types';
 
 const CLASSIC_CONFIG: AeroplaneConfig = {
+	mode: 'standard',
 	rulePreset: 'classic',
 	victoryTarget: 4,
 	diceMode: 'fair',
@@ -49,6 +52,7 @@ function stateWithPlanes(
 			capturesSuffered: { red: 0, yellow: 0, blue: 0, green: 0 },
 			finished: { red: 0, yellow: 0, blue: 0, green: 0 },
 		},
+		tycoon: null,
 	};
 }
 
@@ -370,5 +374,73 @@ describe('Aeroplane path resolver', () => {
 			plane('green-0', null),
 		]);
 		expect(transition.capturedPlaneIds).toEqual(['green-0']);
+	});
+});
+
+describe('Sky Tycoon shield legality', () => {
+	// red-0 at 40 rolling 4 lands on progress 44 = global 43; green planes at
+	// progress 5 also occupy global 43.
+	function redVsGreen(
+		tycoon: SkyTycoonState | null,
+		config: Partial<AeroplaneConfig> = {}
+	): AeroplaneState {
+		return {
+			...stateWithPlanes([plane('red-0', 40), plane('green-0', 5)], config),
+			tycoon,
+		};
+	}
+
+	test('a shielded enemy defender makes the landing illegal', () => {
+		const state = redVsGreen(addShield(initialTycoonState(1), 'green-0'));
+		expect(resolveLegalMove(state, 'red-0', 4)).toBeNull();
+	});
+
+	test('the same landing captures when no defender is shielded', () => {
+		const state = redVsGreen(initialTycoonState(1));
+		expect(resolveLegalMove(state, 'red-0', 4)?.capturedPlaneIds).toEqual([
+			'green-0',
+		]);
+	});
+
+	test('any shielded defender blocks even when blockades are disabled', () => {
+		const stack = [
+			plane('red-0', 40),
+			plane('green-0', 5),
+			plane('green-1', 5),
+		];
+		const shielded = {
+			...stateWithPlanes(stack, { stacking: true }),
+			tycoon: addShield(initialTycoonState(1), 'green-1'),
+		};
+		expect(resolveLegalMove(shielded, 'red-0', 4)).toBeNull();
+
+		// Without the shield the whole stack is captured together.
+		const unshielded = {
+			...stateWithPlanes(stack, { stacking: true }),
+			tycoon: initialTycoonState(1),
+		};
+		expect(resolveLegalMove(unshielded, 'red-0', 4)?.capturedPlaneIds).toEqual([
+			'green-0',
+			'green-1',
+		]);
+	});
+
+	test('own shields never block friendly stacking', () => {
+		const state = {
+			...stateWithPlanes([plane('red-0', 40), plane('red-1', 44)], {
+				stacking: true,
+			}),
+			tycoon: addShield(initialTycoonState(1), 'red-1'),
+		};
+		const move = resolveLegalMove(state, 'red-0', 4);
+		expect(move?.capturedPlaneIds).toEqual([]);
+		expect(move?.finalEndpoint).toMatchObject({ kind: 'track', progress: 44 });
+	});
+
+	test('standard matches keep shield logic inert', () => {
+		const state = redVsGreen(null);
+		expect(resolveLegalMove(state, 'red-0', 4)?.capturedPlaneIds).toEqual([
+			'green-0',
+		]);
 	});
 });

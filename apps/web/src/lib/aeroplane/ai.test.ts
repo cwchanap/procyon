@@ -16,6 +16,7 @@ import type {
 } from './types';
 
 const CLASSIC_CONFIG: AeroplaneConfig = {
+	mode: 'standard',
 	rulePreset: 'classic',
 	victoryTarget: 4,
 	diceMode: 'fair',
@@ -54,6 +55,7 @@ function stateWithPlanes(
 		lastPlaceRounds: { red: 0, yellow: 0, blue: 0, green: 0 },
 		roundNumber: 1,
 		stats: STATS,
+		tycoon: null,
 	};
 }
 
