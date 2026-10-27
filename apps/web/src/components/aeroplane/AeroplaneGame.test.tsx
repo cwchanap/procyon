@@ -974,6 +974,7 @@ describe('Aeroplane event feed', () => {
 							},
 						},
 					]}
+					tycoon
 				/>
 			);
 			for (const line of [
@@ -2597,7 +2598,21 @@ describe('Aeroplane game composition', () => {
 	});
 
 	test('Standard matches show no Sky Tycoon UI', () => {
-		const view = renderGame(gameFixture(3));
+		jest.useFakeTimers();
+		// Red's roll of 1 jumps to track 6 and captures blue-0 there.
+		const view = renderGame(
+			gameFixtureForRolls(
+				[1, 1, 1, 1],
+				launchReadyPlanes().map(plane =>
+					plane.id === 'blue-0' ? { ...plane, progress: 32 } : plane
+				)
+			)
+		);
+		fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+		expect(
+			view.getByText('You: Red plane 1 via jump to track 6.')
+		).toBeTruthy();
+		expect(view.queryByText(/^Captured /)).toBeNull();
 		expect(view.queryByRole('list', { name: 'Sky Tycoon tiles' })).toBeNull();
 		expect(
 			view.queryByRole('list', { name: 'Sky Tycoon balances' })
