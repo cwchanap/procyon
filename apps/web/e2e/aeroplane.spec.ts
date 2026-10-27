@@ -11,6 +11,7 @@ import type {
 	AeroplaneConfig,
 	AeroplaneState,
 	PersistedAeroplaneMatchV2,
+	SkyTycoonState,
 } from '../src/lib/aeroplane/types';
 import type { AeroplaneE2EFixture } from '../src/hooks/useAeroplaneMatch';
 
@@ -79,8 +80,11 @@ function withPlaneProgress(
 	};
 }
 
-function nearVictoryFixture(seed: number): AeroplaneE2EFixture {
-	const config = { ...QUICK_CONFIG, chatter: false };
+function nearVictoryFixture(
+	seed: number,
+	configPatch: Partial<AeroplaneConfig> = {}
+): AeroplaneE2EFixture {
+	const config = { ...QUICK_CONFIG, chatter: false, ...configPatch };
 	const match = createAeroplaneMatch(config, seed);
 	const state = withPlaneProgress(
 		{
@@ -138,6 +142,30 @@ async function gotoAeroplane(
 	await expect(
 		page.getByRole('heading', { name: 'Aeroplane Chess', exact: true })
 	).toBeVisible({ timeout: 15000 });
+}
+
+const TYCOON_CLASSIC: Partial<AeroplaneConfig> = {
+	...CLASSIC_CONFIG,
+	mode: 'sky-tycoon',
+};
+
+function withTycoon(
+	state: AeroplaneState,
+	patch: Partial<SkyTycoonState>
+): AeroplaneState {
+	return { ...state, tycoon: { ...state.tycoon!, ...patch } };
+}
+
+function coins(page: Page, color: AeroplaneColor) {
+	return page.getByTestId(`aeroplane-coins-${color}`);
+}
+
+function coinText(color: AeroplaneColor, amount: number): RegExp {
+	return new RegExp(`${colorLabels[color]}\\s+${amount}\\s+coins`);
+}
+
+function feed(page: Page) {
+	return page.getByTestId('aeroplane-event-feed-content');
 }
 
 function status(page: Page) {
@@ -660,5 +688,208 @@ test.describe('Aeroplane Chess critical journey', () => {
 			page.getByRole('button', { name: 'Toggle AI config' })
 		).toHaveCount(0);
 		await expect(page.getByLabel('AI Provider')).toHaveCount(0);
+	});
+});
+
+async function humanMoveCount(page: Page): Promise<number> {
+	try {
+		return (await storedMatch(page)).actions.filter(
+			action => action.actor === 'human' && action.kind === 'move'
+		).length;
+	} catch {
+		return 0;
+	}
+}
+
+/** Polls until the three passing AI turns hand the die back to Red. */
+async function waitForRedToRoll(
+	page: Page
+): Promise<PersistedAeroplaneMatchV2> {
+	await expect
+		.poll(async () => {
+			const { state } = await storedMatch(page);
+			return `${state.currentPlayer}:${state.phase}:${state.turnNumber > 1}`;
+		})
+		.toBe('red:awaiting-roll:true');
+	return storedMatch(page);
+}
+
+test.describe('Aeroplane Sky Tycoon journey', () => {
+	test('buys an unowned airport and pays a toll on an owned one', async ({
+		page,
+	}) => {
+		// Red plane 1 rolls 3 from progress 4 to progress 7 (square 7, global 6
+		// airport); the three AIs roll 1 with every plane in the hangar and pass.
+		const scenarios = [
+			{
+				airports: {},
+				red: 5,
+				yellow: 10,
+				line: 'Red pays 5 coins (airport purchase).',
+				owner: 'red',
+			},
+			{
+				airports: { 6: 'yellow' },
+				red: 8,
+				yellow: 12,
+				line: 'Red pays Yellow 2 coins in airport toll.',
+				owner: 'yellow',
+			},
+		] as const;
+
+		for (const [index, scenario] of scenarios.entries()) {
+			await clearStoredMatch(page);
+			const fixture = fixtureFrom(
+				TYCOON_CLASSIC,
+				42000 + index,
+				{ currentPlayer: 'red', phase: 'awaiting-roll', pendingRoll: null },
+				// Feed entries are presentation, so animations must stay on.
+				{ diceRng: rngForRolls([3, 1, 1, 1]), skipAnimations: false }
+			);
+			fixture.state = withTycoon(
+				withPlaneProgress(fixture.state!, { 'red-0': 4 }),
+				{ airports: scenario.airports }
+			);
+			await gotoAeroplane(page, fixture);
+			await expect(coins(page, 'red')).toHaveText(coinText('red', 10));
+
+			await page.getByRole('button', { name: 'Roll die' }).click();
+			await expect.poll(() => humanMoveCount(page)).toBe(1);
+
+			await expect(feed(page)).toContainText(scenario.line);
+			if (scenario.owner === 'red') {
+				await expect(feed(page)).toContainText(
+					'Red now owns the airport on square 7.'
+				);
+			}
+			await expect(coins(page, 'red')).toHaveText(
+				coinText('red', scenario.red)
+			);
+			await expect(coins(page, 'yellow')).toHaveText(
+				coinText('yellow', scenario.yellow)
+			);
+			await expect(page.getByTestId('aeroplane-tycoon-tile-6')).toHaveAttribute(
+				'data-owner',
+				scenario.owner
+			);
+			await expect(
+				page.getByRole('list', { name: 'Sky Tycoon tiles' })
+			).toContainText(
+				`Square 7: Airport, owned by ${colorLabels[scenario.owner]}`
+			);
+			const saved = await waitForRedToRoll(page);
+			expect(saved.state.tycoon?.coins.red).toBe(scenario.red);
+			expect(saved.state.tycoon?.airports[6]).toBe(scenario.owner);
+		}
+	});
+
+	test('draws a Chance card with readable feedback under reduced motion', async ({
+		page,
+	}) => {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		const fixture = fixtureFrom(
+			TYCOON_CLASSIC,
+			42100,
+			{ currentPlayer: 'red', phase: 'awaiting-roll', pendingRoll: null },
+			{ diceRng: rngForRolls([3, 1, 1, 1]), skipAnimations: false }
+		);
+		const deck = fixture.state!.tycoon!.chanceOrder;
+		const cursor = deck.indexOf('gain-4');
+		// Red plane 1 rolls 3 from progress 1 to progress 4 (global 3 Chance).
+		fixture.state = withTycoon(
+			withPlaneProgress(fixture.state!, { 'red-0': 1 }),
+			{ chanceCursor: cursor }
+		);
+		await gotoAeroplane(page, fixture);
+		await expect(coins(page, 'red')).toHaveText(coinText('red', 10));
+
+		await page.getByRole('button', { name: 'Roll die' }).click();
+		await expect(page.getByTestId('aeroplane-die-tumble')).toHaveCount(0);
+		await expect.poll(() => humanMoveCount(page)).toBe(1);
+
+		await expect(feed(page)).toContainText('Red draws Chance: gain 4 coins.');
+		await expect(feed(page)).toContainText('Red gains 4 coins (Chance).');
+		await expect(coins(page, 'red')).toHaveText(coinText('red', 14));
+		await expect(page.getByTestId('aeroplane-motion-overlay')).toHaveCount(0);
+		const saved = await waitForRedToRoll(page);
+		expect(saved.state.tycoon?.chanceOrder).toEqual(deck);
+		expect(saved.state.tycoon?.chanceCursor).toBe(cursor + 1);
+		expect(
+			saved.state.planes.find(plane => plane.id === 'red-0')?.progress
+		).toBe(4);
+	});
+
+	test('restores mode, coins and deck after reload and keeps playing', async ({
+		page,
+	}) => {
+		// Roll 3 buys the square-7 airport; after reload roll 2 lands on the
+		// progress-9 Shield (global 8).
+		const fixture = fixtureFrom(
+			TYCOON_CLASSIC,
+			42200,
+			{ currentPlayer: 'red', phase: 'awaiting-roll', pendingRoll: null },
+			{ diceRng: rngForRolls([3, 1, 1, 1, 2]), skipAnimations: false }
+		);
+		fixture.state = withPlaneProgress(fixture.state!, { 'red-0': 4 });
+		await installFixtureOnce(page, fixture);
+		await page.goto('/aeroplane');
+		await expect(coins(page, 'red')).toHaveText(coinText('red', 10));
+		await page.getByRole('button', { name: 'Roll die' }).click();
+		await expect.poll(() => humanMoveCount(page)).toBe(1);
+		await expect(coins(page, 'red')).toHaveText(coinText('red', 5));
+		const before = await waitForRedToRoll(page);
+
+		await page.reload();
+		await expect(
+			page.getByRole('list', { name: 'Sky Tycoon balances' })
+		).toBeVisible();
+		await expect(coins(page, 'red')).toHaveText(coinText('red', 5));
+		await expect(page.getByTestId('aeroplane-tycoon-tile-6')).toHaveAttribute(
+			'data-owner',
+			'red'
+		);
+		const after = await storedMatch(page);
+		expect(after.config.mode).toBe('sky-tycoon');
+		expect(after.state.tycoon).toEqual(before.state.tycoon);
+		expect(after.diceRng).toEqual(before.diceRng);
+
+		await page.getByRole('button', { name: 'Roll die' }).click();
+		await expect.poll(() => humanMoveCount(page)).toBe(2);
+		await expect(feed(page)).toContainText(
+			'Red plane 1 is shielded until it next moves.'
+		);
+		const continued = await storedMatch(page);
+		expect(
+			continued.state.planes.find(plane => plane.id === 'red-0')?.progress
+		).toBe(9);
+		expect(continued.state.tycoon?.shields).toContain('red-0');
+		expect(continued.state.tycoon?.chanceOrder).toEqual(
+			before.state.tycoon?.chanceOrder
+		);
+	});
+
+	test('finishes a near-victory Tycoon match with final coins shown', async ({
+		page,
+	}) => {
+		const fixture = nearVictoryFixture(42300, { mode: 'sky-tycoon' });
+		fixture.state = withTycoon(fixture.state!, {
+			coins: { red: 17, yellow: 6, blue: 9, green: 0 },
+			airports: { 6: 'red', 32: 'red', 13: 'yellow' },
+		});
+		await gotoAeroplane(page, fixture);
+		await page.getByRole('button', { name: /Red plane 2/i }).click();
+		await expect(status(page)).toContainText('Red wins the match.');
+		await expect(coins(page, 'red')).toHaveText(coinText('red', 17));
+		await expect(coins(page, 'yellow')).toHaveText(coinText('yellow', 6));
+		await expect(coins(page, 'blue')).toHaveText(coinText('blue', 9));
+		await expect(coins(page, 'green')).toHaveText(coinText('green', 0));
+		await expect
+			.poll(async () =>
+				page.evaluate(
+					key => localStorage.getItem(key),
+					ACTIVE_MATCH_STORAGE_KEY
+				)
+			)
+			.toBeNull();
 	});
 });
