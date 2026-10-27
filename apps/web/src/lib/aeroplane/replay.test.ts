@@ -13,10 +13,10 @@ import { replayMatch } from './replay';
 import type {
 	AeroplaneActionRecord,
 	AeroplaneColor,
-	PersistedAeroplaneMatchV1,
+	PersistedAeroplaneMatchV2,
 } from './types';
 
-function recordedMatch(): PersistedAeroplaneMatchV1 {
+function recordedMatch(): PersistedAeroplaneMatchV2 {
 	const initial = createAeroplaneMatch(QUICK_CONFIG, 7);
 	let state = initial.state;
 	let diceRng = initial.diceRng;
@@ -67,7 +67,7 @@ function recordedMatch(): PersistedAeroplaneMatchV1 {
 	}
 
 	return {
-		version: 1,
+		version: 2,
 		savedAt: '2026-08-09T00:00:00.000Z',
 		rootSeed: initial.rootSeed,
 		config: initial.state.config,
@@ -183,7 +183,7 @@ test('checksum is stable across plane ordering and presentation data', () => {
 // --- Mismatch-branch coverage for the diagnostic replay path ---
 
 function firstRollAction(
-	match: PersistedAeroplaneMatchV1
+	match: PersistedAeroplaneMatchV2
 ): AeroplaneActionRecord {
 	const action = match.actions.find(record => record.kind === 'roll');
 	if (!action) throw new Error('expected a roll action in the recorded match');
@@ -191,7 +191,7 @@ function firstRollAction(
 }
 
 function firstMoveAction(
-	match: PersistedAeroplaneMatchV1
+	match: PersistedAeroplaneMatchV2
 ): AeroplaneActionRecord {
 	const action = match.actions.find(record => record.kind === 'move');
 	if (!action) throw new Error('expected a move action in the recorded match');
@@ -199,7 +199,7 @@ function firstMoveAction(
 }
 
 function firstHumanMoveAction(
-	match: PersistedAeroplaneMatchV1
+	match: PersistedAeroplaneMatchV2
 ): AeroplaneActionRecord {
 	const action = match.actions.find(
 		record => record.kind === 'move' && record.actor === 'human'
@@ -209,7 +209,7 @@ function firstHumanMoveAction(
 }
 
 function expectMismatch(
-	match: PersistedAeroplaneMatchV1,
+	match: PersistedAeroplaneMatchV2,
 	reasonFragment?: string
 ): void {
 	const result = replayMatch(match);
@@ -306,7 +306,7 @@ function rootSeedWithFirstRoll(target: number): number {
 }
 
 /** A move-only history: fresh start, first roll launches red, one unified move. */
-function unifiedMoveMatch(): PersistedAeroplaneMatchV1 {
+function unifiedMoveMatch(): PersistedAeroplaneMatchV2 {
 	const rootSeed = rootSeedWithFirstRoll(6);
 	const initial = createAeroplaneMatch(CLASSIC_CONFIG, rootSeed);
 	const rolled = rollTurn(initial.state, initial.diceRng);
@@ -324,7 +324,7 @@ function unifiedMoveMatch(): PersistedAeroplaneMatchV1 {
 		checksum: checksumState(transition.state),
 	};
 	return {
-		version: 1,
+		version: 2,
 		savedAt: '2026-08-09T00:00:00.000Z',
 		rootSeed: initial.rootSeed,
 		config: initial.state.config,
@@ -337,7 +337,7 @@ function unifiedMoveMatch(): PersistedAeroplaneMatchV1 {
 }
 
 /** Play a full QUICK game with separate roll+move records until it finishes. */
-function fullRecordedMatch(): PersistedAeroplaneMatchV1 {
+function fullRecordedMatch(): PersistedAeroplaneMatchV2 {
 	const initial = createAeroplaneMatch(QUICK_CONFIG, 7);
 	let state = initial.state;
 	let diceRng = initial.diceRng;
@@ -384,7 +384,7 @@ function fullRecordedMatch(): PersistedAeroplaneMatchV1 {
 	if (state.phase !== 'finished')
 		throw new Error('recorded match did not finish within the turn cap');
 	return {
-		version: 1,
+		version: 2,
 		savedAt: '2026-08-09T00:00:00.000Z',
 		rootSeed: initial.rootSeed,
 		config: initial.state.config,
@@ -416,8 +416,8 @@ test('replay reports a mismatch when a unified move rolls into no legal moves', 
 		events: [],
 		checksum: checksumState(rolled.state),
 	};
-	const match: PersistedAeroplaneMatchV1 = {
-		version: 1,
+	const match: PersistedAeroplaneMatchV2 = {
+		version: 2,
 		savedAt: '2026-08-09T00:00:00.000Z',
 		rootSeed: initial.rootSeed,
 		config: initial.state.config,
@@ -446,4 +446,154 @@ test('replay reports a mismatch for a unified move whose roll disagrees with the
 	const move = changed.actions[0]!;
 	move.roll = move.roll === 6 ? 1 : move.roll + 1;
 	expectMismatch(changed, 'recorded roll mismatch');
+});
+
+// --- Sky Tycoon: union events, cyclic deck and the two RNG continuations ---
+
+const TYCOON_QUICK = { ...QUICK_CONFIG, mode: 'sky-tycoon' as const };
+
+/**
+ * Seed 7 finishes a full QUICK Tycoon game that draws 13 Chance cards (the
+ * cursor wraps the ten-card deck), warps, and commits one Customs skip roll.
+ * Records mirror the controller: roll effects on rolls, positional then
+ * informational events on moves.
+ */
+function tycoonRecordedMatch(): PersistedAeroplaneMatchV2 {
+	const initial = createAeroplaneMatch(TYCOON_QUICK, 7);
+	let state = initial.state;
+	let diceRng = initial.diceRng;
+	let aiRng = initial.aiRng;
+	const actions: AeroplaneActionRecord[] = [];
+	while (state.phase !== 'finished' && actions.length < 5000) {
+		const color = state.currentPlayer;
+		const actor = color === TYCOON_QUICK.humanColor ? 'human' : 'ai';
+		const rolled = rollTurn(state, diceRng);
+		diceRng = rolled.rng ?? diceRng;
+		state = rolled.state;
+		actions.push({
+			kind: 'roll',
+			actor,
+			color,
+			roll: rolled.roll,
+			events: rolled.effectEvents,
+			checksum: checksumState(state),
+		});
+		if (rolled.legalMoves.length === 0) continue;
+		const choice =
+			actor === 'ai'
+				? chooseAiMove(
+						state,
+						rolled.legalMoves,
+						initial.seats.find(seat => seat.color === color)!.personality,
+						aiRng
+					)
+				: { move: rolled.legalMoves[0]!, rng: aiRng };
+		aiRng = choice.rng;
+		const transition = playResolvedMove(state, choice.move);
+		state = transition.state;
+		actions.push({
+			kind: 'move',
+			actor,
+			color,
+			roll: rolled.roll,
+			selectedPlaneId: choice.move.planeId,
+			events: [...transition.events, ...transition.effectEvents],
+			checksum: checksumState(state),
+		});
+	}
+	return {
+		version: 2,
+		savedAt: '2026-10-23T00:00:00.000Z',
+		rootSeed: initial.rootSeed,
+		config: initial.state.config,
+		state,
+		seats: initial.seats,
+		diceRng,
+		aiRng,
+		actions,
+	};
+}
+
+function eventTypes(match: PersistedAeroplaneMatchV2): Set<string> {
+	return new Set(
+		match.actions.flatMap(action => action.events.map(event => event.type))
+	);
+}
+
+test('independent seeded Tycoon runs match state, events, deck and both RNGs', () => {
+	const first = tycoonRecordedMatch();
+	const second = tycoonRecordedMatch();
+
+	expect(first.state.phase).toBe('finished');
+	expect(first.state.tycoon!.chanceCursor).toBeGreaterThan(10);
+	for (const type of ['card', 'warp', 'skip', 'coins'])
+		expect(eventTypes(first).has(type)).toBe(true);
+	expect(second.actions).toEqual(first.actions);
+	expect(second.state.tycoon!.chanceOrder).toEqual(
+		first.state.tycoon!.chanceOrder
+	);
+	expect(second.state.tycoon!.chanceCursor).toBe(
+		first.state.tycoon!.chanceCursor
+	);
+	expect(checksumState(second.state)).toBe(checksumState(first.state));
+	expect(second.diceRng).toEqual(first.diceRng);
+	expect(second.aiRng).toEqual(first.aiRng);
+
+	const result = replayMatch(first);
+	expect(result.kind).toBe('ok');
+	if (result.kind !== 'ok') return;
+	expect(result.state.tycoon).toEqual(first.state.tycoon);
+	expect(result.match.diceRng).toEqual(first.diceRng);
+	expect(result.match.aiRng).toEqual(first.aiRng);
+});
+
+test('replay detects a tampered informational Tycoon effect event', () => {
+	const changed = structuredClone(tycoonRecordedMatch());
+	const action = changed.actions.find(record =>
+		record.events.some(event => event.type === 'coins')
+	)!;
+	const index = changed.actions.indexOf(action);
+	action.events = action.events.map(event =>
+		event.type === 'coins' ? { ...event, amount: event.amount + 1 } : event
+	);
+
+	const result = replayMatch(changed);
+	expect(result).toMatchObject({
+		kind: 'mismatch',
+		index,
+		reason: 'resolved events mismatch',
+	});
+});
+
+test('replay detects a tampered Customs skip roll record', () => {
+	const changed = structuredClone(tycoonRecordedMatch());
+	const skip = changed.actions.find(
+		record =>
+			record.kind === 'roll' &&
+			record.events.some(event => event.type === 'skip')
+	)!;
+	skip.events = [];
+	expectMismatch(changed, 'resolved events mismatch');
+});
+
+test('replay detects a tampered Chance cursor and order in saved state', () => {
+	const cursor = structuredClone(tycoonRecordedMatch());
+	// +10 keeps the same next card, so only the authoritative checksum sees it.
+	cursor.state.tycoon!.chanceCursor += 10;
+	expectMismatch(cursor, 'final authoritative state');
+
+	const order = structuredClone(tycoonRecordedMatch());
+	const deck = order.state.tycoon!.chanceOrder;
+	[deck[0], deck[1]] = [deck[1]!, deck[0]!];
+	expectMismatch(order, 'final authoritative state');
+});
+
+test('Tycoon replay still compares exactly the two dice and AI continuations', () => {
+	const dice = structuredClone(tycoonRecordedMatch());
+	dice.diceRng = { value: dice.diceRng.value + 1 };
+	expectMismatch(dice, 'dice RNG');
+
+	const ai = structuredClone(tycoonRecordedMatch());
+	ai.aiRng = { value: ai.aiRng.value + 1 };
+	expectMismatch(ai, 'AI RNG');
 });

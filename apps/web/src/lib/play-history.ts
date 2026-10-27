@@ -9,6 +9,9 @@ import type {
 
 /** Aeroplane-specific terminal-match details persisted to play history. */
 export interface AeroplanePlayHistoryDetails {
+	mode: AeroplaneConfig['mode'];
+	/** Terminal four-colour balances; required for Sky Tycoon, absent for Standard. */
+	coins?: Record<AeroplaneColor, number>;
 	rulePreset: AeroplaneConfig['rulePreset'];
 	victoryTarget: AeroplaneConfig['victoryTarget'];
 	diceMode: AeroplaneConfig['diceMode'];

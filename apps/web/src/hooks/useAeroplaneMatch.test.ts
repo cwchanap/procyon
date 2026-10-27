@@ -10,6 +10,7 @@ import {
 import { rollFair } from '../lib/aeroplane/dice';
 import {
 	ACTIVE_MATCH_STORAGE_KEY,
+	restoreActiveMatch,
 	saveActiveMatch,
 	type AeroplaneStorage,
 } from '../lib/aeroplane/persistence';
@@ -18,7 +19,7 @@ import type {
 	AeroplaneConfig,
 	AeroplaneState,
 	AiSeat,
-	PersistedAeroplaneMatchV1,
+	PersistedAeroplaneMatchV2,
 	PlaneState,
 	SkyTycoonState,
 } from '../lib/aeroplane/types';
@@ -243,8 +244,8 @@ function saveAiAwaitingChoice(storage: MemoryStorage): void {
 	if (!rolled.rng || rolled.legalMoves.length !== 1)
 		throw new Error('expected one legal AI move in fixture');
 	const match = createAeroplaneMatch(config, fixture.seed);
-	const saved: PersistedAeroplaneMatchV1 = {
-		version: 1,
+	const saved: PersistedAeroplaneMatchV2 = {
+		version: 2,
 		savedAt: new Date(0).toISOString(),
 		rootSeed: match.rootSeed,
 		config: state.config,
@@ -384,7 +385,7 @@ describe('useAeroplaneMatch controller', () => {
 		match.roll();
 		const raw = storage.getItem(ACTIVE_MATCH_STORAGE_KEY);
 		expect(raw).not.toBeNull();
-		const saved = JSON.parse(raw ?? '{}') as PersistedAeroplaneMatchV1;
+		const saved = JSON.parse(raw ?? '{}') as PersistedAeroplaneMatchV2;
 		expect(saved.state.phase).toBe('awaiting-choice');
 		expect(saved.actions.at(-1)?.kind).toBe('roll');
 	});
@@ -395,8 +396,8 @@ describe('useAeroplaneMatch controller', () => {
 			...seat,
 			personality: index === 0 ? 'unpredictable' : seat.personality,
 		}));
-		const saved: PersistedAeroplaneMatchV1 = {
-			version: 1,
+		const saved: PersistedAeroplaneMatchV2 = {
+			version: 2,
 			savedAt: new Date(0).toISOString(),
 			rootSeed: original.rootSeed,
 			config: original.state.config,
@@ -425,7 +426,7 @@ describe('useAeroplaneMatch controller', () => {
 		expect(match.state().currentPlayer).toBe('blue');
 		const saved = JSON.parse(
 			storage.getItem(ACTIVE_MATCH_STORAGE_KEY) ?? '{}'
-		) as PersistedAeroplaneMatchV1;
+		) as PersistedAeroplaneMatchV2;
 		expect(saved.actions).toHaveLength(2);
 		expect(saved.actions.at(-1)?.kind).toBe('move');
 	});
@@ -441,7 +442,7 @@ describe('useAeroplaneMatch controller', () => {
 		expect(match.state().phase).toBe('awaiting-roll');
 		const saved = JSON.parse(
 			storage.getItem(ACTIVE_MATCH_STORAGE_KEY) ?? '{}'
-		) as PersistedAeroplaneMatchV1;
+		) as PersistedAeroplaneMatchV2;
 		expect(saved.actions).toHaveLength(2);
 		expect(saved.actions.at(-1)?.kind).toBe('move');
 	});
@@ -698,7 +699,7 @@ describe('useAeroplaneMatch roll presentation and AI roll pacing', () => {
 		match.advanceTime(1000);
 		const saved = JSON.parse(
 			match.storage.getItem(ACTIVE_MATCH_STORAGE_KEY) ?? '{}'
-		) as PersistedAeroplaneMatchV1;
+		) as PersistedAeroplaneMatchV2;
 		expect((saved.actions ?? []).filter(a => a.actor === 'ai')).toHaveLength(0);
 	});
 
@@ -811,7 +812,7 @@ describe('useAeroplaneMatch controller AI turn chaining (real timers)', () => {
 
 		const saved = JSON.parse(
 			storage.getItem(ACTIVE_MATCH_STORAGE_KEY) ?? '{}'
-		) as PersistedAeroplaneMatchV1;
+		) as PersistedAeroplaneMatchV2;
 		expect(saved.actions.length).toBeGreaterThanOrEqual(4);
 		expect(
 			saved.actions.map(action => ({
@@ -903,7 +904,7 @@ describe('useAeroplaneMatch terminal history integration', () => {
 	): void {
 		const fixture = terminalAeroplaneFixture();
 		const saved = {
-			version: 1 as const,
+			version: 2 as const,
 			savedAt,
 			startedAt,
 			rootSeed: fixture.seed!,
@@ -935,6 +936,7 @@ describe('useAeroplaneMatch terminal history integration', () => {
 			opponentEngineId: 'aeroplane-trio-v1',
 			status: 'win',
 			details: {
+				mode: 'standard',
 				rulePreset: 'classic',
 				victoryTarget: 2,
 				diceMode: 'fair',
@@ -955,6 +957,40 @@ describe('useAeroplaneMatch terminal history integration', () => {
 			},
 		});
 
+		expect(capturedBodies[0]?.details).not.toHaveProperty('coins');
+		match.unmount();
+	});
+
+	test('terminal Sky Tycoon payload submits the mode and final four-colour coins', async () => {
+		const fixture = terminalAeroplaneFixture();
+		const config: AeroplaneConfig = { ...fixture.config!, mode: 'sky-tycoon' };
+		const coins = { red: 14, yellow: 0, blue: 7, green: 22 };
+		const tycoon = createAeroplaneMatch(config, fixture.seed).state.tycoon!;
+		(
+			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
+		).__PROCYON_INITIAL_AUTH_USER__ = {
+			id: 'user-a',
+			email: 'a@b.com',
+			username: 'a',
+		};
+		const match = renderHook(() =>
+			useAeroplaneMatch({
+				fixture: {
+					...fixture,
+					config,
+					state: { ...fixture.state!, config, tycoon: { ...tycoon, coins } },
+				},
+				dev: true,
+				storage: memoryStorage(),
+			})
+		);
+		await flushHistorySave();
+
+		expect(capturedBodies).toHaveLength(1);
+		expect(capturedBodies[0]?.details).toMatchObject({
+			mode: 'sky-tycoon',
+			coins,
+		});
 		match.unmount();
 	});
 
@@ -1089,7 +1125,7 @@ describe('useAeroplaneMatch terminal history integration', () => {
 
 		const savedRaw = storage.getItem(ACTIVE_MATCH_STORAGE_KEY);
 		expect(savedRaw).not.toBeNull();
-		const saved = JSON.parse(savedRaw ?? '{}') as PersistedAeroplaneMatchV1;
+		const saved = JSON.parse(savedRaw ?? '{}') as PersistedAeroplaneMatchV2;
 		expect(saved.state.phase).toBe('finished');
 		expect(saved.completedAt).toBe(nowValue);
 		first.unmount();
@@ -1302,8 +1338,8 @@ describe('useAeroplaneMatch Sky Tycoon effective moves', () => {
 			.find(presentation => presentation.action.actor === 'human');
 		expect(entry).toBeDefined();
 		// The selection ended on the Storm tile; the feed animates the retreat.
-		expect(entry!.move.finalEndpoint).toMatchObject({ progress: 13 });
-		expect(entry!.move.events.at(-1)).toMatchObject({ type: 'warp' });
+		expect(entry!.move!.finalEndpoint).toMatchObject({ progress: 13 });
+		expect(entry!.move!.events.at(-1)).toMatchObject({ type: 'warp' });
 		// The committed action mixes positional and informational events.
 		const eventTypes = entry!.action.events.map(event => event.type);
 		expect(eventTypes).toContain('warp');
@@ -1311,6 +1347,12 @@ describe('useAeroplaneMatch Sky Tycoon effective moves', () => {
 		expect(
 			match.state().planes.find(plane => plane.id === 'red-0')?.progress
 		).toBe(13);
+		// The committed effective action survives the v2 envelope.
+		const restored = restoreActiveMatch(match.storage);
+		if (restored.kind !== 'ok') throw new Error('expected a v2 restore');
+		expect(restored.match.version).toBe(2);
+		expect(restored.match.state).toEqual(match.state());
+		expect(restored.match.actions).toEqual(match.result.current.actions);
 	});
 
 	test('a Customs skip roll commits the die and the skip without a move', () => {
@@ -1353,5 +1395,13 @@ describe('useAeroplaneMatch Sky Tycoon effective moves', () => {
 		expect(match.state().phase).toBe('awaiting-roll');
 		expect(match.state().noMoveStreak.red).toBe(0);
 		expect(match.state().tycoon?.skipNextRoll.red).toBe(false);
+		// The feed shows the roll-only skip without fabricating a move.
+		expect(match.eventFeed()).toEqual([
+			{ id: expect.any(Number), move: null, events: [], action: skipAction },
+		]);
+		expect(match.result.current.presentationQueue).toHaveLength(0);
+		const restored = restoreActiveMatch(match.storage);
+		if (restored.kind !== 'ok') throw new Error('expected a v2 restore');
+		expect(restored.match.actions).toEqual([skipAction]);
 	});
 });
