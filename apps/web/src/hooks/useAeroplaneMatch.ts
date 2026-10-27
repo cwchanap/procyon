@@ -34,7 +34,7 @@ import type {
 	AeroplaneEvent,
 	AeroplaneState,
 	AiSeat,
-	PersistedAeroplaneMatchV1,
+	PersistedAeroplaneMatchV2,
 	ResolvedMove,
 	TycoonEffectEvent,
 } from '../lib/aeroplane/types';
@@ -75,6 +75,20 @@ export interface AeroplanePresentation {
 	action: AeroplaneActionRecord;
 	chatter?: string;
 }
+
+/**
+ * Roll-only feed entry for a committed Customs skip: it carries the real die
+ * and skip action, never a fabricated move, and is not queued for the board.
+ */
+export interface AeroplaneSkipFeedEntry {
+	id: number;
+	move: null;
+	events: [];
+	action: AeroplaneActionRecord;
+	chatter?: never;
+}
+
+export type AeroplaneFeedEntry = AeroplanePresentation | AeroplaneSkipFeedEntry;
 
 /**
  * Ephemeral die presentation for the most recent roll.  It is controller UI
@@ -149,7 +163,7 @@ export interface UseAeroplaneMatchResult {
 	actions: AeroplaneActionRecord[];
 	legalMoves: ResolvedMove[];
 	presentationQueue: AeroplanePresentation[];
-	eventFeed: AeroplanePresentation[];
+	eventFeed: AeroplaneFeedEntry[];
 	rollPresentation: AeroplaneRollPresentation | null;
 	isAnimating: boolean;
 	isHumanTurn: boolean;
@@ -197,7 +211,7 @@ function candidateEnvelope(
 	fixture: AeroplaneE2EFixture,
 	config: AeroplaneConfig,
 	seed: number
-): PersistedAeroplaneMatchV1 | null {
+): PersistedAeroplaneMatchV2 | null {
 	const base = createAeroplaneMatch(config, seed);
 	const state = fixture.state ?? base.state;
 	const seats = fixture.seats ?? base.seats;
@@ -206,7 +220,7 @@ function candidateEnvelope(
 	if (!validSeats(seats, config.humanColor) || !isRng(diceRng) || !isRng(aiRng))
 		return null;
 	return {
-		version: 1,
+		version: 2,
 		savedAt: new Date(0).toISOString(),
 		rootSeed: seed,
 		config,
@@ -317,7 +331,7 @@ function freezeSeats(seats: AiSeat[]): AiSeat[] {
 }
 
 function activeFromPersisted(
-	value: PersistedAeroplaneMatchV1
+	value: PersistedAeroplaneMatchV2
 ): ActiveAeroplaneMatch {
 	const config = freezeConfig(value.config);
 	const completedAt =
@@ -400,9 +414,9 @@ function actionRecord(
 function persistedEnvelope(
 	match: ActiveAeroplaneMatch,
 	now: () => string
-): PersistedAeroplaneMatchV1 {
+): PersistedAeroplaneMatchV2 {
 	return {
-		version: 1,
+		version: 2,
 		savedAt: now(),
 		startedAt: match.startedAt,
 		...(match.completedAt === undefined
@@ -481,6 +495,8 @@ function buildAeroplaneHistoryPayload(
 		date,
 		opponentEngineId: 'aeroplane-trio-v1',
 		details: {
+			mode: match.config.mode,
+			...(match.state.tycoon ? { coins: { ...match.state.tycoon.coins } } : {}),
 			rulePreset: match.config.rulePreset,
 			victoryTarget: match.config.victoryTarget,
 			diceMode: match.config.diceMode,
@@ -575,7 +591,7 @@ export function useAeroplaneMatch(
 	const [presentationQueue, setPresentationQueue] = useState<
 		AeroplanePresentation[]
 	>([]);
-	const [eventFeed, setEventFeed] = useState<AeroplanePresentation[]>([]);
+	const [eventFeed, setEventFeed] = useState<AeroplaneFeedEntry[]>([]);
 	const [rollPresentation, setRollPresentation] =
 		useState<AeroplaneRollPresentation | null>(null);
 	const activeRef = useRef(activeMatch);
@@ -788,6 +804,18 @@ export function useAeroplaneMatch(
 				color: current.state.currentPlayer,
 				animate: !skipAnimationsRef.current,
 			});
+			if (
+				!skipAnimationsRef.current &&
+				result.effectEvents.some(event => event.type === 'skip')
+			) {
+				const entry: AeroplaneSkipFeedEntry = {
+					id: (presentationIdRef.current += 1),
+					move: null,
+					events: [],
+					action: rollAction,
+				};
+				setEventFeed(previous => [...previous, entry]);
+			}
 			if (result.legalMoves.length === 0) return;
 			if (actor === 'human') {
 				if (result.legalMoves.length === 1) {

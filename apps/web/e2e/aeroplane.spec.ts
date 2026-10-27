@@ -10,11 +10,11 @@ import type {
 	AeroplaneColor,
 	AeroplaneConfig,
 	AeroplaneState,
-	PersistedAeroplaneMatchV1,
+	PersistedAeroplaneMatchV2,
 } from '../src/lib/aeroplane/types';
 import type { AeroplaneE2EFixture } from '../src/hooks/useAeroplaneMatch';
 
-const ACTIVE_MATCH_STORAGE_KEY = 'procyon:aeroplane:active-match:v1';
+const ACTIVE_MATCH_STORAGE_KEY = 'procyon:aeroplane:active-match:v2';
 const FIXTURE_CONSUMED_KEY = 'procyon:aeroplane:e2e-fixture-consumed';
 const COLORS: readonly AeroplaneColor[] = ['red', 'yellow', 'blue', 'green'];
 
@@ -144,24 +144,24 @@ function status(page: Page) {
 	return page.locator('[aria-label="Aeroplane match status"] [role="status"]');
 }
 
-async function storedMatch(page: Page): Promise<PersistedAeroplaneMatchV1> {
+async function storedMatch(page: Page): Promise<PersistedAeroplaneMatchV2> {
 	return page.evaluate(key => {
 		const raw = window.localStorage.getItem(key);
 		if (!raw) throw new Error('Aeroplane active match was not persisted');
-		return JSON.parse(raw) as PersistedAeroplaneMatchV1;
+		return JSON.parse(raw) as PersistedAeroplaneMatchV2;
 	}, ACTIVE_MATCH_STORAGE_KEY);
 }
 
 async function waitForStoredMatch(
 	page: Page
-): Promise<PersistedAeroplaneMatchV1> {
-	let saved: PersistedAeroplaneMatchV1 | null = null;
+): Promise<PersistedAeroplaneMatchV2> {
+	let saved: PersistedAeroplaneMatchV2 | null = null;
 	await expect
 		.poll(async () => {
 			try {
 				return (saved = await page.evaluate(key => {
 					const raw = localStorage.getItem(key);
-					return raw ? (JSON.parse(raw) as PersistedAeroplaneMatchV1) : null;
+					return raw ? (JSON.parse(raw) as PersistedAeroplaneMatchV2) : null;
 				}, ACTIVE_MATCH_STORAGE_KEY));
 			} catch {
 				saved = null;

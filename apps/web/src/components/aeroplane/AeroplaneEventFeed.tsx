@@ -11,7 +11,8 @@ import type {
 
 export interface AeroplanePresentationLike {
 	id: number;
-	move: ResolvedMove;
+	/** Null for a roll-only Customs skip entry; no move is fabricated. */
+	move: ResolvedMove | null;
 	events: AeroplaneEvent[];
 	chatter?: string;
 	action: {
@@ -51,8 +52,10 @@ function endpointCopy(position: AeroplanePosition): string {
 
 function eventCopy(presentation: AeroplanePresentationLike): string {
 	const move = presentation.move;
-	const planeNumber = Number(move.planeId.split('-').at(-1) ?? 0) + 1;
 	const actor = presentation.action.actor === 'ai' ? 'AI' : 'You';
+	if (move === null)
+		return `${actor}: ${colorLabel[presentation.action.color]} rolled ${presentation.action.roll} and skips this turn at Customs.`;
+	const planeNumber = Number(move.planeId.split('-').at(-1) ?? 0) + 1;
 	const route = move.events
 		.map(event => {
 			switch (event.type) {

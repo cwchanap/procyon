@@ -16,8 +16,9 @@ import type {
 	AeroplaneColor,
 	AeroplaneEvent,
 	AeroplaneState,
-	PersistedAeroplaneMatchV1,
+	PersistedAeroplaneMatchV2,
 	ResolvedMove,
+	TycoonEffectEvent,
 } from './types';
 
 export interface ReplayOkResult {
@@ -114,7 +115,7 @@ function checkActionChecksum(
 
 function checkEvents(
 	action: AeroplaneActionRecord,
-	events: AeroplaneEvent[],
+	events: (AeroplaneEvent | TycoonEffectEvent)[],
 	index: number
 ): ReplayMismatchResult | null {
 	if (!equalValue(action.events, events)) {
@@ -187,7 +188,7 @@ function chooseRecordedMove(
 	action: AeroplaneActionRecord,
 	state: AeroplaneState,
 	legalMoves: ResolvedMove[],
-	seats: PersistedAeroplaneMatchV1['seats'],
+	seats: PersistedAeroplaneMatchV2['seats'],
 	aiRng: AeroplaneMatch['aiRng'],
 	index: number
 ):
@@ -226,7 +227,7 @@ function chooseRecordedMove(
 
 function finishResult(
 	initial: AeroplaneMatch,
-	snapshot: PersistedAeroplaneMatchV1,
+	snapshot: PersistedAeroplaneMatchV2,
 	state: AeroplaneState,
 	diceRng: AeroplaneMatch['diceRng'],
 	aiRng: AeroplaneMatch['aiRng'],
@@ -279,9 +280,11 @@ function finishResult(
 /**
  * DEV/test-only diagnostic.  Rebuild from the deterministic root and report
  * the first roll, move, event, checksum, or final-state mismatch.  The input
- * envelope and its nested records are never mutated.
+ * envelope and its nested records are never mutated.  Sky Tycoon's Chance
+ * deck is regenerated from the root seed and drawn cyclically, so only the
+ * dice and AI streams are compared at the end.
  */
-export function replayMatch(value: PersistedAeroplaneMatchV1): ReplayResult {
+export function replayMatch(value: PersistedAeroplaneMatchV2): ReplayResult {
 	const validation: PersistedAeroplaneValidationResult =
 		validatePersistedAeroplaneMatch(value);
 	if (!validation.ok) return { kind: 'invalid', reason: validation.reason };
@@ -305,7 +308,7 @@ export function replayMatch(value: PersistedAeroplaneMatchV1): ReplayResult {
 			const rollMismatch = checkRoll(action, rolled, index);
 			if (rollMismatch) return rollMismatch;
 			state = rolled.state;
-			const eventMismatch = checkEvents(action, [], index);
+			const eventMismatch = checkEvents(action, rolled.effectEvents, index);
 			if (eventMismatch) return eventMismatch;
 			const checksumMismatch = checkActionChecksum(action, state, index);
 			if (checksumMismatch) return checksumMismatch;
@@ -363,7 +366,11 @@ export function replayMatch(value: PersistedAeroplaneMatchV1): ReplayResult {
 			);
 		}
 		state = transition.state;
-		const eventMismatch = checkEvents(action, transition.events, index);
+		const eventMismatch = checkEvents(
+			action,
+			[...transition.events, ...transition.effectEvents],
+			index
+		);
 		if (eventMismatch) return eventMismatch;
 		const checksumMismatch = checkActionChecksum(action, state, index);
 		if (checksumMismatch) return checksumMismatch;

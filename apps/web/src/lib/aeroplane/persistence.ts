@@ -1,6 +1,8 @@
 import { canonicalSerialize } from './checksum';
 import { getLegalMoves } from './rules';
 import { FINISH_PROGRESS, TURN_ORDER } from './topology';
+import { tycoonTileKindAt } from './tycoon';
+import { TYCOON_CHANCE_CARDS } from './types';
 import type {
 	AeroplaneActionRecord,
 	AeroplaneColor,
@@ -9,11 +11,13 @@ import type {
 	AeroplanePosition,
 	AeroplaneState,
 	AiSeat,
-	PersistedAeroplaneMatchV1,
+	PersistedAeroplaneMatchV2,
 	Personality,
+	SkyTycoonState,
+	TycoonEffectEvent,
 } from './types';
 
-export const ACTIVE_MATCH_STORAGE_KEY = 'procyon:aeroplane:active-match:v1';
+export const ACTIVE_MATCH_STORAGE_KEY = 'procyon:aeroplane:active-match:v2';
 export const SESSION_DIAGNOSTICS_KEY =
 	'procyon:aeroplane:active-match:diagnostics:v1';
 
@@ -24,14 +28,14 @@ export interface AeroplaneStorage {
 }
 
 export type RestoreActiveMatchResult =
-	| { kind: 'ok'; match: PersistedAeroplaneMatchV1 }
+	| { kind: 'ok'; match: PersistedAeroplaneMatchV2 }
 	| { kind: 'empty' }
 	| { kind: 'invalid'; reason: string }
 	| { kind: 'unavailable'; reason: string };
 
 export interface ValidationResult {
 	ok: true;
-	value: PersistedAeroplaneMatchV1;
+	value: PersistedAeroplaneMatchV2;
 }
 
 export interface InvalidValidationResult {
@@ -88,6 +92,7 @@ function isFiniteTimestamp(value: unknown): value is string {
 export function validConfig(value: unknown): value is AeroplaneConfig {
 	if (!isRecord(value)) return false;
 	return (
+		(value.mode === 'standard' || value.mode === 'sky-tycoon') &&
 		(value.rulePreset === 'classic' ||
 			value.rulePreset === 'quick-chill' ||
 			value.rulePreset === 'custom') &&
@@ -151,12 +156,34 @@ function validPosition(value: unknown): value is AeroplanePosition {
 	}
 }
 
-function validEvent(value: unknown): value is AeroplaneEvent {
-	if (!isRecord(value)) return false;
+function validPlaneId(value: unknown): value is string {
+	return (
+		typeof value === 'string' && /^(red|yellow|blue|green)-[0-3]$/.test(value)
+	);
+}
+
+function isAirportTile(value: unknown): value is number {
+	return isNonNegativeInteger(value) && tycoonTileKindAt(value) === 'airport';
+}
+
+const COIN_REASONS = new Set<unknown>([
+	'departure',
+	'airport-buy',
+	'chance',
+	'customs',
+	'tax',
+]);
+const RELOCATION_EFFECTS = new Set<unknown>([
+	'boost',
+	'wormhole',
+	'storm',
+	'crash',
+]);
+const CHANCE_CARDS = new Set<unknown>(TYCOON_CHANCE_CARDS);
+
+/** Positional movement; `warp` is a direct relocation but still positional. */
+function validPositionalEvent(value: Record<string, unknown>): boolean {
 	if (
-		(value.type !== 'move' &&
-			value.type !== 'jump' &&
-			value.type !== 'flight') ||
 		typeof value.planeId !== 'string' ||
 		!validPosition(value.from) ||
 		!validPosition(value.to)
@@ -167,6 +194,91 @@ function validEvent(value: unknown): value is AeroplaneEvent {
 		(typeof value.distance === 'number' &&
 			Number.isFinite(value.distance) &&
 			value.distance >= 0)
+	);
+}
+
+/** Coordinate-free Sky Tycoon effect discriminants. */
+function validEffectEvent(value: Record<string, unknown>): boolean {
+	switch (value.type) {
+		case 'coins':
+			return (
+				isColor(value.color) &&
+				Number.isInteger(value.amount) &&
+				COIN_REASONS.has(value.reason)
+			);
+		case 'transfer':
+			return (
+				isColor(value.from) &&
+				isColor(value.to) &&
+				value.from !== value.to &&
+				isNonNegativeInteger(value.amount) &&
+				value.amount > 0 &&
+				(value.reason === 'airport-toll' || value.reason === 'steal')
+			);
+		case 'airport':
+			return isAirportTile(value.tile) && isColor(value.owner);
+		case 'card':
+			return isColor(value.color) && CHANCE_CARDS.has(value.card);
+		case 'shield':
+			return validPlaneId(value.planeId);
+		case 'skip':
+		case 'tailwind':
+			return isColor(value.color);
+		case 'relocation':
+			return (
+				validPlaneId(value.planeId) &&
+				RELOCATION_EFFECTS.has(value.effect) &&
+				(value.toProgress === null ||
+					(isNonNegativeInteger(value.toProgress) &&
+						value.toProgress <= FINISH_PROGRESS))
+			);
+		default:
+			return false;
+	}
+}
+
+function validEvent(
+	value: unknown
+): value is AeroplaneEvent | TycoonEffectEvent {
+	if (!isRecord(value)) return false;
+	switch (value.type) {
+		case 'move':
+		case 'jump':
+		case 'flight':
+		case 'warp':
+			return validPositionalEvent(value);
+		default:
+			return validEffectEvent(value);
+	}
+}
+
+/** `chanceOrder` must be exactly a permutation of the ten card IDs. */
+function validChanceOrder(value: unknown): boolean {
+	return (
+		Array.isArray(value) &&
+		value.length === TYCOON_CHANCE_CARDS.length &&
+		new Set(value).size === value.length &&
+		value.every(card => CHANCE_CARDS.has(card))
+	);
+}
+
+function validTycoon(value: unknown): value is SkyTycoonState {
+	if (!isRecord(value)) return false;
+	const { airports, shields, skipNextRoll } = value;
+	return (
+		validCounters(value.coins) &&
+		isRecord(airports) &&
+		Object.entries(airports).every(
+			([tile, owner]) =>
+				/^\d+$/.test(tile) && isAirportTile(Number(tile)) && isColor(owner)
+		) &&
+		Array.isArray(shields) &&
+		new Set(shields).size === shields.length &&
+		shields.every(validPlaneId) &&
+		isRecord(skipNextRoll) &&
+		TURN_ORDER.every(color => isBoolean(skipNextRoll[color])) &&
+		validChanceOrder(value.chanceOrder) &&
+		isNonNegativeInteger(value.chanceCursor)
 	);
 }
 
@@ -261,7 +373,10 @@ function validState(
 		!validCounters(value.lastPlaceRounds) ||
 		!validStats(value.stats) ||
 		!Array.isArray(value.planes) ||
-		value.planes.length !== 16
+		value.planes.length !== 16 ||
+		(config.mode === 'sky-tycoon'
+			? !validTycoon(value.tycoon)
+			: value.tycoon !== null)
 	)
 		return false;
 
@@ -313,7 +428,12 @@ export function validatePersistedAeroplaneMatch(
 ): PersistedAeroplaneValidationResult {
 	if (!isRecord(value))
 		return { ok: false, reason: 'snapshot must be an object' };
-	if (value.version !== 1)
+	if (value.version === 1)
+		return {
+			ok: false,
+			reason: 'v1 snapshots are no longer supported (no migration)',
+		};
+	if (value.version !== 2)
 		return { ok: false, reason: 'unknown snapshot version' };
 	if (!isFiniteTimestamp(value.savedAt))
 		return { ok: false, reason: 'savedAt must be a finite timestamp' };
@@ -344,13 +464,13 @@ export function validatePersistedAeroplaneMatch(
 		value: {
 			...value,
 			actions: normalizedActions,
-		} as unknown as PersistedAeroplaneMatchV1,
+		} as unknown as PersistedAeroplaneMatchV2,
 	};
 }
 
 export function isValidPersistedAeroplaneMatch(
 	value: unknown
-): value is PersistedAeroplaneMatchV1 {
+): value is PersistedAeroplaneMatchV2 {
 	return validatePersistedAeroplaneMatch(value).ok;
 }
 
@@ -402,7 +522,7 @@ function removeActive(storage: AeroplaneStorage): void {
 
 /** Save a validated authoritative envelope; returns false when storage fails. */
 export function saveActiveMatch(
-	value: PersistedAeroplaneMatchV1,
+	value: PersistedAeroplaneMatchV2,
 	storage?: AeroplaneStorage
 ): boolean {
 	const target = storage ?? browserStorage('localStorage');

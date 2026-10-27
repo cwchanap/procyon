@@ -211,13 +211,16 @@ export interface AeroplaneTransition {
 	capturedPlaneIds: string[];
 }
 
-/** Versioned local recovery envelope.  Action history is diagnostic only. */
-export interface PersistedAeroplaneMatchV1 {
-	version: 1;
+/**
+ * Versioned local recovery envelope.  Action history is diagnostic only.
+ * v1 snapshots are rejected outright: there is no migration path.
+ */
+export interface PersistedAeroplaneMatchV2 {
+	version: 2;
 	savedAt: string;
-	/** Match-start wall clock. Optional only for legacy v1 snapshots. */
+	/** Match-start wall clock; restores fall back to `savedAt` when absent. */
 	startedAt?: string;
-	/** Winning-transition wall clock. Optional only for legacy terminal saves. */
+	/** Winning-transition wall clock; terminal restores fall back to `savedAt`. */
 	completedAt?: string;
 	rootSeed: number;
 	config: AeroplaneConfig;

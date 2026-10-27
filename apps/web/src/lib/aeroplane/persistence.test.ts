@@ -2,9 +2,12 @@ import { expect, test } from 'bun:test';
 import {
 	CLASSIC_CONFIG,
 	createAeroplaneMatch,
+	playResolvedMove,
 	rollTurn,
 	type AeroplaneMatch,
 } from './game';
+import { toGlobalTrackIndex } from './topology';
+import { tycoonTileKindAt } from './tycoon';
 import {
 	ACTIVE_MATCH_STORAGE_KEY,
 	SESSION_DIAGNOSTICS_KEY,
@@ -15,7 +18,7 @@ import {
 import type {
 	AeroplaneActionRecord,
 	AeroplaneState,
-	PersistedAeroplaneMatchV1,
+	PersistedAeroplaneMatchV2,
 } from './types';
 
 interface MemoryStorage {
@@ -48,10 +51,10 @@ function baseRecord(): AeroplaneActionRecord {
 function validSave(
 	match: AeroplaneMatch = createAeroplaneMatch(CLASSIC_CONFIG, 39101),
 	state: AeroplaneState = match.state,
-	extra: Partial<PersistedAeroplaneMatchV1> = {}
-): PersistedAeroplaneMatchV1 {
+	extra: Partial<PersistedAeroplaneMatchV2> = {}
+): PersistedAeroplaneMatchV2 {
 	return {
-		version: 1,
+		version: 2,
 		savedAt: '2026-08-09T00:00:00.000Z',
 		rootSeed: match.rootSeed,
 		config: match.state.config,
@@ -121,13 +124,32 @@ test('unknown versions are rejected and removed', () => {
 	const saved = validSave();
 	storage.setItem(
 		ACTIVE_MATCH_STORAGE_KEY,
-		JSON.stringify({ ...saved, version: 2 })
+		JSON.stringify({ ...saved, version: 3 })
 	);
 
 	const restored = restoreActiveMatch(storage);
 
 	expect(restored.kind).toBe('invalid');
 	expect(storage.getItem(ACTIVE_MATCH_STORAGE_KEY)).toBeNull();
+});
+
+test('v1 snapshots are rejected loudly without migration', () => {
+	const storage = memoryStorage();
+	const diagnostics = memoryStorage();
+	storage.setItem(
+		ACTIVE_MATCH_STORAGE_KEY,
+		JSON.stringify({ ...validSave(), version: 1 })
+	);
+
+	const restored = restoreActiveMatch(storage, diagnostics);
+
+	expect(restored).toEqual({
+		kind: 'invalid',
+		reason: 'v1 snapshots are no longer supported (no migration)',
+	});
+	expect(storage.getItem(ACTIVE_MATCH_STORAGE_KEY)).toBeNull();
+	expect(diagnostics.getItem(SESSION_DIAGNOSTICS_KEY)).toContain('v1');
+	expect(ACTIVE_MATCH_STORAGE_KEY).toBe('procyon:aeroplane:active-match:v2');
 });
 
 test('invalid plane count, identity, and progress are rejected', () => {
@@ -378,4 +400,188 @@ test('browserStorage returns null when no storage is available', () => {
 		root.localStorage = previousLocalStorage;
 		root.window = previousWindow;
 	}
+});
+
+// --- Sky Tycoon v2 envelope ---
+
+const TYCOON_CONFIG = { ...CLASSIC_CONFIG, mode: 'sky-tycoon' as const };
+
+function tycoonSave(): PersistedAeroplaneMatchV2 {
+	return validSave(createAeroplaneMatch(TYCOON_CONFIG, 39101));
+}
+
+const MIXED_EVENTS: AeroplaneActionRecord['events'] = [
+	{
+		type: 'move',
+		planeId: 'red-0',
+		from: { kind: 'track', color: 'red', progress: 14, globalIndex: 14 },
+		to: { kind: 'track', color: 'red', progress: 16, globalIndex: 16 },
+		distance: 2,
+	},
+	{ type: 'card', color: 'red', card: 'storm' },
+	{ type: 'relocation', planeId: 'red-0', effect: 'storm', toProgress: 13 },
+	{
+		type: 'warp',
+		planeId: 'red-0',
+		from: { kind: 'track', color: 'red', progress: 16, globalIndex: 16 },
+		to: { kind: 'track', color: 'red', progress: 13, globalIndex: 13 },
+	},
+	{ type: 'coins', color: 'red', amount: -2, reason: 'tax' },
+	{
+		type: 'transfer',
+		from: 'red',
+		to: 'blue',
+		amount: 2,
+		reason: 'airport-toll',
+	},
+	{ type: 'airport', tile: 26, owner: 'red' },
+	{ type: 'shield', planeId: 'red-0' },
+	{ type: 'skip', color: 'red' },
+	{ type: 'tailwind', color: 'red' },
+];
+
+test('a Tycoon v2 snapshot with mixed positional and effect events round-trips', () => {
+	const base = tycoonSave();
+	const saved: PersistedAeroplaneMatchV2 = {
+		...base,
+		state: {
+			...base.state,
+			tycoon: {
+				...base.state.tycoon!,
+				coins: { red: 0, yellow: 3, blue: 12, green: 10 },
+				airports: { 26: 'red', 13: 'blue' },
+				shields: ['red-0'],
+				skipNextRoll: { red: false, yellow: true, blue: false, green: false },
+				chanceCursor: 23,
+			},
+		},
+		actions: [
+			{
+				...baseRecord(),
+				kind: 'move',
+				selectedPlaneId: 'red-0',
+				events: MIXED_EVENTS,
+			},
+		],
+	};
+	const storage = memoryStorage();
+
+	expect(saveActiveMatch(saved, storage)).toBe(true);
+	const restored = restoreActiveMatch(storage);
+	expect(restored.kind).toBe('ok');
+	if (restored.kind !== 'ok') throw new Error('expected ok');
+	expect(restored.match).toEqual(JSON.parse(JSON.stringify(saved)));
+});
+
+test('invalid mode and Tycoon state are rejected', () => {
+	const saved = tycoonSave();
+	const tycoon = saved.state.tycoon!;
+	const withTycoon = (patch: Record<string, unknown>) => ({
+		...saved,
+		state: { ...saved.state, tycoon: { ...tycoon, ...patch } },
+	});
+	const withConfig = (config: Record<string, unknown>) => ({
+		...saved,
+		config,
+		state: { ...saved.state, config },
+	});
+	const invalids = [
+		withConfig({ ...TYCOON_CONFIG, mode: 'casino' }),
+		withConfig({ ...CLASSIC_CONFIG }),
+		{ ...saved, state: { ...saved.state, tycoon: null } },
+		withTycoon({ coins: { ...tycoon.coins, red: -1 } }),
+		withTycoon({ coins: { ...tycoon.coins, red: 1.5 } }),
+		withTycoon({ airports: { 3: 'red' } }),
+		withTycoon({ airports: { 26: 'purple' } }),
+		withTycoon({ shields: ['red-0', 'red-0'] }),
+		withTycoon({ shields: ['red-7'] }),
+		withTycoon({ skipNextRoll: { ...tycoon.skipNextRoll, red: 1 } }),
+		withTycoon({ chanceOrder: tycoon.chanceOrder.slice(1) }),
+		withTycoon({
+			chanceOrder: [tycoon.chanceOrder[0], ...tycoon.chanceOrder.slice(0, 9)],
+		}),
+		withTycoon({ chanceOrder: ['jackpot', ...tycoon.chanceOrder.slice(1)] }),
+		withTycoon({ chanceCursor: -1 }),
+		withTycoon({ chanceCursor: 0.5 }),
+	];
+	// Standard states must keep a null economy layer.
+	const standard = validSave();
+	invalids.push({
+		...standard,
+		state: { ...standard.state, tycoon },
+	} as never);
+
+	for (const invalid of invalids)
+		expect(restoreFixture(invalid).kind).toBe('invalid');
+});
+
+test('invalid positional and informational action events are rejected', () => {
+	const saved = tycoonSave();
+	const invalidEvents: unknown[] = [
+		{ type: 'warp', planeId: 'red-0', from: { kind: 'hangar', color: 'red' } },
+		{ type: 'teleport', planeId: 'red-0' },
+		{ type: 'coins', color: 'red', amount: 2, reason: 'lottery' },
+		{ type: 'coins', color: 'red', amount: 0.5, reason: 'tax' },
+		{
+			type: 'transfer',
+			from: 'red',
+			to: 'red',
+			amount: 2,
+			reason: 'steal',
+		},
+		{ type: 'airport', tile: 3, owner: 'red' },
+		{ type: 'card', color: 'red', card: 'jackpot' },
+		{ type: 'shield', planeId: 'nobody' },
+		{ type: 'skip', color: 'purple' },
+		{
+			type: 'relocation',
+			planeId: 'red-0',
+			effect: 'boost',
+			toProgress: 57,
+		},
+	];
+	for (const event of invalidEvents) {
+		const action = { ...baseRecord(), events: [event] };
+		expect(restoreFixture({ ...saved, actions: [action] }).kind).toBe(
+			'invalid'
+		);
+	}
+});
+
+test('awaiting-choice reload before a Chance landing does not advance the deck', () => {
+	const match = createAeroplaneMatch(TYCOON_CONFIG, 39101);
+	// Red plane on track progress 1; find a die that lands on a Chance tile.
+	const roll = [1, 2, 3, 4, 5].find(
+		value => tycoonTileKindAt(toGlobalTrackIndex('red', 1 + value)) === 'chance'
+	)!;
+	const start: AeroplaneState = {
+		...match.state,
+		planes: match.state.planes.map(plane =>
+			plane.id === 'red-0' ? { ...plane, progress: 1 } : plane
+		),
+		tycoon: { ...match.state.tycoon!, chanceCursor: 12 },
+	};
+	const rolled = rollTurn(start, roll);
+	expect(rolled.state.phase).toBe('awaiting-choice');
+	const storage = memoryStorage();
+	expect(saveActiveMatch(validSave(match, rolled.state), storage)).toBe(true);
+
+	const restored = restoreActiveMatch(storage);
+	if (restored.kind !== 'ok') throw new Error('expected ok');
+	const resumed = restored.match.state;
+	expect(resumed.tycoon!.chanceCursor).toBe(12);
+	expect(resumed.tycoon!.chanceOrder).toEqual(match.state.tycoon!.chanceOrder);
+
+	const move = rolled.legalMoves.find(
+		candidate => candidate.planeId === 'red-0'
+	)!;
+	const transition = playResolvedMove(resumed, move);
+	expect(transition.effectEvents[0]).toEqual({
+		type: 'card',
+		color: 'red',
+		card: match.state.tycoon!.chanceOrder[12 % 10]!,
+	});
+	expect(transition.state.tycoon!.chanceCursor).toBe(13);
+	// Identical to playing on without a reload.
+	expect(transition).toEqual(playResolvedMove(rolled.state, move));
 });
