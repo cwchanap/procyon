@@ -316,6 +316,9 @@ function wormholeTarget(
 		if (
 			tycoonTileKindAt(toGlobalTrackIndex(plane.color, progress)) === 'wormhole'
 		) {
+			if (pathCrossesBlockade(state, plane.color, fromProgress, progress)) {
+				return null;
+			}
 			return forcedSharedStop(state, plane, progress) ? progress : null;
 		}
 	}
@@ -328,6 +331,11 @@ function stormTarget(
 	fromProgress: number
 ): number | null {
 	const target = Math.max(fromProgress - TYCOON_STORM_STEPS, 0);
+	// A retreat swept through a blockade strands the plane on the Storm tile;
+	// the destination itself is checked separately below.
+	if (pathCrossesBlockade(state, plane.color, target, fromProgress - 1)) {
+		return null;
+	}
 	if (target === 0) {
 		// The launch pad holds at most one own plane, as launching requires.
 		const launchTaken = state.planes.some(

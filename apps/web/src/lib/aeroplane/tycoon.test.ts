@@ -551,6 +551,30 @@ describe('named tiles', () => {
 		expect(resolve(blocked).relocation).toBeNull();
 	});
 
+	test('wormhole cannot warp through a blockade on the route', () => {
+		// Two yellow planes at progress 2 occupy global 14 (red's progress 15),
+		// inside red's 12→38 warp route.
+		const blocked = landingOn(
+			11,
+			baseTycoon(),
+			[plane('yellow-0', 2), plane('yellow-1', 2)],
+			{ blockades: true }
+		);
+		const result = resolve(blocked);
+		expect(result.relocation).toBeNull();
+		expect(result.events).toEqual([]);
+
+		// With blockades off the same enemy stack never blocks a route square.
+		const allowed = landingOn(11, baseTycoon(), [
+			plane('yellow-0', 2),
+			plane('yellow-1', 2),
+		]);
+		expect(resolve(allowed).relocation).toEqual({
+			kind: 'progress',
+			progress: 38,
+		});
+	});
+
 	test('storm retreats up to three squares and can stop at the launch pad', () => {
 		const mid = landingOn(15);
 		const midResult = resolve(mid);
@@ -592,6 +616,35 @@ describe('named tiles', () => {
 		const result = resolve(blocked);
 		expect(result.relocation).toBeNull();
 		expect(result.events).toEqual([]);
+	});
+
+	test('storm stays put when the retreat sweeps a blockade', () => {
+		// Two yellow planes at progress 2 occupy global 14 (red's progress 15),
+		// on the swept segment of red's 16→13 retreat.
+		const blocked = landingOn(
+			15,
+			baseTycoon(),
+			[plane('yellow-0', 2), plane('yellow-1', 2)],
+			{ blockades: true }
+		);
+		const result = resolve(blocked);
+		expect(result.relocation).toBeNull();
+		expect(result.events).toEqual([]);
+
+		// A retreat to the launch pad is guarded the same way: two red planes at
+		// progress 15 occupy global 14 (yellow's progress 2) on yellow's 3→0 path.
+		const padBlocked = stateWith(
+			[plane('yellow-0', 3), plane('red-0', 15), plane('red-1', 15)],
+			baseTycoon(),
+			{ blockades: true }
+		);
+		const padResult = resolveLanding(padBlocked, {
+			planeId: 'yellow-0',
+			color: 'yellow',
+			progress: 3,
+		});
+		expect(padResult?.relocation).toBeNull();
+		expect(padResult?.events).toEqual([]);
 	});
 
 	test('customs auto-pays 3 or marks the next roll as skipped', () => {
