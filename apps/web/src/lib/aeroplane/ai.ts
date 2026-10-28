@@ -186,7 +186,10 @@ function tycoonTileUtility(state: AeroplaneState, move: ResolvedMove): number {
 	const owner = tycoon.airports[tile];
 	if (owner === move.color) return TYCOON_TILE_UTILITY['airport-own'];
 	if (owner !== undefined) return TYCOON_TILE_UTILITY['airport-toll'];
-	return tycoon.coins[move.color] >= TYCOON_AIRPORT_PRICE
+	const coinsAfterDeparture =
+		tycoon.coins[move.color] +
+		(move.start.kind === 'launch' ? TYCOON_DEPARTURE_BONUS : 0);
+	return coinsAfterDeparture >= TYCOON_AIRPORT_PRICE
 		? TYCOON_TILE_UTILITY['airport-buy']
 		: 0;
 }
