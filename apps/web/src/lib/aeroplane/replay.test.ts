@@ -570,7 +570,7 @@ test('replay detects a tampered Customs skip roll record', () => {
 	const skip = changed.actions.find(
 		record =>
 			record.kind === 'roll' &&
-			record.events.some(event => event.type === 'skip')
+			record.events.some(event => event.type === 'skipped')
 	)!;
 	skip.events = [];
 	expectMismatch(changed, 'resolved events mismatch');

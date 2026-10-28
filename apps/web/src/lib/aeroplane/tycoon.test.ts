@@ -60,6 +60,7 @@ function baseTycoon(): SkyTycoonState {
 		coins: { red: 10, yellow: 10, blue: 10, green: 10 },
 		airports: {},
 		shields: [],
+		skipPending: { red: false, yellow: false, blue: false, green: false },
 		skipNextRoll: { red: false, yellow: false, blue: false, green: false },
 		chanceOrder: [...TYCOON_CHANCE_CARDS],
 		chanceCursor: 0,
@@ -647,6 +648,11 @@ describe('named tiles', () => {
 		expect(padResult?.events).toEqual([]);
 	});
 
+	test('addCoins clamps a balance at zero instead of going negative', () => {
+		const tycoon = addCoins(baseTycoon(), 'red', -20);
+		expect(tycoon.coins.red).toBe(0);
+	});
+
 	test('customs auto-pays 3 or marks the next roll as skipped', () => {
 		const affordable = landingOn(18);
 		const paid = resolve(affordable);
@@ -660,6 +666,7 @@ describe('named tiles', () => {
 			},
 		]);
 		expect(paid.tycoon.coins.red).toBe(7);
+		expect(paid.tycoon.skipPending.red).toBe(false);
 		expect(paid.tycoon.skipNextRoll.red).toBe(false);
 
 		const poor = landingOn(
@@ -668,8 +675,15 @@ describe('named tiles', () => {
 		);
 		const skipped = resolve(poor);
 		expect(skipped.tycoon.coins.red).toBe(2);
-		expect(skipped.tycoon.skipNextRoll).toEqual({
+		expect(skipped.tycoon.skipPending).toEqual({
 			red: true,
+			yellow: false,
+			blue: false,
+			green: false,
+		});
+		// The armed skip activates only when the turn actually changes hands.
+		expect(skipped.tycoon.skipNextRoll).toEqual({
+			red: false,
 			yellow: false,
 			blue: false,
 			green: false,

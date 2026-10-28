@@ -4,14 +4,12 @@ import {
 	FINISH_PROGRESS,
 	isSharedTrackProgress,
 	toGlobalTrackIndex,
+	toPosition,
 } from './topology';
 import {
-	addCoins,
-	clearPlaneShield,
-	resolveLanding,
-	TYCOON_AIRPORT_PRICE,
-	TYCOON_DEPARTURE_BONUS,
+	applyTycoonEffects,
 	tycoonTileKindAt,
+	type TycoonLandingResult,
 	type TycoonTileKind,
 } from './tycoon';
 import type {
@@ -168,8 +166,17 @@ export function countImmediateCaptureThreats(
 	if (!movedPlane) return 0;
 
 	let threats = 0;
+	const tycoon = state.tycoon;
 	for (const opponent of state.planes) {
 		if (opponent.color === movedPlane.color) continue;
+		// A colour due to skip its next roll (due now or armed for the next
+		// handoff) cannot move next turn, so its planes threaten nothing.
+		if (
+			tycoon &&
+			(tycoon.skipNextRoll[opponent.color] ||
+				tycoon.skipPending[opponent.color])
+		)
+			continue;
 		for (let roll = 1; roll <= 6; roll += 1) {
 			const candidate = resolveLegalMove(state, opponent.id, roll);
 			if (candidate?.capturedPlaneIds.includes(movedPlaneId)) threats += 1;
@@ -178,88 +185,81 @@ export function countImmediateCaptureThreats(
 	return threats;
 }
 
-function tycoonTileUtility(state: AeroplaneState, move: ResolvedMove): number {
+/**
+ * Flat utilities apply only to outcomes the simulated landing produced: a
+ * blocked Boost/Storm, a dead-end Wormhole, a paid Customs or a Tax on an
+ * empty purse leave the tile neutral. Chance keeps its flat guess because
+ * the undealt card is never simulated.
+ */
+function tycoonTileUtility(
+	state: AeroplaneState,
+	move: ResolvedMove,
+	landing: TycoonLandingResult | null
+): number {
 	const tycoon = state.tycoon;
 	if (!tycoon || move.finalEndpoint.kind !== 'track') return 0;
 	const tile = move.finalEndpoint.globalIndex;
 	const kind = tycoonTileKindAt(tile);
 	if (kind === null) return 0;
-	if (kind !== 'airport') return TYCOON_TILE_UTILITY[kind];
-	const owner = tycoon.airports[tile];
-	if (owner === move.color) return TYCOON_TILE_UTILITY['airport-own'];
-	if (owner !== undefined) return TYCOON_TILE_UTILITY['airport-toll'];
-	const coinsAfterDeparture =
-		tycoon.coins[move.color] +
-		(move.start.kind === 'launch' ? TYCOON_DEPARTURE_BONUS : 0);
-	return coinsAfterDeparture >= TYCOON_AIRPORT_PRICE
-		? TYCOON_TILE_UTILITY['airport-buy']
+	if (kind === 'chance') return TYCOON_TILE_UTILITY.chance;
+	if (kind === 'airport') {
+		// The projected landing already settled the outcome: a purchase
+		// event means buy, a toll transfer means pay, anything else is a
+		// stay on the owner's own pad or a failed purchase.
+		if (landing?.events.some(event => event.type === 'airport'))
+			return TYCOON_TILE_UTILITY['airport-buy'];
+		if (landing?.events.some(event => event.type === 'transfer'))
+			return TYCOON_TILE_UTILITY['airport-toll'];
+		return tycoon.airports[tile] === move.color
+			? TYCOON_TILE_UTILITY['airport-own']
+			: 0;
+	}
+	return landing !== null && landing.events.length > 0
+		? TYCOON_TILE_UTILITY[kind]
 		: 0;
 }
 
+interface MoveProjection {
+	state: AeroplaneState;
+	landing: TycoonLandingResult | null;
+}
+
 /**
- * Project the committed move for feature extraction. applyResolvedMove leaves
- * the Tycoon layer untouched, so mirror playResolvedMove: the mover's shield
- * expires on movement, a launch pays departure, then a shared-track landing
- * resolves exactly once — re-granting a shield, settling coins and forcing
- * the mover's relocation — before threat probes read the projected square.
- * Chance landings never resolve: the undealt card is hidden information, so
- * the mover stays on the Chance square and the flat tile utility prices the
- * unknown draw instead of leaking the top of the seeded deck.
+ * Project the committed move for feature extraction through the same
+ * applyTycoonEffects the engine runs — shield expiry, departure pay, one
+ * landing resolution and the forced relocation — except Chance: the undealt
+ * card is hidden information, so the mover stays on the Chance square and
+ * the flat tile utility prices the unknown draw instead of leaking the top
+ * of the seeded deck.
  */
 function projectAfterMove(
 	state: AeroplaneState,
 	move: ResolvedMove
-): AeroplaneState {
-	const applied = applyResolvedMove(state, move).state;
-	const tycoon = applied.tycoon;
-	if (!tycoon) return applied;
-	let projection = clearPlaneShield(tycoon, move.planeId);
-	let planes = applied.planes;
-	if (move.start.kind === 'launch') {
-		projection = addCoins(projection, move.color, TYCOON_DEPARTURE_BONUS);
-	}
-	if (
-		move.finalEndpoint.kind === 'track' &&
-		tycoonTileKindAt(
-			toGlobalTrackIndex(move.color, move.finalEndpoint.progress)
-		) !== 'chance'
-	) {
-		const landing = resolveLanding(
-			{ ...applied, tycoon: projection },
-			{
-				planeId: move.planeId,
-				color: move.color,
-				progress: move.finalEndpoint.progress,
-			}
-		);
-		if (landing) {
-			projection = landing.tycoon;
-			if (landing.relocation) {
-				const progress =
-					landing.relocation.kind === 'progress'
-						? landing.relocation.progress
-						: null;
-				planes = planes.map(plane =>
-					plane.id === move.planeId ? { ...plane, progress } : plane
-				);
-			}
-		}
-	}
-	return { ...applied, planes, tycoon: projection };
+): MoveProjection {
+	return applyTycoonEffects(applyResolvedMove(state, move).state, move, {
+		holdChance: true,
+	});
 }
 
 export function extractAiMoveFeatures(
 	state: AeroplaneState,
 	move: ResolvedMove
 ): AiMoveFeatures {
-	const afterState = projectAfterMove(state, move);
+	const { state: afterState, landing } = projectAfterMove(state, move);
 	const startProgress = progressOf(move.start);
-	const finalProgress = progressOf(move.finalEndpoint);
+	// The committed destination is where the projected mover actually stops:
+	// a forced relocation (crash, boost, warp) moves it off move.finalEndpoint.
+	const movedPlane = afterState.planes.find(plane => plane.id === move.planeId);
+	const finalEndpoint = toPosition(
+		move.color,
+		movedPlane === undefined ? null : movedPlane.progress
+	);
+	const finalProgress = progressOf(finalEndpoint);
 
 	return {
-		finish: move.finalEndpoint.kind === 'finished' ? 1 : 0,
+		finish: finalEndpoint.kind === 'finished' ? 1 : 0,
 		enterHome:
-			move.finalEndpoint.kind === 'home' && move.start.kind !== 'home' ? 1 : 0,
+			finalEndpoint.kind === 'home' && move.start.kind !== 'home' ? 1 : 0,
 		capture: move.capturedPlaneIds.length,
 		jump: countEventType(move, 'jump'),
 		flight: countEventType(move, 'flight'),
@@ -270,7 +270,7 @@ export function extractAiMoveFeatures(
 		blockade: formsBlockade(state, move, afterState),
 		progress: finalProgress - startProgress,
 		exposure: countImmediateCaptureThreats(afterState, move.planeId),
-		tycoonTile: tycoonTileUtility(state, move),
+		tycoonTile: tycoonTileUtility(afterState, move, landing),
 	};
 }
 

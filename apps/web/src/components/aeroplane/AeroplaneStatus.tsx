@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Panel from '../ui/Panel';
 import { AEROPLANE_VISUAL_MAX_MS } from '../../lib/aeroplane/presentation';
+import { TURN_ORDER } from '../../lib/aeroplane/topology';
 import type {
 	AeroplaneColor,
 	AeroplaneState,
@@ -18,8 +19,6 @@ export interface AeroplaneStatusProps {
 	/** Shared reduced-motion flag; disables the decorative die tumble. */
 	reducedMotion?: boolean;
 }
-
-const COLORS: readonly AeroplaneColor[] = ['red', 'yellow', 'blue', 'green'];
 
 const colorLabel: Record<AeroplaneColor, string> = {
 	red: 'Red',
@@ -190,7 +189,7 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 						aria-label='Sky Tycoon balances'
 						className='order-4 grid basis-full grid-cols-2 gap-2 border-t border-line pt-2 text-sm sm:grid-cols-4'
 					>
-						{COLORS.map(color => {
+						{TURN_ORDER.map(color => {
 							const tycoon = state.tycoon!;
 							const shields = state.planes.filter(
 								plane =>
@@ -216,7 +215,8 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 												: `${shields} shielded planes`}
 										</span>
 									)}
-									{tycoon.skipNextRoll[color] && (
+									{(tycoon.skipNextRoll[color] ||
+										tycoon.skipPending[color]) && (
 										<span className='block text-xs'>Skips next roll</span>
 									)}
 								</li>

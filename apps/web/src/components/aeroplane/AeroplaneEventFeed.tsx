@@ -13,6 +13,7 @@ import type {
 	TycoonEffectEvent,
 } from '../../lib/aeroplane/types';
 import { toPosition } from '../../lib/aeroplane/topology';
+import { planeColor, planeIndex } from '../../lib/aeroplane/layout';
 
 export interface AeroplanePresentationLike {
 	id: number;
@@ -83,9 +84,7 @@ function coins(amount: number): string {
 }
 
 function planeName(planeId: string): string {
-	const color = planeId.split('-')[0] as AeroplaneColor;
-	const number = Number(planeId.split('-').at(-1) ?? 0) + 1;
-	return `${colorLabel[color]} plane ${number}`;
+	return `${colorLabel[planeColor(planeId)]} plane ${planeIndex(planeId) + 1}`;
 }
 
 const POSITIONAL_EVENT_TYPES: ReadonlySet<string> = new Set<AeroplaneEventType>(
@@ -117,12 +116,15 @@ function effectCopy(event: TycoonEffectEvent): string {
 			return `${planeName(event.planeId)} is shielded until it next moves.`;
 		case 'skip':
 			return `${colorLabel[event.color]} cannot pay Customs and skips the next roll.`;
+		case 'skipped':
+			return `${colorLabel[event.color]}'s roll is spent on the Customs skip.`;
 		case 'tailwind':
 			return `${colorLabel[event.color]} catches a Tailwind: one more roll.`;
 		case 'relocation': {
 			const plane = planeName(event.planeId);
-			const color = event.planeId.split('-')[0] as AeroplaneColor;
-			const to = endpointCopy(toPosition(color, event.toProgress));
+			const to = endpointCopy(
+				toPosition(planeColor(event.planeId), event.toProgress)
+			);
 			switch (event.effect) {
 				case 'boost':
 					return `Boost carries ${plane} to ${to}.`;
@@ -159,7 +161,7 @@ function eventCopy(presentation: AeroplanePresentationLike): string {
 	const actor = presentation.action.actor === 'ai' ? 'AI' : 'You';
 	if (move === null)
 		return `${actor}: ${colorLabel[presentation.action.color]} rolled ${presentation.action.roll} and skips this turn at Customs.`;
-	const planeNumber = Number(move.planeId.split('-').at(-1) ?? 0) + 1;
+	const planeNumber = planeIndex(move.planeId) + 1;
 	const route = move.events
 		.map(event => {
 			switch (event.type) {

@@ -10,6 +10,7 @@ import { toGlobalTrackIndex } from './topology';
 import { tycoonTileKindAt } from './tycoon';
 import {
 	ACTIVE_MATCH_STORAGE_KEY,
+	LEGACY_MATCH_STORAGE_KEY,
 	SESSION_DIAGNOSTICS_KEY,
 	clearActiveMatch,
 	restoreActiveMatch,
@@ -150,6 +151,54 @@ test('v1 snapshots are rejected loudly without migration', () => {
 	expect(storage.getItem(ACTIVE_MATCH_STORAGE_KEY)).toBeNull();
 	expect(diagnostics.getItem(SESSION_DIAGNOSTICS_KEY)).toContain('v1');
 	expect(ACTIVE_MATCH_STORAGE_KEY).toBe('procyon:aeroplane:active-match:v2');
+});
+
+test('the legacy v1 key is read once, diagnosed and removed', () => {
+	const storage = memoryStorage();
+	const diagnostics = memoryStorage();
+	storage.setItem(
+		LEGACY_MATCH_STORAGE_KEY,
+		JSON.stringify({ ...validSave(), version: 1 })
+	);
+
+	const restored = restoreActiveMatch(storage, diagnostics);
+
+	expect(restored).toEqual({
+		kind: 'invalid',
+		reason: 'v1 snapshots are no longer supported (no migration)',
+	});
+	// Consuming the key prevents an abandoned snapshot from resurrecting.
+	expect(storage.getItem(LEGACY_MATCH_STORAGE_KEY)).toBeNull();
+	expect(diagnostics.getItem(SESSION_DIAGNOSTICS_KEY)).toContain('v1');
+});
+
+test('a valid v2 payload under the legacy key restores and is consumed', () => {
+	const saved = validSave();
+	const storage = memoryStorage();
+	storage.setItem(LEGACY_MATCH_STORAGE_KEY, JSON.stringify(saved));
+
+	const restored = restoreActiveMatch(storage);
+
+	expect(restored.kind).toBe('ok');
+	if (restored.kind !== 'ok') throw new Error('expected ok');
+	expect(restored.match).toEqual(saved);
+	expect(storage.getItem(LEGACY_MATCH_STORAGE_KEY)).toBeNull();
+});
+
+test('the v2 key shadows the legacy key without consuming it', () => {
+	const saved = validSave();
+	const storage = memoryStorage({
+		[LEGACY_MATCH_STORAGE_KEY]: JSON.stringify({
+			...saved,
+			version: 1,
+		}),
+	});
+
+	expect(saveActiveMatch(saved, storage)).toBe(true);
+	const restored = restoreActiveMatch(storage);
+
+	expect(restored.kind).toBe('ok');
+	expect(storage.getItem(LEGACY_MATCH_STORAGE_KEY)).not.toBeNull();
 });
 
 test('invalid plane count, identity, and progress are rejected', () => {
@@ -437,6 +486,7 @@ const MIXED_EVENTS: AeroplaneActionRecord['events'] = [
 	{ type: 'airport', tile: 26, owner: 'red' },
 	{ type: 'shield', planeId: 'red-0' },
 	{ type: 'skip', color: 'red' },
+	{ type: 'skipped', color: 'red' },
 	{ type: 'tailwind', color: 'red' },
 ];
 

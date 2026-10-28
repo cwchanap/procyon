@@ -37,6 +37,7 @@ function baseTycoon(patch: Partial<SkyTycoonState> = {}): SkyTycoonState {
 		coins: { red: 10, yellow: 10, blue: 10, green: 10 },
 		airports: {},
 		shields: [],
+		skipPending: { red: false, yellow: false, blue: false, green: false },
 		skipNextRoll: { red: false, yellow: false, blue: false, green: false },
 		chanceOrder: [...TYCOON_CHANCE_CARDS],
 		chanceCursor: 0,
@@ -246,7 +247,7 @@ test('a Customs skip consumes the die, hands over and keeps the streak', () => {
 
 	expect(result.roll).toBe(5);
 	expect(result.legalMoves).toEqual([]);
-	expect(result.effectEvents).toEqual([{ type: 'skip', color: 'red' }]);
+	expect(result.effectEvents).toEqual([{ type: 'skipped', color: 'red' }]);
 	expect(result.state.currentPlayer).toBe('yellow');
 	expect(result.state.phase).toBe('awaiting-roll');
 	expect(result.state.tycoon?.skipNextRoll.red).toBe(false);
@@ -264,7 +265,53 @@ test('a Customs skip advances even on a six', () => {
 	const result = rollTurn(state, 6);
 
 	expect(result.state.currentPlayer).toBe('yellow');
-	expect(result.effectEvents).toEqual([{ type: 'skip', color: 'red' }]);
+	expect(result.effectEvents).toEqual([{ type: 'skipped', color: 'red' }]);
+});
+
+test('a Customs skip armed on a non-six activates at the handoff', () => {
+	const poor = baseTycoon({
+		coins: { red: 2, yellow: 10, blue: 10, green: 10 },
+	});
+	// red 16 + 3 lands on progress 19 (global 18, Customs) and cannot pay.
+	const armed = play({ 'red-0': 16 }, 3, poor);
+
+	expect(armed.result.effectEvents).toEqual([{ type: 'skip', color: 'red' }]);
+	expect(armed.result.state.tycoon?.skipPending.red).toBe(false);
+	expect(armed.result.state.tycoon?.skipNextRoll.red).toBe(true);
+	expect(armed.result.state.currentPlayer).toBe('yellow');
+});
+
+test('a Customs skip armed on a six survives the bonus roll and costs the next turn', () => {
+	const poor = baseTycoon({
+		coins: { red: 2, yellow: 10, blue: 10, green: 10 },
+	});
+	// red 13 + 6 lands on progress 19 (global 18, Customs) and cannot pay.
+	const armed = play({ 'red-0': 13 }, 6, poor);
+
+	// The six still grants the bonus roll: the skip is armed, not consumed.
+	expect(armed.result.effectEvents).toEqual([{ type: 'skip', color: 'red' }]);
+	expect(armed.result.state.tycoon?.skipPending.red).toBe(true);
+	expect(armed.result.state.tycoon?.skipNextRoll.red).toBe(false);
+	expect(armed.result.state.currentPlayer).toBe('red');
+	expect(armed.result.state.phase).toBe('awaiting-roll');
+
+	// The bonus roll is a real roll: red moves off the Customs tile.
+	const bonus = rollTurn(armed.result.state, 1);
+	expect(bonus.effectEvents).toEqual([]);
+	const bonusMove = bonus.legalMoves.find(move => move.planeId === 'red-0');
+	expect(bonusMove).toBeDefined();
+	const handedOff = playResolvedMove(bonus.state, bonusMove!).state;
+
+	// Handing the turn over activates the armed skip for red's next turn.
+	expect(handedOff.tycoon?.skipPending.red).toBe(false);
+	expect(handedOff.tycoon?.skipNextRoll.red).toBe(true);
+	expect(handedOff.currentPlayer).toBe('yellow');
+
+	// When red's next turn comes, the active skip consumes the roll.
+	const nextTurn = rollTurn({ ...handedOff, currentPlayer: 'red' }, 4);
+	expect(nextTurn.effectEvents).toEqual([{ type: 'skipped', color: 'red' }]);
+	expect(nextTurn.legalMoves).toEqual([]);
+	expect(nextTurn.state.tycoon?.skipNextRoll.red).toBe(false);
 });
 
 test('a shielded plane loses its shield when it moves', () => {
