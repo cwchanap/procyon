@@ -171,6 +171,16 @@ const createPlayHistorySchema = z
 						path: ['details', 'coins'],
 					});
 				}
+				if (
+					data.details.mode !== 'sky-tycoon' &&
+					data.details.coins !== undefined
+				) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: 'Standard Aeroplane history must not include coins',
+						path: ['details', 'coins'],
+					});
+				}
 				if (aiColors.includes(data.details.humanColor)) {
 					ctx.addIssue({
 						code: z.ZodIssueCode.custom,

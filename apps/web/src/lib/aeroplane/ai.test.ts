@@ -375,6 +375,37 @@ test('tycoon tile weights steer away from Crash; inert in Standard', () => {
 	}
 });
 
+test('a shielded mover loses its phantom protection in the exposure probe', () => {
+	// blue jumps/flights 12 → 30 (global 3); yellow at 40 reaches it on a 3.
+	const tycoon = { ...initialTycoonState(1), shields: ['blue-shielded'] };
+	const state = tycoonStateWithPlanes(
+		[plane('blue-shielded', 12), plane('yellow-threat', 40)],
+		tycoon
+	);
+	const move = legalMove(state, 'blue-shielded', 2);
+
+	// The mover's shield expires on movement, so the projected exposure must
+	// count the opponent roll that can legally capture it next turn.
+	expect(extractAiMoveFeatures(state, move).exposure).toBeGreaterThan(0);
+});
+
+test('landing on a shield tile keeps the mover protected in the exposure probe', () => {
+	// red lands on progress 9 (global 8, Shield); yellow at 46 reaches it on a 2.
+	const state = tycoonStateWithPlanes([
+		plane('red-mover', 6),
+		plane('yellow-threat', 46),
+	]);
+	const move = legalMove(state, 'red-mover', 3);
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 8 });
+	// The threat is real: an unshielded plane on that square is capturable.
+	const unshielded = applyResolvedMove(state, move).state;
+	expect(countImmediateCaptureThreats(unshielded, 'red-mover')).toBeGreaterThan(
+		0
+	);
+
+	expect(extractAiMoveFeatures(state, move).exposure).toBe(0);
+});
+
 test('tycoon airport weight prefers buying or own airports and avoids rival tolls', () => {
 	// red lands on progress 7 (global 6, an airport).
 	const planes = [plane('red-flyer', 4)];
