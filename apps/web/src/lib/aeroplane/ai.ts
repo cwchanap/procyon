@@ -2,9 +2,11 @@ import { nextUint32, type RngState } from './rng';
 import { applyResolvedMove, resolveLegalMove } from './rules';
 import { FINISH_PROGRESS, toGlobalTrackIndex } from './topology';
 import {
-	addShield,
+	addCoins,
 	clearPlaneShield,
+	resolveLanding,
 	TYCOON_AIRPORT_PRICE,
+	TYCOON_DEPARTURE_BONUS,
 	tycoonTileKindAt,
 	type TycoonTileKind,
 } from './tycoon';
@@ -191,9 +193,10 @@ function tycoonTileUtility(state: AeroplaneState, move: ResolvedMove): number {
 
 /**
  * Project the committed move for feature extraction. applyResolvedMove leaves
- * the Tycoon layer untouched, but playResolvedMove expires the mover's shield
- * the moment it moves, then a shared-track shield tile re-grants it. Threat
- * probes must see that post-move protection or exposure is mispriced.
+ * the Tycoon layer untouched, so mirror playResolvedMove: the mover's shield
+ * expires on movement, a launch pays departure, then a shared-track landing
+ * resolves exactly once — re-granting a shield, settling coins and forcing
+ * the mover's relocation — before threat probes read the projected square.
  */
 function projectAfterMove(
 	state: AeroplaneState,
@@ -203,13 +206,33 @@ function projectAfterMove(
 	const tycoon = applied.tycoon;
 	if (!tycoon) return applied;
 	let projection = clearPlaneShield(tycoon, move.planeId);
-	if (
-		move.finalEndpoint.kind === 'track' &&
-		tycoonTileKindAt(move.finalEndpoint.globalIndex) === 'shield'
-	) {
-		projection = addShield(projection, move.planeId);
+	let planes = applied.planes;
+	if (move.start.kind === 'launch') {
+		projection = addCoins(projection, move.color, TYCOON_DEPARTURE_BONUS);
 	}
-	return projection === tycoon ? applied : { ...applied, tycoon: projection };
+	if (move.finalEndpoint.kind === 'track') {
+		const landing = resolveLanding(
+			{ ...applied, tycoon: projection },
+			{
+				planeId: move.planeId,
+				color: move.color,
+				progress: move.finalEndpoint.progress,
+			}
+		);
+		if (landing) {
+			projection = landing.tycoon;
+			if (landing.relocation) {
+				const progress =
+					landing.relocation.kind === 'progress'
+						? landing.relocation.progress
+						: null;
+				planes = planes.map(plane =>
+					plane.id === move.planeId ? { ...plane, progress } : plane
+				);
+			}
+		}
+	}
+	return { ...applied, planes, tycoon: projection };
 }
 
 export function extractAiMoveFeatures(

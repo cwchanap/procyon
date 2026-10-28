@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { playResolvedMove } from './game';
 import { applyResolvedMove, resolveLegalMove } from './rules';
 import { nextUint32, type RngState } from './rng';
 import {
@@ -402,6 +403,47 @@ test('landing on a shield tile keeps the mover protected in the exposure probe',
 	expect(countImmediateCaptureThreats(unshielded, 'red-mover')).toBeGreaterThan(
 		0
 	);
+
+	expect(extractAiMoveFeatures(state, move).exposure).toBe(0);
+});
+
+test('a storm retreat projects the mover onto the retreated square', () => {
+	// red lands on progress 16 (global 15, Storm) and must retreat to 13
+	// (global 12). blue reaches 12 only on a 1, green only on a 2 via the
+	// jump square; neither roll can reach the abandoned Storm square itself.
+	const state = tycoonStateWithPlanes([
+		plane('red-stormer', 14),
+		plane('blue-chaser', 38),
+		plane('green-chaser', 20),
+	]);
+	const move = legalMove(state, 'red-stormer', 2);
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 15 });
+
+	const committed = playResolvedMove(state, move).state;
+	expect(
+		committed.planes.find(plane => plane.id === 'red-stormer')?.progress
+	).toBe(13);
+
+	// Without the relocation the probe sees an empty Storm square and reports
+	// 0; the committed plane sits on the threatened retreat square instead.
+	expect(extractAiMoveFeatures(state, move).exposure).toBe(2);
+});
+
+test('a crash relocation projects the mover back to the hangar', () => {
+	// red lands on progress 25 (global 24, Crash); yellow at 8 reaches that
+	// square on a 4, but the committed plane sits in its hangar where no
+	// opponent can capture it.
+	const state = tycoonStateWithPlanes([
+		plane('red-crasher', 22),
+		plane('yellow-threat', 8),
+	]);
+	const move = legalMove(state, 'red-crasher', 3);
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 24 });
+
+	const preRelocation = applyResolvedMove(state, move).state;
+	expect(
+		countImmediateCaptureThreats(preRelocation, 'red-crasher')
+	).toBeGreaterThan(0);
 
 	expect(extractAiMoveFeatures(state, move).exposure).toBe(0);
 });

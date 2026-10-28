@@ -453,13 +453,13 @@ test('replay reports a mismatch for a unified move whose roll disagrees with the
 const TYCOON_QUICK = { ...QUICK_CONFIG, mode: 'sky-tycoon' as const };
 
 /**
- * Seed 24 finishes a full QUICK Tycoon game that draws 12 Chance cards (the
+ * Seed 1 finishes a full QUICK Tycoon game that draws 18 Chance cards (the
  * cursor wraps the ten-card deck), warps, and commits a Customs skip roll.
  * Records mirror the controller: roll effects on rolls, positional then
  * informational events on moves.
  */
 function tycoonRecordedMatch(): PersistedAeroplaneMatchV2 {
-	const initial = createAeroplaneMatch(TYCOON_QUICK, 24);
+	const initial = createAeroplaneMatch(TYCOON_QUICK, 1);
 	let state = initial.state;
 	let diceRng = initial.diceRng;
 	let aiRng = initial.aiRng;
