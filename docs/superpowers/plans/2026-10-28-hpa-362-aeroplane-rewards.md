@@ -27,7 +27,7 @@ bun test apps/api/src/routes/play-history.test.ts
 
 **Work**
 - Define small, explicit `StarBreakdown` and reward input types. Implement the win/captures/finished/net-Tycoon-coins formula specified in the design (with both caps).
-- Define the five stable skin IDs with thresholds, a pure `getUnlockedSkins(stars)` helper, and an exhaustive list for selector rendering.
+- Define `type SkinId = 'classic' | 'contrail' | 'racer' | 'starlight' | 'ace'` and a small ordered `SKIN_CATALOG` typed against `SkinId`, with thresholds and a pure `getUnlockedSkins(stars)` helper. Use typed `SkinId` across picker, local selection parser, board prop and glyph. Test all catalog members; do not create a registry.
 - Map server rows (`gameId`/`opponentEngineId`/`status`/`details`) through a narrow runtime check to reward inputs. Allow missing legacy `mode` as Standard; skip invalid records.
 - Ensure a current terminal state can project the *same* input shape without going through or mutating the submission pipeline.
 
@@ -36,17 +36,18 @@ bun test apps/api/src/routes/play-history.test.ts
 ## 2. Read authenticated history and recognize a saved match
 
 **Files**
-- New: `apps/web/src/hooks/useAeroplaneProgress.ts` (+ tests) OR keep equivalent minimal state in `AeroplaneGame.tsx` if smaller.
+- New: `apps/web/src/hooks/useAeroplaneProgress.ts` (+ tests); keep `AeroplaneGame.tsx` focused on composing views.
 - Modify: `apps/web/src/hooks/useAeroplaneMatch.ts` (+ existing tests).
 
 **Work**
 - Add `historySavedRevision: number` to `UseAeroplaneMatchResult`. Increment in the already-existing `useTerminalHistorySave.onSuccess` after its active terminal identity guard. Keep every existing storage cleanup and save/retry path.
-- Read `useAuth` identity and use one abortable credentialed `GET /play-history` on authenticated mount, identity changes, and revision changes. Distinguish loading, loaded, and failed; show a Retry control after failure.
+- Reuse `useAuth` `{ loading, revalidated, isAuthenticated, user }`; fetch only after `!loading && revalidated && isAuthenticated && user?.id` (an independent auth hook can initially expose an unconfirmed shared-user snapshot). Copy `PlayHistoryPage.tsx`'s abortable credentialed `GET /play-history` + JSON error handling. Fetch on verified-auth mount, identity changes, and revision changes. Distinguish waiting-for-auth, loading, loaded, failed; expose **Refresh progress** even when loaded, plus Retry when failed. Never fetch or expose prior-user progress while auth is unverified.
 - Sum only **server-returned** qualifying records. Do not optimistically add local terminal stars to lifetime totals.
-- Read/write selected skin from user-scoped localStorage with guarded access. Use `classic` whenever unauthenticated, loading/failed, or the stored selection is not currently unlocked. Switching users resets immediately; do not fetch when signed out.
+- Read/write selected skin from user-scoped localStorage with guarded access and a key patterned after `usePuzzle` (`<prefix>_<userId>`). Parse stored values against `SKIN_CATALOG` before treating them as `SkinId`. Use `classic` whenever unauthenticated, unverified, loading/failed, or the stored selection is not currently unlocked. Switching users resets immediately; do not fetch when signed out.
+- **Accept a bounded stale-view window:** a terminal POST completing *after* reset/new match is intentionally ignored by `useTerminalHistorySave.onSuccess` because the generation changed. The server may have that row, but the lifetime tally can remain stale until manual **Refresh progress**, remount, account change, or another observed successful save. Do not remove the generation guard or attach a new POST hook. Simulate this race in a test, then verify a manual refresh observes the row after the server commit.
 - Do not change `GET /play-history` or add pagination/aggregation infrastructure in this hobby-project iteration: the current response returns all rows. Revisit only if this becomes a measured bottleneck.
 
-**Tests:** no unauthenticated GET, older valid history counted, POST success triggers one reload, POST failure never claims an unlock, identity switch aborts stale responses and loses old selections, localStorage error fallback, and duplicate terminal renders do not double count.
+**Tests:** no GET during loading/unverified auth, older valid history counted, same-terminal POST success triggers one reload, late POST completion after reset requires explicit refresh, POST failure never claims an unlock, identity switch aborts stale responses and loses old selections, localStorage error fallback, and duplicate terminal renders do not double count.
 
 ## 3. Result celebration and transient combo banner
 
@@ -80,11 +81,11 @@ bun test apps/api/src/routes/play-history.test.ts
 
 ## 5. Integration and acceptance
 
-- Extend signed-in terminal flow tests with a mocked/recorded successful POST followed by GET; confirm lifetime value includes the committed match exactly once.
+- Extend signed-in terminal flow tests with a mocked/recorded successful POST followed by GET; confirm lifetime value includes the committed match exactly once. Cover the accepted reset/late-POST stale-view case plus explicit Refresh progress recovery.
 - Test guest completion and malformed/failed history response, and seeded Standard/Sky Tycoon fixtures.
 - Run unit tests, TypeScript typecheck, ESLint, build and Aeroplane Playwright E2E. Confirm terminal save/request counts, existing board interactions and snapshot/replay tests still pass.
 - Verify keyboard skin picker, screen-reader result, and prefers-reduced-motion behavior.
-- Update this PR summary with exact commands/results after implementation; don't mark coding complete while it is docs-only.
+- Keep the tree runnable and run focused tests with each of steps 1–4, especially preserving terminal-save tests alongside step 2. Update this PR summary with exact commands/results after implementation; don't mark coding complete while it is docs-only.
 
 ## Out of scope
 
