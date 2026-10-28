@@ -57,10 +57,10 @@ bun test apps/api/src/routes/play-history.test.ts
 **Work**
 - Calculate the reward preview from terminal `activeMatch` and show a prominent panel with winner, count-up, human captures/finished stats, star breakdown and next unlock. On guests, show per-match reward only.
 - Use an animation effect that keys to match identity (e.g., `startedAt` + `rootSeed`), lasts about 700 ms, and cancels on reset/unmount. Missing rAF or reduced-motion renders the exact final number immediately. Only final text is in the live region.
-- For latest human `eventFeed` entry, show "Double capture!"/"Triple capture!" if that single resolved move captured >= 2; otherwise show a coin-swing banner when a Tycoon action causes net >= 5 coins change for the human. Remove after a short, cancelable timer or on newer event/reset. The feed is not authoritative for final rewards.
+- In `useAeroplaneMatch.applyMove`, derive a render-only `recentHumanMoment` from the committed human `ResolvedMove.capturedPlaneIds` and/or before/after human Tycoon balance (absolute delta >= 5), **before** `enqueuePresentation`; increment a moment ID and clear on reset/resume. The presentation feed is suppressed by Skip animations, so do not use it as the banner's sole source. In `AeroplaneGame`, show "Double capture!"/"Triple capture!" (priority) or "Big coin swing!" with a short cancelable timer keyed by moment ID. The feed is not authoritative for final rewards.
 - Use existing Panel/Button components and typography, no modal and no new animation scheduler.
 
-**Tests:** both win and loss summaries, no counts on unfinished matches, reduced-motion/fallback, genuine multi-capture vs accumulated captures, Sky Tycoon effect case, timer cleanup/reset and accessible output.
+**Tests:** both win and loss summaries, no counts on unfinished matches, reduced-motion/fallback, genuine multi-capture vs accumulated captures (including Skip animations), Sky Tycoon balance-delta case, timer cleanup/reset and accessible output.
 
 ## 4. Skin picker and all board glyph paths
 
