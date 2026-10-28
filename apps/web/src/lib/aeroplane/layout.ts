@@ -145,6 +145,11 @@ export function planeIndex(planeId: string): number {
 	return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
+/** Colour prefix of a plane id (`red-2` → `'red'`). */
+export function planeColor(planeId: string): AeroplaneLayoutColor {
+	return planeId.split('-')[0] as AeroplaneLayoutColor;
+}
+
 /** Small, normalized offsets that keep stacked planes individually visible. */
 export const STACK_OFFSETS: readonly LayoutAnchor[] = Object.freeze([
 	Object.freeze({ x: 0, y: 0 }),

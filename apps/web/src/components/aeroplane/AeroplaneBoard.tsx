@@ -345,25 +345,28 @@ const TILE_NAME: Record<TycoonTileKind, string> = {
 	crash: 'Crash',
 };
 
+/** Tile global indices sorted once; the shared map is fixed at build time. */
+const SORTED_TYCOON_TILES = [...TYCOON_TILES.entries()].sort(
+	(left, right) => left[0] - right[0]
+);
+
 /** Shared-map tiles in board order, labelled with any airport owner. */
 function tycoonTiles(airports: SkyTycoonState['airports']) {
-	return [...TYCOON_TILES.entries()]
-		.sort((left, right) => left[0] - right[0])
-		.map(([index, kind]) => {
-			const owner = kind === 'airport' ? airports[index] : undefined;
-			const ownership =
-				kind !== 'airport'
-					? ''
-					: owner
-						? `, owned by ${colorLabel[owner]}`
-						: ', unowned';
-			return {
-				index,
-				kind,
-				owner,
-				label: `Square ${index + 1}: ${TILE_NAME[kind]}${ownership}`,
-			};
-		});
+	return SORTED_TYCOON_TILES.map(([index, kind]) => {
+		const owner = kind === 'airport' ? airports[index] : undefined;
+		const ownership =
+			kind !== 'airport'
+				? ''
+				: owner
+					? `, owned by ${colorLabel[owner]}`
+					: ', unowned';
+		return {
+			index,
+			kind,
+			owner,
+			label: `Square ${index + 1}: ${TILE_NAME[kind]}${ownership}`,
+		};
+	});
 }
 
 /**
@@ -383,7 +386,7 @@ const TycoonTileMarkers = React.memo(function TycoonTileMarkers({
 				return (
 					<g
 						key={`tile-${index}`}
-						aria-label={label}
+						data-label={label}
 						data-testid={`aeroplane-tycoon-tile-${index}`}
 						data-owner={owner}
 					>
@@ -720,6 +723,13 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 		() => new Map(legalMoves.map(move => [move.planeId, move])),
 		[legalMoves]
 	);
+	// The screen-reader tile list changes only with airport ownership, so
+	// animation frames never rebuild it.
+	const airportOwners = state.tycoon?.airports;
+	const srTycoonTiles = useMemo(
+		() => (airportOwners ? tycoonTiles(airportOwners) : null),
+		[airportOwners]
+	);
 	const previewedPlaneId = coarsePreviewId ?? focusedPlaneId ?? hoveredPlaneId;
 	const previewMove = previewedPlaneId
 		? moveByPlane.get(previewedPlaneId)
@@ -885,9 +895,9 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 					)}
 				</svg>
 			</div>
-			{state.tycoon && (
+			{srTycoonTiles && (
 				<ul aria-label='Sky Tycoon tiles' className='sr-only'>
-					{tycoonTiles(state.tycoon.airports).map(tile => (
+					{srTycoonTiles.map(tile => (
 						<li key={tile.index}>{tile.label}</li>
 					))}
 				</ul>

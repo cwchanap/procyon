@@ -1072,7 +1072,7 @@ describe('useAeroplaneMatch terminal history integration', () => {
 		let removeCount = 0;
 		const removeActive = storage.removeItem;
 		storage.removeItem = key => {
-			removeCount++;
+			if (key === ACTIVE_MATCH_STORAGE_KEY) removeCount++;
 			removeActive(key);
 		};
 		(
@@ -1333,6 +1333,7 @@ describe('useAeroplaneMatch Sky Tycoon effective moves', () => {
 			coins: { red: 10, yellow: 10, blue: 10, green: 10 },
 			airports: {},
 			shields: [],
+			skipPending: { red: false, yellow: false, blue: false, green: false },
 			skipNextRoll: { red: false, yellow: false, blue: false, green: false },
 			chanceOrder: [...TYCOON_CHANCE_CARDS],
 			chanceCursor: 0,
@@ -1411,7 +1412,7 @@ describe('useAeroplaneMatch Sky Tycoon effective moves', () => {
 			actor: 'human',
 			color: 'red',
 			roll: 6,
-			events: [{ type: 'skip', color: 'red' }],
+			events: [{ type: 'skipped', color: 'red' }],
 		});
 		// Even a six hands over; the streak stays untouched.
 		expect(match.state().currentPlayer).toBe('yellow');

@@ -549,3 +549,71 @@ test('a storm relocation can form a blockade on the retreated square', () => {
 
 	expect(extractAiMoveFeatures(state, move).blockade).toBe(1);
 });
+
+test('a crash costs the progress it covered instead of earning it', () => {
+	// red lands on progress 25 (global 24, Crash); the committed plane sits
+	// in its hangar, so the move's progress is what it lost, not the
+	// distance it first covered.
+	const state = tycoonStateWithPlanes([plane('red-crasher', 22)]);
+	const move = legalMove(state, 'red-crasher', 3);
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 24 });
+
+	const features = extractAiMoveFeatures(state, move);
+	expect(features.progress).toBe(-22);
+	expect(features.exposure).toBe(0);
+	expect(features.tycoonTile).toBe(TYCOON_TILE_UTILITY.crash);
+});
+
+test('a wormhole that can never fire scores no tile utility', () => {
+	// The reviewer's example: yellow can only ever land on the second
+	// wormhole of its pair — progress 25 is global 37, and the partner at
+	// global 11 sits past the home stretch, so the warp can never trigger.
+	const state = tycoonStateWithPlanes([plane('yellow-drifting', 22)]);
+	const move = legalMove(state, 'yellow-drifting', 3);
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 37 });
+
+	const committed = playResolvedMove(
+		{ ...state, currentPlayer: 'yellow', pendingRoll: 3 },
+		move
+	).state;
+	expect(
+		committed.planes.find(plane => plane.id === 'yellow-drifting')?.progress
+	).toBe(25);
+
+	expect(extractAiMoveFeatures(state, move).tycoonTile).toBe(0);
+});
+
+test('a firing wormhole keeps its utility and progress covers the warp', () => {
+	// red lands on progress 12 (global 11, Wormhole) and warps forward to
+	// the paired tile at progress 38 (global 37).
+	const state = tycoonStateWithPlanes([plane('red-warper', 9)]);
+	const move = legalMove(state, 'red-warper', 3);
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 11 });
+
+	const features = extractAiMoveFeatures(state, move);
+	expect(features.tycoonTile).toBe(TYCOON_TILE_UTILITY.wormhole);
+	expect(features.progress).toBe(38 - 9);
+});
+
+test('an opponent due to skip its roll poses no capture threat', () => {
+	// Same geometry as the exposed-move probe: red lands where yellow can
+	// capture next turn — unless yellow is due to skip that roll.
+	const planes = [plane('red-exposed', 12), plane('yellow-threat', 14)];
+	const base = initialTycoonState(1);
+	const active = {
+		...base,
+		skipNextRoll: { red: false, yellow: true, blue: false, green: false },
+	};
+	const pending = {
+		...base,
+		skipPending: { red: false, yellow: true, blue: false, green: false },
+	};
+
+	const unflagged = tycoonStateWithPlanes(planes, base);
+	const move = legalMove(unflagged, 'red-exposed', 2);
+	expect(extractAiMoveFeatures(unflagged, move).exposure).toBeGreaterThan(0);
+	for (const tycoon of [active, pending]) {
+		const state = tycoonStateWithPlanes(planes, tycoon);
+		expect(extractAiMoveFeatures(state, move).exposure).toBe(0);
+	}
+});

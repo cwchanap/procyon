@@ -1,6 +1,13 @@
 import React from 'react';
 import { Button } from '../ui/Button';
 import Panel from '../ui/Panel';
+import {
+	TYCOON_AIRPORT_PAIR_TOLL,
+	TYCOON_AIRPORT_PRICE,
+	TYCOON_AIRPORT_TOLL,
+	TYCOON_DEPARTURE_BONUS,
+	TYCOON_STARTING_COINS,
+} from '../../lib/aeroplane/tycoon';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
@@ -96,11 +103,13 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 						data-testid='aeroplane-tycoon-rules'
 						className='text-xs leading-relaxed text-ivory-dim'
 					>
-						Every colour starts with 10 coins and earns 3 per departure. Landing
-						on an unowned airport buys it automatically for 5 coins when
-						affordable; rivals pay a 2-coin toll (4 for a matched pair). Other
-						tiles and Chance cards trigger once per landing. Coins never decide
-						the winner: finishing planes does.
+						Every colour starts with {TYCOON_STARTING_COINS} coins and earns{' '}
+						{TYCOON_DEPARTURE_BONUS} per departure. Landing on an unowned
+						airport buys it automatically for {TYCOON_AIRPORT_PRICE} coins when
+						affordable; rivals pay a {TYCOON_AIRPORT_TOLL}-coin toll (
+						{TYCOON_AIRPORT_PAIR_TOLL} for a matched pair). Other tiles and
+						Chance cards trigger once per landing. Coins never decide the
+						winner: finishing planes does.
 					</p>
 				)}
 			</fieldset>

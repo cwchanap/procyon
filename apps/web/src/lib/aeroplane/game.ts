@@ -6,10 +6,8 @@ import { deriveRngStreams, normalizeRngState, type RngState } from './rng';
 import {
 	TYCOON_BOOST_STEPS,
 	TYCOON_DEPARTURE_BONUS,
-	addCoins,
-	clearPlaneShield,
+	applyTycoonEffects,
 	initialTycoonState,
-	resolveLanding,
 } from './tycoon';
 import type {
 	AeroplaneColor,
@@ -231,8 +229,28 @@ function advanceAfterTurn(
 		? boundaryLastPlaceRounds(state)
 		: cloneCounters(state.lastPlaceRounds);
 
+	// A Customs skip armed during the departing turn activates only at the
+	// real handoff; a bonus roll (six or Tailwind) keeps it pending so it
+	// still costs the player's next turn.
+	const tycoon = state.tycoon;
+	const settled =
+		tycoon !== null && !samePlayer && tycoon.skipPending[state.currentPlayer]
+			? {
+					...tycoon,
+					skipNextRoll: {
+						...tycoon.skipNextRoll,
+						[state.currentPlayer]: true,
+					},
+					skipPending: {
+						...tycoon.skipPending,
+						[state.currentPlayer]: false,
+					},
+				}
+			: tycoon;
+
 	return {
 		...state,
+		tycoon: settled,
 		currentPlayer: nextPlayer,
 		phase: 'awaiting-roll',
 		pendingRoll: null,
@@ -284,7 +302,7 @@ export function rollTurn(
 			roll,
 			legalMoves: [],
 			rng,
-			effectEvents: [{ type: 'skip', color: skipped }],
+			effectEvents: [{ type: 'skipped', color: skipped }],
 		};
 	}
 	const legalMoves = getLegalMoves(state, roll);
@@ -358,20 +376,13 @@ export function playResolvedMove(
 	}
 
 	const base = applyResolvedMove(state, legalMove);
-	let planes = base.state.planes;
-	let tycoon = state.tycoon;
+	const applied = applyTycoonEffects(base.state, legalMove);
 	const effects: TycoonEffectEvent[] = [];
 	const relocations: AeroplaneEvent[] = [];
 	let finalEndpoint = legalMove.finalEndpoint;
 
-	if (state.config.mode === 'sky-tycoon' && tycoon) {
-		// A plane's own shield expires the moment it moves, before any landing
-		// resolution so a shield tile pickup still yields exactly one shield.
-		tycoon = clearPlaneShield(tycoon, legalMove.planeId);
+	if (applied.state.tycoon) {
 		if (legalMove.start.kind === 'launch') {
-			// Departure pays only on the launch-pad-to-track hop (0 → 1+);
-			// hangar → launch alone pays nothing.
-			tycoon = addCoins(tycoon, legalMove.color, TYCOON_DEPARTURE_BONUS);
 			effects.push({
 				type: 'coins',
 				color: legalMove.color,
@@ -379,49 +390,32 @@ export function playResolvedMove(
 				reason: 'departure',
 			});
 		}
-		// Exactly one tile/card resolution on the final shared-track landing;
-		// launch, hangar, home lane and finish never qualify.
-		if (legalMove.finalEndpoint.kind === 'track') {
-			const landing = resolveLanding(
-				{ ...base.state, tycoon },
-				{
+		const landing = applied.landing;
+		if (landing) {
+			effects.push(...landing.events);
+			if (landing.relocation) {
+				const progress =
+					landing.relocation.kind === 'progress'
+						? landing.relocation.progress
+						: null;
+				finalEndpoint = toPosition(legalMove.color, progress);
+				const boost = landing.events.some(
+					item => item.type === 'relocation' && item.effect === 'boost'
+				);
+				// Boost travels ordinary forward steps; Wormhole/Storm/Crash
+				// warp directly and must never enter waypoint/bounce math.
+				relocations.push({
+					type: boost ? 'move' : 'warp',
 					planeId: legalMove.planeId,
-					color: legalMove.color,
-					progress: legalMove.finalEndpoint.progress,
-				}
-			);
-			if (landing) {
-				tycoon = landing.tycoon;
-				effects.push(...landing.events);
-				if (landing.relocation) {
-					// resolveLanding already checked forced-placement legality; a
-					// blocked effect returns no relocation and the plane stays put.
-					const progress =
-						landing.relocation.kind === 'progress'
-							? landing.relocation.progress
-							: null;
-					planes = planes.map(plane =>
-						plane.id === legalMove.planeId ? { ...plane, progress } : plane
-					);
-					finalEndpoint = toPosition(legalMove.color, progress);
-					const boost = landing.events.some(
-						item => item.type === 'relocation' && item.effect === 'boost'
-					);
-					// Boost travels ordinary forward steps; Wormhole/Storm/Crash
-					// warp directly and must never enter waypoint/bounce math.
-					relocations.push({
-						type: boost ? 'move' : 'warp',
-						planeId: legalMove.planeId,
-						from: legalMove.finalEndpoint,
-						to: finalEndpoint,
-						...(boost ? { distance: TYCOON_BOOST_STEPS } : {}),
-					});
-				}
+					from: legalMove.finalEndpoint,
+					to: finalEndpoint,
+					...(boost ? { distance: TYCOON_BOOST_STEPS } : {}),
+				});
 			}
 		}
 	}
 
-	const moved: AeroplaneState = { ...base.state, planes };
+	const moved: AeroplaneState = applied.state;
 	// The effective move keeps the selected start/route and reports the actual
 	// captures and committed destination, never hypothetical ones.
 	const effectiveMove: ResolvedMove = {
@@ -435,7 +429,6 @@ export function playResolvedMove(
 	const hasWon = finished >= state.config.victoryTarget;
 	let nextState: AeroplaneState = {
 		...moved,
-		tycoon,
 		stats,
 		noMoveStreak: {
 			...state.noMoveStreak,

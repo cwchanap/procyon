@@ -424,7 +424,7 @@ describe('Aeroplane board interactions', () => {
 		);
 		// Markers sit on the shared track anchors; only owned airports tint.
 		const owned = getByTestId('aeroplane-tycoon-tile-6');
-		expect(owned.getAttribute('aria-label')).toBe(
+		expect(owned.getAttribute('data-label')).toBe(
 			'Square 7: Airport, owned by Blue'
 		);
 		expect(owned.querySelector('circle')?.getAttribute('cx')).toBe(
@@ -2516,7 +2516,7 @@ describe('Aeroplane game composition', () => {
 			'Red 8 coins'
 		);
 		expect(
-			view.getByTestId('aeroplane-tycoon-tile-0').getAttribute('aria-label')
+			view.getByTestId('aeroplane-tycoon-tile-0').getAttribute('data-label')
 		).toBe('Square 1: Airport, owned by Red');
 	});
 

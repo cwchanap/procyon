@@ -122,6 +122,7 @@ export type TycoonEffectEvent =
 	| { type: 'card'; color: AeroplaneColor; card: TycoonChanceCard }
 	| { type: 'shield'; planeId: string }
 	| { type: 'skip'; color: AeroplaneColor }
+	| { type: 'skipped'; color: AeroplaneColor }
 	| { type: 'tailwind'; color: AeroplaneColor }
 	| {
 			type: 'relocation';
@@ -143,6 +144,12 @@ export interface SkyTycoonState {
 	airports: Partial<Record<number, AeroplaneColor>>;
 	/** Plane IDs protected until each plane next moves; pickups never stack. */
 	shields: string[];
+	/**
+	 * Armed by a Customs failure during the owner's turn; promotes to
+	 * `skipNextRoll` only when the turn actually changes hands, so a bonus roll
+	 * (six or Tailwind) never absorbs the penalty meant for the next turn.
+	 */
+	skipPending: Record<AeroplaneColor, boolean>;
 	skipNextRoll: Record<AeroplaneColor, boolean>;
 	/** Shuffled permutation of the ten unique card IDs. */
 	chanceOrder: TycoonChanceCard[];

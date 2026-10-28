@@ -809,7 +809,7 @@ export function useAeroplaneMatch(
 			});
 			if (
 				!skipAnimationsRef.current &&
-				result.effectEvents.some(event => event.type === 'skip')
+				result.effectEvents.some(event => event.type === 'skipped')
 			) {
 				const entry: AeroplaneSkipFeedEntry = {
 					id: (presentationIdRef.current += 1),

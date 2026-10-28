@@ -18,6 +18,8 @@ import type {
 } from './types';
 
 export const ACTIVE_MATCH_STORAGE_KEY = 'procyon:aeroplane:active-match:v2';
+/** Key that held pre-v2 envelopes; read once, then always removed. */
+export const LEGACY_MATCH_STORAGE_KEY = 'procyon:aeroplane:active-match:v1';
 export const SESSION_DIAGNOSTICS_KEY =
 	'procyon:aeroplane:active-match:diagnostics:v1';
 
@@ -222,6 +224,7 @@ function validEffectEvent(value: Record<string, unknown>): boolean {
 		case 'shield':
 			return validPlaneId(value.planeId);
 		case 'skip':
+		case 'skipped':
 		case 'tailwind':
 			return isColor(value.color);
 		case 'relocation':
@@ -264,7 +267,7 @@ function validChanceOrder(value: unknown): boolean {
 
 function validTycoon(value: unknown): value is SkyTycoonState {
 	if (!isRecord(value)) return false;
-	const { airports, shields, skipNextRoll } = value;
+	const { airports, shields, skipNextRoll, skipPending } = value;
 	return (
 		validCounters(value.coins) &&
 		isRecord(airports) &&
@@ -277,6 +280,8 @@ function validTycoon(value: unknown): value is SkyTycoonState {
 		shields.every(validPlaneId) &&
 		isRecord(skipNextRoll) &&
 		TURN_ORDER.every(color => isBoolean(skipNextRoll[color])) &&
+		isRecord(skipPending) &&
+		TURN_ORDER.every(color => isBoolean(skipPending[color])) &&
 		validChanceOrder(value.chanceOrder) &&
 		isNonNegativeInteger(value.chanceCursor)
 	);
@@ -515,6 +520,7 @@ function writeDiagnostics(
 function removeActive(storage: AeroplaneStorage): void {
 	try {
 		storage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
+		storage.removeItem(LEGACY_MATCH_STORAGE_KEY);
 	} catch {
 		// Storage failures are non-fatal by design.
 	}
@@ -549,6 +555,14 @@ export function restoreActiveMatch(
 	let raw: string | null;
 	try {
 		raw = target.getItem(ACTIVE_MATCH_STORAGE_KEY);
+		if (raw === null) {
+			// Matches saved before the v2 envelope lived under the v1 key.
+			// Consume it on read so the pipeline below can still validate or
+			// diagnose it, and so an abandoned snapshot cannot resurrect
+			// after the v2 key is later cleared.
+			raw = target.getItem(LEGACY_MATCH_STORAGE_KEY);
+			if (raw !== null) target.removeItem(LEGACY_MATCH_STORAGE_KEY);
+		}
 	} catch {
 		return { kind: 'unavailable', reason: 'active-match storage unavailable' };
 	}

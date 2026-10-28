@@ -16,6 +16,7 @@ import type {
 	AeroplaneColor,
 	AeroplaneState,
 	PlaneState,
+	ResolvedMove,
 	SkyTycoonState,
 	TycoonChanceCard,
 	TycoonCoinReason,
@@ -137,6 +138,7 @@ export function initialTycoonState(rootSeed: number): SkyTycoonState {
 		},
 		airports: {},
 		shields: [],
+		skipPending: { red: false, yellow: false, blue: false, green: false },
 		skipNextRoll: { red: false, yellow: false, blue: false, green: false },
 		chanceOrder: shuffleChanceDeck(rootSeed),
 		chanceCursor: 0,
@@ -151,7 +153,10 @@ export function addCoins(
 ): SkyTycoonState {
 	return {
 		...tycoon,
-		coins: { ...tycoon.coins, [color]: tycoon.coins[color] + amount },
+		coins: {
+			...tycoon.coins,
+			[color]: Math.max(0, tycoon.coins[color] + amount),
+		},
 	};
 }
 
@@ -539,7 +544,7 @@ function applyNamedEffect(
 			return {
 				tycoon: {
 					...tycoon,
-					skipNextRoll: { ...tycoon.skipNextRoll, [plane.color]: true },
+					skipPending: { ...tycoon.skipPending, [plane.color]: true },
 				},
 				events: [{ type: 'skip', color: plane.color }],
 				relocation: null,
@@ -610,4 +615,80 @@ export function resolveLanding(
 		};
 	}
 	return applyNamedEffect(state, start, plane, landing.progress, kind);
+}
+
+export interface TycoonMoveApplication {
+	/** Post-move state: shield expiry, departure pay, tile effects and any forced relocation applied. */
+	state: AeroplaneState;
+	/**
+	 * The landing resolution that ran, or null for Standard mode, a
+	 * non-shared-track landing, or a Chance landing held by `holdChance`.
+	 */
+	landing: TycoonLandingResult | null;
+}
+
+export interface TycoonEffectOptions {
+	/**
+	 * Skip landing resolution on Chance tiles. The engine draws the card;
+	 * callers scoring a hypothetical move (the AI) hold it so the seeded
+	 * deck stays hidden.
+	 */
+	holdChance?: boolean;
+}
+
+/**
+ * Apply every turn-of-move Sky Tycoon effect to an already-moved state, in
+ * the engine's order: the mover's own shield expires on movement, a launch
+ * pays the departure bonus, then the final shared-track landing resolves
+ * exactly once — and any forced relocation is written straight into the
+ * mover's progress. Shared by `playResolvedMove` and the AI's move
+ * projection so the two can never drift. Returns the input untouched when
+ * the match carries no Tycoon layer.
+ */
+export function applyTycoonEffects(
+	moved: AeroplaneState,
+	move: ResolvedMove,
+	options: TycoonEffectOptions = {}
+): TycoonMoveApplication {
+	const tycoon = moved.tycoon;
+	if (!tycoon) return { state: moved, landing: null };
+	let planes = moved.planes;
+	let projection = clearPlaneShield(tycoon, move.planeId);
+	if (move.start.kind === 'launch') {
+		// Departure pays only on the launch-pad-to-track hop (0 → 1+);
+		// hangar → launch alone pays nothing.
+		projection = addCoins(projection, move.color, TYCOON_DEPARTURE_BONUS);
+	}
+	// Exactly one tile/card resolution on the final shared-track landing;
+	// launch, hangar, home lane and finish never qualify.
+	if (
+		move.finalEndpoint.kind !== 'track' ||
+		(options.holdChance &&
+			tycoonTileKindAt(move.finalEndpoint.globalIndex) === 'chance')
+	) {
+		return { state: { ...moved, planes, tycoon: projection }, landing: null };
+	}
+	const landing = resolveLanding(
+		{ ...moved, planes, tycoon: projection },
+		{
+			planeId: move.planeId,
+			color: move.color,
+			progress: move.finalEndpoint.progress,
+		}
+	);
+	if (landing) {
+		projection = landing.tycoon;
+		if (landing.relocation) {
+			// resolveLanding already checked forced-placement legality; a
+			// blocked effect returns no relocation and the plane stays put.
+			const progress =
+				landing.relocation.kind === 'progress'
+					? landing.relocation.progress
+					: null;
+			planes = planes.map(plane =>
+				plane.id === move.planeId ? { ...plane, progress } : plane
+			);
+		}
+	}
+	return { state: { ...moved, planes, tycoon: projection }, landing };
 }
