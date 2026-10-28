@@ -1,6 +1,10 @@
 import { nextUint32, type RngState } from './rng';
 import { applyResolvedMove, resolveLegalMove } from './rules';
-import { FINISH_PROGRESS, toGlobalTrackIndex } from './topology';
+import {
+	FINISH_PROGRESS,
+	isSharedTrackProgress,
+	toGlobalTrackIndex,
+} from './topology';
 import {
 	addCoins,
 	clearPlaneShield,
@@ -139,17 +143,15 @@ function formsBlockade(
 	move: ResolvedMove,
 	afterState: AeroplaneState
 ): number {
-	if (!state.config.blockades || move.finalEndpoint.kind !== 'track') return 0;
-	const before = trackOccupants(
-		state,
-		move.color,
-		move.finalEndpoint.globalIndex
-	);
-	const after = trackOccupants(
-		afterState,
-		move.color,
-		move.finalEndpoint.globalIndex
-	);
+	if (!state.config.blockades) return 0;
+	// The blockade must be counted where the projected mover actually stops:
+	// a Tycoon relocation can carry it away from move.finalEndpoint.
+	const moved = afterState.planes.find(plane => plane.id === move.planeId);
+	if (moved?.progress === null || moved === undefined) return 0;
+	if (!isSharedTrackProgress(moved.progress)) return 0;
+	const globalIndex = toGlobalTrackIndex(move.color, moved.progress);
+	const before = trackOccupants(state, move.color, globalIndex);
+	const after = trackOccupants(afterState, move.color, globalIndex);
 	return before < 2 && after >= 2 ? 1 : 0;
 }
 
