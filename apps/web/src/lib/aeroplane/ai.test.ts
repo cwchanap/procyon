@@ -529,3 +529,23 @@ test('a launch departure prices its airport with the departure bonus', () => {
 	expect(committed.state.tycoon?.airports[0]).toBe('red');
 	expect(committed.state.tycoon?.coins.red).toBe(0);
 });
+
+test('a storm relocation can form a blockade on the retreated square', () => {
+	// With blockades on, red lands on progress 16 (global 15, Storm) and
+	// retreats onto red-anchor at progress 13. The Storm square is empty
+	// after relocation; the retreat square now stacks two red planes.
+	const planes = [plane('red-stormer', 14), plane('red-anchor', 13)];
+	const state = {
+		...stateWithPlanes(planes, { mode: 'sky-tycoon', blockades: true }),
+		tycoon: initialTycoonState(1),
+	};
+	const move = legalMove(state, 'red-stormer', 2);
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 15 });
+
+	const committed = playResolvedMove(state, move).state;
+	expect(
+		committed.planes.find(plane => plane.id === 'red-stormer')?.progress
+	).toBe(13);
+
+	expect(extractAiMoveFeatures(state, move).blockade).toBe(1);
+});
