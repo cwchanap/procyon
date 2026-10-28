@@ -197,6 +197,9 @@ function tycoonTileUtility(state: AeroplaneState, move: ResolvedMove): number {
  * expires on movement, a launch pays departure, then a shared-track landing
  * resolves exactly once — re-granting a shield, settling coins and forcing
  * the mover's relocation — before threat probes read the projected square.
+ * Chance landings never resolve: the undealt card is hidden information, so
+ * the mover stays on the Chance square and the flat tile utility prices the
+ * unknown draw instead of leaking the top of the seeded deck.
  */
 function projectAfterMove(
 	state: AeroplaneState,
@@ -210,7 +213,12 @@ function projectAfterMove(
 	if (move.start.kind === 'launch') {
 		projection = addCoins(projection, move.color, TYCOON_DEPARTURE_BONUS);
 	}
-	if (move.finalEndpoint.kind === 'track') {
+	if (
+		move.finalEndpoint.kind === 'track' &&
+		tycoonTileKindAt(
+			toGlobalTrackIndex(move.color, move.finalEndpoint.progress)
+		) !== 'chance'
+	) {
 		const landing = resolveLanding(
 			{ ...applied, tycoon: projection },
 			{
