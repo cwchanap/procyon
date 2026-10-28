@@ -494,3 +494,38 @@ test('tycoon airport weight prefers buying or own airports and avoids rival toll
 		TYCOON_TILE_UTILITY['airport-toll']
 	);
 });
+
+test('a launch departure prices its airport with the departure bonus', () => {
+	// red departs the launch pad on a 1, landing on progress 1 (global 0, an
+	// airport). The committed move pays +3 before resolving the landing, so
+	// balances 2–4 still buy what the pre-bonus balance alone could not.
+	const planes = [plane('red-departing', 0)];
+	const move = legalMove(tycoonStateWithPlanes(planes), 'red-departing', 1);
+	expect(move.start).toMatchObject({ kind: 'launch' });
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 0 });
+	const base = initialTycoonState(1);
+	const utility = (coins: number) =>
+		extractAiMoveFeatures(
+			tycoonStateWithPlanes(planes, {
+				...base,
+				coins: { ...base.coins, red: coins },
+			}),
+			move
+		).tycoonTile;
+
+	expect(utility(1)).toBe(0);
+	expect(utility(2)).toBe(TYCOON_TILE_UTILITY['airport-buy']);
+
+	const committed = playResolvedMove(
+		{
+			...tycoonStateWithPlanes(planes, {
+				...base,
+				coins: { ...base.coins, red: 2 },
+			}),
+			pendingRoll: 1,
+		},
+		move
+	);
+	expect(committed.state.tycoon?.airports[0]).toBe('red');
+	expect(committed.state.tycoon?.coins.red).toBe(0);
+});
