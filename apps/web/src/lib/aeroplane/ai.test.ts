@@ -9,6 +9,7 @@ import {
 	TYCOON_TILE_UTILITY,
 } from './ai';
 import { initialTycoonState } from './tycoon';
+import { TYCOON_CHANCE_CARDS } from './types';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
@@ -446,6 +447,32 @@ test('a crash relocation projects the mover back to the hangar', () => {
 	).toBeGreaterThan(0);
 
 	expect(extractAiMoveFeatures(state, move).exposure).toBe(0);
+});
+
+test('a chance landing probes the tile itself, never the undealt card', () => {
+	// red lands on progress 4 (global 3, Chance); yellow at 40 reaches that
+	// square on a 3, so the honest probe must count real threats on the
+	// Chance square regardless of which card the seeded deck would deal.
+	const planes = [plane('red-mover', 1), plane('yellow-threat', 40)];
+	const state = tycoonStateWithPlanes(planes);
+	const move = legalMove(state, 'red-mover', 3);
+	expect(move.finalEndpoint).toMatchObject({ kind: 'track', globalIndex: 3 });
+
+	const onChanceSquare = applyResolvedMove(state, move).state;
+	const threats = countImmediateCaptureThreats(onChanceSquare, 'red-mover');
+	expect(threats).toBeGreaterThan(0);
+
+	const base = initialTycoonState(1);
+	for (const card of TYCOON_CHANCE_CARDS) {
+		const tycoon = {
+			...base,
+			chanceOrder: [card, ...base.chanceOrder.filter(id => id !== card)],
+			chanceCursor: 0,
+		};
+		expect(extractAiMoveFeatures({ ...state, tycoon }, move).exposure).toBe(
+			threats
+		);
+	}
 });
 
 test('tycoon airport weight prefers buying or own airports and avoids rival tolls', () => {
