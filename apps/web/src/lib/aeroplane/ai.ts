@@ -2,6 +2,8 @@ import { nextUint32, type RngState } from './rng';
 import { applyResolvedMove, resolveLegalMove } from './rules';
 import { FINISH_PROGRESS, toGlobalTrackIndex } from './topology';
 import {
+	addShield,
+	clearPlaneShield,
 	TYCOON_AIRPORT_PRICE,
 	tycoonTileKindAt,
 	type TycoonTileKind,
@@ -187,11 +189,34 @@ function tycoonTileUtility(state: AeroplaneState, move: ResolvedMove): number {
 		: 0;
 }
 
+/**
+ * Project the committed move for feature extraction. applyResolvedMove leaves
+ * the Tycoon layer untouched, but playResolvedMove expires the mover's shield
+ * the moment it moves, then a shared-track shield tile re-grants it. Threat
+ * probes must see that post-move protection or exposure is mispriced.
+ */
+function projectAfterMove(
+	state: AeroplaneState,
+	move: ResolvedMove
+): AeroplaneState {
+	const applied = applyResolvedMove(state, move).state;
+	const tycoon = applied.tycoon;
+	if (!tycoon) return applied;
+	let projection = clearPlaneShield(tycoon, move.planeId);
+	if (
+		move.finalEndpoint.kind === 'track' &&
+		tycoonTileKindAt(move.finalEndpoint.globalIndex) === 'shield'
+	) {
+		projection = addShield(projection, move.planeId);
+	}
+	return projection === tycoon ? applied : { ...applied, tycoon: projection };
+}
+
 export function extractAiMoveFeatures(
 	state: AeroplaneState,
 	move: ResolvedMove
 ): AiMoveFeatures {
-	const afterState = applyResolvedMove(state, move).state;
+	const afterState = projectAfterMove(state, move);
 	const startProgress = progressOf(move.start);
 	const finalProgress = progressOf(move.finalEndpoint);
 

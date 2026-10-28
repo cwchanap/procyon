@@ -895,6 +895,17 @@ describe('play-history routes - Aeroplane (unrated) games', () => {
 		['Sky Tycoon without coins', { mode: 'sky-tycoon' }],
 		['an unknown mode', { mode: 'casino' }],
 		[
+			'Standard mode carrying coins',
+			{
+				mode: 'standard',
+				coins: { red: 1, yellow: 0, blue: 0, green: 0 },
+			},
+		],
+		[
+			'an omitted mode carrying coins',
+			{ coins: { red: 1, yellow: 0, blue: 0, green: 0 } },
+		],
+		[
 			'negative coins',
 			{ mode: 'sky-tycoon', coins: { red: -1, yellow: 0, blue: 0, green: 0 } },
 		],
