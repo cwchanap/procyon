@@ -182,6 +182,7 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 						presentationQueue={match.presentationQueue}
 						reducedMotion={reducedMotion}
 						onCue={handleCue}
+						skinId={progress.selectedSkin}
 						onRoll={() => {
 							// A direct user gesture is the earliest safe audio unlock.
 							primeAeroplaneAudio();
@@ -204,6 +205,7 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 						setup={match.setup}
 						onChange={match.setSetup}
 						onStart={match.newMatch}
+						progress={progress}
 					/>
 					<AeroplaneEventFeed
 						events={match.eventFeed}
