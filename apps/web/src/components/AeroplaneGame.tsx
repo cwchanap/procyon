@@ -37,7 +37,8 @@ export interface AeroplaneGameProps {
 
 const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 	const match = useAeroplaneMatch(controllerOptions);
-	// Server-sourced lifetime progress feeds the terminal rewards panel only.
+	// Server-sourced lifetime progress feeds the terminal rewards panel, the
+	// setup picker's skin ladder and the board skin.
 	const progress = useAeroplaneProgress({
 		historySavedRevision: match.historySavedRevision,
 	});
@@ -146,6 +147,7 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 						<AeroplaneRewards
 							matchKey={`${finishedMatch.startedAt}:${finishedMatch.rootSeed}`}
 							winner={finishedMatch.state.winner}
+							mode={finishedMatch.config.mode}
 							capturesMade={
 								finishedMatch.state.stats.capturesMade[
 									finishedMatch.config.humanColor
@@ -166,15 +168,18 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 							onRetryProgress={progress.retry}
 						/>
 					)}
-					{momentBanner && (
-						<p
-							role='status'
-							data-testid='aeroplane-moment-banner'
-							className='rounded-md border border-brass bg-ink-600 px-4 py-2 text-sm font-semibold text-brass'
-						>
-							{momentBanner.label}
-						</p>
-					)}
+					{/* Fixed-height always-mounted live region: the transient banner
+					    never shifts the board, and inserting content still announces. */}
+					<div role='status' className='min-h-[2.5rem]'>
+						{momentBanner && (
+							<p
+								data-testid='aeroplane-moment-banner'
+								className='rounded-md border border-brass bg-ink-600 px-4 py-2 text-sm font-semibold text-brass'
+							>
+								{momentBanner.label}
+							</p>
+						)}
+					</div>
 					<AeroplaneBoard
 						state={match.state}
 						legalMoves={match.legalMoves}

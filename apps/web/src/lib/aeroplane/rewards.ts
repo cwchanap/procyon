@@ -15,16 +15,24 @@ export interface SkinCatalogEntry {
 	id: SkinId;
 	/** Lifetime stars required to unlock. */
 	stars: number;
+	/** Display label used by the setup picker and rewards panel. */
+	label: string;
 }
 
 /** Unlock ladder in ascending threshold order. */
 export const SKIN_CATALOG: readonly SkinCatalogEntry[] = [
-	{ id: 'classic', stars: 0 },
-	{ id: 'contrail', stars: 20 },
-	{ id: 'racer', stars: 60 },
-	{ id: 'starlight', stars: 140 },
-	{ id: 'ace', stars: 300 },
+	{ id: 'classic', stars: 0, label: 'Classic' },
+	{ id: 'contrail', stars: 20, label: 'Contrail' },
+	{ id: 'racer', stars: 60, label: 'Racer' },
+	{ id: 'starlight', stars: 140, label: 'Starlight' },
+	{ id: 'ace', stars: 300, label: 'Ace' },
 ];
+
+/** Catalog display label for one skin. */
+export function skinLabel(id: SkinId): string {
+	for (const entry of SKIN_CATALOG) if (entry.id === id) return entry.label;
+	return id;
+}
 
 /** Every skin whose threshold is met by `stars`. */
 export function getUnlockedSkins(stars: number): SkinId[] {
@@ -60,9 +68,9 @@ export interface StarBreakdown {
 
 const WIN_STARS = 10;
 const STARS_PER_CAPTURE = 2;
-const CAPTURE_COUNT_CAP = 10;
+export const CAPTURE_COUNT_CAP = 10;
 const STARS_PER_FINISHED_PLANE = 3;
-const TYCOON_BONUS_CAP = 10;
+export const TYCOON_BONUS_CAP = 10;
 /** Stars earned per COINS_PER_STAR coins of surplus above the starting 10. */
 const COINS_PER_STAR = 5;
 

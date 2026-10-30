@@ -113,9 +113,11 @@ export function useAeroplaneProgress(
 		};
 	}, [authVerified, userId, historySavedRevision, retryTick]);
 
-	const unlockedSkins = useMemo(
-		() => getUnlockedSkins(lifetimeStars),
-		[lifetimeStars]
+	// Only a loaded GET reveals unlocks; failed/loading keeps every option
+	// but classic locked.
+	const unlockedSkins = useMemo<SkinId[]>(
+		() => (status === 'loaded' ? getUnlockedSkins(lifetimeStars) : ['classic']),
+		[status, lifetimeStars]
 	);
 
 	// Classic whenever unverified, loading/failed, or the selection is locked.

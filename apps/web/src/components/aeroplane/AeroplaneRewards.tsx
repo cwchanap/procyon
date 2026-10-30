@@ -2,11 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Panel from '../ui/Panel';
 import { Button } from '../ui/Button';
 import {
+	CAPTURE_COUNT_CAP,
 	SKIN_CATALOG,
+	TYCOON_BONUS_CAP,
+	skinLabel,
 	type HumanMoment,
 	type StarBreakdown,
 } from '../../lib/aeroplane/rewards';
-import type { AeroplaneColor } from '../../lib/aeroplane/types';
+import type { AeroplaneColor, AeroplaneMode } from '../../lib/aeroplane/types';
 import type { AeroplaneProgressStatus } from '../../hooks/useAeroplaneProgress';
 
 /** Count-up duration for the earned-star total. */
@@ -28,6 +31,8 @@ export interface AeroplaneRewardsProps {
 	/** Stable finished-match identity; a change restarts the count-up. */
 	matchKey: string;
 	winner: AeroplaneColor | null;
+	/** Match mode; Sky Tycoon always shows the (possibly +0) coin row. */
+	mode: AeroplaneMode;
 	/** Human capture/finish counts for the summary rows. */
 	capturesMade: number;
 	planesFinished: number;
@@ -73,10 +78,6 @@ export function pickBestMoment(
 	return best;
 }
 
-function skinDisplayName(id: string): string {
-	return id.charAt(0).toUpperCase() + id.slice(1);
-}
-
 /**
  * Terminal match rewards panel: winner, count-up star total with breakdown,
  * human capture/finish stats, the best notable moment (or aggregate
@@ -87,6 +88,7 @@ function skinDisplayName(id: string): string {
 const AeroplaneRewards: React.FC<AeroplaneRewardsProps> = ({
 	matchKey,
 	winner,
+	mode,
 	capturesMade,
 	planesFinished,
 	breakdown,
@@ -196,16 +198,22 @@ const AeroplaneRewards: React.FC<AeroplaneRewardsProps> = ({
 						<span className='font-mono'>+{breakdown.win}</span>
 					</li>
 					<li className='flex justify-between'>
-						<span>Captures ({capturesMade})</span>
+						<span>
+							Captures ({capturesMade}
+							{capturesMade > CAPTURE_COUNT_CAP
+								? `, max ${CAPTURE_COUNT_CAP}`
+								: ''}
+							)
+						</span>
 						<span className='font-mono'>+{breakdown.captures}</span>
 					</li>
 					<li className='flex justify-between'>
 						<span>Planes finished ({planesFinished})</span>
 						<span className='font-mono'>+{breakdown.finished}</span>
 					</li>
-					{breakdown.coins > 0 && (
+					{mode === 'sky-tycoon' && (
 						<li className='flex justify-between'>
-							<span>Sky Tycoon surplus</span>
+							<span>Sky Tycoon surplus (max {TYCOON_BONUS_CAP})</span>
 							<span className='font-mono'>+{breakdown.coins}</span>
 						</li>
 					)}
@@ -228,7 +236,7 @@ const AeroplaneRewards: React.FC<AeroplaneRewardsProps> = ({
 						</p>
 						<p>
 							{nextUnlock
-								? `Next unlock: ${skinDisplayName(nextUnlock.id)} at ${
+								? `Next unlock: ${skinLabel(nextUnlock.id)} at ${
 										nextUnlock.stars
 									} stars (${nextUnlock.stars - progress.lifetimeStars} to go).`
 								: 'Every skin is unlocked.'}

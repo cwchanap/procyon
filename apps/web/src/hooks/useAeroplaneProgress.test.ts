@@ -249,6 +249,8 @@ describe('useAeroplaneProgress', () => {
 
 		expect(result.current.status).toBe('failed');
 		expect(result.current.lifetimeStars).toBe(0);
+		// A failed GET never exposes unlocks; only classic stays available.
+		expect(result.current.unlockedSkins).toEqual(['classic']);
 		expect(result.current.selectedSkin).toBe('classic');
 
 		failNext = false;

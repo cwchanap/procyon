@@ -91,6 +91,23 @@ const SKIN_MARKING: Record<SkinId, string> = {
 	ace: '#064E3B',
 };
 
+/** Brass shared by the starlight/ace placeholder accents. */
+const SKIN_BRASS = '#D97706';
+
+/** Five-point star outline centred on (0, 0), outer r≈0.6, inner r≈0.25. */
+const STAR_POINTS = [
+	'0 -1.17',
+	'0.15 -0.76',
+	'0.59 -0.74',
+	'0.25 -0.47',
+	'0.36 -0.05',
+	'0 -0.29',
+	'-0.36 -0.05',
+	'-0.25 -0.47',
+	'-0.59 -0.74',
+	'-0.15 -0.76',
+].join(' ');
+
 /** Render-only asset slot for HPA-437; absent URL keeps the painted board. */
 const BOARD_BACKGROUND_HREF: string | undefined = undefined;
 
@@ -151,9 +168,77 @@ function isCoarsePointer(event: React.SyntheticEvent): boolean {
 }
 
 /**
+ * Placeholder per-skin accent layered over the unchanged team glyph
+ * (HPA-362); HPA-437 replaces these with real art. Sized for the 12×12
+ * glyph viewBox; the `skin-detail-*` class is a stable test hook.
+ */
+function PlaneSkinDetail({
+	x,
+	y,
+	skinId,
+}: {
+	x: number;
+	y: number;
+	skinId: SkinId;
+}) {
+	switch (skinId) {
+		case 'contrail':
+			return (
+				<line
+					className='skin-detail-contrail'
+					x1={x}
+					y1={y + 1}
+					x2={x}
+					y2={y + 2.4}
+					stroke='#BAE6FD'
+					strokeWidth='0.55'
+					strokeLinecap='round'
+				/>
+			);
+		case 'racer':
+			return (
+				<g
+					className='skin-detail-racer'
+					stroke='#FFF5D3'
+					strokeWidth='0.32'
+					strokeLinecap='round'
+				>
+					<line x1={x - 0.42} y1={y - 0.5} x2={x - 0.42} y2={y + 0.6} />
+					<line x1={x + 0.42} y1={y - 0.5} x2={x + 0.42} y2={y + 0.6} />
+				</g>
+			);
+		case 'starlight':
+			return (
+				<polygon
+					className='skin-detail-starlight'
+					points={STAR_POINTS}
+					transform={`translate(${x} ${y - 0.55})`}
+					fill={SKIN_BRASS}
+					stroke='#78350F'
+					strokeWidth='0.12'
+				/>
+			);
+		case 'ace':
+			return (
+				<circle
+					className='skin-detail-ace'
+					cx={x}
+					cy={y}
+					r='2.5'
+					fill='none'
+					stroke={SKIN_BRASS}
+					strokeWidth='0.35'
+				/>
+			);
+		default:
+			return null;
+	}
+}
+
+/**
  * Render-only plane glyph shared by the committed layer, motion overlays and
- * the setup picker previews. `skinId` accents the marking only; the team
- * fill and outline stay owning-colour.
+ * the setup picker previews. `skinId` adds a marking accent plus a
+ * placeholder detail; the team fill and outline stay owning-colour.
  */
 export function PlaneGlyph({
 	x,
@@ -189,6 +274,7 @@ export function PlaneGlyph({
 						fill={SKIN_MARKING[skinId ?? 'classic']}
 						fillOpacity='0.72'
 					/>
+					<PlaneSkinDetail x={x} y={y} skinId={skinId ?? 'classic'} />
 				</>
 			)}
 			<text
