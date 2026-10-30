@@ -24,6 +24,7 @@ import type {
 	SkyTycoonState,
 } from '../lib/aeroplane/types';
 import { TYCOON_CHANCE_CARDS } from '../lib/aeroplane/types';
+import { initialTycoonState } from '../lib/aeroplane/tycoon';
 import {
 	readDevOverrides,
 	useAeroplaneMatch,
@@ -1487,5 +1488,177 @@ describe('useAeroplaneMatch Sky Tycoon effective moves', () => {
 		const restored = restoreActiveMatch(match.storage);
 		if (restored.kind !== 'ok') throw new Error('expected a v2 restore');
 		expect(restored.match.actions).toEqual([skipAction]);
+	});
+});
+
+describe('useAeroplaneMatch humanMoments', () => {
+	/**
+	 * Red-0 sits at progress 14 and rolls 1 onto track 15 (global index 14),
+	 * capturing the whole yellow stack parked there (yellow progress 2).
+	 * Stacking is required for more than one defender on one node.
+	 */
+	function stackCaptureFixture(stack: number): AeroplaneE2EFixture {
+		const config: AeroplaneConfig = { ...CLASSIC_CONFIG, stacking: true };
+		const stacked = Array.from({ length: stack }, (_, index) =>
+			plane('yellow', index, 2)
+		);
+		return {
+			seed: 39111,
+			state: fixtureState('red', [plane('red', 0, 14), ...stacked], config),
+			diceRng: diceStateForRoll(1),
+			aiRng: { value: 33 },
+			skipAnimations: false,
+		};
+	}
+
+	/** Red departs the launch pad with a 4 onto the Chance tile (index 3). */
+	function humanCoinGainFixture(): AeroplaneE2EFixture {
+		const config: AeroplaneConfig = {
+			...CLASSIC_CONFIG,
+			mode: 'sky-tycoon',
+		};
+		const state = fixtureState('red', [plane('red', 0, 0)], config);
+		state.tycoon = {
+			...initialTycoonState(4242),
+			chanceOrder: [...TYCOON_CHANCE_CARDS],
+			chanceCursor: 0,
+		};
+		return {
+			seed: 39113,
+			state,
+			diceRng: diceStateForRoll(4),
+			aiRng: { value: 33 },
+			skipAnimations: false,
+		};
+	}
+
+	/** Red departs onto the square-1 airport and buys it for 5 coins. */
+	function airportPurchaseFixture(): AeroplaneE2EFixture {
+		const config: AeroplaneConfig = {
+			...CLASSIC_CONFIG,
+			mode: 'sky-tycoon',
+		};
+		const state = fixtureState('red', [plane('red', 0, 0)], config);
+		state.tycoon = initialTycoonState(4242);
+		return {
+			seed: 39114,
+			state,
+			diceRng: diceStateForRoll(1),
+			aiRng: { value: 33 },
+			skipAnimations: false,
+		};
+	}
+
+	test('a human double capture appends a labeled moment', () => {
+		const match = createHookHarness(stackCaptureFixture(2), {
+			aiDelayMs: 10_000,
+		});
+		match.roll();
+		expect(match.result.current.humanMoments).toEqual([
+			{ kind: 'capture', label: 'Double capture!' },
+		]);
+	});
+
+	test('a four-plane capture is labeled as a quadruple capture', () => {
+		const match = createHookHarness(stackCaptureFixture(4), {
+			aiDelayMs: 10_000,
+		});
+		match.roll();
+		expect(match.result.current.humanMoments).toEqual([
+			{ kind: 'capture', label: 'Quadruple capture!' },
+		]);
+	});
+
+	test('non-qualifying transitions record nothing, including single captures', () => {
+		const single = createHookHarness(stackCaptureFixture(1), {
+			aiDelayMs: 10_000,
+		});
+		single.roll();
+		expect(single.result.current.humanMoments).toEqual([]);
+
+		const noCapture = createHookHarness(oneLegalHumanMoveFixture());
+		noCapture.roll();
+		expect(noCapture.result.current.humanMoments).toEqual([]);
+	});
+
+	test('a positive Tycoon gain qualifies while a routine airport purchase does not', () => {
+		const gain = createHookHarness(humanCoinGainFixture(), {
+			aiDelayMs: 10_000,
+		});
+		gain.roll();
+		// Departure bonus (+3) plus the gain-4 Chance card: +7 coins total.
+		expect(gain.state().tycoon?.coins.red).toBe(17);
+		expect(gain.result.current.humanMoments).toEqual([
+			{ kind: 'coins', label: 'Big coin gain!' },
+		]);
+
+		const purchase = createHookHarness(airportPurchaseFixture(), {
+			aiDelayMs: 10_000,
+		});
+		purchase.roll();
+		// +3 departure then the automatic 5-coin airport purchase.
+		expect(purchase.state().tycoon?.coins.red).toBe(8);
+		expect(purchase.result.current.humanMoments).toEqual([]);
+	});
+
+	test('Skip animations suppresses the feed but never the moment list', () => {
+		const fixture = stackCaptureFixture(2);
+		fixture.skipAnimations = true;
+		const match = createHookHarness(fixture, { aiDelayMs: 10_000 });
+		match.roll();
+		expect(match.eventFeed()).toEqual([]);
+		expect(match.result.current.presentationQueue).toHaveLength(0);
+		expect(match.result.current.humanMoments).toEqual([
+			{ kind: 'capture', label: 'Double capture!' },
+		]);
+	});
+
+	test('moments clear on reset', () => {
+		const match = createHookHarness(stackCaptureFixture(2), {
+			aiDelayMs: 10_000,
+		});
+		match.roll();
+		expect(match.result.current.humanMoments).toHaveLength(1);
+		act(() => match.result.current.reset());
+		expect(match.result.current.humanMoments).toEqual([]);
+	});
+
+	test('moments clear on newMatch', () => {
+		const match = createHookHarness(stackCaptureFixture(2), {
+			aiDelayMs: 10_000,
+		});
+		match.roll();
+		expect(match.result.current.humanMoments).toHaveLength(1);
+		act(() => match.result.current.newMatch());
+		expect(match.result.current.humanMoments).toEqual([]);
+	});
+
+	test('moments clear on resume', () => {
+		const match = createHookHarness(stackCaptureFixture(2), {
+			aiDelayMs: 10_000,
+		});
+		match.roll();
+		expect(match.result.current.humanMoments).toHaveLength(1);
+		// Resume restores the just-saved post-roll snapshot, but the ephemeral
+		// moment list always starts empty.
+		let resumed = false;
+		act(() => {
+			resumed = match.result.current.resume();
+		});
+		expect(resumed).toBe(true);
+		expect(match.result.current.humanMoments).toEqual([]);
+	});
+
+	test('moments are never persisted into the match snapshot', () => {
+		const match = createHookHarness(stackCaptureFixture(2), {
+			aiDelayMs: 10_000,
+		});
+		match.roll();
+		expect(match.result.current.humanMoments).toHaveLength(1);
+		const saved = JSON.parse(
+			match.storage.getItem(ACTIVE_MATCH_STORAGE_KEY)!
+		) as Record<string, unknown>;
+		expect(saved.humanMoments).toBeUndefined();
+		expect(saved.state).toBeDefined();
 	});
 });

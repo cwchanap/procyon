@@ -1,11 +1,20 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react';
 import PageHeader from './PageHeader';
 import AeroplaneBoard, {
 	type AeroplaneBoardCue,
 } from './aeroplane/AeroplaneBoard';
 import AeroplaneEventFeed from './aeroplane/AeroplaneEventFeed';
+import AeroplaneRewards from './aeroplane/AeroplaneRewards';
 import AeroplaneSetup from './aeroplane/AeroplaneSetup';
 import AeroplaneStatus from './aeroplane/AeroplaneStatus';
+import { scoreMatch, type HumanMoment } from '../lib/aeroplane/rewards';
+import { useAeroplaneProgress } from '../hooks/useAeroplaneProgress';
 import {
 	playAeroplaneCue,
 	primeAeroplaneAudio,
@@ -13,9 +22,13 @@ import {
 	writeAeroplaneMuted,
 } from '../lib/aeroplane/sound';
 import {
+	buildAeroplaneHistoryPayload,
 	useAeroplaneMatch,
 	type UseAeroplaneMatchOptions,
 } from '../hooks/useAeroplaneMatch';
+
+/** How long the transient moment banner stays up before auto-hiding. */
+export const AEROPLANE_MOMENT_BANNER_MS = 2200;
 
 export interface AeroplaneGameProps {
 	/** Test-only controller injection; production uses the default hook. */
@@ -24,6 +37,26 @@ export interface AeroplaneGameProps {
 
 const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 	const match = useAeroplaneMatch(controllerOptions);
+	// Server-sourced lifetime progress feeds the terminal rewards panel only.
+	const progress = useAeroplaneProgress({
+		historySavedRevision: match.historySavedRevision,
+	});
+
+	// Transient banner for the latest notable human moment: each new moment
+	// restarts a short cancelable timer, reset/resume clears the moment list
+	// (emptying the banner), and unmount cancels the timer.
+	const [momentBanner, setMomentBanner] = useState<HumanMoment | null>(null);
+	const humanMoments = match.humanMoments;
+	useEffect(() => {
+		const latest = humanMoments[humanMoments.length - 1] ?? null;
+		setMomentBanner(latest);
+		if (!latest) return;
+		const timer = setTimeout(
+			() => setMomentBanner(null),
+			AEROPLANE_MOMENT_BANNER_MS
+		);
+		return () => clearTimeout(timer);
+	}, [humanMoments]);
 
 	// Single shared reduced-motion subscription (EventFeed listener pattern);
 	// the flag drives both the board playback and the status die tumble.
@@ -79,6 +112,18 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 		playAeroplaneCue('roll', muted);
 	}, [rollId, muted]);
 
+	// The preview uses the exact projection and scoring path as persisted
+	// history; an unfinished match suppresses the panel entirely.
+	const finishedMatch =
+		match.activeMatch.state.phase === 'finished' ? match.activeMatch : null;
+	const rewardsBreakdown = useMemo(
+		() =>
+			finishedMatch
+				? scoreMatch(buildAeroplaneHistoryPayload(finishedMatch))
+				: null,
+		[finishedMatch]
+	);
+
 	return (
 		<div className='space-y-8'>
 			<PageHeader
@@ -97,6 +142,39 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 					aria-label='Aeroplane match board'
 					className='min-w-0 space-y-4'
 				>
+					{rewardsBreakdown && finishedMatch && (
+						<AeroplaneRewards
+							matchKey={`${finishedMatch.startedAt}:${finishedMatch.rootSeed}`}
+							winner={finishedMatch.state.winner}
+							capturesMade={
+								finishedMatch.state.stats.capturesMade[
+									finishedMatch.config.humanColor
+								]
+							}
+							planesFinished={
+								finishedMatch.state.stats.finished[
+									finishedMatch.config.humanColor
+								]
+							}
+							breakdown={rewardsBreakdown}
+							moments={humanMoments}
+							reducedMotion={reducedMotion}
+							progress={{
+								status: progress.status,
+								lifetimeStars: progress.lifetimeStars,
+							}}
+							onRetryProgress={progress.retry}
+						/>
+					)}
+					{momentBanner && (
+						<p
+							role='status'
+							data-testid='aeroplane-moment-banner'
+							className='rounded-md border border-brass bg-ink-600 px-4 py-2 text-sm font-semibold text-brass'
+						>
+							{momentBanner.label}
+						</p>
+					)}
 					<AeroplaneBoard
 						state={match.state}
 						legalMoves={match.legalMoves}
