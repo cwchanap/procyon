@@ -14,6 +14,10 @@ import type {
 	SkyTycoonState,
 } from '../src/lib/aeroplane/types';
 import type { AeroplaneE2EFixture } from '../src/hooks/useAeroplaneMatch';
+import type {
+	ServerPlayHistory,
+	SubmitPlayHistoryInput,
+} from '../src/lib/play-history';
 
 const ACTIVE_MATCH_STORAGE_KEY = 'procyon:aeroplane:active-match:v2';
 const FIXTURE_CONSUMED_KEY = 'procyon:aeroplane:e2e-fixture-consumed';
@@ -211,6 +215,119 @@ async function clearStoredMatch(page: Page): Promise<void> {
 		// A new Playwright page starts at an opaque about:blank origin, where
 		// there is no same-origin storage to clear before first navigation.
 	}
+}
+
+interface HistoryMock {
+	/** Raw POST bodies, in arrival order. */
+	posts: string[];
+	/** GET attempts seen so far, including failed ones. */
+	gets: number;
+	/** Flip to false to make every GET fail (failure/retry coverage). */
+	healthy: boolean;
+}
+
+/**
+ * In-memory /api/play-history mock shared by the signed-in E2E tests: GETs
+ * serve the current rows, POSTs append the parsed payload as a row (the mock
+ * persists nothing server-side) so a later GET returns the just-submitted row.
+ * Baseline: a prior valid Aeroplane win worth 16 stars, plus a chess row and a
+ * corrupt Aeroplane row that scoreMatch must both skip.
+ */
+async function installHistoryMock(page: Page): Promise<HistoryMock> {
+	const rows: ServerPlayHistory[] = [
+		{
+			id: 9001,
+			gameId: 'aeroplane',
+			date: '2026-01-01T00:00:00.000Z',
+			status: 'win',
+			opponentUserId: null,
+			opponentLlmId: null,
+			opponentEngineId: 'aeroplane-trio-v1',
+			details: {
+				mode: 'standard',
+				humanColor: 'red',
+				capturesMade: 0,
+				planesFinished: 2,
+			},
+			ratingChange: null,
+			newRating: null,
+		},
+		{
+			id: 9002,
+			gameId: 'chess',
+			date: '2026-01-02T00:00:00.000Z',
+			status: 'win',
+			opponentUserId: null,
+			opponentLlmId: null,
+			opponentEngineId: 'stockfish',
+			details: null,
+			ratingChange: null,
+			newRating: null,
+		},
+		{
+			id: 9003,
+			gameId: 'aeroplane',
+			date: '2026-01-03T00:00:00.000Z',
+			status: 'win',
+			opponentUserId: null,
+			opponentLlmId: null,
+			opponentEngineId: 'aeroplane-trio-v1',
+			details: {
+				mode: 'standard',
+				humanColor: 'purple',
+				capturesMade: -1,
+				planesFinished: 99,
+			},
+			ratingChange: null,
+			newRating: null,
+		},
+	];
+	const state = { posts: [] as string[], gets: 0, healthy: true };
+	await page.route('**/api/play-history', async route => {
+		const request = route.request();
+		if (request.method() === 'GET') {
+			state.gets += 1;
+			if (!state.healthy) {
+				await route.fulfill({
+					status: 500,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'history unavailable' }),
+				});
+				return;
+			}
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ playHistory: rows }),
+			});
+			return;
+		}
+		if (request.method() !== 'POST') {
+			await route.continue();
+			return;
+		}
+		const body = request.postData() ?? '';
+		state.posts.push(body);
+		const payload = JSON.parse(body) as SubmitPlayHistoryInput;
+		rows.push({
+			id: 9001 + rows.length,
+			gameId: payload.gameId,
+			date: payload.date,
+			status: payload.status,
+			opponentUserId: null,
+			opponentLlmId: null,
+			opponentEngineId: payload.opponentEngineId ?? null,
+			details: payload.details ?? null,
+			ratingChange: null,
+			newRating: null,
+		});
+		await route.fulfill({
+			status: 201,
+			contentType: 'application/json',
+			body: JSON.stringify({ playHistory: { id: 'e2e-aeroplane' } }),
+		});
+	});
+	return state;
 }
 
 function expectedSeats(humanColor: AeroplaneColor) {
@@ -541,32 +658,162 @@ test.describe('Aeroplane Chess critical journey', () => {
 		await authHelper.register(testUser);
 		await authHelper.expectAuthenticated(testUser.username, testUser.email);
 
-		const posts: string[] = [];
-		await page.route('**/api/play-history', async route => {
-			if (route.request().method() !== 'POST') {
-				await route.continue();
-				return;
-			}
-			posts.push(route.request().postData() ?? '');
-			await route.fulfill({
-				status: 201,
-				contentType: 'application/json',
-				body: JSON.stringify({ playHistory: { id: 'e2e-aeroplane' } }),
-			});
-		});
+		const history = await installHistoryMock(page);
 
 		await gotoAeroplane(page, nearVictoryFixture(41700));
 		await expect(
 			page.getByRole('button', { name: /Red plane 2/i })
 		).toBeVisible();
+		// The seeded baseline GET loaded: the prior valid Aeroplane row scores
+		// 16 stars; the chess and corrupt rows contribute nothing. 16 < 20, so
+		// Contrail is still locked.
+		await expect(page.getByTestId('aeroplane-skin-progress')).toHaveText(
+			'Lifetime stars: 16'
+		);
+		await expect(
+			page.getByTestId('aeroplane-skin-option-contrail')
+		).toBeDisabled();
+
 		await page.getByRole('button', { name: /Red plane 2/i }).click();
 		await expect(status(page)).toContainText('Red wins the match.');
-		await expect.poll(() => posts.length).toBe(1);
-		expect(JSON.parse(posts[0] ?? '{}')).toMatchObject({
+		await expect.poll(() => history.posts.length).toBe(1);
+		expect(JSON.parse(history.posts[0] ?? '{}')).toMatchObject({
 			gameId: 'aeroplane',
 			opponentEngineId: 'aeroplane-trio-v1',
 			status: 'win',
+			details: {
+				mode: 'standard',
+				humanColor: 'red',
+				capturesMade: 0,
+				planesFinished: 2,
+			},
 		});
+
+		// Terminal star breakdown: win 10 + captures 0 + 2 planes × 3.
+		const rewards = page.getByTestId('aeroplane-rewards');
+		await expect(rewards.getByTestId('aeroplane-rewards-total')).toHaveText(
+			'16'
+		);
+		const breakdown = rewards.getByRole('list', { name: 'Star breakdown' });
+		const rows = breakdown.locator('li');
+		await expect(rows.filter({ hasText: 'Win' })).toContainText('+10');
+		await expect(rows.filter({ hasText: 'Captures (0)' })).toContainText('+0');
+		await expect(rows.filter({ hasText: 'Planes finished (2)' })).toContainText(
+			'+6'
+		);
+		await expect(breakdown).not.toContainText('Sky Tycoon surplus');
+		await expect(rewards.getByRole('status')).toHaveText(
+			'You earned 16 stars this match.'
+		);
+
+		// POST → revision → GET refresh: the just-submitted row is served back
+		// by the second GET and the lifetime total counts it exactly once
+		// (16 baseline + 16 submitted; a double count would show 48).
+		await expect(page.getByTestId('aeroplane-rewards-progress')).toContainText(
+			'Lifetime stars: 32'
+		);
+		await expect(page.getByTestId('aeroplane-skin-progress')).toHaveText(
+			'Lifetime stars: 32'
+		);
+		await expect.poll(() => history.gets).toBe(2);
+
+		// The refresh unlocks Contrail (20): select it by keyboard and every
+		// human plane glyph switches while AI planes stay classic.
+		const contrail = page.getByTestId('aeroplane-skin-option-contrail');
+		await expect(contrail).toBeEnabled();
+		await expect(
+			page.getByTestId('aeroplane-skin-option-racer')
+		).toBeDisabled();
+		await contrail.focus();
+		await page.keyboard.press('Enter');
+		await expect(contrail).toHaveAttribute('aria-pressed', 'true');
+		await expect(
+			page
+				.getByTestId('aeroplane-skin-picker')
+				.getByText('Selected skin: Contrail.')
+		).toHaveText('Selected skin: Contrail.');
+		await expect(
+			page.locator(
+				'[data-testid="aeroplane-plane-control-red-0"] [data-skin="contrail"]'
+			)
+		).toBeVisible();
+		await expect(
+			page.locator(
+				'[data-testid="aeroplane-plane-control-yellow-0"] [data-skin="classic"]'
+			)
+		).toBeVisible();
+
+		await authHelper.logout();
+	});
+
+	test('guest completion shows the per-match reward with no history save surface', async ({
+		page,
+	}) => {
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		// Keep any guest POST (dev-mode terminals do attempt one) from reaching
+		// the API; its 401 must not disturb the guest view.
+		await page.route('**/api/play-history', async route => {
+			if (route.request().method() === 'POST') {
+				await route.fulfill({
+					status: 401,
+					contentType: 'application/json',
+					body: JSON.stringify({ error: 'Authentication required' }),
+				});
+				return;
+			}
+			await route.continue();
+		});
+
+		await gotoAeroplane(page, nearVictoryFixture(41760));
+		await page.getByRole('button', { name: /Red plane 2/i }).click();
+		await expect(status(page)).toContainText('Red wins the match.');
+		// Reduced motion renders the exact final number without the count-up.
+		await expect(page.getByTestId('aeroplane-rewards-total')).toHaveText('16');
+		// Guests get the per-match reward only: no lifetime progress block and
+		// no skin picker.
+		await expect(page.getByTestId('aeroplane-rewards-progress')).toHaveCount(0);
+		await expect(page.getByTestId('aeroplane-skin-picker')).toHaveCount(0);
+	});
+
+	test('failed history GET offers Retry and recovery refreshes the total', async ({
+		page,
+	}) => {
+		const authHelper = new AuthHelper(page);
+		const testUser = AuthHelper.generateTestUser();
+		await authHelper.register(testUser);
+		await authHelper.expectAuthenticated(testUser.username, testUser.email);
+
+		const history = await installHistoryMock(page);
+		history.healthy = false;
+
+		await gotoAeroplane(page, nearVictoryFixture(41780));
+		await expect(page.getByTestId('aeroplane-skin-progress')).toHaveText(
+			'Progress unavailable.'
+		);
+		await expect(page.getByTestId('aeroplane-skin-retry')).toBeVisible();
+
+		await page.getByRole('button', { name: /Red plane 2/i }).click();
+		await expect(status(page)).toContainText('Red wins the match.');
+		await expect.poll(() => history.posts.length).toBe(1);
+		const rewards = page.getByTestId('aeroplane-rewards');
+		await expect(rewards.getByTestId('aeroplane-rewards-total')).toHaveText(
+			'16'
+		);
+		// The revision-driven refetch failed too; the panel still offers Retry.
+		await expect(rewards.getByRole('button', { name: 'Retry' })).toBeVisible();
+
+		history.healthy = true;
+		await rewards.getByRole('button', { name: 'Retry' }).click();
+		await expect(page.getByTestId('aeroplane-rewards-progress')).toContainText(
+			'Lifetime stars: 32'
+		);
+		await expect(page.getByTestId('aeroplane-skin-progress')).toHaveText(
+			'Lifetime stars: 32'
+		);
+		await expect(page.getByTestId('aeroplane-skin-retry')).toHaveCount(0);
+		// One initial GET, one revision-driven GET (failed), one manual retry.
+		await expect.poll(() => history.gets).toBe(3);
+
 		await authHelper.logout();
 	});
 
