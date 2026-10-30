@@ -156,6 +156,12 @@ export function scoreMatch(input: RewardMatchInput): StarBreakdown | null {
 export interface HumanMoment {
 	kind: 'capture' | 'coins';
 	label: string;
+	/** Captured plane count; set when `kind` is `'capture'`. */
+	captures?: number;
+	/** Positive coin delta; set when `kind` is `'coins'`. */
+	coinGain?: number;
+	/** Append-order identity stamped by the controller; breaks ranking ties. */
+	id?: number;
 }
 
 function captureLabel(count: number): string {
@@ -178,7 +184,7 @@ export function deriveHumanMoment(
 ): HumanMoment | null {
 	const captures = transition.capturedPlaneIds.length;
 	if (transition.move.color === humanColor && captures >= 2) {
-		return { kind: 'capture', label: captureLabel(captures) };
+		return { kind: 'capture', label: captureLabel(captures), captures };
 	}
 	const before = prevState.tycoon?.coins[humanColor];
 	const after = transition.state.tycoon?.coins[humanColor];
@@ -187,7 +193,11 @@ export function deriveHumanMoment(
 		after !== undefined &&
 		after - before >= TYCOON_AIRPORT_PRICE
 	) {
-		return { kind: 'coins', label: 'Big coin gain!' };
+		return {
+			kind: 'coins',
+			label: 'Big coin gain!',
+			coinGain: after - before,
+		};
 	}
 	return null;
 }

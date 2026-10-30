@@ -1555,7 +1555,7 @@ describe('useAeroplaneMatch humanMoments', () => {
 		});
 		match.roll();
 		expect(match.result.current.humanMoments).toEqual([
-			{ kind: 'capture', label: 'Double capture!' },
+			{ kind: 'capture', label: 'Double capture!', captures: 2, id: 1 },
 		]);
 	});
 
@@ -1565,7 +1565,7 @@ describe('useAeroplaneMatch humanMoments', () => {
 		});
 		match.roll();
 		expect(match.result.current.humanMoments).toEqual([
-			{ kind: 'capture', label: 'Quadruple capture!' },
+			{ kind: 'capture', label: 'Quadruple capture!', captures: 4, id: 1 },
 		]);
 	});
 
@@ -1589,7 +1589,7 @@ describe('useAeroplaneMatch humanMoments', () => {
 		// Departure bonus (+3) plus the gain-4 Chance card: +7 coins total.
 		expect(gain.state().tycoon?.coins.red).toBe(17);
 		expect(gain.result.current.humanMoments).toEqual([
-			{ kind: 'coins', label: 'Big coin gain!' },
+			{ kind: 'coins', label: 'Big coin gain!', coinGain: 7, id: 1 },
 		]);
 
 		const purchase = createHookHarness(airportPurchaseFixture(), {
@@ -1609,7 +1609,7 @@ describe('useAeroplaneMatch humanMoments', () => {
 		expect(match.eventFeed()).toEqual([]);
 		expect(match.result.current.presentationQueue).toHaveLength(0);
 		expect(match.result.current.humanMoments).toEqual([
-			{ kind: 'capture', label: 'Double capture!' },
+			{ kind: 'capture', label: 'Double capture!', captures: 2, id: 1 },
 		]);
 	});
 

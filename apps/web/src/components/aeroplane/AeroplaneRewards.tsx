@@ -40,38 +40,34 @@ export interface AeroplaneRewardsProps {
 	onRetryProgress: () => void;
 }
 
-const MULTI_CAPTURE_PATTERN = /Multi-capture \((\d+)\)/;
-
-// shortcut: capture counts are parsed from labels because HumanMoment carries
-// kind+label only; upgrade to structured fields if labels ever localize.
-function captureCount(moment: HumanMoment): number {
-	if (moment.label === 'Double capture!') return 2;
-	if (moment.label === 'Triple capture!') return 3;
-	if (moment.label === 'Quadruple capture!') return 4;
-	const match = MULTI_CAPTURE_PATTERN.exec(moment.label);
-	return match ? Number(match[1]) : 2;
-}
-
 /**
- * Best entry: highest multi-capture count (captures outrank coin gains),
- * latest wins ties. Coin gains carry no stored amount, so they tie and the
- * latest one surfaces.
+ * Best entry: any capture outranks any coin gain; captures rank by their
+ * structured count, coin gains by their amount, latest wins ties.
  */
 export function pickBestMoment(
 	moments: readonly HumanMoment[]
 ): HumanMoment | null {
 	let best: HumanMoment | null = null;
-	let bestRank: { captures: number; index: number } | null = null;
+	let bestRank: { captures: number; coinGain: number; index: number } | null =
+		null;
 	for (let index = 0; index < moments.length; index += 1) {
 		const moment = moments[index]!;
-		const captures = moment.kind === 'capture' ? captureCount(moment) : 0;
+		const rank = {
+			captures: moment.kind === 'capture' ? (moment.captures ?? 0) : 0,
+			coinGain: moment.coinGain ?? 0,
+			index,
+		};
 		if (
 			bestRank === null ||
-			captures > bestRank.captures ||
-			(captures === bestRank.captures && index > bestRank.index)
+			rank.captures > bestRank.captures ||
+			(rank.captures === bestRank.captures &&
+				rank.coinGain > bestRank.coinGain) ||
+			(rank.captures === bestRank.captures &&
+				rank.coinGain === bestRank.coinGain &&
+				rank.index > bestRank.index)
 		) {
 			best = moment;
-			bestRank = { captures, index };
+			bestRank = rank;
 		}
 	}
 	return best;
