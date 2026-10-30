@@ -14,6 +14,8 @@ export interface UseTerminalHistorySaveOptions {
 	/** Clear or mark any restorable terminal snapshot before first transport. */
 	onBeforeFirstAttempt?: () => void;
 	onFailure?: (reason: 'rejected' | 'network') => void;
+	/** Invoked once per successful POST response while mounted, even for a stale generation. */
+	onSaved?: () => void;
 	onSuccess?: () => void;
 }
 
@@ -40,6 +42,7 @@ export function useTerminalHistorySave({
 	debugKey,
 	onBeforeFirstAttempt,
 	onFailure,
+	onSaved,
 	onSuccess,
 }: UseTerminalHistorySaveOptions): void {
 	const savedRef = useRef(false);
@@ -109,6 +112,10 @@ export function useTerminalHistorySave({
 			const response = await submitPlayHistory(payload);
 			if (!activeRef.current) return;
 			if (response.ok) {
+				// Fires even for a stale generation: the POST committed, so a
+				// server-sourced total must refresh. Only the snapshot-owning
+				// generation gets onSuccess.
+				onSaved?.();
 				if (generation === generationRef.current) onSuccess?.();
 				return;
 			}
@@ -170,6 +177,7 @@ export function useTerminalHistorySave({
 		debugKey,
 		onBeforeFirstAttempt,
 		onFailure,
+		onSaved,
 		onSuccess,
 		clearRetryTimer,
 	]);

@@ -23,6 +23,7 @@ interface HookProps {
 	userId: string | null | undefined;
 	buildPayload: () => SubmitPlayHistoryInput | null;
 	debugKey?: string;
+	onSaved?: () => void;
 	onSuccess?: () => void;
 	onFailure?: (reason: 'rejected' | 'network') => void;
 }
@@ -159,6 +160,132 @@ describe('useTerminalHistorySave', () => {
 
 		expect(successCount).toBe(0);
 		unmount();
+	});
+
+	test('calls onSaved but not onSuccess when a successful POST resolves after reset', async () => {
+		let resolveFirst: (response: Response) => void = () => {};
+		let savedCount = 0;
+		let successCount = 0;
+		globalThis.fetch = mock((input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (!url.includes('/play-history'))
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+				}) as unknown as Promise<Response>;
+			return new Promise<Response>(resolve => {
+				resolveFirst = resolve;
+			});
+		}) as unknown as typeof fetch;
+
+		const { rerender, unmount } = renderHook(
+			props => useTerminalHistorySave(props),
+			{
+				initialProps: makeProps({
+					isTerminal: true,
+					onSaved: () => {
+						savedCount++;
+					},
+					onSuccess: () => {
+						successCount++;
+					},
+				}),
+			}
+		);
+
+		await act(async () => {
+			await waitForEffects();
+		});
+		// A reset starts a new generation while the POST is still in flight.
+		rerender(makeProps({ isTerminal: false }));
+		await act(async () => {
+			resolveFirst({ ok: true, status: 200 } as Response);
+			await waitForEffects();
+		});
+
+		expect(savedCount).toBe(1);
+		expect(successCount).toBe(0);
+		unmount();
+	});
+
+	test('failed POST calls neither onSaved nor onSuccess', async () => {
+		let savedCount = 0;
+		let successCount = 0;
+		globalThis.fetch = mock((input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				fetchCallCount++;
+				return Promise.resolve({
+					ok: false,
+					status: 500,
+					statusText: 'Error',
+				}) as unknown as Promise<Response>;
+			}
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+			}) as unknown as Promise<Response>;
+		}) as unknown as typeof fetch;
+
+		const { unmount } = renderHook(props => useTerminalHistorySave(props), {
+			initialProps: makeProps({
+				isTerminal: true,
+				onSaved: () => {
+					savedCount++;
+				},
+				onSuccess: () => {
+					successCount++;
+				},
+			}),
+		});
+		await act(async () => {
+			await waitForEffects(50);
+		});
+		unmount();
+
+		expect(fetchCallCount).toBe(1);
+		expect(savedCount).toBe(0);
+		expect(successCount).toBe(0);
+	});
+
+	test('no late onSaved or onSuccess after unmount', async () => {
+		let resolveFirst: (response: Response) => void = () => {};
+		let savedCount = 0;
+		let successCount = 0;
+		globalThis.fetch = mock((input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (!url.includes('/play-history'))
+				return Promise.resolve({
+					ok: true,
+					status: 200,
+				}) as unknown as Promise<Response>;
+			return new Promise<Response>(resolve => {
+				resolveFirst = resolve;
+			});
+		}) as unknown as typeof fetch;
+
+		const { unmount } = renderHook(props => useTerminalHistorySave(props), {
+			initialProps: makeProps({
+				isTerminal: true,
+				onSaved: () => {
+					savedCount++;
+				},
+				onSuccess: () => {
+					successCount++;
+				},
+			}),
+		});
+		await act(async () => {
+			await waitForEffects();
+		});
+		unmount();
+		await act(async () => {
+			resolveFirst({ ok: true, status: 200 } as Response);
+			await waitForEffects();
+		});
+
+		expect(savedCount).toBe(0);
+		expect(successCount).toBe(0);
 	});
 
 	test('provider changes after terminal do not change frozen payload', async () => {
