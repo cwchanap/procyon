@@ -167,6 +167,8 @@ export interface UseAeroplaneMatchResult {
 	rollPresentation: AeroplaneRollPresentation | null;
 	isAnimating: boolean;
 	isHumanTurn: boolean;
+	/** Incremented once per successful terminal history POST (via onSaved). */
+	historySavedRevision: number;
 	roll(): void;
 	select(planeId: string): void;
 	selectMove(move: ResolvedMove): void;
@@ -486,7 +488,7 @@ function elapsedSeconds(
 	return Math.max(0, Math.floor((completedMs - startedMs) / 1000));
 }
 
-function buildAeroplaneHistoryPayload(
+export function buildAeroplaneHistoryPayload(
 	match: ActiveAeroplaneMatch,
 	now: () => string = () => new Date().toISOString()
 ): SubmitPlayHistoryInput {
@@ -597,6 +599,10 @@ export function useAeroplaneMatch(
 	const [eventFeed, setEventFeed] = useState<AeroplaneFeedEntry[]>([]);
 	const [rollPresentation, setRollPresentation] =
 		useState<AeroplaneRollPresentation | null>(null);
+	// Bumped by every successful terminal POST (via onSaved, not the guarded
+	// onSuccess) so server-sourced progress can refresh, including for a save
+	// that resolves after the terminal match was reset.
+	const [historySavedRevision, setHistorySavedRevision] = useState<number>(0);
 	const activeRef = useRef(activeMatch);
 	activeRef.current = activeMatch;
 	const setupRef = useRef(setup);
@@ -1023,6 +1029,9 @@ export function useAeroplaneMatch(
 				return;
 			clearActiveMatch(storageRef.current);
 		},
+		onSaved: () => {
+			setHistorySavedRevision(value => value + 1);
+		},
 		onSuccess: () => {
 			// A response can resolve after a replacement match has already been
 			// persisted but before the shared hook's generation effect runs. Only
@@ -1056,6 +1065,7 @@ export function useAeroplaneMatch(
 		rollPresentation,
 		isAnimating: presentationQueue.length > 0,
 		isHumanTurn: humanTurn,
+		historySavedRevision,
 		roll,
 		select,
 		selectMove,

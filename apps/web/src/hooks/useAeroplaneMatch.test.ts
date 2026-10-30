@@ -1028,6 +1028,66 @@ describe('useAeroplaneMatch terminal history integration', () => {
 		match.unmount();
 	});
 
+	test('successful terminal save bumps historySavedRevision exactly once per POST', async () => {
+		const match = renderTerminalMatch(true);
+		expect(match.result.current.historySavedRevision).toBe(0);
+		await flushHistorySave();
+
+		expect(match.result.current.historySavedRevision).toBe(1);
+		match.rerender();
+		await flushHistorySave();
+
+		// Duplicate terminal renders neither resubmit nor re-bump the revision.
+		expect(match.result.current.historySavedRevision).toBe(1);
+		expect(capturedBodies).toHaveLength(1);
+		match.unmount();
+	});
+
+	test('failed terminal POST does not bump historySavedRevision', async () => {
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				return new Response('{}', { status: 500 });
+			}
+			return new Response('{}', { status: 200 });
+		}) as typeof fetch;
+
+		const match = renderTerminalMatch(true);
+		await flushHistorySave();
+
+		// No optimistic unlock: an uncommitted POST must never refresh progress.
+		expect(match.result.current.historySavedRevision).toBe(0);
+		match.unmount();
+	});
+
+	test('late successful POST after reset still bumps historySavedRevision', async () => {
+		let resolveFirst: (response: Response) => void = () => {};
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				return new Promise<Response>(resolve => {
+					resolveFirst = resolve;
+				});
+			}
+			return new Response('{}', { status: 200 });
+		}) as typeof fetch;
+
+		const match = renderTerminalMatch(true);
+		await flushHistorySave();
+		// Reset starts a new generation while the POST is still in flight.
+		act(() => {
+			match.result.current.newMatch();
+		});
+		await act(async () => {
+			resolveFirst(new Response('{}', { status: 201 }));
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		expect(match.result.current.historySavedRevision).toBe(1);
+		match.unmount();
+	});
+
 	test('successful terminal save prevents a restored remount from submitting again', async () => {
 		const storage = memoryStorage();
 		const first = renderTerminalMatch(true, storage);
