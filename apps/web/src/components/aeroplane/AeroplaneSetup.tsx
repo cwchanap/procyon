@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '../ui/Button';
 import Panel from '../ui/Panel';
+import { PlaneGlyph } from './AeroplaneBoard';
 import {
 	TYCOON_AIRPORT_PAIR_TOLL,
 	TYCOON_AIRPORT_PRICE,
@@ -8,6 +9,8 @@ import {
 	TYCOON_DEPARTURE_BONUS,
 	TYCOON_STARTING_COINS,
 } from '../../lib/aeroplane/tycoon';
+import { SKIN_CATALOG, type SkinId } from '../../lib/aeroplane/rewards';
+import type { UseAeroplaneProgressResult } from '../../hooks/useAeroplaneProgress';
 import type {
 	AeroplaneColor,
 	AeroplaneConfig,
@@ -21,6 +24,11 @@ export interface AeroplaneSetupProps {
 	onChange: (patch: Partial<AeroplaneConfig>) => void;
 	onStart?: () => void;
 	onNewMatch?: () => void;
+	/**
+	 * Signed-in progression powering the skin picker. Absent (or
+	 * `waiting-auth`) keeps guests on the default classic skin.
+	 */
+	progress?: UseAeroplaneProgressResult;
 	className?: string;
 }
 
@@ -31,6 +39,14 @@ const colorLabel: Record<AeroplaneColor, string> = {
 	yellow: 'Yellow',
 	blue: 'Blue',
 	green: 'Green',
+};
+
+const skinLabel: Record<SkinId, string> = {
+	classic: 'Classic',
+	contrail: 'Contrail',
+	racer: 'Racer',
+	starlight: 'Starlight',
+	ace: 'Ace',
 };
 
 function labelize(value: string): string {
@@ -45,6 +61,7 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 	onChange,
 	onStart,
 	onNewMatch,
+	progress,
 	className,
 }) => {
 	const start = onStart ?? onNewMatch;
@@ -221,6 +238,82 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 					<option value='bounce'>Bounce finish</option>
 				</select>
 			</label>
+
+			{progress && progress.status !== 'waiting-auth' && (
+				<fieldset className='space-y-2' data-testid='aeroplane-skin-picker'>
+					<legend className='text-sm font-semibold text-ivory'>
+						Plane skin
+					</legend>
+					<p
+						data-testid='aeroplane-skin-progress'
+						className='text-xs leading-relaxed text-ivory-dim'
+					>
+						{progress.status === 'loaded'
+							? `Lifetime stars: ${progress.lifetimeStars}`
+							: progress.status === 'loading'
+								? 'Loading your progression…'
+								: 'Progress unavailable.'}
+					</p>
+					{progress.status === 'failed' && (
+						<Button
+							type='button'
+							variant='outline'
+							size='sm'
+							data-testid='aeroplane-skin-retry'
+							onClick={progress.retry}
+						>
+							Retry
+						</Button>
+					)}
+					<p aria-live='polite' className='sr-only'>
+						Selected skin: {skinLabel[progress.selectedSkin]}.
+					</p>
+					<div className='grid grid-cols-2 gap-2 sm:grid-cols-3'>
+						{SKIN_CATALOG.map(entry => {
+							const unlocked = progress.unlockedSkins.includes(entry.id);
+							const selected = progress.selectedSkin === entry.id;
+							return (
+								<button
+									key={entry.id}
+									type='button'
+									data-testid={`aeroplane-skin-option-${entry.id}`}
+									aria-pressed={selected}
+									disabled={!unlocked}
+									onClick={() => progress.setSelectedSkin(entry.id)}
+									className={`flex min-h-11 flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900 disabled:cursor-not-allowed disabled:opacity-50 ${
+										selected
+											? 'border-brass bg-brass text-ink-900'
+											: 'border-line bg-ink-700 text-ivory-dim enabled:hover:bg-ink-600 enabled:hover:text-ivory'
+									}`}
+								>
+									<svg
+										viewBox='0 0 12 12'
+										aria-hidden='true'
+										focusable='false'
+										className='h-7 w-7'
+									>
+										<PlaneGlyph
+											x={6}
+											y={5}
+											color={setup.humanColor}
+											number={1}
+											skinId={entry.id}
+										/>
+									</svg>
+									<span>{skinLabel[entry.id]}</span>
+									<span className='text-xs font-normal'>
+										{!unlocked
+											? `Locked · ${entry.stars} stars`
+											: selected
+												? 'Selected'
+												: 'Unlocked'}
+									</span>
+								</button>
+							);
+						})}
+					</div>
+				</fieldset>
+			)}
 
 			<fieldset className='space-y-2'>
 				<legend className='text-sm font-semibold text-ivory'>

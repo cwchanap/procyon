@@ -23,6 +23,7 @@ import {
 	type AeroplaneMoveTimeline,
 } from '../../lib/aeroplane/presentation';
 import { TYCOON_TILES, type TycoonTileKind } from '../../lib/aeroplane/tycoon';
+import type { SkinId } from '../../lib/aeroplane/rewards';
 import { Button } from '../ui/Button';
 import type {
 	AeroplaneColor,
@@ -48,6 +49,8 @@ export interface AeroplaneBoardProps {
 	reducedMotion?: boolean;
 	/** Fired as the playback clock crosses each timeline segment boundary. */
 	onCue?: (cue: AeroplaneBoardCue) => void;
+	/** Render-only selected skin; applied only to human-colour planes. */
+	skinId?: SkinId;
 	onRoll: () => void;
 	onSelectMove?: (move: ResolvedMove) => void;
 	onSelect?: (planeId: string) => void;
@@ -78,6 +81,15 @@ const colorLabel: Record<AeroplaneColor, string> = {
 
 /** Render-only asset slot for HPA-437; absent URLs keep the SVG silhouettes. */
 const PLANE_SPRITE_HREFS: Partial<Record<AeroplaneColor, string>> = {};
+
+/** Skin marking accents layered over the unchanged team-colour fill. */
+const SKIN_MARKING: Record<SkinId, string> = {
+	classic: '#17263A',
+	contrail: '#0E7490',
+	racer: '#7F1D1D',
+	starlight: '#5B21B6',
+	ace: '#064E3B',
+};
 
 /** Render-only asset slot for HPA-437; absent URL keeps the painted board. */
 const BOARD_BACKGROUND_HREF: string | undefined = undefined;
@@ -138,22 +150,28 @@ function isCoarsePointer(event: React.SyntheticEvent): boolean {
 	return pointerType === 'touch' || pointerType === 'pen';
 }
 
-/** Render-only plane glyph shared by the committed layer and motion overlays. */
-function PlaneGlyph({
+/**
+ * Render-only plane glyph shared by the committed layer, motion overlays and
+ * the setup picker previews. `skinId` accents the marking only; the team
+ * fill and outline stay owning-colour.
+ */
+export function PlaneGlyph({
 	x,
 	y,
 	color,
 	number,
 	spriteHref,
+	skinId,
 }: {
 	x: number;
 	y: number;
 	color: AeroplaneColor;
 	number: number;
 	spriteHref?: string;
+	skinId?: SkinId;
 }) {
 	return (
-		<>
+		<g data-skin={skinId ?? 'classic'}>
 			{spriteHref ? (
 				<image href={spriteHref} x={x - 3} y={y - 3} width={6} height={6} />
 			) : (
@@ -168,7 +186,7 @@ function PlaneGlyph({
 					/>
 					<path
 						d={`M ${x - 1.2} ${y + 0.8} L ${x} ${y - 1.8} L ${x + 1.2} ${y + 0.8} L ${x} ${y + 0.2} Z`}
-						fill='#17263A'
+						fill={SKIN_MARKING[skinId ?? 'classic']}
 						fillOpacity='0.72'
 					/>
 				</>
@@ -183,7 +201,7 @@ function PlaneGlyph({
 			>
 				{number}
 			</text>
-		</>
+		</g>
 	);
 }
 
@@ -429,10 +447,14 @@ const CommittedPlanes = React.memo(function CommittedPlanes({
 	planes,
 	hiddenIds,
 	previewedPlaneId,
+	skinId,
+	humanColor,
 }: {
 	planes: readonly PlaneState[];
 	hiddenIds: ReadonlySet<string>;
 	previewedPlaneId: string | null;
+	skinId?: SkinId;
+	humanColor: AeroplaneColor;
 }) {
 	return (
 		<>
@@ -465,6 +487,7 @@ const CommittedPlanes = React.memo(function CommittedPlanes({
 							color={plane.color}
 							number={planeNumber(plane.id)}
 							spriteHref={PLANE_SPRITE_HREFS[plane.color]}
+							skinId={plane.color === humanColor ? skinId : undefined}
 						/>
 					</g>
 				);
@@ -606,6 +629,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	presentationQueue = [],
 	reducedMotion = false,
 	onCue,
+	skinId,
 	onRoll,
 	onSelectMove,
 	onSelect,
@@ -833,6 +857,8 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 						planes={state.planes}
 						hiddenIds={hiddenIds}
 						previewedPlaneId={previewedPlaneId}
+						skinId={skinId}
+						humanColor={state.config.humanColor}
 					/>
 					<circle cx='50' cy='50' r='8' fill='#C8A24B' fillOpacity='0.14' />
 					<text
@@ -858,6 +884,11 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 									color={playback.timeline.color}
 									number={planeNumber(playback.timeline.planeId)}
 									spriteHref={PLANE_SPRITE_HREFS[playback.timeline.color]}
+									skinId={
+										playback.timeline.color === state.config.humanColor
+											? skinId
+											: undefined
+									}
 								/>
 							</g>
 							{ghostPlane && playback.frame.ghost && (
@@ -868,6 +899,11 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 										color={ghostPlane.color}
 										number={planeNumber(ghostPlane.id)}
 										spriteHref={PLANE_SPRITE_HREFS[ghostPlane.color]}
+										skinId={
+											ghostPlane.color === state.config.humanColor
+												? skinId
+												: undefined
+										}
 									/>
 								</g>
 							)}
@@ -887,6 +923,11 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 											color={victim.color}
 											number={planeNumber(victim.id)}
 											spriteHref={PLANE_SPRITE_HREFS[victim.color]}
+											skinId={
+												victim.color === state.config.humanColor
+													? skinId
+													: undefined
+											}
 										/>
 									</g>
 								);

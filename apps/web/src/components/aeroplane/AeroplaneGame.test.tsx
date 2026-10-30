@@ -22,7 +22,7 @@ import { applyResolvedMove, resolveLegalMove } from '../../lib/aeroplane/rules';
 import { toPosition } from '../../lib/aeroplane/topology';
 import { TYCOON_TILES, initialTycoonState } from '../../lib/aeroplane/tycoon';
 import { TYCOON_CHANCE_CARDS } from '../../lib/aeroplane/types';
-import { scoreMatch } from '../../lib/aeroplane/rewards';
+import { scoreMatch, type SkinId } from '../../lib/aeroplane/rewards';
 import { positionAnchor } from '../../lib/aeroplane/presentation';
 import { rollFair } from '../../lib/aeroplane/dice';
 import {
@@ -45,6 +45,7 @@ import type {
 	AeroplaneE2EFixture,
 	UseAeroplaneMatchOptions,
 } from '../../hooks/useAeroplaneMatch';
+import type { UseAeroplaneProgressResult } from '../../hooks/useAeroplaneProgress';
 import { buildAeroplaneHistoryPayload } from '../../hooks/useAeroplaneMatch';
 import type { AuthUser } from '../../lib/auth-helpers';
 import {
@@ -1232,6 +1233,295 @@ function cueNames(onCue: ReturnType<typeof mock>): AeroplaneBoardCue[] {
 	return onCue.mock.calls.map(([cue]) => cue);
 }
 
+function skinProgress(
+	patch: Partial<UseAeroplaneProgressResult> = {}
+): UseAeroplaneProgressResult {
+	return {
+		status: 'loaded',
+		lifetimeStars: 30,
+		unlockedSkins: ['classic', 'contrail'],
+		selectedSkin: 'classic',
+		setSelectedSkin: mock((_skin: SkinId) => {}),
+		retry: mock(() => {}),
+		...patch,
+	};
+}
+
+function renderSetup(progress?: UseAeroplaneProgressResult) {
+	return render(
+		<AeroplaneSetup
+			setup={CLASSIC_CONFIG}
+			onChange={mock(() => {})}
+			onStart={mock(() => {})}
+			{...(progress ? { progress } : {})}
+		/>
+	);
+}
+
+/** The `data-skin` identity carried by a committed plane control's glyph. */
+function skinOf(control: Element): string | null {
+	return (
+		control.querySelector('[data-skin]')?.getAttribute('data-skin') ?? null
+	);
+}
+
+describe('Aeroplane skin picker', () => {
+	test('guests keep the default classic skin and never see the picker', () => {
+		const guest = renderSetup(skinProgress({ status: 'waiting-auth' }));
+		expect(guest.queryByTestId('aeroplane-skin-picker')).toBeNull();
+		const absent = renderSetup();
+		expect(absent.queryByTestId('aeroplane-skin-picker')).toBeNull();
+	});
+
+	test('locked skins are disabled with their required stars shown', () => {
+		const { getByTestId } = renderSetup(skinProgress());
+		const racer = getByTestId('aeroplane-skin-option-racer');
+		expect(racer.getAttribute('disabled')).not.toBeNull();
+		expect(racer.textContent).toContain('Locked · 60 stars');
+		const starlight = getByTestId('aeroplane-skin-option-starlight');
+		expect(starlight.getAttribute('disabled')).not.toBeNull();
+		expect(starlight.textContent).toContain('Locked · 140 stars');
+		const ace = getByTestId('aeroplane-skin-option-ace');
+		expect(ace.getAttribute('disabled')).not.toBeNull();
+		expect(ace.textContent).toContain('Locked · 300 stars');
+		// Threshold-met options stay enabled.
+		expect(
+			getByTestId('aeroplane-skin-option-classic').getAttribute('disabled')
+		).toBeNull();
+		expect(
+			getByTestId('aeroplane-skin-option-contrail').getAttribute('disabled')
+		).toBeNull();
+	});
+
+	test('each option previews its own glyph via the shared PlaneGlyph', () => {
+		const { getByTestId } = renderSetup(skinProgress());
+		for (const id of [
+			'classic',
+			'contrail',
+			'racer',
+			'starlight',
+			'ace',
+		] as const) {
+			expect(
+				getByTestId(`aeroplane-skin-option-${id}`).querySelector(
+					`[data-skin='${id}']`
+				)
+			).not.toBeNull();
+		}
+	});
+
+	test('a threshold-unlocked skin is selectable without touching match setup', () => {
+		const setSelectedSkin = mock((_skin: SkinId) => {});
+		const onChange = mock((_patch: Partial<typeof CLASSIC_CONFIG>) => {});
+		const { getByTestId } = render(
+			<AeroplaneSetup
+				setup={CLASSIC_CONFIG}
+				onChange={onChange}
+				onStart={mock(() => {})}
+				progress={skinProgress({
+					lifetimeStars: 60,
+					unlockedSkins: ['classic', 'contrail', 'racer'],
+					setSelectedSkin,
+				})}
+			/>
+		);
+		const racer = getByTestId('aeroplane-skin-option-racer');
+		expect(racer.getAttribute('disabled')).toBeNull();
+		fireEvent.click(racer);
+		expect(setSelectedSkin.mock.calls[0]![0]).toBe('racer');
+		// Selection is render-only: no setup patch, no preset churn.
+		expect(onChange.mock.calls).toEqual([]);
+	});
+
+	test('a restored selection renders pressed with assistive state text', () => {
+		const { getByTestId, getByText } = renderSetup(
+			skinProgress({ selectedSkin: 'contrail' })
+		);
+		const contrail = getByTestId('aeroplane-skin-option-contrail');
+		expect(contrail.getAttribute('aria-pressed')).toBe('true');
+		expect(contrail.textContent).toContain('Selected');
+		expect(
+			getByTestId('aeroplane-skin-option-classic').getAttribute('aria-pressed')
+		).toBe('false');
+		expect(getByText('Selected skin: Contrail.')).toBeTruthy();
+	});
+
+	test('failed progression offers Retry; loading shows placeholders without one', () => {
+		const retry = mock(() => {});
+		const failed = renderSetup(
+			skinProgress({
+				status: 'failed',
+				lifetimeStars: 0,
+				unlockedSkins: ['classic'],
+				retry,
+			})
+		);
+		fireEvent.click(failed.getByTestId('aeroplane-skin-retry'));
+		expect(retry.mock.calls).toHaveLength(1);
+		// Until the GET succeeds, every non-classic option stays locked.
+		expect(
+			failed.getByTestId('aeroplane-skin-option-racer').getAttribute('disabled')
+		).not.toBeNull();
+		failed.unmount();
+
+		const loading = renderSetup(
+			skinProgress({
+				status: 'loading',
+				lifetimeStars: 0,
+				unlockedSkins: ['classic'],
+			})
+		);
+		expect(loading.queryByTestId('aeroplane-skin-retry')).toBeNull();
+		expect(
+			loading.getByTestId('aeroplane-skin-progress').textContent
+		).toContain('Loading your progression');
+	});
+});
+
+describe('Aeroplane board skins', () => {
+	test('only human-colour planes wear the selected skin', () => {
+		const state = fixtureState({
+			planes: COLORS.flatMap(color =>
+				Array.from({ length: 4 }, (_, index) => ({
+					id: `${color}-${index}`,
+					color,
+					progress: 14,
+				}))
+			),
+		});
+		// Without the prop every glyph stays classic. Unmount first: these
+		// queries share one document.
+		const first = render(
+			<AeroplaneBoard
+				state={state}
+				legalMoves={[]}
+				skinId='racer'
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(skinOf(first.getByTestId('aeroplane-plane-control-red-0'))).toBe(
+			'racer'
+		);
+		expect(skinOf(first.getByTestId('aeroplane-plane-control-yellow-0'))).toBe(
+			'classic'
+		);
+		expect(skinOf(first.getByTestId('aeroplane-plane-control-blue-0'))).toBe(
+			'classic'
+		);
+		expect(skinOf(first.getByTestId('aeroplane-plane-control-green-0'))).toBe(
+			'classic'
+		);
+		first.unmount();
+		const plain = render(
+			<AeroplaneBoard state={state} legalMoves={[]} onRoll={mock(() => {})} />
+		);
+		expect(skinOf(plain.getByTestId('aeroplane-plane-control-red-0'))).toBe(
+			'classic'
+		);
+	});
+
+	test('mover, ghost and parked victims follow each plane’s colour during playback', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState({ 'red-0': 26, 'yellow-1': 14 }),
+				'red-0',
+				1
+			);
+			const { queryByTestId, getByTestId } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					skinId='racer'
+					presentationQueue={[{ id: 1, move }]}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(1));
+			// The human mover wears the skin mid-flight; the rival victim parked
+			// at the capture anchor stays classic.
+			expect(
+				queryByTestId('aeroplane-motion-overlay')!.querySelector(
+					'[data-skin="racer"]'
+				)
+			).not.toBeNull();
+			expect(
+				queryByTestId('aeroplane-capture-parked')!.querySelector(
+					'[data-skin="classic"]'
+				)
+			).not.toBeNull();
+			act(() => clock.advance(80));
+			// The returning ghost keeps the victim's own (non-human) skin.
+			expect(
+				queryByTestId('aeroplane-capture-ghost')!.querySelector(
+					'[data-skin="classic"]'
+				)
+			).not.toBeNull();
+			act(() => clock.advance(160));
+			// Playback settles into the identical committed representations.
+			expect(skinOf(getByTestId('aeroplane-plane-control-red-0'))).toBe(
+				'racer'
+			);
+			expect(skinOf(getByTestId('aeroplane-plane-control-yellow-1'))).toBe(
+				'classic'
+			);
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('a captured human plane wears the skin through the parked and ghost paths', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState(
+					{ 'red-0': 26, 'yellow-1': 14 },
+					{ config: { ...CLASSIC_CONFIG, humanColor: 'yellow' } }
+				),
+				'red-0',
+				1
+			);
+			const { queryByTestId, getByTestId } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					skinId='racer'
+					presentationQueue={[{ id: 1, move }]}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(1));
+			// Red is not the human colour here: the mover stays classic while
+			// the human victim carries the skin from the capture anchor.
+			expect(
+				queryByTestId('aeroplane-motion-overlay')!.querySelector(
+					'[data-skin="classic"]'
+				)
+			).not.toBeNull();
+			expect(
+				queryByTestId('aeroplane-capture-parked')!.querySelector(
+					'[data-skin="racer"]'
+				)
+			).not.toBeNull();
+			act(() => clock.advance(80));
+			expect(
+				queryByTestId('aeroplane-capture-ghost')!.querySelector(
+					'[data-skin="racer"]'
+				)
+			).not.toBeNull();
+			act(() => clock.advance(160));
+			expect(skinOf(getByTestId('aeroplane-plane-control-yellow-1'))).toBe(
+				'racer'
+			);
+			expect(skinOf(getByTestId('aeroplane-plane-control-red-0'))).toBe(
+				'classic'
+			);
+		} finally {
+			clock.uninstall();
+		}
+	});
+});
+
 describe('Aeroplane board motion playback', () => {
 	test('animates hops in order and emits a cue at each segment boundary', () => {
 		const clock = installFrameClock();
@@ -1922,6 +2212,87 @@ describe('Aeroplane game composition', () => {
 	test('renders exactly one status die readout', () => {
 		const { getAllByTestId } = renderGame(gameFixture(3));
 		expect(getAllByTestId('aeroplane-status-die')).toHaveLength(1);
+	});
+
+	test('the selected skin threads from the progress hook to the board glyphs', async () => {
+		const originalFetch = globalThis.fetch;
+		const skinKey = 'procyon_aeroplane_skin_user-a';
+		// The hook reads bare `localStorage`, which is undefined in this
+		// environment; mirror the fakeRival.ts bridge to window.localStorage.
+		const globalScope = globalThis as Record<string, unknown>;
+		const hadGlobalStorage = 'localStorage' in globalScope;
+		const originalGlobalStorage = globalScope.localStorage;
+		globalScope.localStorage = window.localStorage;
+		window.localStorage.setItem(skinKey, 'contrail');
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				// One qualifying win: 10 + 2×6 captures + 3×1 finished = 25 stars.
+				return new Response(
+					JSON.stringify({
+						playHistory: [
+							{
+								id: 1,
+								gameId: 'aeroplane',
+								date: '2026-08-09T00:00:00.000Z',
+								status: 'win',
+								opponentUserId: null,
+								opponentLlmId: null,
+								opponentEngineId: 'aeroplane-trio-v1',
+								ratingChange: null,
+								newRating: null,
+								details: {
+									mode: 'standard',
+									rulePreset: 'classic',
+									victoryTarget: 2,
+									diceMode: 'fair',
+									launchRule: 'six',
+									finishRule: 'exact',
+									stacking: false,
+									blockades: false,
+									chatter: false,
+									humanColor: 'red',
+									durationSeconds: 120,
+									planesFinished: 1,
+									capturesMade: 6,
+									capturesSuffered: 0,
+									aiPlayers: [],
+								},
+							},
+						],
+					}),
+					{ status: 200, headers: { 'Content-Type': 'application/json' } }
+				);
+			}
+			return new Response('{}', { status: 200 });
+		}) as unknown as typeof fetch;
+		try {
+			const view = renderGame(gameFixture(3));
+			// The loaded progression restores the stored skin onto the human
+			// planes only.
+			await waitFor(() => {
+				expect(skinOf(view.getByTestId('aeroplane-plane-control-red-0'))).toBe(
+					'contrail'
+				);
+			});
+			expect(skinOf(view.getByTestId('aeroplane-plane-control-yellow-0'))).toBe(
+				'classic'
+			);
+			// The picker reflects the restored selection and the earned stars.
+			expect(
+				view
+					.getByTestId('aeroplane-skin-option-contrail')
+					.getAttribute('aria-pressed')
+			).toBe('true');
+			expect(view.getByTestId('aeroplane-skin-progress').textContent).toContain(
+				'25'
+			);
+		} finally {
+			globalThis.fetch = originalFetch;
+			window.localStorage.removeItem(skinKey);
+			if (hadGlobalStorage) globalScope.localStorage = originalGlobalStorage;
+			else delete globalScope.localStorage;
+		}
 	});
 
 	test('plays one roll cue per roll id plus board cues, never duplicated on rerender', () => {
