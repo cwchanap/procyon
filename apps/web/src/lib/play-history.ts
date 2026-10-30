@@ -52,3 +52,42 @@ export async function submitPlayHistory(
 		body: JSON.stringify(input),
 	});
 }
+
+/** A stored play-history row as returned by the API. */
+export interface ServerPlayHistory {
+	id: number;
+	gameId: GameId;
+	date: string;
+	status: 'win' | 'loss' | 'draw';
+	opponentUserId: string | null;
+	opponentLlmId: OpponentLlmId | null;
+	opponentEngineId: OpponentEngineId | null;
+	details: unknown;
+	// Rating fields (populated after rating system was added)
+	// Can be null when rating history doesn't exist (e.g., older games)
+	ratingChange: number | null | undefined;
+	newRating: number | null | undefined;
+}
+
+/** Credentialed play-history GET shared by the page and progression hooks. */
+export async function fetchPlayHistory(
+	signal?: AbortSignal
+): Promise<ServerPlayHistory[]> {
+	const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
+		credentials: 'include',
+		headers: { 'Content-Type': 'application/json' },
+		signal,
+	});
+	if (!response.ok) {
+		const data = (await response.json().catch(() => null)) as {
+			error?: string;
+		} | null;
+		throw new Error(
+			data?.error || 'Unable to load your play history. Please try again.'
+		);
+	}
+	const data = (await response.json()) as {
+		playHistory: ServerPlayHistory[];
+	};
+	return Array.isArray(data.playHistory) ? data.playHistory : [];
+}

@@ -1,26 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/auth';
-import { env } from '../lib/env';
-import type { OpponentEngineId } from '../lib/ai/opponent';
 import type { GameId } from '../lib/game-id';
+import { fetchPlayHistory, type ServerPlayHistory } from '../lib/play-history';
 import { PageHeader } from './PageHeader';
 import { Panel } from './ui/Panel';
 import { Button } from './ui/Button';
-
-type ServerPlayHistory = {
-	id: number;
-	gameId: GameId;
-	date: string;
-	status: 'win' | 'loss' | 'draw';
-	opponentUserId: string | null;
-	opponentLlmId: 'gpt-4o' | 'gemini-2.5-flash' | null;
-	opponentEngineId: OpponentEngineId | null;
-	details: unknown;
-	// Rating fields (populated after rating system was added)
-	// Can be null when rating history doesn't exist (e.g., older games)
-	ratingChange: number | null | undefined;
-	newRating: number | null | undefined;
-};
 
 const GAME_LABELS = {
 	chess: 'Classical Chess',
@@ -124,26 +108,8 @@ export default function PlayHistoryPage() {
 				setIsLoading(true);
 				setError(null);
 
-				const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
-					credentials: 'include',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					signal: controller.signal,
-				});
-
-				if (!response.ok) {
-					const data = await response.json().catch(() => null);
-					throw new Error(
-						data?.error || 'Unable to load your play history. Please try again.'
-					);
-				}
-
-				const data = (await response.json()) as {
-					playHistory: ServerPlayHistory[];
-				};
-
-				setHistory(Array.isArray(data.playHistory) ? data.playHistory : []);
+				const playHistory = await fetchPlayHistory(controller.signal);
+				setHistory(playHistory);
 			} catch (fetchError) {
 				if (
 					fetchError instanceof DOMException &&
