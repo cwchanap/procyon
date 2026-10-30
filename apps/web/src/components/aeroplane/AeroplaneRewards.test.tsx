@@ -4,7 +4,7 @@ import { setupReactDom } from '../../test/reactSetup';
 import { installFrameClock } from '../../test/frameClock';
 import type { StarBreakdown } from '../../lib/aeroplane/rewards';
 import type { HumanMoment } from '../../lib/aeroplane/rewards';
-import AeroplaneRewards from './AeroplaneRewards';
+import AeroplaneRewards, { pickBestMoment } from './AeroplaneRewards';
 
 setupReactDom();
 
@@ -19,12 +19,12 @@ function breakdown(overrides: Partial<StarBreakdown> = {}): StarBreakdown {
 	};
 }
 
-function capture(label: string): HumanMoment {
-	return { kind: 'capture', label };
+function capture(label: string, captures: number): HumanMoment {
+	return { kind: 'capture', label, captures };
 }
 
-function coinMoment(): HumanMoment {
-	return { kind: 'coins', label: 'Big coin gain!' };
+function coinMoment(coinGain: number): HumanMoment {
+	return { kind: 'coins', label: 'Big coin gain!', coinGain };
 }
 
 function renderRewards(
@@ -197,7 +197,10 @@ describe('AeroplaneRewards panel', () => {
 
 	test('best moment: the highest multi-capture count wins regardless of order', () => {
 		const first = renderRewards({
-			moments: [capture('Double capture!'), capture('Quadruple capture!')],
+			moments: [
+				capture('Double capture!', 2),
+				capture('Quadruple capture!', 4),
+			],
 		});
 		expect(first.getByTestId('aeroplane-rewards-moment').textContent).toBe(
 			'Quadruple capture!'
@@ -205,7 +208,10 @@ describe('AeroplaneRewards panel', () => {
 		first.unmount();
 
 		const second = renderRewards({
-			moments: [capture('Quadruple capture!'), capture('Double capture!')],
+			moments: [
+				capture('Quadruple capture!', 4),
+				capture('Double capture!', 2),
+			],
 		});
 		expect(second.getByTestId('aeroplane-rewards-moment').textContent).toBe(
 			'Quadruple capture!'
@@ -213,7 +219,10 @@ describe('AeroplaneRewards panel', () => {
 		second.unmount();
 
 		const five = renderRewards({
-			moments: [capture('Double capture!'), capture('Multi-capture (5)!')],
+			moments: [
+				capture('Double capture!', 2),
+				capture('Multi-capture (5)!', 5),
+			],
 		});
 		expect(five.getByTestId('aeroplane-rewards-moment').textContent).toBe(
 			'Multi-capture (5)!'
@@ -221,22 +230,20 @@ describe('AeroplaneRewards panel', () => {
 		five.unmount();
 	});
 
-	test('best moment: captures outrank coin gains and later ties win', () => {
+	test('best moment: captures outrank coin gains, and the largest gain wins among coins', () => {
+		// A capture beats even a far larger coin gain.
 		const capturesWin = renderRewards({
-			moments: [coinMoment(), capture('Double capture!')],
+			moments: [coinMoment(25), capture('Double capture!', 2)],
 		});
 		expect(
 			capturesWin.getByTestId('aeroplane-rewards-moment').textContent
 		).toBe('Double capture!');
 		capturesWin.unmount();
 
-		const coinsOnly = renderRewards({
-			moments: [coinMoment(), coinMoment()],
-		});
-		expect(coinsOnly.getByTestId('aeroplane-rewards-moment').textContent).toBe(
-			'Big coin gain!'
-		);
-		coinsOnly.unmount();
+		// Coin labels are identical, so the ranking is asserted on the pick:
+		// +5 then +25 surfaces the +25 moment, whichever order they arrived in.
+		expect(pickBestMoment([coinMoment(5), coinMoment(25)])?.coinGain).toBe(25);
+		expect(pickBestMoment([coinMoment(25), coinMoment(5)])?.coinGain).toBe(25);
 	});
 
 	test('signed-in progress block shows lifetime stars and the next unlock', () => {

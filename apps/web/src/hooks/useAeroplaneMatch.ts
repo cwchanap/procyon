@@ -603,6 +603,9 @@ export function useAeroplaneMatch(
 	const [rollPresentation, setRollPresentation] =
 		useState<AeroplaneRollPresentation | null>(null);
 	const [humanMoments, setHumanMoments] = useState<HumanMoment[]>([]);
+	// Monotonic moment identity, stamped here rather than in the pure
+	// deriveHumanMoment; clearing the list never rewinds it.
+	const momentIdRef = useRef(0);
 	// Bumped by every successful terminal POST (via onSaved, not the guarded
 	// onSuccess) so server-sourced progress can refresh, including for a save
 	// that resolves after the terminal match was reset.
@@ -753,13 +756,19 @@ export function useAeroplaneMatch(
 			commit(next);
 			// Notable moments are ephemeral and independent of the feed: recorded
 			// before the (possibly skipped) presentation so Skip animations never
-			// suppress them. Append order is the monotonic moment identity.
+			// suppress them. The controller stamps the append-order monotonic id.
 			const moment = deriveHumanMoment(
 				current.state,
 				transition,
 				current.config.humanColor
 			);
-			if (moment) setHumanMoments(previous => [...previous, moment]);
+			if (moment) {
+				momentIdRef.current += 1;
+				setHumanMoments(previous => [
+					...previous,
+					{ ...moment, id: momentIdRef.current },
+				]);
+			}
 			// The board/feed/cues animate the effective result, not the selection.
 			enqueuePresentation(transition.move, action);
 			return true;

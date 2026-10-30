@@ -437,7 +437,7 @@ describe('deriveHumanMoment', () => {
 		for (const [captured, label] of cases) {
 			expect(
 				deriveHumanMoment(prev, transitionTo(prev, HUMAN, captured), HUMAN)
-			).toEqual({ kind: 'capture', label });
+			).toEqual({ kind: 'capture', label, captures: captured });
 		}
 	});
 
@@ -482,6 +482,17 @@ describe('deriveHumanMoment', () => {
 		expect(deriveHumanMoment(prev, transition, HUMAN)).toEqual({
 			kind: 'coins',
 			label: 'Big coin gain!',
+			coinGain: TYCOON_AIRPORT_PRICE,
+		});
+	});
+
+	test('the emitted coinGain is the raw delta, however large', () => {
+		const prev = stateWith({ coins: { red: 10 } });
+		const transition = transitionTo(prev, 'yellow', 0, { red: 35 });
+		expect(deriveHumanMoment(prev, transition, HUMAN)).toEqual({
+			kind: 'coins',
+			label: 'Big coin gain!',
+			coinGain: 25,
 		});
 	});
 
@@ -491,6 +502,7 @@ describe('deriveHumanMoment', () => {
 		expect(deriveHumanMoment(prev, transition, HUMAN)).toEqual({
 			kind: 'coins',
 			label: 'Big coin gain!',
+			coinGain: 6,
 		});
 	});
 
@@ -500,6 +512,7 @@ describe('deriveHumanMoment', () => {
 		expect(deriveHumanMoment(prev, transition, HUMAN)).toEqual({
 			kind: 'capture',
 			label: 'Double capture!',
+			captures: 2,
 		});
 	});
 
@@ -510,6 +523,6 @@ describe('deriveHumanMoment', () => {
 		).toBeNull();
 		expect(
 			deriveHumanMoment(prev, transitionTo(prev, HUMAN, 2), HUMAN)
-		).toEqual({ kind: 'capture', label: 'Double capture!' });
+		).toEqual({ kind: 'capture', label: 'Double capture!', captures: 2 });
 	});
 });
