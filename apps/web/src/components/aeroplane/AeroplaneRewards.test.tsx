@@ -34,6 +34,7 @@ function renderRewards(
 		<AeroplaneRewards
 			matchKey='started:1'
 			winner='red'
+			mode='standard'
 			capturesMade={3}
 			planesFinished={1}
 			breakdown={breakdown()}
@@ -86,10 +87,29 @@ describe('AeroplaneRewards panel', () => {
 
 	test('shows a Sky Tycoon surplus row when the match scored coins', () => {
 		const { getByText } = renderRewards({
+			mode: 'sky-tycoon',
 			breakdown: breakdown({ coins: 2, total: 21 }),
 		});
-		expect(getByText('Sky Tycoon surplus').textContent).toBeTruthy();
+		expect(getByText('Sky Tycoon surplus (max 10)').textContent).toBeTruthy();
 		expect(getByText('+2')).toBeTruthy();
+	});
+
+	test('a zero-coin Sky Tycoon match still discloses the capped coin row', () => {
+		const { getByText } = renderRewards({
+			mode: 'sky-tycoon',
+			breakdown: breakdown({ coins: 0, total: 19 }),
+		});
+		expect(getByText('Sky Tycoon surplus (max 10)').textContent).toBeTruthy();
+		expect(getByText('+0')).toBeTruthy();
+	});
+
+	test('a capped capture count discloses the cap in its row label', () => {
+		const { getByText } = renderRewards({
+			capturesMade: 12,
+			breakdown: breakdown({ captures: 20, total: 33 }),
+		});
+		expect(getByText('Captures (12, max 10)').textContent).toBeTruthy();
+		expect(getByText('+20')).toBeTruthy();
 	});
 
 	test('missing rAF renders the exact final number and announcement immediately', () => {
@@ -150,6 +170,7 @@ describe('AeroplaneRewards panel', () => {
 				<AeroplaneRewards
 					matchKey='started:2'
 					winner='red'
+					mode='standard'
 					capturesMade={0}
 					planesFinished={0}
 					breakdown={breakdown({

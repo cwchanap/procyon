@@ -9,7 +9,7 @@ import {
 	TYCOON_DEPARTURE_BONUS,
 	TYCOON_STARTING_COINS,
 } from '../../lib/aeroplane/tycoon';
-import { SKIN_CATALOG, type SkinId } from '../../lib/aeroplane/rewards';
+import { SKIN_CATALOG, skinLabel } from '../../lib/aeroplane/rewards';
 import type { UseAeroplaneProgressResult } from '../../hooks/useAeroplaneProgress';
 import type {
 	AeroplaneColor,
@@ -39,14 +39,6 @@ const colorLabel: Record<AeroplaneColor, string> = {
 	yellow: 'Yellow',
 	blue: 'Blue',
 	green: 'Green',
-};
-
-const skinLabel: Record<SkinId, string> = {
-	classic: 'Classic',
-	contrail: 'Contrail',
-	racer: 'Racer',
-	starlight: 'Starlight',
-	ace: 'Ace',
 };
 
 function labelize(value: string): string {
@@ -266,7 +258,7 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 						</Button>
 					)}
 					<p aria-live='polite' className='sr-only'>
-						Selected skin: {skinLabel[progress.selectedSkin]}.
+						Selected skin: {skinLabel(progress.selectedSkin)}.
 					</p>
 					<div className='grid grid-cols-2 gap-2 sm:grid-cols-3'>
 						{SKIN_CATALOG.map(entry => {
@@ -300,7 +292,7 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 											skinId={entry.id}
 										/>
 									</svg>
-									<span>{skinLabel[entry.id]}</span>
+									<span>{entry.label}</span>
 									<span className='text-xs font-normal'>
 										{!unlocked
 											? `Locked · ${entry.stars} stars`

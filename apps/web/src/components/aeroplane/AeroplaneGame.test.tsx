@@ -1420,6 +1420,42 @@ describe('Aeroplane board skins', () => {
 		);
 	});
 
+	test('each non-classic skin renders its distinctive detail element', () => {
+		const state = fixtureState({
+			planes: COLORS.flatMap(color =>
+				Array.from({ length: 4 }, (_, index) => ({
+					id: `${color}-${index}`,
+					color,
+					progress: 14,
+				}))
+			),
+		});
+		for (const skin of ['contrail', 'racer', 'starlight', 'ace'] as const) {
+			const view = render(
+				<AeroplaneBoard
+					state={state}
+					legalMoves={[]}
+					skinId={skin}
+					onRoll={mock(() => {})}
+				/>
+			);
+			const glyph = view
+				.getByTestId('aeroplane-plane-control-red-0')
+				.querySelector(`[data-skin='${skin}']`);
+			expect(glyph).not.toBeNull();
+			expect(glyph!.querySelector(`.skin-detail-${skin}`)).not.toBeNull();
+			view.unmount();
+		}
+		// Classic stays unadorned.
+		const plain = render(
+			<AeroplaneBoard state={state} legalMoves={[]} onRoll={mock(() => {})} />
+		);
+		const classic = plain
+			.getByTestId('aeroplane-plane-control-red-0')
+			.querySelector('[data-skin="classic"]');
+		expect(classic!.querySelector('[class*="skin-detail"]')).toBeNull();
+	});
+
 	test('mover, ghost and parked victims follow each plane’s colour during playback', () => {
 		const clock = installFrameClock();
 		try {
@@ -2720,13 +2756,17 @@ describe('Aeroplane game composition', () => {
 			).toBe('true');
 			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
 			const regions = view.getAllByRole('status');
-			expect(regions).toHaveLength(2);
+			// Die face, route/status line, and the always-mounted moment-banner
+			// slot (empty until a notable moment fires).
+			expect(regions).toHaveLength(3);
 			// The die column sits outside the live region; the region announces
 			// the roll through a stable sr-only line instead.
 			const dieRegion = regions.find(region =>
 				region.closest('[aria-label="Aeroplane match status"]')
 			)!;
-			const gameRegion = regions.find(region => region !== dieRegion)!;
+			const gameRegion = regions.find(
+				region => region !== dieRegion && region.textContent!.length > 0
+			)!;
 			expect(dieRegion.textContent).toContain('rolled by Red');
 			expect(gameRegion.textContent).toContain('A route is being presented.');
 			expect(dieRegion.textContent).toContain('Route in flight');
@@ -3105,14 +3145,19 @@ describe('Aeroplane match rewards panel', () => {
 	};
 	let previousAuthUser: AuthUser | null | undefined;
 	let hadPreviousAuthUser = false;
+	let restoreFetch: () => void;
 
 	beforeEach(() => {
 		hadPreviousAuthUser = '__PROCYON_INITIAL_AUTH_USER__' in window;
 		previousAuthUser = window.__PROCYON_INITIAL_AUTH_USER__;
 		window.__PROCYON_INITIAL_AUTH_USER__ = rewardsAuthUser;
+		// Every composed mount in this describe keeps the progress hook's GET
+		// off the real network.
+		restoreFetch = stubPlayHistoryFetch();
 	});
 
 	afterEach(() => {
+		restoreFetch();
 		jest.useRealTimers();
 		if (hadPreviousAuthUser) {
 			window.__PROCYON_INITIAL_AUTH_USER__ = previousAuthUser;
@@ -3122,68 +3167,53 @@ describe('Aeroplane match rewards panel', () => {
 	});
 
 	test('an unfinished match suppresses the panel entirely', () => {
-		const restoreFetch = stubPlayHistoryFetch();
-		try {
-			const view = renderGame(gameFixture(3));
-			expect(view.queryByTestId('aeroplane-rewards')).toBeNull();
-			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
-			expect(view.queryByTestId('aeroplane-rewards')).toBeNull();
-		} finally {
-			restoreFetch();
-		}
+		const view = renderGame(gameFixture(3));
+		expect(view.queryByTestId('aeroplane-rewards')).toBeNull();
+		fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+		expect(view.queryByTestId('aeroplane-rewards')).toBeNull();
 	});
 
 	test('a finished win scores through the persisted-history path', async () => {
-		const restoreFetch = stubPlayHistoryFetch();
-		try {
-			const fixture = finishedFixture();
-			const view = renderGame(fixture);
-			// Parity: the panel must show exactly what scoreMatch over the
-			// history payload of the same match produces (win 10 + 2 finished × 3).
-			const expected = scoreMatch(
-				buildAeroplaneHistoryPayload({
-					startedAt: new Date(0).toISOString(),
-					completedAt: new Date(0).toISOString(),
-					rootSeed: fixture.seed!,
-					config: fixture.state!.config,
-					state: fixture.state!,
-					seats: [],
-					diceRng: fixture.diceRng!,
-					aiRng: fixture.aiRng!,
-					actions: [],
-				})
-			);
-			expect(expected).not.toBeNull();
-			expect(view.getByTestId('aeroplane-rewards-total').textContent).toBe(
-				String(expected!.total)
-			);
-			expect(view.getByText('Red wins the match!')).toBeTruthy();
-			const rows = view.getByRole('list', { name: 'Star breakdown' });
-			expect(rows.textContent).toContain('+10');
-			expect(rows.textContent).toContain('Planes finished (2)');
-			expect(rows.textContent).toContain('+6');
-			// Signed-in composed mounts load server progress; empty rows still
-			// surface the ladder head as the next unlock. The GET resolves on a
-			// microtask, so wait for the loaded progress block.
-			await waitFor(() =>
-				expect(
-					view.getByTestId('aeroplane-rewards-progress').textContent
-				).toContain('Next unlock: Contrail at 20 stars (20 to go).')
-			);
-		} finally {
-			restoreFetch();
-		}
+		const fixture = finishedFixture();
+		const view = renderGame(fixture);
+		// Parity: the panel must show exactly what scoreMatch over the
+		// history payload of the same match produces (win 10 + 2 finished × 3).
+		const expected = scoreMatch(
+			buildAeroplaneHistoryPayload({
+				startedAt: new Date(0).toISOString(),
+				completedAt: new Date(0).toISOString(),
+				rootSeed: fixture.seed!,
+				config: fixture.state!.config,
+				state: fixture.state!,
+				seats: [],
+				diceRng: fixture.diceRng!,
+				aiRng: fixture.aiRng!,
+				actions: [],
+			})
+		);
+		expect(expected).not.toBeNull();
+		expect(view.getByTestId('aeroplane-rewards-total').textContent).toBe(
+			String(expected!.total)
+		);
+		expect(view.getByText('Red wins the match!')).toBeTruthy();
+		const rows = view.getByRole('list', { name: 'Star breakdown' });
+		expect(rows.textContent).toContain('+10');
+		expect(rows.textContent).toContain('Planes finished (2)');
+		expect(rows.textContent).toContain('+6');
+		// Signed-in composed mounts load server progress; empty rows still
+		// surface the ladder head as the next unlock. The GET resolves on a
+		// microtask, so wait for the loaded progress block.
+		await waitFor(() =>
+			expect(
+				view.getByTestId('aeroplane-rewards-progress').textContent
+			).toContain('Next unlock: Contrail at 20 stars (20 to go).')
+		);
 	});
 
 	test('a finished loss shows the rival winner and a zero total', () => {
-		const restoreFetch = stubPlayHistoryFetch();
-		try {
-			const view = renderGame(finishedLossFixture());
-			expect(view.getByText('Yellow wins the match!')).toBeTruthy();
-			expect(view.getByTestId('aeroplane-rewards-total').textContent).toBe('0');
-		} finally {
-			restoreFetch();
-		}
+		const view = renderGame(finishedLossFixture());
+		expect(view.getByText('Yellow wins the match!')).toBeTruthy();
+		expect(view.getByTestId('aeroplane-rewards-total').textContent).toBe('0');
 	});
 
 	test('a human double capture raises a transient cancelable banner', () => {
