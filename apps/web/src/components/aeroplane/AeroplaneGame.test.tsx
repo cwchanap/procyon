@@ -7,7 +7,7 @@ import {
 	afterEach,
 	test,
 } from 'bun:test';
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { setupReactDom } from '../../test/reactSetup';
 import { installFrameClock } from '../../test/frameClock';
@@ -21,6 +21,8 @@ import { checksumState } from '../../lib/aeroplane/checksum';
 import { applyResolvedMove, resolveLegalMove } from '../../lib/aeroplane/rules';
 import { toPosition } from '../../lib/aeroplane/topology';
 import { TYCOON_TILES, initialTycoonState } from '../../lib/aeroplane/tycoon';
+import { TYCOON_CHANCE_CARDS } from '../../lib/aeroplane/types';
+import { scoreMatch } from '../../lib/aeroplane/rewards';
 import { positionAnchor } from '../../lib/aeroplane/presentation';
 import { rollFair } from '../../lib/aeroplane/dice';
 import {
@@ -43,6 +45,7 @@ import type {
 	AeroplaneE2EFixture,
 	UseAeroplaneMatchOptions,
 } from '../../hooks/useAeroplaneMatch';
+import { buildAeroplaneHistoryPayload } from '../../hooks/useAeroplaneMatch';
 import type { AuthUser } from '../../lib/auth-helpers';
 import {
 	FLIGHT_GUIDES,
@@ -2417,7 +2420,9 @@ describe('Aeroplane game composition', () => {
 			);
 			const regions = view.getAllByRole('status');
 			const gameRegion = regions.find(
-				region => !region.closest('[aria-label="Aeroplane match status"]')
+				region =>
+					!region.closest('[aria-label="Aeroplane match status"]') &&
+					region.textContent.includes('red wins.')
 			)!;
 			expect(gameRegion.textContent).toContain('red wins.');
 			act(() => clock.advance(300));
@@ -2624,5 +2629,277 @@ describe('Aeroplane game composition', () => {
 				.getByRole('button', { name: 'Standard' })
 				.getAttribute('aria-pressed')
 		).toBe('true');
+	});
+});
+
+/** Fetch stub for composed mounts: the rewards panel fetches play history. */
+function stubPlayHistoryFetch(): () => void {
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = (async () =>
+		new Response(JSON.stringify({ playHistory: [] }), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		})) as unknown as typeof fetch;
+	return () => {
+		globalThis.fetch = originalFetch;
+	};
+}
+
+/**
+ * Red-0 sits at progress 14 and rolls 1 onto track 15 (global index 14),
+ * capturing the yellow stack parked at yellow progress 2. Stacking allows
+ * more than one defender on the node so a real multi-capture resolves.
+ */
+function stackCaptureFixture(stack: number): AeroplaneE2EFixture {
+	const config = { ...CLASSIC_CONFIG, stacking: true };
+	return {
+		seed: 4242,
+		state: fixtureState({
+			config,
+			currentPlayer: 'red',
+			phase: 'awaiting-roll',
+			pendingRoll: null,
+			planes: hangarPlanes().map(plane => {
+				if (plane.id === 'red-0') return { ...plane, progress: 14 };
+				if (plane.color === 'yellow' && Number(plane.id.slice(-1)) < stack) {
+					return { ...plane, progress: 2 };
+				}
+				return plane;
+			}),
+		}),
+		diceRng: rngForRolls([1]),
+		aiRng: { value: 33 },
+		skipAnimations: false,
+	};
+}
+
+/**
+ * Red departs the launch pad in Sky Tycoon. Roll 4 lands on the Chance tile
+ * (index 3) with gain-4 stacked on the departure bonus: +7 coins in one
+ * transition. Roll 1 lands on the square-1 airport and buys it: +3 - 5.
+ */
+function tycoonDepartureFixture(roll: number): AeroplaneE2EFixture {
+	const base = gameFixtureForRolls(
+		[roll],
+		hangarPlanes().map(plane =>
+			plane.id === 'red-0' ? { ...plane, progress: 0 } : plane
+		)
+	);
+	const config = { ...CLASSIC_CONFIG, mode: 'sky-tycoon' as const };
+	return {
+		...base,
+		state: {
+			...base.state!,
+			config,
+			tycoon: {
+				...initialTycoonState(4242),
+				...(roll === 4
+					? { chanceOrder: [...TYCOON_CHANCE_CARDS], chanceCursor: 0 }
+					: {}),
+			},
+		},
+	};
+}
+
+function finishedLossFixture(): AeroplaneE2EFixture {
+	const fixture = finishedFixture();
+	return {
+		...fixture,
+		state: {
+			...fixture.state!,
+			winner: 'yellow' as const,
+			// A finished snapshot always ends on the winner's own turn, and the
+			// winner must actually have victoryTarget planes home.
+			currentPlayer: 'yellow' as const,
+			planes: hangarPlanes().map(plane =>
+				plane.id === 'yellow-0' || plane.id === 'yellow-1'
+					? { ...plane, progress: 56 }
+					: plane
+			),
+			stats: {
+				...fixture.state!.stats,
+				finished: { red: 0, yellow: 2, blue: 0, green: 0 },
+			},
+		},
+	};
+}
+
+describe('Aeroplane match rewards panel', () => {
+	// The rewards panel loads server progress only for a verified session;
+	// mirror the composition suite's server-snapshot auth stub.
+	const rewardsAuthUser: AuthUser = {
+		id: 'user-a',
+		email: 'a@test.com',
+		username: 'userA',
+	};
+	let previousAuthUser: AuthUser | null | undefined;
+	let hadPreviousAuthUser = false;
+
+	beforeEach(() => {
+		hadPreviousAuthUser = '__PROCYON_INITIAL_AUTH_USER__' in window;
+		previousAuthUser = window.__PROCYON_INITIAL_AUTH_USER__;
+		window.__PROCYON_INITIAL_AUTH_USER__ = rewardsAuthUser;
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+		if (hadPreviousAuthUser) {
+			window.__PROCYON_INITIAL_AUTH_USER__ = previousAuthUser;
+		} else {
+			delete window.__PROCYON_INITIAL_AUTH_USER__;
+		}
+	});
+
+	test('an unfinished match suppresses the panel entirely', () => {
+		const restoreFetch = stubPlayHistoryFetch();
+		try {
+			const view = renderGame(gameFixture(3));
+			expect(view.queryByTestId('aeroplane-rewards')).toBeNull();
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(view.queryByTestId('aeroplane-rewards')).toBeNull();
+		} finally {
+			restoreFetch();
+		}
+	});
+
+	test('a finished win scores through the persisted-history path', async () => {
+		const restoreFetch = stubPlayHistoryFetch();
+		try {
+			const fixture = finishedFixture();
+			const view = renderGame(fixture);
+			// Parity: the panel must show exactly what scoreMatch over the
+			// history payload of the same match produces (win 10 + 2 finished × 3).
+			const expected = scoreMatch(
+				buildAeroplaneHistoryPayload({
+					startedAt: new Date(0).toISOString(),
+					completedAt: new Date(0).toISOString(),
+					rootSeed: fixture.seed!,
+					config: fixture.state!.config,
+					state: fixture.state!,
+					seats: [],
+					diceRng: fixture.diceRng!,
+					aiRng: fixture.aiRng!,
+					actions: [],
+				})
+			);
+			expect(expected).not.toBeNull();
+			expect(view.getByTestId('aeroplane-rewards-total').textContent).toBe(
+				String(expected!.total)
+			);
+			expect(view.getByText('Red wins the match!')).toBeTruthy();
+			const rows = view.getByRole('list', { name: 'Star breakdown' });
+			expect(rows.textContent).toContain('+10');
+			expect(rows.textContent).toContain('Planes finished (2)');
+			expect(rows.textContent).toContain('+6');
+			// Signed-in composed mounts load server progress; empty rows still
+			// surface the ladder head as the next unlock. The GET resolves on a
+			// microtask, so wait for the loaded progress block.
+			await waitFor(() =>
+				expect(
+					view.getByTestId('aeroplane-rewards-progress').textContent
+				).toContain('Next unlock: Contrail at 20 stars (20 to go).')
+			);
+		} finally {
+			restoreFetch();
+		}
+	});
+
+	test('a finished loss shows the rival winner and a zero total', () => {
+		const restoreFetch = stubPlayHistoryFetch();
+		try {
+			const view = renderGame(finishedLossFixture());
+			expect(view.getByText('Yellow wins the match!')).toBeTruthy();
+			expect(view.getByTestId('aeroplane-rewards-total').textContent).toBe('0');
+		} finally {
+			restoreFetch();
+		}
+	});
+
+	test('a human double capture raises a transient cancelable banner', () => {
+		jest.useFakeTimers();
+		const clock = installFrameClock();
+		try {
+			const view = renderGame(stackCaptureFixture(2), {
+				aiDelayMs: 10_000,
+			});
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(view.getByTestId('aeroplane-moment-banner').textContent).toBe(
+				'Double capture!'
+			);
+			advanceTimers(2199);
+			expect(view.getByTestId('aeroplane-moment-banner').textContent).toBe(
+				'Double capture!'
+			);
+			advanceTimers(1);
+			expect(view.queryByTestId('aeroplane-moment-banner')).toBeNull();
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('a four-plane capture banners the quadruple label', () => {
+		jest.useFakeTimers();
+		try {
+			const view = renderGame(stackCaptureFixture(4), {
+				aiDelayMs: 10_000,
+			});
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(view.getByTestId('aeroplane-moment-banner').textContent).toBe(
+				'Quadruple capture!'
+			);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	test('reset clears the banner immediately with no late resurrection', () => {
+		jest.useFakeTimers();
+		try {
+			const view = renderGame(stackCaptureFixture(2), {
+				aiDelayMs: 10_000,
+			});
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(view.getByTestId('aeroplane-moment-banner')).toBeTruthy();
+			fireEvent.click(view.getByRole('button', { name: /reset match/i }));
+			expect(view.queryByTestId('aeroplane-moment-banner')).toBeNull();
+			advanceTimers(5000);
+			expect(view.queryByTestId('aeroplane-moment-banner')).toBeNull();
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	test('Skip animations suppresses the feed but not the banner', () => {
+		const fixture = stackCaptureFixture(2);
+		fixture.skipAnimations = true;
+		const view = renderGame(fixture, { aiDelayMs: 10_000 });
+		fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+		expect(view.getByTestId('aeroplane-moment-banner').textContent).toBe(
+			'Double capture!'
+		);
+		// The feed never received the presentation.
+		expect(view.getByText('Your flight log will appear here.')).toBeTruthy();
+	});
+
+	test('a big Tycoon gain banners while a routine airport purchase does not', () => {
+		jest.useFakeTimers();
+		try {
+			const gain = renderGame(tycoonDepartureFixture(4), {
+				aiDelayMs: 10_000,
+			});
+			fireEvent.click(gain.getByRole('button', { name: /roll die/i }));
+			expect(gain.getByTestId('aeroplane-moment-banner').textContent).toBe(
+				'Big coin gain!'
+			);
+			gain.unmount();
+
+			const purchase = renderGame(tycoonDepartureFixture(1), {
+				aiDelayMs: 10_000,
+			});
+			fireEvent.click(purchase.getByRole('button', { name: /roll die/i }));
+			expect(purchase.queryByTestId('aeroplane-moment-banner')).toBeNull();
+		} finally {
+			jest.useRealTimers();
+		}
 	});
 });

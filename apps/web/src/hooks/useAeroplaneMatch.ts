@@ -23,6 +23,7 @@ import {
 } from '../lib/aeroplane/persistence';
 import { getLegalMoves } from '../lib/aeroplane/rules';
 import { getChatterLine } from '../lib/aeroplane/chatter';
+import { deriveHumanMoment, type HumanMoment } from '../lib/aeroplane/rewards';
 import { normalizeRngState, type RngState } from '../lib/aeroplane/rng';
 import type { SubmitPlayHistoryInput } from '../lib/play-history';
 import { useTerminalHistorySave } from './useTerminalHistorySave';
@@ -165,6 +166,8 @@ export interface UseAeroplaneMatchResult {
 	presentationQueue: AeroplanePresentation[];
 	eventFeed: AeroplaneFeedEntry[];
 	rollPresentation: AeroplaneRollPresentation | null;
+	/** Ephemeral notable human moments; never persisted, cleared on reset/new match/resume. */
+	humanMoments: HumanMoment[];
 	isAnimating: boolean;
 	isHumanTurn: boolean;
 	/** Incremented once per successful terminal history POST (via onSaved). */
@@ -599,6 +602,7 @@ export function useAeroplaneMatch(
 	const [eventFeed, setEventFeed] = useState<AeroplaneFeedEntry[]>([]);
 	const [rollPresentation, setRollPresentation] =
 		useState<AeroplaneRollPresentation | null>(null);
+	const [humanMoments, setHumanMoments] = useState<HumanMoment[]>([]);
 	// Bumped by every successful terminal POST (via onSaved, not the guarded
 	// onSuccess) so server-sourced progress can refresh, including for a save
 	// that resolves after the terminal match was reset.
@@ -747,6 +751,15 @@ export function useAeroplaneMatch(
 			// Commit both authoritative state and its action before exposing any
 			// route animation. A renderer can therefore be interrupted safely.
 			commit(next);
+			// Notable moments are ephemeral and independent of the feed: recorded
+			// before the (possibly skipped) presentation so Skip animations never
+			// suppress them. Append order is the monotonic moment identity.
+			const moment = deriveHumanMoment(
+				current.state,
+				transition,
+				current.config.humanColor
+			);
+			if (moment) setHumanMoments(previous => [...previous, moment]);
 			// The board/feed/cues animate the effective result, not the selection.
 			enqueuePresentation(transition.move, action);
 			return true;
@@ -902,6 +915,7 @@ export function useAeroplaneMatch(
 			setSetupState(config);
 			setupRef.current = config;
 			setEventFeed([]);
+			setHumanMoments([]);
 			skipAnimationsRef.current = false;
 			commit(next);
 		},
@@ -936,6 +950,7 @@ export function useAeroplaneMatch(
 		setSetupState(editableSetup);
 		setupRef.current = editableSetup;
 		setEventFeed([]);
+		setHumanMoments([]);
 		commit(next);
 		return true;
 	}, [commit, invalidateTimers]);
@@ -1063,6 +1078,7 @@ export function useAeroplaneMatch(
 		presentationQueue,
 		eventFeed,
 		rollPresentation,
+		humanMoments,
 		isAnimating: presentationQueue.length > 0,
 		isHumanTurn: humanTurn,
 		historySavedRevision,
