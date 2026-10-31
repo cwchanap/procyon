@@ -155,6 +155,18 @@ export interface UseAuthOptions {
 	initialUser?: AuthUser | null;
 }
 
+/**
+ * The session fields feature hooks consume from `useAuth()`. Callers share a
+ * single `useAuth()` result with several hooks so each one does not mount its
+ * own `/auth/session` fetch.
+ */
+export interface AuthSnapshot {
+	user: AuthUser | null;
+	loading: boolean;
+	revalidated: boolean;
+	isAuthenticated: boolean;
+}
+
 interface InitialAuthState {
 	user: AuthUser | null;
 	hasServerSnapshot: boolean;

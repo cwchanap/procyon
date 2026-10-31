@@ -13,6 +13,7 @@ import type {
 	TycoonEffectEvent,
 } from '../../lib/aeroplane/types';
 import { toPosition } from '../../lib/aeroplane/topology';
+import { colorLabel } from '../../lib/aeroplane/labels';
 import { planeColor, planeIndex } from '../../lib/aeroplane/layout';
 
 export interface AeroplanePresentationLike {
@@ -35,13 +36,6 @@ export interface AeroplaneEventFeedProps {
 	/** Sky Tycoon feeds list captures; the Standard feed stays unchanged. */
 	tycoon?: boolean;
 }
-
-const colorLabel: Record<AeroplaneColor, string> = {
-	red: 'Red',
-	yellow: 'Yellow',
-	blue: 'Blue',
-	green: 'Green',
-};
 
 function endpointCopy(position: AeroplanePosition): string {
 	switch (position.kind) {

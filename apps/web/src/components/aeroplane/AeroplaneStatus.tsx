@@ -1,12 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import Panel from '../ui/Panel';
+import { colorLabel } from '../../lib/aeroplane/labels';
 import { AEROPLANE_VISUAL_MAX_MS } from '../../lib/aeroplane/presentation';
 import { TURN_ORDER } from '../../lib/aeroplane/topology';
-import type {
-	AeroplaneColor,
-	AeroplaneState,
-	ResolvedMove,
-} from '../../lib/aeroplane/types';
+import type { AeroplaneState, ResolvedMove } from '../../lib/aeroplane/types';
 import type { AeroplaneRollPresentation } from '../../hooks/useAeroplaneMatch';
 
 export interface AeroplaneStatusProps {
@@ -19,13 +16,6 @@ export interface AeroplaneStatusProps {
 	/** Shared reduced-motion flag; disables the decorative die tumble. */
 	reducedMotion?: boolean;
 }
-
-const colorLabel: Record<AeroplaneColor, string> = {
-	red: 'Red',
-	yellow: 'Yellow',
-	blue: 'Blue',
-	green: 'Green',
-};
 
 function statusCopy(
 	state: AeroplaneState,

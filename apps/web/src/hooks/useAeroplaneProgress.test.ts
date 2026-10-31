@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { act, renderHook } from '@testing-library/react';
 import { setupReactDom } from '../test/reactSetup';
-import { AUTH_CHANGE_EVENT, __resetSharedAuthUserForTests } from '../lib/auth';
+import type { AuthSnapshot } from '../lib/auth';
 import type { ServerPlayHistory } from '../lib/play-history';
 import { useAeroplaneProgress } from './useAeroplaneProgress';
 
@@ -11,22 +11,36 @@ function authUser(id: string) {
 	return { id, email: `${id}@b.com`, username: id };
 }
 
-function setInitialAuthUser(user: unknown): void {
-	(
-		window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
-	).__PROCYON_INITIAL_AUTH_USER__ = user;
+function signedInAuth(id: string): AuthSnapshot {
+	return {
+		user: authUser(id),
+		loading: false,
+		revalidated: true,
+		isAuthenticated: true,
+	};
 }
 
-function deleteInitialAuthUser(): void {
-	delete (window as unknown as Record<string, unknown>)
-		.__PROCYON_INITIAL_AUTH_USER__;
-}
+const SIGNED_OUT_AUTH: AuthSnapshot = {
+	user: null,
+	loading: false,
+	revalidated: true,
+	isAuthenticated: false,
+};
 
-function dispatchAuthChange(user: unknown): void {
-	globalThis.dispatchEvent(
-		new CustomEvent(AUTH_CHANGE_EVENT, { detail: { user } })
-	);
-}
+const LOADING_AUTH: AuthSnapshot = {
+	user: null,
+	loading: true,
+	revalidated: false,
+	isAuthenticated: false,
+};
+
+/** Optimistic shared-user snapshot adopted before the session check lands. */
+const UNVERIFIED_AUTH: AuthSnapshot = {
+	user: authUser('user-a'),
+	loading: false,
+	revalidated: false,
+	isAuthenticated: true,
+};
 
 /** One qualifying Standard row: win 10 + captures 2×3 + finished 3×1 = 19. */
 function aeroplaneRow(
@@ -89,54 +103,54 @@ async function flush(microtaskTurns = 4): Promise<void> {
 
 describe('useAeroplaneProgress', () => {
 	beforeEach(() => {
-		__resetSharedAuthUserForTests();
 		store.clear();
 		globalThis.localStorage = localStorageMock as unknown as Storage;
 	});
 
 	afterEach(() => {
-		__resetSharedAuthUserForTests();
 		globalThis.localStorage = originalLocalStorage;
 		globalThis.fetch = originalFetch;
 	});
 
 	test('does not fetch while auth is loading, unverified, or signed out', async () => {
 		let playHistoryGets = 0;
-		let resolveSession: (() => void) | null = null;
-		deleteInitialAuthUser();
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
 			const url = typeof input === 'string' ? input : input.toString();
 			if (url.includes('/play-history')) {
 				playHistoryGets++;
 				return new Response('{}', { status: 200 });
 			}
-			// Hang /auth/session until the mid-test assertion below.
-			return new Promise<Response>(resolve => {
-				resolveSession = () => resolve(new Response('{}', { status: 401 }));
-			});
+			return new Response('{}', { status: 200 });
 		}) as typeof fetch;
 
-		const { result } = renderHook(() => useAeroplaneProgress());
+		const { result, rerender } = renderHook(
+			(props: { auth: AuthSnapshot }) => useAeroplaneProgress(props.auth),
+			{ initialProps: { auth: LOADING_AUTH } }
+		);
 		await flush();
 
-		// Auth still loading / unverified: no GET, nothing exposed.
+		// Auth still loading: no GET, nothing exposed.
 		expect(playHistoryGets).toBe(0);
 		expect(result.current.status).toBe('waiting-auth');
 		expect(result.current.lifetimeStars).toBe(0);
 		expect(result.current.selectedSkin).toBe('classic');
 
+		// Optimistic but unverified snapshot: still no GET.
+		rerender({ auth: UNVERIFIED_AUTH });
+		await flush();
+		expect(playHistoryGets).toBe(0);
+		expect(result.current.status).toBe('waiting-auth');
+		expect(result.current.selectedSkin).toBe('classic');
+
 		// Confirmed sign-out: still no GET.
-		await act(async () => {
-			resolveSession?.();
-			await flush();
-		});
+		rerender({ auth: SIGNED_OUT_AUTH });
+		await flush();
 		expect(playHistoryGets).toBe(0);
 		expect(result.current.status).toBe('waiting-auth');
 		expect(result.current.selectedSkin).toBe('classic');
 	});
 
 	test('fetches once verified and sums only server-returned qualifying rows', async () => {
-		setInitialAuthUser(authUser('user-a'));
 		let playHistoryGets = 0;
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
 			const url = typeof input === 'string' ? input : input.toString();
@@ -168,7 +182,9 @@ describe('useAeroplaneProgress', () => {
 			return new Response('{}', { status: 200 });
 		}) as typeof fetch;
 
-		const { result } = renderHook(() => useAeroplaneProgress());
+		const { result } = renderHook(() =>
+			useAeroplaneProgress(signedInAuth('user-a'))
+		);
 		await flush();
 
 		expect(playHistoryGets).toBe(1);
@@ -179,7 +195,7 @@ describe('useAeroplaneProgress', () => {
 	});
 
 	test('reloads when historySavedRevision changes and replaces, never accumulates, the sum', async () => {
-		setInitialAuthUser(authUser('user-a'));
+		const auth = signedInAuth('user-a');
 		let playHistoryGets = 0;
 		let rowsPerLoad = 1;
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -198,7 +214,8 @@ describe('useAeroplaneProgress', () => {
 		}) as typeof fetch;
 
 		const { result, rerender } = renderHook(
-			(props: { historySavedRevision?: number }) => useAeroplaneProgress(props),
+			(props: { historySavedRevision?: number }) =>
+				useAeroplaneProgress(auth, props),
 			{ initialProps: { historySavedRevision: 0 } }
 		);
 		await flush();
@@ -223,7 +240,6 @@ describe('useAeroplaneProgress', () => {
 	});
 
 	test('failed GET exposes failed status and Retry refetches', async () => {
-		setInitialAuthUser(authUser('user-a'));
 		let playHistoryGets = 0;
 		let failNext = true;
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -244,7 +260,9 @@ describe('useAeroplaneProgress', () => {
 			return new Response('{}', { status: 200 });
 		}) as typeof fetch;
 
-		const { result } = renderHook(() => useAeroplaneProgress());
+		const { result } = renderHook(() =>
+			useAeroplaneProgress(signedInAuth('user-a'))
+		);
 		await flush();
 
 		expect(result.current.status).toBe('failed');
@@ -265,7 +283,6 @@ describe('useAeroplaneProgress', () => {
 	});
 
 	test('identity switch aborts the stale fetch and never exposes previous-user progress', async () => {
-		setInitialAuthUser(authUser('user-a'));
 		const signals: AbortSignal[] = [];
 		const resolvers: Array<(response: Response) => void> = [];
 		globalThis.fetch = (async (
@@ -282,15 +299,16 @@ describe('useAeroplaneProgress', () => {
 			return new Response('{}', { status: 200 });
 		}) as typeof fetch;
 
-		const { result } = renderHook(() => useAeroplaneProgress());
+		const { result, rerender } = renderHook(
+			(props: { auth: AuthSnapshot }) => useAeroplaneProgress(props.auth),
+			{ initialProps: { auth: signedInAuth('user-a') } }
+		);
 		await flush();
 		expect(resolvers).toHaveLength(1);
 
 		// Switch identity while user-a's GET is still in flight.
-		await act(async () => {
-			dispatchAuthChange(authUser('user-b'));
-			await flush();
-		});
+		rerender({ auth: signedInAuth('user-b') });
+		await flush();
 
 		expect(signals).toHaveLength(2);
 		expect(signals[0]?.aborted).toBe(true);
@@ -325,7 +343,7 @@ describe('useAeroplaneProgress', () => {
 	});
 
 	test('masks the previous account on the render that changes identity', async () => {
-		setInitialAuthUser(authUser('user-a'));
+		const authA = signedInAuth('user-a');
 		store.set('procyon_aeroplane_skin_user-a', 'racer');
 		const resolvers: Array<(response: Response) => void> = [];
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -341,11 +359,14 @@ describe('useAeroplaneProgress', () => {
 		// Record every render's return value: effects flush inside act, so
 		// the transitional identity-change render is only observable here.
 		const renders: ReturnType<typeof useAeroplaneProgress>[] = [];
-		const { result } = renderHook(() => {
-			const progress = useAeroplaneProgress();
-			renders.push(progress);
-			return progress;
-		});
+		const { result, rerender } = renderHook(
+			(props: { auth: AuthSnapshot }) => {
+				const progress = useAeroplaneProgress(props.auth);
+				renders.push(progress);
+				return progress;
+			},
+			{ initialProps: { auth: authA } }
+		);
 		await act(async () => {
 			resolvers[0]?.(
 				new Response(
@@ -385,10 +406,8 @@ describe('useAeroplaneProgress', () => {
 		// The first render carrying user-b must already be masked — a
 		// post-render reset effect would run one frame too late.
 		renders.length = 0;
-		await act(async () => {
-			dispatchAuthChange(authUser('user-b'));
-			await flush();
-		});
+		rerender({ auth: signedInAuth('user-b') });
+		await flush();
 
 		const transition = renders[0];
 		expect(transition?.status).toBe('loading');
@@ -411,7 +430,6 @@ describe('useAeroplaneProgress', () => {
 	});
 
 	test('storage read/write errors fall back to classic', async () => {
-		setInitialAuthUser(authUser('user-a'));
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
 			const url = typeof input === 'string' ? input : input.toString();
 			if (url.includes('/play-history')) {
@@ -459,7 +477,9 @@ describe('useAeroplaneProgress', () => {
 		};
 		globalThis.localStorage = throwingStorage as unknown as Storage;
 
-		const { result } = renderHook(() => useAeroplaneProgress());
+		const { result } = renderHook(() =>
+			useAeroplaneProgress(signedInAuth('user-a'))
+		);
 		await flush();
 
 		// 2 × (10 + 20 + 12) = 84 → racer unlocked, but the read threw.
@@ -472,8 +492,8 @@ describe('useAeroplaneProgress', () => {
 		expect(result.current.selectedSkin).toBe('classic');
 	});
 
-	test('stored skin applies only when valid and currently unlocked', async () => {
-		setInitialAuthUser(authUser('user-a'));
+	test('clears a stored skin while it is still locked and never resurrects it', async () => {
+		const auth = signedInAuth('user-a');
 		store.set('procyon_aeroplane_skin_user-a', 'racer');
 		let rowsPerLoad = 1;
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -491,33 +511,63 @@ describe('useAeroplaneProgress', () => {
 		}) as typeof fetch;
 
 		const { result, rerender } = renderHook(
-			(props: { historySavedRevision?: number }) => useAeroplaneProgress(props),
+			(props: { historySavedRevision?: number }) =>
+				useAeroplaneProgress(auth, props),
 			{ initialProps: { historySavedRevision: 0 } }
 		);
 		await flush();
 
-		// 19 stars: racer (60) is stored but still locked → classic.
+		// 19 stars: racer (60) is stored but still locked → masked to classic
+		// and dropped from storage so later growth cannot resurrect it.
 		expect(result.current.lifetimeStars).toBe(19);
 		expect(result.current.selectedSkin).toBe('classic');
+		expect(store.get('procyon_aeroplane_skin_user-a')).toBeUndefined();
 
-		// Once a reload brings enough server stars the stored skin applies.
+		// A later reload bringing enough server stars must not switch the skin
+		// by itself: the stale selection was already cleared.
 		rowsPerLoad = 4;
 		rerender({ historySavedRevision: 1 });
 		await flush();
 
 		expect(result.current.lifetimeStars).toBe(76);
-		expect(result.current.selectedSkin).toBe('racer');
+		expect(result.current.selectedSkin).toBe('classic');
 
 		// An explicit selection persists user-scoped and applies immediately.
 		await act(async () => {
-			result.current.setSelectedSkin('contrail');
+			result.current.setSelectedSkin('racer');
 		});
-		expect(store.get('procyon_aeroplane_skin_user-a')).toBe('contrail');
-		expect(result.current.selectedSkin).toBe('contrail');
+		expect(store.get('procyon_aeroplane_skin_user-a')).toBe('racer');
+		expect(result.current.selectedSkin).toBe('racer');
+	});
+
+	test('setSelectedSkin rejects skins that are still locked', async () => {
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				return new Response(JSON.stringify({ playHistory: [aeroplaneRow()] }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+			return new Response('{}', { status: 200 });
+		}) as typeof fetch;
+
+		const { result } = renderHook(() =>
+			useAeroplaneProgress(signedInAuth('user-a'))
+		);
+		await flush();
+
+		// 19 stars: only classic is unlocked.
+		expect(result.current.unlockedSkins).toEqual(['classic']);
+
+		await act(async () => {
+			result.current.setSelectedSkin('ace');
+		});
+		expect(store.get('procyon_aeroplane_skin_user-a')).toBeUndefined();
+		expect(result.current.selectedSkin).toBe('classic');
 	});
 
 	test('invalid stored values are ignored, not trusted as SkinId', async () => {
-		setInitialAuthUser(authUser('user-a'));
 		store.set('procyon_aeroplane_skin_user-a', 'gold');
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
 			const url = typeof input === 'string' ? input : input.toString();
@@ -530,7 +580,9 @@ describe('useAeroplaneProgress', () => {
 			return new Response('{}', { status: 200 });
 		}) as typeof fetch;
 
-		const { result } = renderHook(() => useAeroplaneProgress());
+		const { result } = renderHook(() =>
+			useAeroplaneProgress(signedInAuth('user-a'))
+		);
 		await flush();
 
 		expect(result.current.status).toBe('loaded');
@@ -544,7 +596,6 @@ describe('useAeroplaneProgress', () => {
 	});
 
 	test('sign-out resets to classic immediately without fetching', async () => {
-		setInitialAuthUser(authUser('user-a'));
 		store.set('procyon_aeroplane_skin_user-a', 'classic');
 		const resolvers: Array<(response: Response) => void> = [];
 		let playHistoryGets = 0;
@@ -559,7 +610,10 @@ describe('useAeroplaneProgress', () => {
 			return new Response('{}', { status: 200 });
 		}) as typeof fetch;
 
-		const { result } = renderHook(() => useAeroplaneProgress());
+		const { result, rerender } = renderHook(
+			(props: { auth: AuthSnapshot }) => useAeroplaneProgress(props.auth),
+			{ initialProps: { auth: signedInAuth('user-a') } }
+		);
 		await flush();
 		expect(playHistoryGets).toBe(1);
 
@@ -574,10 +628,8 @@ describe('useAeroplaneProgress', () => {
 		});
 		expect(result.current.lifetimeStars).toBe(19);
 
-		await act(async () => {
-			dispatchAuthChange(null);
-			await flush();
-		});
+		rerender({ auth: SIGNED_OUT_AUTH });
+		await flush();
 
 		expect(result.current.status).toBe('waiting-auth');
 		expect(result.current.lifetimeStars).toBe(0);

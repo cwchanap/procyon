@@ -1273,24 +1273,39 @@ describe('Aeroplane skin picker', () => {
 		expect(absent.queryByTestId('aeroplane-skin-picker')).toBeNull();
 	});
 
-	test('locked skins are disabled with their required stars shown', () => {
+	test('locked skins use aria-disabled and stay keyboard-focusable', () => {
 		const { getByTestId } = renderSetup(skinProgress());
 		const racer = getByTestId('aeroplane-skin-option-racer');
-		expect(racer.getAttribute('disabled')).not.toBeNull();
+		// aria-disabled keeps the option in the tab order so the lock label
+		// is reachable; the native attribute must never appear.
+		expect(racer.getAttribute('aria-disabled')).toBe('true');
+		expect(racer.getAttribute('disabled')).toBeNull();
 		expect(racer.textContent).toContain('Locked · 60 stars');
 		const starlight = getByTestId('aeroplane-skin-option-starlight');
-		expect(starlight.getAttribute('disabled')).not.toBeNull();
+		expect(starlight.getAttribute('aria-disabled')).toBe('true');
 		expect(starlight.textContent).toContain('Locked · 140 stars');
 		const ace = getByTestId('aeroplane-skin-option-ace');
-		expect(ace.getAttribute('disabled')).not.toBeNull();
+		expect(ace.getAttribute('aria-disabled')).toBe('true');
 		expect(ace.textContent).toContain('Locked · 300 stars');
-		// Threshold-met options stay enabled.
+		// Threshold-met options are not marked disabled.
 		expect(
-			getByTestId('aeroplane-skin-option-classic').getAttribute('disabled')
-		).toBeNull();
+			getByTestId('aeroplane-skin-option-classic').getAttribute('aria-disabled')
+		).toBe('false');
 		expect(
-			getByTestId('aeroplane-skin-option-contrail').getAttribute('disabled')
-		).toBeNull();
+			getByTestId('aeroplane-skin-option-contrail').getAttribute(
+				'aria-disabled'
+			)
+		).toBe('false');
+	});
+
+	test('a locked skin option can receive focus without changing selection', () => {
+		const setSelectedSkin = mock((_skin: SkinId) => {});
+		const { getByTestId } = renderSetup(skinProgress({ setSelectedSkin }));
+		const racer = getByTestId('aeroplane-skin-option-racer');
+		racer.focus();
+		expect(document.activeElement).toBe(racer);
+		fireEvent.click(racer);
+		expect(setSelectedSkin.mock.calls).toEqual([]);
 	});
 
 	test('each option previews its own glyph via the shared PlaneGlyph', () => {
@@ -1326,7 +1341,7 @@ describe('Aeroplane skin picker', () => {
 			/>
 		);
 		const racer = getByTestId('aeroplane-skin-option-racer');
-		expect(racer.getAttribute('disabled')).toBeNull();
+		expect(racer.getAttribute('aria-disabled')).toBe('false');
 		fireEvent.click(racer);
 		expect(setSelectedSkin.mock.calls[0]![0]).toBe('racer');
 		// Selection is render-only: no setup patch, no preset churn.
@@ -1360,8 +1375,10 @@ describe('Aeroplane skin picker', () => {
 		expect(retry.mock.calls).toHaveLength(1);
 		// Until the GET succeeds, every non-classic option stays locked.
 		expect(
-			failed.getByTestId('aeroplane-skin-option-racer').getAttribute('disabled')
-		).not.toBeNull();
+			failed
+				.getByTestId('aeroplane-skin-option-racer')
+				.getAttribute('aria-disabled')
+		).toBe('true');
 		failed.unmount();
 
 		const loading = renderSetup(

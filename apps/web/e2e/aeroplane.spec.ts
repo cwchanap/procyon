@@ -670,9 +670,10 @@ test.describe('Aeroplane Chess critical journey', () => {
 		await expect(page.getByTestId('aeroplane-skin-progress')).toHaveText(
 			'Lifetime stars: 16'
 		);
+		// Locked options use aria-disabled so they stay keyboard-focusable.
 		await expect(
 			page.getByTestId('aeroplane-skin-option-contrail')
-		).toBeDisabled();
+		).toHaveAttribute('aria-disabled', 'true');
 
 		await page.getByRole('button', { name: /Red plane 2/i }).click();
 		await expect(status(page)).toContainText('Red wins the match.');
@@ -720,10 +721,15 @@ test.describe('Aeroplane Chess critical journey', () => {
 		// The refresh unlocks Contrail (20): select it by keyboard and every
 		// human plane glyph switches while AI planes stay classic.
 		const contrail = page.getByTestId('aeroplane-skin-option-contrail');
-		await expect(contrail).toBeEnabled();
-		await expect(
-			page.getByTestId('aeroplane-skin-option-racer')
-		).toBeDisabled();
+		await expect(contrail).toHaveAttribute('aria-disabled', 'false');
+		const racer = page.getByTestId('aeroplane-skin-option-racer');
+		await expect(racer).toHaveAttribute('aria-disabled', 'true');
+		// The locked option is still focusable — a keyboard user can reach the
+		// lock label — but activating it must not change the selection.
+		await racer.focus();
+		await page.keyboard.press('Enter');
+		await expect(racer).toHaveAttribute('aria-pressed', 'false');
+		await expect(contrail).toHaveAttribute('aria-pressed', 'false');
 		await contrail.focus();
 		await page.keyboard.press('Enter');
 		await expect(contrail).toHaveAttribute('aria-pressed', 'true');

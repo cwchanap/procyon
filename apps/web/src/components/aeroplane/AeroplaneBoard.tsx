@@ -22,6 +22,7 @@ import {
 	type AeroplaneMotionSegment,
 	type AeroplaneMoveTimeline,
 } from '../../lib/aeroplane/presentation';
+import { colorLabel } from '../../lib/aeroplane/labels';
 import { TYCOON_TILES, type TycoonTileKind } from '../../lib/aeroplane/tycoon';
 import type { SkinId } from '../../lib/aeroplane/rewards';
 import { Button } from '../ui/Button';
@@ -70,13 +71,6 @@ const PLANE_STROKE: Record<AeroplaneColor, string> = {
 	yellow: '#FFF0A2',
 	blue: '#D7EAFF',
 	green: '#D0FFE2',
-};
-
-const colorLabel: Record<AeroplaneColor, string> = {
-	red: 'Red',
-	yellow: 'Yellow',
-	blue: 'Blue',
-	green: 'Green',
 };
 
 /** Render-only asset slot for HPA-437; absent URLs keep the SVG silhouettes. */
@@ -255,8 +249,13 @@ export function PlaneGlyph({
 	spriteHref?: string;
 	skinId?: SkinId;
 }) {
+	// A sprite replaces the whole glyph including the skin marking and detail;
+	// data-skin therefore names only what is actually drawn, so tests fail
+	// loudly rather than pass on a skin the sprite silently dropped (HPA-437
+	// must supply per-skin art or restore the overlay before claiming one).
+	const renderedSkin = spriteHref ? undefined : (skinId ?? 'classic');
 	return (
-		<g data-skin={skinId ?? 'classic'}>
+		<g data-skin={renderedSkin}>
 			{spriteHref ? (
 				<image href={spriteHref} x={x - 3} y={y - 3} width={6} height={6} />
 			) : (

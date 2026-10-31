@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useAuth } from '../lib/auth';
+import type { AuthSnapshot } from '../lib/auth';
 import {
 	getUnlockedSkins,
 	SKIN_CATALOG,
@@ -73,6 +73,14 @@ function writeStoredSkin(skin: SkinId, userId: string): boolean {
 	}
 }
 
+function clearStoredSkin(userId: string): void {
+	try {
+		localStorage.removeItem(skinStorageKey(userId));
+	} catch {
+		// localStorage unavailable (e.g. blocked in private browsing)
+	}
+}
+
 /**
  * Server-sourced Aeroplane progression: lifetime stars from play history and
  * the user's selected skin. Fetches only once auth is verified — an
@@ -82,10 +90,11 @@ function writeStoredSkin(skin: SkinId, userId: string): boolean {
  * result only triggers a reload via `historySavedRevision`.
  */
 export function useAeroplaneProgress(
+	auth: AuthSnapshot,
 	options: UseAeroplaneProgressOptions = {}
 ): UseAeroplaneProgressResult {
 	const { historySavedRevision = 0 } = options;
-	const { loading, revalidated, isAuthenticated, user } = useAuth();
+	const { loading, revalidated, isAuthenticated, user } = auth;
 	const userId = user?.id;
 	const authVerified =
 		!loading && revalidated && isAuthenticated && typeof userId === 'string';
@@ -114,6 +123,9 @@ export function useAeroplaneProgress(
 				? previous
 				: { userId, status: 'loading', stars: 0 }
 		);
+		// Every completed match bumps historySavedRevision and re-downloads the
+		// user's whole history across all variants — the spec accepts this; a
+		// server/client gameId filter is the follow-up if volume ever matters.
 		fetchPlayHistory(controller.signal)
 			.then(rows => {
 				if (superseded) return;
@@ -154,6 +166,20 @@ export function useAeroplaneProgress(
 		[status, lifetimeStars]
 	);
 
+	// A stale stored skin that is still locked is dropped from storage — not
+	// merely masked — so reaching the star threshold later cannot resurrect a
+	// selection the user never made. The render mask below stays as a second
+	// line of defence until this effect has run.
+	useEffect(() => {
+		if (!authVerified || !userId || status !== 'loaded') return;
+		if (!unlockedSkins.includes(storedSkin)) {
+			clearStoredSkin(userId);
+			// Stamped with this user so the normalized selection shadows the
+			// stale localStorage read cached in storedForUser's memo.
+			setSkinSelection({ userId, skin: 'classic' });
+		}
+	}, [authVerified, userId, status, unlockedSkins, storedSkin]);
+
 	// Classic whenever unverified, loading/failed, or the selection is locked.
 	const selectedSkin: SkinId =
 		authVerified && status === 'loaded' && unlockedSkins.includes(storedSkin)
@@ -163,6 +189,9 @@ export function useAeroplaneProgress(
 	const setSelectedSkin = useCallback(
 		(skin: SkinId) => {
 			if (!authVerified || !userId) return;
+			// Locked skins are not selectable; until the GET loads every skin
+			// but classic reads as locked.
+			if (!unlockedSkins.includes(skin)) return;
 			if (!writeStoredSkin(skin, userId)) {
 				// Storage exceptions fall back to classic.
 				setSkinSelection({ userId, skin: 'classic' });
@@ -170,7 +199,7 @@ export function useAeroplaneProgress(
 			}
 			setSkinSelection({ userId, skin });
 		},
-		[authVerified, userId]
+		[authVerified, userId, unlockedSkins]
 	);
 
 	const retry = useCallback(() => setRetryTick(tick => tick + 1), []);
