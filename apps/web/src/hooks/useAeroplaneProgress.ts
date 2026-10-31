@@ -32,6 +32,18 @@ export interface UseAeroplaneProgressResult {
 	retry(): void;
 }
 
+interface ProgressSnapshot {
+	/** Identity the GET ran under; renders under any other mask it. */
+	userId: string | undefined;
+	status: AeroplaneProgressStatus;
+	stars: number;
+}
+
+interface SkinSelection {
+	userId: string | undefined;
+	skin: SkinId;
+}
+
 function skinStorageKey(userId: string): string {
 	return `${SKIN_STORAGE_KEY_PREFIX}_${userId}`;
 }
@@ -78,40 +90,62 @@ export function useAeroplaneProgress(
 	const authVerified =
 		!loading && revalidated && isAuthenticated && typeof userId === 'string';
 
-	const [status, setStatus] = useState<AeroplaneProgressStatus>('waiting-auth');
-	const [lifetimeStars, setLifetimeStars] = useState(0);
-	const [storedSkin, setStoredSkin] = useState<SkinId>('classic');
+	// Snapshot and selection are stamped with the identity that produced
+	// them and masked below whenever the current user differs, so nothing
+	// crosses accounts — including on the render that changes identity,
+	// before any effect could run.
+	const [progress, setProgress] = useState<ProgressSnapshot>({
+		userId: undefined,
+		status: 'waiting-auth',
+		stars: 0,
+	});
+	const [skinSelection, setSkinSelection] = useState<SkinSelection>({
+		userId: undefined,
+		skin: 'classic',
+	});
 	const [retryTick, setRetryTick] = useState(0);
 
-	// Identity changes reset immediately; nothing crosses users in memory.
 	useEffect(() => {
-		setStatus('waiting-auth');
-		setLifetimeStars(0);
-		setStoredSkin(readStoredSkin(userId));
-	}, [userId]);
-
-	useEffect(() => {
-		if (!authVerified) return;
+		if (!authVerified || !userId) return;
 		let superseded = false;
 		const controller = new AbortController();
-		setStatus(previous => (previous === 'loaded' ? previous : 'loading'));
+		setProgress(previous =>
+			previous.userId === userId && previous.status === 'loaded'
+				? previous
+				: { userId, status: 'loading', stars: 0 }
+		);
 		fetchPlayHistory(controller.signal)
 			.then(rows => {
 				if (superseded) return;
 				let stars = 0;
 				for (const row of rows) stars += scoreMatch(row)?.total ?? 0;
-				setLifetimeStars(stars);
-				setStatus('loaded');
+				setProgress({ userId, status: 'loaded', stars });
 			})
 			.catch(() => {
 				if (superseded) return;
-				setStatus('failed');
+				setProgress({ userId, status: 'failed', stars: 0 });
 			});
 		return () => {
 			superseded = true;
 			controller.abort();
 		};
 	}, [authVerified, userId, historySavedRevision, retryTick]);
+
+	// A snapshot owned by another identity reads as masked defaults;
+	// verified-but-unfetched maps to 'loading' since a GET is queued above.
+	const progressForUser = progress.userId === userId;
+	const status: AeroplaneProgressStatus = progressForUser
+		? progress.status
+		: authVerified
+			? 'loading'
+			: 'waiting-auth';
+	const lifetimeStars = progressForUser ? progress.stars : 0;
+
+	// An explicit pick only shadows the stored value while it belongs to
+	// the current user; otherwise the new identity's own record applies.
+	const storedForUser = useMemo(() => readStoredSkin(userId), [userId]);
+	const storedSkin =
+		skinSelection.userId === userId ? skinSelection.skin : storedForUser;
 
 	// Only a loaded GET reveals unlocks; failed/loading keeps every option
 	// but classic locked.
@@ -131,10 +165,10 @@ export function useAeroplaneProgress(
 			if (!authVerified || !userId) return;
 			if (!writeStoredSkin(skin, userId)) {
 				// Storage exceptions fall back to classic.
-				setStoredSkin('classic');
+				setSkinSelection({ userId, skin: 'classic' });
 				return;
 			}
-			setStoredSkin(skin);
+			setSkinSelection({ userId, skin });
 		},
 		[authVerified, userId]
 	);
