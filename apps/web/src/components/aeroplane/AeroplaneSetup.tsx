@@ -237,6 +237,7 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 						Plane skin
 					</legend>
 					<p
+						role='status'
 						data-testid='aeroplane-skin-progress'
 						className='text-xs leading-relaxed text-ivory-dim'
 					>

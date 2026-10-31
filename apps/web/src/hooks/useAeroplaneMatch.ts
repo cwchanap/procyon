@@ -763,11 +763,8 @@ export function useAeroplaneMatch(
 				current.config.humanColor
 			);
 			if (moment) {
-				momentIdRef.current += 1;
-				setHumanMoments(previous => [
-					...previous,
-					{ ...moment, id: momentIdRef.current },
-				]);
+				const momentId = (momentIdRef.current += 1);
+				setHumanMoments(previous => [...previous, { ...moment, id: momentId }]);
 			}
 			// The board/feed/cues animate the effective result, not the selection.
 			enqueuePresentation(transition.move, action);

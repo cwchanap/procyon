@@ -94,7 +94,7 @@ export function useAeroplaneProgress(
 		if (!authVerified) return;
 		let superseded = false;
 		const controller = new AbortController();
-		setStatus('loading');
+		setStatus(previous => (previous === 'loaded' ? previous : 'loading'));
 		fetchPlayHistory(controller.signal)
 			.then(rows => {
 				if (superseded) return;
