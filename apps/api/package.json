@@ -28,19 +28,19 @@
   "dependencies": {
     "@cloudflare/d1": "^1.4.1",
     "@hono/node-server": "^1.12.0",
-    "@hono/zod-validator": "^0.7.3",
-    "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.86.2",
-    "drizzle-orm": "^0.44.5",
-    "hono": "^4.9.7",
-    "jose": "^6.0.11",
-    "zod": "^4.1.8"
+    "@hono/zod-validator": "^0.9.1",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.118.0",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.14",
+    "jose": "^6.2.13",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250927.0",
     "@types/node": "^20.14.10",
-    "drizzle-kit": "^0.31.4",
+    "drizzle-kit": "^0.31.11",
     "typescript": "^5.9.2",
-    "wrangler": "^4.40.3"
+    "wrangler": "^4.154.0"
   }
 }
