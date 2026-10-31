@@ -32,6 +32,6 @@ ElevenLabs usage and distribution rights depend on the generating account's term
 
 ## Integration handoff
 
-The current `PLANE_SPRITE_HREFS` map in `AeroplaneBoard.tsx` accepts colour only, and a sprite replaces the existing skin detail. Select by **skin and colour** in committed, animated, capture-ghost and setup-preview rendering before enabling these sprites. Plane numbers remain separate. The background slot covers the square underneath the existing board geometry. Tile icons have no image slots yet; inspect their size and legibility in the board layout, since the current text markers are very small.
+The current `PLANE_SPRITE_HREFS` map in `AeroplaneBoard.tsx` accepts colour only, and a sprite replaces the existing skin detail. Select by **skin and colour** at every `PlaneGlyph` call site — committed planes, the setup picker preview, the animated mover, `capture-ghost`, and the parked captured victims in `playback.frame.parked` (`capture-parked`) — before enabling these sprites. Plane numbers remain separate. The background slot covers the square underneath the existing board geometry. Tile icons have no image slots yet; inspect their size and legibility in the board layout, since the current text markers are very small.
 
 The current `AeroplaneCue` contract and sound helper support `roll`, `hop`, `capture`, `finish`, and `win`. Playback of these files must preserve the existing mute, user-activation and best-effort behavior. Flight, coin gain/loss and trap require new cue hooks in a follow-up.
