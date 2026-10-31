@@ -9,6 +9,7 @@ import {
 	TYCOON_DEPARTURE_BONUS,
 	TYCOON_STARTING_COINS,
 } from '../../lib/aeroplane/tycoon';
+import { colorLabel } from '../../lib/aeroplane/labels';
 import { SKIN_CATALOG, skinLabel } from '../../lib/aeroplane/rewards';
 import type { UseAeroplaneProgressResult } from '../../hooks/useAeroplaneProgress';
 import type {
@@ -33,13 +34,6 @@ export interface AeroplaneSetupProps {
 }
 
 const COLORS: readonly AeroplaneColor[] = ['red', 'yellow', 'blue', 'green'];
-
-const colorLabel: Record<AeroplaneColor, string> = {
-	red: 'Red',
-	yellow: 'Yellow',
-	blue: 'Blue',
-	green: 'Green',
-};
 
 function labelize(value: string): string {
 	return value
@@ -271,12 +265,21 @@ export const AeroplaneSetup: React.FC<AeroplaneSetupProps> = ({
 									type='button'
 									data-testid={`aeroplane-skin-option-${entry.id}`}
 									aria-pressed={selected}
-									disabled={!unlocked}
-									onClick={() => progress.setSelectedSkin(entry.id)}
-									className={`flex min-h-11 flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900 disabled:cursor-not-allowed disabled:opacity-50 ${
+									// aria-disabled (not `disabled`) keeps locked options in the
+									// tab order so the "Locked · N stars" text is reachable; the
+									// guarded onClick makes activation a no-op.
+									aria-disabled={!unlocked}
+									onClick={() => {
+										if (unlocked) progress.setSelectedSkin(entry.id);
+									}}
+									className={`flex min-h-11 flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900 ${
 										selected
 											? 'border-brass bg-brass text-ink-900'
-											: 'border-line bg-ink-700 text-ivory-dim enabled:hover:bg-ink-600 enabled:hover:text-ivory'
+											: 'border-line bg-ink-700 text-ivory-dim'
+									} ${
+										unlocked
+											? 'hover:bg-ink-600 hover:text-ivory'
+											: 'cursor-not-allowed opacity-50'
 									}`}
 								>
 									<svg

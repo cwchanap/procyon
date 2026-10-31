@@ -31,8 +31,25 @@ import {
 	type AeroplaneE2EFixture,
 	type UseAeroplaneMatchOptions,
 } from './useAeroplaneMatch';
+import type { AuthSnapshot } from '../lib/auth';
 
 setupReactDom();
+
+const SIGNED_OUT_AUTH: AuthSnapshot = {
+	user: null,
+	loading: false,
+	revalidated: true,
+	isAuthenticated: false,
+};
+
+function signedInAuth(id = 'user-a'): AuthSnapshot {
+	return {
+		user: { id, email: `${id}@b.com`, username: id },
+		loading: false,
+		revalidated: true,
+		isAuthenticated: true,
+	};
+}
 
 // createHookHarness enables fake timers per test; restore the real clock
 // after every test so it cannot leak into integration or fixture-contract
@@ -277,7 +294,7 @@ function createHookHarness(
 	jest.useFakeTimers();
 	const storage = options.storage ?? memoryStorage();
 	const rendered = renderHook(() =>
-		useAeroplaneMatch({
+		useAeroplaneMatch(SIGNED_OUT_AUTH, {
 			...options,
 			storage,
 			fixture,
@@ -824,7 +841,7 @@ describe('useAeroplaneMatch controller AI turn chaining (real timers)', () => {
 	test('blocked human roll chains into consecutive AI roll/move/roll turns', async () => {
 		const storage = memoryStorage();
 		const rendered = renderHook(() =>
-			useAeroplaneMatch({
+			useAeroplaneMatch(SIGNED_OUT_AUTH, {
 				fixture: blockedHumanRollFixture(),
 				dev: true,
 				storage,
@@ -884,22 +901,14 @@ describe('useAeroplaneMatch terminal history integration', () => {
 
 	afterEach(() => {
 		globalThis.fetch = originalFetch;
-		(
-			window as unknown as { __PROCYON_INITIAL_AUTH_USER__?: unknown }
-		).__PROCYON_INITIAL_AUTH_USER__ = undefined;
 	});
 
 	function renderTerminalMatch(
 		authenticated: boolean,
 		storage: MemoryStorage = memoryStorage()
 	) {
-		(
-			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
-		).__PROCYON_INITIAL_AUTH_USER__ = authenticated
-			? { id: 'user-a', email: 'a@b.com', username: 'a' }
-			: null;
 		return renderHook(() =>
-			useAeroplaneMatch({
+			useAeroplaneMatch(authenticated ? signedInAuth() : SIGNED_OUT_AUTH, {
 				fixture: terminalAeroplaneFixture(),
 				dev: true,
 				storage,
@@ -911,14 +920,9 @@ describe('useAeroplaneMatch terminal history integration', () => {
 		storage: MemoryStorage,
 		now: () => string
 	) {
-		(
-			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
-		).__PROCYON_INITIAL_AUTH_USER__ = {
-			id: 'user-a',
-			email: 'a@b.com',
-			username: 'a',
-		};
-		return renderHook(() => useAeroplaneMatch({ storage, dev: true, now }));
+		return renderHook(() =>
+			useAeroplaneMatch(signedInAuth(), { storage, dev: true, now })
+		);
 	}
 
 	function saveTerminalSnapshot(
@@ -990,15 +994,8 @@ describe('useAeroplaneMatch terminal history integration', () => {
 		const config: AeroplaneConfig = { ...fixture.config!, mode: 'sky-tycoon' };
 		const coins = { red: 14, yellow: 0, blue: 7, green: 22 };
 		const tycoon = createAeroplaneMatch(config, fixture.seed).state.tycoon!;
-		(
-			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
-		).__PROCYON_INITIAL_AUTH_USER__ = {
-			id: 'user-a',
-			email: 'a@b.com',
-			username: 'a',
-		};
 		const match = renderHook(() =>
-			useAeroplaneMatch({
+			useAeroplaneMatch(signedInAuth(), {
 				fixture: {
 					...fixture,
 					config,
@@ -1136,13 +1133,6 @@ describe('useAeroplaneMatch terminal history integration', () => {
 			if (key === ACTIVE_MATCH_STORAGE_KEY) removeCount++;
 			removeActive(key);
 		};
-		(
-			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
-		).__PROCYON_INITIAL_AUTH_USER__ = {
-			id: 'user-a',
-			email: 'a@b.com',
-			username: 'a',
-		};
 		const match = renderTerminalMatch(true, storage);
 		replaceBeforeSuccess = () => match.result.current.reset(undefined, 39106);
 		await flushHistorySave();
@@ -1193,11 +1183,8 @@ describe('useAeroplaneMatch terminal history integration', () => {
 	test('freezes terminal duration when a winning move commits across restored remount', async () => {
 		const storage = memoryStorage();
 		let nowValue = '2026-08-09T00:00:00.000Z';
-		(
-			window as unknown as { __PROCYON_INITIAL_AUTH_USER__: unknown }
-		).__PROCYON_INITIAL_AUTH_USER__ = null;
 		const first = renderHook(() =>
-			useAeroplaneMatch({
+			useAeroplaneMatch(SIGNED_OUT_AUTH, {
 				fixture: nearVictoryAeroplaneFixture(),
 				dev: true,
 				storage,
@@ -1555,7 +1542,7 @@ describe('useAeroplaneMatch humanMoments', () => {
 		});
 		match.roll();
 		expect(match.result.current.humanMoments).toEqual([
-			{ kind: 'capture', label: 'Double capture!', captures: 2, id: 1 },
+			{ kind: 'capture', label: 'Double capture!', captures: 2 },
 		]);
 	});
 
@@ -1565,7 +1552,7 @@ describe('useAeroplaneMatch humanMoments', () => {
 		});
 		match.roll();
 		expect(match.result.current.humanMoments).toEqual([
-			{ kind: 'capture', label: 'Quadruple capture!', captures: 4, id: 1 },
+			{ kind: 'capture', label: 'Quadruple capture!', captures: 4 },
 		]);
 	});
 
@@ -1589,7 +1576,7 @@ describe('useAeroplaneMatch humanMoments', () => {
 		// Departure bonus (+3) plus the gain-4 Chance card: +7 coins total.
 		expect(gain.state().tycoon?.coins.red).toBe(17);
 		expect(gain.result.current.humanMoments).toEqual([
-			{ kind: 'coins', label: 'Big coin gain!', coinGain: 7, id: 1 },
+			{ kind: 'coins', label: 'Big coin gain!', coinGain: 7 },
 		]);
 
 		const purchase = createHookHarness(airportPurchaseFixture(), {
@@ -1609,7 +1596,7 @@ describe('useAeroplaneMatch humanMoments', () => {
 		expect(match.eventFeed()).toEqual([]);
 		expect(match.result.current.presentationQueue).toHaveLength(0);
 		expect(match.result.current.humanMoments).toEqual([
-			{ kind: 'capture', label: 'Double capture!', captures: 2, id: 1 },
+			{ kind: 'capture', label: 'Double capture!', captures: 2 },
 		]);
 	});
 

@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Panel from '../ui/Panel';
 import { Button } from '../ui/Button';
+import { colorLabel } from '../../lib/aeroplane/labels';
 import {
 	CAPTURE_COUNT_CAP,
 	SKIN_CATALOG,
 	TYCOON_BONUS_CAP,
-	skinLabel,
 	type HumanMoment,
 	type StarBreakdown,
 } from '../../lib/aeroplane/rewards';
@@ -14,13 +14,6 @@ import type { AeroplaneProgressStatus } from '../../hooks/useAeroplaneProgress';
 
 /** Count-up duration for the earned-star total. */
 export const AEROPLANE_REWARDS_COUNT_MS = 700;
-
-const colorLabel: Record<AeroplaneColor, string> = {
-	red: 'Red',
-	yellow: 'Yellow',
-	blue: 'Blue',
-	green: 'Green',
-};
 
 export interface AeroplaneRewardsProgressSummary {
 	status: AeroplaneProgressStatus;
@@ -102,6 +95,13 @@ const AeroplaneRewards: React.FC<AeroplaneRewardsProps> = ({
 	const animate = !reducedMotion && typeof requestAnimationFrame === 'function';
 	const [displayed, setDisplayed] = useState(() => (animate ? 0 : total));
 	const [settled, setSettled] = useState(() => !animate);
+	// Live regions only announce content inserted after the region exists;
+	// the announcement mounts empty and is populated one render later so a
+	// settled-on-mount (reduced motion, missing rAF) total is still read out.
+	const [regionReady, setRegionReady] = useState(false);
+	useEffect(() => {
+		setRegionReady(true);
+	}, []);
 
 	// Count-up keyed to the match identity. Reduced motion or missing rAF
 	// renders the exact final number immediately; otherwise the number counts
@@ -220,7 +220,9 @@ const AeroplaneRewards: React.FC<AeroplaneRewardsProps> = ({
 				</ul>
 				{/* Only the final total is announced, exactly once per match. */}
 				<p className='sr-only' role='status'>
-					{settled ? `You earned ${total} stars this match.` : undefined}
+					{regionReady && settled
+						? `You earned ${total} stars this match.`
+						: undefined}
 				</p>
 
 				{progress.status === 'loaded' && (
@@ -236,7 +238,7 @@ const AeroplaneRewards: React.FC<AeroplaneRewardsProps> = ({
 						</p>
 						<p>
 							{nextUnlock
-								? `Next unlock: ${skinLabel(nextUnlock.id)} at ${
+								? `Next unlock: ${nextUnlock.label} at ${
 										nextUnlock.stars
 									} stars (${nextUnlock.stars - progress.lifetimeStars} to go).`
 								: 'Every skin is unlocked.'}

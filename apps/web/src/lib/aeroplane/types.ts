@@ -2,6 +2,11 @@ import type { RngState } from './rng';
 
 export const AEROPLANE_COLORS = ['red', 'yellow', 'blue', 'green'] as const;
 export type AeroplaneColor = (typeof AEROPLANE_COLORS)[number];
+
+/** Runtime guard matching the four aeroplane colours. */
+export function isAeroplaneColor(value: unknown): value is AeroplaneColor {
+	return AEROPLANE_COLORS.includes(value as AeroplaneColor);
+}
 export type Personality = 'cautious' | 'aggressive' | 'unpredictable';
 export type DiceMode = 'fair' | 'relaxed';
 export type LaunchRule = 'six' | 'five-or-six';

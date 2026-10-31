@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '../lib/auth';
+import type { AuthSnapshot } from '../lib/auth';
 import { chooseAiMove } from '../lib/aeroplane/ai';
 import {
 	CLASSIC_CONFIG,
@@ -535,9 +535,10 @@ export function buildAeroplaneHistoryPayload(
  * authoritative envelope and only then schedules route presentation.
  */
 export function useAeroplaneMatch(
+	auth: AuthSnapshot,
 	options: UseAeroplaneMatchOptions = {}
 ): UseAeroplaneMatchResult {
-	const { isAuthenticated, user } = useAuth();
+	const { isAuthenticated, user } = auth;
 	const optionsRef = useRef(options);
 	const storageRef = useRef(options.storage);
 	const diagnosticsRef = useRef(options.diagnostics);
@@ -603,9 +604,6 @@ export function useAeroplaneMatch(
 	const [rollPresentation, setRollPresentation] =
 		useState<AeroplaneRollPresentation | null>(null);
 	const [humanMoments, setHumanMoments] = useState<HumanMoment[]>([]);
-	// Monotonic moment identity, stamped here rather than in the pure
-	// deriveHumanMoment; clearing the list never rewinds it.
-	const momentIdRef = useRef(0);
 	// Bumped by every successful terminal POST (via onSaved, not the guarded
 	// onSuccess) so server-sourced progress can refresh, including for a save
 	// that resolves after the terminal match was reset.
@@ -756,15 +754,14 @@ export function useAeroplaneMatch(
 			commit(next);
 			// Notable moments are ephemeral and independent of the feed: recorded
 			// before the (possibly skipped) presentation so Skip animations never
-			// suppress them. The controller stamps the append-order monotonic id.
+			// suppress them.
 			const moment = deriveHumanMoment(
 				current.state,
 				transition,
 				current.config.humanColor
 			);
 			if (moment) {
-				const momentId = (momentIdRef.current += 1);
-				setHumanMoments(previous => [...previous, { ...moment, id: momentId }]);
+				setHumanMoments(previous => [...previous, moment]);
 			}
 			// The board/feed/cues animate the effective result, not the selection.
 			enqueuePresentation(transition.move, action);

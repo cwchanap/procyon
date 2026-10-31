@@ -11,9 +11,9 @@ import {
 	validatePersistedAeroplaneMatch,
 	type PersistedAeroplaneValidationResult,
 } from './persistence';
+import { isAeroplaneColor } from './types';
 import type {
 	AeroplaneActionRecord,
-	AeroplaneColor,
 	AeroplaneEvent,
 	AeroplaneState,
 	PersistedAeroplaneMatchV2,
@@ -48,15 +48,6 @@ export type ReplayResult =
 	| ReplayOkResult
 	| ReplayMismatchResult
 	| ReplayInvalidResult;
-
-function isColor(value: unknown): value is AeroplaneColor {
-	return (
-		value === 'red' ||
-		value === 'yellow' ||
-		value === 'blue' ||
-		value === 'green'
-	);
-}
 
 function actionKind(action: AeroplaneActionRecord): 'roll' | 'move' | null {
 	const kind = action.kind;
@@ -135,7 +126,7 @@ function checkRoleAndColor(
 	state: AeroplaneState,
 	index: number
 ): ReplayMismatchResult | null {
-	if (!isColor(action.color)) {
+	if (!isAeroplaneColor(action.color)) {
 		return mismatch(
 			index,
 			'action colour is missing or out of domain',

@@ -2,7 +2,7 @@ import { canonicalSerialize } from './checksum';
 import { getLegalMoves } from './rules';
 import { FINISH_PROGRESS, TURN_ORDER } from './topology';
 import { tycoonTileKindAt } from './tycoon';
-import { TYCOON_CHANCE_CARDS } from './types';
+import { TYCOON_CHANCE_CARDS, isAeroplaneColor } from './types';
 import type {
 	AeroplaneActionRecord,
 	AeroplaneColor,
@@ -59,13 +59,6 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isColor(value: unknown): value is AeroplaneColor {
-	return (
-		typeof value === 'string' &&
-		(TURN_ORDER as readonly string[]).includes(value)
-	);
-}
-
 export function isUint32(value: unknown, allowZero = true): value is number {
 	return (
 		typeof value === 'number' &&
@@ -75,7 +68,7 @@ export function isUint32(value: unknown, allowZero = true): value is number {
 	);
 }
 
-function isNonNegativeInteger(value: unknown): value is number {
+export function isNonNegativeInteger(value: unknown): value is number {
 	return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
@@ -104,7 +97,7 @@ export function validConfig(value: unknown): value is AeroplaneConfig {
 		(value.finishRule === 'exact' || value.finishRule === 'bounce') &&
 		isBoolean(value.stacking) &&
 		isBoolean(value.blockades) &&
-		isColor(value.humanColor) &&
+		isAeroplaneColor(value.humanColor) &&
 		isBoolean(value.chatter) &&
 		(!value.blockades || value.stacking)
 	);
@@ -131,7 +124,7 @@ function validStats(value: unknown): boolean {
 }
 
 function validPosition(value: unknown): value is AeroplanePosition {
-	if (!isRecord(value) || !isColor(value.color)) return false;
+	if (!isRecord(value) || !isAeroplaneColor(value.color)) return false;
 	switch (value.kind) {
 		case 'hangar':
 		case 'launch':
@@ -204,29 +197,29 @@ function validEffectEvent(value: Record<string, unknown>): boolean {
 	switch (value.type) {
 		case 'coins':
 			return (
-				isColor(value.color) &&
+				isAeroplaneColor(value.color) &&
 				Number.isInteger(value.amount) &&
 				COIN_REASONS.has(value.reason)
 			);
 		case 'transfer':
 			return (
-				isColor(value.from) &&
-				isColor(value.to) &&
+				isAeroplaneColor(value.from) &&
+				isAeroplaneColor(value.to) &&
 				value.from !== value.to &&
 				isNonNegativeInteger(value.amount) &&
 				value.amount > 0 &&
 				(value.reason === 'airport-toll' || value.reason === 'steal')
 			);
 		case 'airport':
-			return isAirportTile(value.tile) && isColor(value.owner);
+			return isAirportTile(value.tile) && isAeroplaneColor(value.owner);
 		case 'card':
-			return isColor(value.color) && CHANCE_CARDS.has(value.card);
+			return isAeroplaneColor(value.color) && CHANCE_CARDS.has(value.card);
 		case 'shield':
 			return validPlaneId(value.planeId);
 		case 'skip':
 		case 'skipped':
 		case 'tailwind':
-			return isColor(value.color);
+			return isAeroplaneColor(value.color);
 		case 'relocation':
 			return (
 				validPlaneId(value.planeId) &&
@@ -273,7 +266,9 @@ function validTycoon(value: unknown): value is SkyTycoonState {
 		isRecord(airports) &&
 		Object.entries(airports).every(
 			([tile, owner]) =>
-				/^\d+$/.test(tile) && isAirportTile(Number(tile)) && isColor(owner)
+				/^\d+$/.test(tile) &&
+				isAirportTile(Number(tile)) &&
+				isAeroplaneColor(owner)
 		) &&
 		Array.isArray(shields) &&
 		new Set(shields).size === shields.length &&
@@ -301,7 +296,7 @@ function validAction(value: unknown): value is AeroplaneActionRecord {
 	if (
 		(value.kind !== 'roll' && value.kind !== 'move') ||
 		(value.actor !== 'human' && value.actor !== 'ai') ||
-		!isColor(value.color) ||
+		!isAeroplaneColor(value.color) ||
 		!isNonNegativeInteger(value.roll) ||
 		value.roll < 1 ||
 		value.roll > 6 ||
@@ -324,7 +319,7 @@ export function validSeats(
 	for (const seat of value) {
 		if (
 			!isRecord(seat) ||
-			!isColor(seat.color) ||
+			!isAeroplaneColor(seat.color) ||
 			seat.color === humanColor ||
 			!PERSONALITIES.has(seat.personality as Personality) ||
 			colors.has(seat.color)
@@ -353,7 +348,7 @@ function validState(
 	value: unknown,
 	config: AeroplaneConfig
 ): value is AeroplaneState {
-	if (!isRecord(value) || !isColor(value.currentPlayer)) return false;
+	if (!isRecord(value) || !isAeroplaneColor(value.currentPlayer)) return false;
 	if (canonicalSerialize(value.config) !== canonicalSerialize(config))
 		return false;
 	if (
@@ -367,7 +362,7 @@ function validState(
 		(value.phase === 'awaiting-roll' && value.pendingRoll !== null) ||
 		(value.phase === 'awaiting-choice' && value.pendingRoll === null) ||
 		(value.phase === 'finished' && value.pendingRoll !== null) ||
-		(value.winner !== null && !isColor(value.winner)) ||
+		(value.winner !== null && !isAeroplaneColor(value.winner)) ||
 		(value.phase === 'finished' && value.winner === null) ||
 		(value.phase !== 'finished' && value.winner !== null) ||
 		!isNonNegativeInteger(value.turnNumber) ||

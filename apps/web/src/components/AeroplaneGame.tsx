@@ -14,6 +14,7 @@ import AeroplaneRewards from './aeroplane/AeroplaneRewards';
 import AeroplaneSetup from './aeroplane/AeroplaneSetup';
 import AeroplaneStatus from './aeroplane/AeroplaneStatus';
 import { scoreMatch, type HumanMoment } from '../lib/aeroplane/rewards';
+import { useAuth } from '../lib/auth';
 import { useAeroplaneProgress } from '../hooks/useAeroplaneProgress';
 import {
 	playAeroplaneCue,
@@ -36,10 +37,13 @@ export interface AeroplaneGameProps {
 }
 
 const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
-	const match = useAeroplaneMatch(controllerOptions);
+	// One session fetch for the whole island; both feature hooks consume this
+	// snapshot rather than mounting their own /auth/session requests.
+	const auth = useAuth();
+	const match = useAeroplaneMatch(auth, controllerOptions);
 	// Server-sourced lifetime progress feeds the terminal rewards panel, the
 	// setup picker's skin ladder and the board skin.
-	const progress = useAeroplaneProgress({
+	const progress = useAeroplaneProgress(auth, {
 		historySavedRevision: match.historySavedRevision,
 	});
 
@@ -113,16 +117,18 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 		playAeroplaneCue('roll', muted);
 	}, [rollId, muted]);
 
-	// The preview uses the exact projection and scoring path as persisted
-	// history; an unfinished match suppresses the panel entirely.
+	// One terminal payload drives both the star breakdown and the panel's raw
+	// counts, matching the record persisted to play history; an unfinished
+	// match suppresses the panel entirely.
 	const finishedMatch =
 		match.activeMatch.state.phase === 'finished' ? match.activeMatch : null;
-	const rewardsBreakdown = useMemo(
-		() =>
-			finishedMatch
-				? scoreMatch(buildAeroplaneHistoryPayload(finishedMatch))
-				: null,
+	const terminalPayload = useMemo(
+		() => (finishedMatch ? buildAeroplaneHistoryPayload(finishedMatch) : null),
 		[finishedMatch]
+	);
+	const rewardsBreakdown = useMemo(
+		() => (terminalPayload ? scoreMatch(terminalPayload) : null),
+		[terminalPayload]
 	);
 
 	return (
@@ -143,21 +149,13 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 					aria-label='Aeroplane match board'
 					className='min-w-0 space-y-4'
 				>
-					{rewardsBreakdown && finishedMatch && (
+					{rewardsBreakdown && finishedMatch && terminalPayload && (
 						<AeroplaneRewards
 							matchKey={`${finishedMatch.startedAt}:${finishedMatch.rootSeed}`}
 							winner={finishedMatch.state.winner}
 							mode={finishedMatch.config.mode}
-							capturesMade={
-								finishedMatch.state.stats.capturesMade[
-									finishedMatch.config.humanColor
-								]
-							}
-							planesFinished={
-								finishedMatch.state.stats.finished[
-									finishedMatch.config.humanColor
-								]
-							}
+							capturesMade={terminalPayload.details?.capturesMade ?? 0}
+							planesFinished={terminalPayload.details?.planesFinished ?? 0}
 							breakdown={rewardsBreakdown}
 							moments={humanMoments}
 							reducedMotion={reducedMotion}

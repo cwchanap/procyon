@@ -1,7 +1,8 @@
 import type { GameId } from '../game-id';
 import type { OpponentEngineId } from '../ai/opponent';
-import { TYCOON_AIRPORT_PRICE, TYCOON_STARTING_COINS } from './tycoon';
-import { AEROPLANE_COLORS } from './types';
+import { isNonNegativeInteger } from './persistence';
+import { TYCOON_AIRPORT_PRICE } from './tycoon';
+import { isAeroplaneColor } from './types';
 import type {
 	AeroplaneColor,
 	AeroplaneState,
@@ -71,16 +72,14 @@ const STARS_PER_CAPTURE = 2;
 export const CAPTURE_COUNT_CAP = 10;
 const STARS_PER_FINISHED_PLANE = 3;
 export const TYCOON_BONUS_CAP = 10;
-/** Stars earned per COINS_PER_STAR coins of surplus above the starting 10. */
+/** Stars earned per COINS_PER_STAR coins of surplus above the baseline. */
 const COINS_PER_STAR = 5;
-
-function isCount(value: unknown): value is number {
-	return typeof value === 'number' && Number.isInteger(value) && value >= 0;
-}
-
-function isAeroplaneColor(value: unknown): value is AeroplaneColor {
-	return AEROPLANE_COLORS.includes(value as AeroplaneColor);
-}
+/**
+ * Fixed scoring baseline: the spec measures Sky Tycoon surplus above a
+ * starting balance of 10, frozen here so a future change to the live game's
+ * starting coins cannot re-score (and re-lock skins from) saved matches.
+ */
+const TYCOON_SCORE_BASELINE_COINS = 10;
 
 interface ParsedDetails {
 	humanColor: AeroplaneColor;
@@ -102,9 +101,10 @@ function parseDetails(details: unknown): ParsedDetails | null {
 		return null;
 	}
 	if (!isAeroplaneColor(raw.humanColor)) return null;
-	if (!isCount(raw.capturesMade)) return null;
+	if (!isNonNegativeInteger(raw.capturesMade)) return null;
 	// Structurally bounded by the four-plane hangar.
-	if (!isCount(raw.planesFinished) || raw.planesFinished > 4) return null;
+	if (!isNonNegativeInteger(raw.planesFinished) || raw.planesFinished > 4)
+		return null;
 	if (raw.mode !== 'sky-tycoon') {
 		// Standard (including legacy rows without `mode`) never scores coins.
 		return {
@@ -117,7 +117,7 @@ function parseDetails(details: unknown): ParsedDetails | null {
 	const humanCoins = (raw.coins as Record<string, unknown> | undefined)?.[
 		raw.humanColor
 	];
-	if (!isCount(humanCoins)) return null;
+	if (!isNonNegativeInteger(humanCoins)) return null;
 	return {
 		humanColor: raw.humanColor,
 		capturesMade: raw.capturesMade,
@@ -147,7 +147,7 @@ export function scoreMatch(input: RewardMatchInput): StarBreakdown | null {
 			: Math.min(
 					TYCOON_BONUS_CAP,
 					Math.floor(
-						Math.max(0, details.humanCoins - TYCOON_STARTING_COINS) /
+						Math.max(0, details.humanCoins - TYCOON_SCORE_BASELINE_COINS) /
 							COINS_PER_STAR
 					)
 				);
@@ -168,8 +168,6 @@ export interface HumanMoment {
 	captures?: number;
 	/** Positive coin delta; set when `kind` is `'coins'`. */
 	coinGain?: number;
-	/** Append-order identity stamped by the controller; breaks ranking ties. */
-	id?: number;
 }
 
 function captureLabel(count: number): string {

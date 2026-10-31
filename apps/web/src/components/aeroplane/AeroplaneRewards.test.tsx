@@ -1,5 +1,6 @@
 import { describe, expect, jest, test } from 'bun:test';
 import { act, render } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { setupReactDom } from '../../test/reactSetup';
 import { installFrameClock } from '../../test/frameClock';
 import type { StarBreakdown } from '../../lib/aeroplane/rewards';
@@ -117,6 +118,28 @@ describe('AeroplaneRewards panel', () => {
 		const { getByTestId, getByText } = renderRewards();
 		expect(getByTestId('aeroplane-rewards-total').textContent).toBe('19');
 		expect(getByText('You earned 19 stars this match.')).toBeTruthy();
+	});
+
+	test('the live region mounts empty so the final total is announced', () => {
+		// Effects never run for SSR markup: this is exactly the DOM a screen
+		// reader sees on mount under reduced motion — an empty region whose
+		// later insertion gets announced.
+		const html = renderToStaticMarkup(
+			<AeroplaneRewards
+				matchKey='started:1'
+				winner='red'
+				mode='standard'
+				capturesMade={3}
+				planesFinished={1}
+				breakdown={breakdown()}
+				moments={[]}
+				reducedMotion={true}
+				progress={{ status: 'waiting-auth', lifetimeStars: 0 }}
+				onRetryProgress={() => {}}
+			/>
+		);
+		expect(html).toContain('role="status"');
+		expect(html).not.toContain('You earned');
 	});
 
 	test('reduced motion renders the exact final number immediately', () => {

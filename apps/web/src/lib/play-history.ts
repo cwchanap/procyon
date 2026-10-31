@@ -73,9 +73,10 @@ export interface ServerPlayHistory {
 export async function fetchPlayHistory(
 	signal?: AbortSignal
 ): Promise<ServerPlayHistory[]> {
+	// No Content-Type: a bodiless GET with a JSON content type forces a CORS
+	// preflight on every load because web and API live on different origins.
 	const response = await fetch(`${env.PUBLIC_API_URL}/play-history`, {
 		credentials: 'include',
-		headers: { 'Content-Type': 'application/json' },
 		signal,
 	});
 	if (!response.ok) {
