@@ -324,6 +324,92 @@ describe('useAeroplaneProgress', () => {
 		expect(result.current.status).toBe('loaded');
 	});
 
+	test('masks the previous account on the render that changes identity', async () => {
+		setInitialAuthUser(authUser('user-a'));
+		store.set('procyon_aeroplane_skin_user-a', 'racer');
+		const resolvers: Array<(response: Response) => void> = [];
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				return new Promise<Response>(resolve => {
+					resolvers.push(resolve);
+				});
+			}
+			return new Response('{}', { status: 200 });
+		}) as typeof fetch;
+
+		// Record every render's return value: effects flush inside act, so
+		// the transitional identity-change render is only observable here.
+		const renders: ReturnType<typeof useAeroplaneProgress>[] = [];
+		const { result } = renderHook(() => {
+			const progress = useAeroplaneProgress();
+			renders.push(progress);
+			return progress;
+		});
+		await act(async () => {
+			resolvers[0]?.(
+				new Response(
+					JSON.stringify({
+						// 84 stars: racer is unlocked and applies as stored skin.
+						playHistory: Array.from({ length: 2 }, (_, i) =>
+							aeroplaneRow({
+								id: i + 1,
+								details: {
+									mode: 'standard',
+									rulePreset: 'classic',
+									victoryTarget: 2,
+									diceMode: 'fair',
+									launchRule: 'six',
+									finishRule: 'exact',
+									stacking: false,
+									blockades: false,
+									chatter: false,
+									humanColor: 'red',
+									durationSeconds: 120,
+									planesFinished: 4,
+									capturesMade: 10,
+									capturesSuffered: 0,
+									aiPlayers: [],
+								},
+							})
+						),
+					}),
+					{ status: 200, headers: { 'Content-Type': 'application/json' } }
+				)
+			);
+			await flush();
+		});
+		expect(result.current.status).toBe('loaded');
+		expect(result.current.selectedSkin).toBe('racer');
+
+		// The first render carrying user-b must already be masked — a
+		// post-render reset effect would run one frame too late.
+		renders.length = 0;
+		await act(async () => {
+			dispatchAuthChange(authUser('user-b'));
+			await flush();
+		});
+
+		const transition = renders[0];
+		expect(transition?.status).toBe('loading');
+		expect(transition?.lifetimeStars).toBe(0);
+		expect(transition?.unlockedSkins).toEqual(['classic']);
+		expect(transition?.selectedSkin).toBe('classic');
+
+		await act(async () => {
+			resolvers[1]?.(
+				new Response(JSON.stringify({ playHistory: [aeroplaneRow()] }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+			);
+			await flush();
+		});
+		expect(result.current.status).toBe('loaded');
+		expect(result.current.lifetimeStars).toBe(19);
+		expect(result.current.selectedSkin).toBe('classic');
+	});
+
 	test('storage read/write errors fall back to classic', async () => {
 		setInitialAuthUser(authUser('user-a'));
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
