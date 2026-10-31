@@ -39,6 +39,12 @@ interface ProgressSnapshot {
 	stars: number;
 }
 
+const EMPTY_PROGRESS: ProgressSnapshot = {
+	userId: undefined,
+	status: 'waiting-auth',
+	stars: 0,
+};
+
 interface SkinSelection {
 	userId: string | undefined;
 	skin: SkinId;
@@ -103,11 +109,7 @@ export function useAeroplaneProgress(
 	// them and masked below whenever the current user differs, so nothing
 	// crosses accounts — including on the render that changes identity,
 	// before any effect could run.
-	const [progress, setProgress] = useState<ProgressSnapshot>({
-		userId: undefined,
-		status: 'waiting-auth',
-		stars: 0,
-	});
+	const [progress, setProgress] = useState<ProgressSnapshot>(EMPTY_PROGRESS);
 	const [skinSelection, setSkinSelection] = useState<SkinSelection>({
 		userId: undefined,
 		skin: 'classic',
@@ -143,9 +145,20 @@ export function useAeroplaneProgress(
 		};
 	}, [authVerified, userId, historySavedRevision, retryTick]);
 
-	// A snapshot owned by another identity reads as masked defaults;
-	// verified-but-unfetched maps to 'loading' since a GET is queued above.
-	const progressForUser = progress.userId === userId;
+	// Losing verification drops the snapshot entirely rather than only
+	// masking it: a kept 'loaded' record would resurrect pre-loss stars the
+	// instant auth re-verifies instead of waiting on a fresh GET.
+	useEffect(() => {
+		if (authVerified) return;
+		setProgress(previous =>
+			previous.status === 'waiting-auth' ? previous : EMPTY_PROGRESS
+		);
+	}, [authVerified]);
+
+	// Claimed progress only surfaces under verified auth for the identity
+	// that fetched it. Verified-but-unfetched maps to 'loading' since a GET
+	// is queued above; unverified or unknown auth reads as 'waiting-auth'.
+	const progressForUser = authVerified && progress.userId === userId;
 	const status: AeroplaneProgressStatus = progressForUser
 		? progress.status
 		: authVerified

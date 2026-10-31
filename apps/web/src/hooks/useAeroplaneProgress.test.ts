@@ -429,6 +429,72 @@ describe('useAeroplaneProgress', () => {
 		expect(result.current.selectedSkin).toBe('classic');
 	});
 
+	test('losing verification drops claimed progress; re-verification reloads instead of resurrecting it', async () => {
+		const resolvers: Array<(response: Response) => void> = [];
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.includes('/play-history')) {
+				return new Promise<Response>(resolve => {
+					resolvers.push(resolve);
+				});
+			}
+			return new Response('{}', { status: 200 });
+		}) as typeof fetch;
+
+		const { result, rerender } = renderHook(
+			(props: { auth: AuthSnapshot }) => useAeroplaneProgress(props.auth),
+			{ initialProps: { auth: signedInAuth('user-a') } }
+		);
+		await flush();
+		expect(resolvers).toHaveLength(1);
+
+		await act(async () => {
+			resolvers[0]?.(
+				new Response(JSON.stringify({ playHistory: [aeroplaneRow()] }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+			);
+			await flush();
+		});
+		expect(result.current.status).toBe('loaded');
+		expect(result.current.lifetimeStars).toBe(19);
+
+		// The optimistic sharedUser path can hold a user while the session
+		// is unconfirmed: same identity, verification lost — the loaded
+		// snapshot must not keep claiming progress.
+		rerender({ auth: UNVERIFIED_AUTH });
+		await flush();
+
+		expect(result.current.status).toBe('waiting-auth');
+		expect(result.current.lifetimeStars).toBe(0);
+		expect(result.current.unlockedSkins).toEqual(['classic']);
+		expect(result.current.selectedSkin).toBe('classic');
+
+		// Re-verification must issue a fresh GET and sit in 'loading'
+		// until it lands — the pre-loss 'loaded' record must not return.
+		rerender({ auth: signedInAuth('user-a') });
+		await flush();
+
+		expect(resolvers).toHaveLength(2);
+		expect(result.current.status).toBe('loading');
+		expect(result.current.lifetimeStars).toBe(0);
+
+		await act(async () => {
+			resolvers[1]?.(
+				new Response(
+					JSON.stringify({
+						playHistory: [aeroplaneRow({ id: 7 }), aeroplaneRow({ id: 8 })],
+					}),
+					{ status: 200, headers: { 'Content-Type': 'application/json' } }
+				)
+			);
+			await flush();
+		});
+		expect(result.current.status).toBe('loaded');
+		expect(result.current.lifetimeStars).toBe(38);
+	});
+
 	test('storage read/write errors fall back to classic', async () => {
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
 			const url = typeof input === 'string' ? input : input.toString();
