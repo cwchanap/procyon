@@ -2756,16 +2756,21 @@ describe('Aeroplane game composition', () => {
 			).toBe('true');
 			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
 			const regions = view.getAllByRole('status');
-			// Die face, route/status line, and the always-mounted moment-banner
-			// slot (empty until a notable moment fires).
-			expect(regions).toHaveLength(3);
+			// Die face, route/status line, the always-mounted moment-banner
+			// slot (empty until a notable moment fires), and the setup panel's
+			// skin-progress announcer (live while progression loads/fails).
+			expect(regions).toHaveLength(4);
 			// The die column sits outside the live region; the region announces
 			// the roll through a stable sr-only line instead.
 			const dieRegion = regions.find(region =>
 				region.closest('[aria-label="Aeroplane match status"]')
 			)!;
+			// The route/status line is the region announcing presentations; the
+			// skin-progress announcer also carries text while progression loads.
 			const gameRegion = regions.find(
-				region => region !== dieRegion && region.textContent!.length > 0
+				region =>
+					region !== dieRegion &&
+					region.textContent!.includes('A route is being presented.')
 			)!;
 			expect(dieRegion.textContent).toContain('rolled by Red');
 			expect(gameRegion.textContent).toContain('A route is being presented.');
