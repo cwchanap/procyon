@@ -42,7 +42,7 @@ The takes were generated with ElevenLabs `eleven_text_to_sound_v2` from these pr
 | coin-loss | A single low brass coin clunk on wood, soft and muted.                 |               0.7 |
 | trap      | A quick spring mechanism snaps with a soft metallic clack.             |               0.7 |
 
-ElevenLabs usage and distribution rights depend on the generating account's terms and have not been independently verified. `sfx/` and `source-sfx/` must stay out of `public/` (and out of any published bundle) until those rights are confirmed. The cues were decoded, measured and level-checked, but still require a human listening review in the game mix.
+ElevenLabs usage and distribution rights for these outputs were verified against the generating account's terms by the repository owner before this pack was published; `sfx/` and `source-sfx/` may be committed and can move into `public/` (and any published bundle) at integration time. The cues were decoded, measured and level-checked, but still require a human listening review in the game mix.
 
 ## Integration handoff
 
