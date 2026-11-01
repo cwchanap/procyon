@@ -1,105 +1,97 @@
 # HPA-692 — Integrate Aeroplane art and SFX into gameplay
 
-**Status:** Proposed for review (planning-only draft PR)  
+**Status:** Reviewed design for implementation in the same draft PR  
 **Linear:** https://linear.app/cwchanap/issue/HPA-692/integrate-aeroplane-art-and-sfx-pack-into-gameplay  
-**Source assets:** HPA-437, merged in https://github.com/cwchanap/procyon/pull/58
+**Assets:** HPA-437, merged in https://github.com/cwchanap/procyon/pull/58  
+**Design review:** https://github.com/cwchanap/procyon/pull/59#issuecomment-6554437223
 
-## Problem and product outcome
+## Goal and boundaries
 
-PR #58 shipped a complete standalone Aeroplane asset pack, but the app still renders the temporary geometric plane glyphs, hand-painted plain background, character-based Sky Tycoon markers and oscillator sounds. The pack README explicitly leaves integration for a follow-up.
+Wire the already-delivered art and sound pack into the existing Aeroplane game. The game currently draws plane placeholder glyphs, text Sky Tycoon icons and oscillator cues. This is **only render and audio integration**: no rule, AI, save format, star progression, API, authentication or database changes, and no new art/SFX generation.
 
-**Outcome:** the existing game uses the delivered art and sounds in both Standard and Sky Tycoon modes. This is a render/audio change only: the game rules, selected-skin progression, persistence, AI, API and match outcome must not change.
+### Existing extension points
 
-## Current implementation (main after PR #58)
+- `AeroplaneBoard.tsx` renders all planes through one `PlaneGlyph`, including the setup picker, committed board, mover, capture ghost and parked victim. It already has a background image slot, but only a colour-only empty sprite map and text Sky Tycoon markers.
+- `presentationQueue` is a queue of `AeroplanePresentation` items. Each real item has `id`, `move` and `action.events`, with typed `TycoonEffectEvent`. The board currently declares only `id` and `move` in its prop type.
+- The board owns animation boundaries and terminal cues, plus `lastProcessedIdRef` deduplication. `eventFeed` receives the same move item at commit time, before the motion finishes; it is **not** the right clock for coin/trap sounds.
+- `sound.ts` already owns the lazy shared `AudioContext`, user-activation and mute checks, and the localStorage mute key.
+- `AeroplaneSetup.tsx` calls its `onStart` callback from a direct user click; `AeroplaneGame.tsx` supplies `match.newMatch`. There is already a separate Roll gesture with audio priming.
 
-- `apps/web/assets/aeroplane-pack/` contains 20 SVG plane sprites (5 skins × 4 colours), 1 board background, 11 SVG icons, 9 optimized `.m4a` cues, original `.mp3` takes and a handoff README.
-- `AeroplaneBoard.tsx` has `PLANE_SPRITE_HREFS = {}`, `BOARD_BACKGROUND_HREF = undefined`, the shared `PlaneGlyph`, and text `TILE_GLYPH` markers. The skin detail fallback currently renders only when `spriteHref` is missing.
-- The setup picker shares `PlaneGlyph`. The board also uses it for committed planes, moving planes, capture ghosts and parked captured planes. Opponent colours intentionally use the Classic skin.
-- The board already has a logical motion timeline with `hop`, `jump` and `flight` segments, and one `onCue` callback. The game component emits one `roll` cue per roll presentation ID.
-- `sound.ts` has one lazy `AudioContext`, activation/mute guards, oscillator tones for five cues and persisted mute preference.
-- `useAeroplaneMatch` exposes ephemeral `eventFeed` entries with typed `action.events` from `TycoonEffectEvent`. These are cleared on reset/resume; there is no need to modify the game engine to produce audio cues.
-- `AeroplaneStatus.tsx` already shows Sky Tycoon coin balances as readable text. The Sky Tycoon markers preserve airport owner highlights and an accessible screen-reader list.
+## Design decisions
 
-## Decisions
+### 1. Static runtime assets — move, don't duplicate
 
-### 1. Static asset paths: move, do not copy
+Use public same-origin URLs, not a Vite `?url` import, `import.meta.glob`, runtime asset loader or new copy script. Bun unit tests run without Vite.
 
-Move **only runtime assets** to `apps/web/public/aeroplane/`:
+Move exactly **41** runtime files via `git mv`:
 
-| From `apps/web/assets/aeroplane-pack/` | To `apps/web/public/aeroplane/` | Count |
+| Source under `apps/web/assets/aeroplane-pack/` | Target under `apps/web/public/aeroplane/` | Count |
 | --- | --- | ---: |
 | `planes/*.svg` | `planes/*.svg` | 20 |
 | `board/background.svg` | `board/background.svg` | 1 |
 | `icons/*.svg` | `icons/*.svg` | 11 |
 | `sfx/*.m4a` | `sfx/*.m4a` | 9 |
 
-Keep `apps/web/assets/aeroplane-pack/source-sfx/*.mp3` and its README **outside `public/`**. Update the README to point to public runtime files and preserve the original provenance/license information. Do not duplicate compressed sounds or source files inside the shipped bundle. Use same-origin absolute URLs, e.g. `/aeroplane/planes/racer-red.svg`, without an asset service or build copy script.
+Keep original `source-sfx/*.mp3` and the provenance/rights README **outside `public/`**. Update README references to new runtime URLs and remove its claim that files are not wired into the game. Update the art-palette description after placeholder `SKIN_MARKING` is removed; the committed SVG art itself becomes the source of truth for skin accents. Avoid shipping duplicate audio takes.
 
-This is deliberately simpler than a new Vite asset manifest or generalized theme loader, and static files work in the existing Astro build.
+Add a tiny pure `apps/web/src/lib/aeroplane/assets.ts` for `spriteUrl(skin, color)`, `tileIconUrl(kind)` and `cueUrl(cue)`. Export the nine-name `AEROPLANE_CUES` tuple and derive the `AeroplaneCue` union from it, so the runtime inventory test and sound helper consume one source of truth. Types for colours, skins and tile kinds reuse existing game types; no asset registry or framework. The board background may use a direct constant URL.
 
-### 2. Board, skins and icons
+### 2. Visuals — replace old plane renderer outright
 
-**Plane rendering**
+- `PlaneGlyph` resolves the URL internally by **`skinId ?? 'classic'`** plus team colour, renders **only** the image in the existing 6 × 6 board-unit footprint and a separate plane-number `<text>`. `data-skin` equals that chosen skin. No placeholder circle/marking path remains.
+- Remove the obsolete `spriteHref` prop and its board/animation call-site lookups; remove `PLANE_SPRITE_HREFS`, `PlaneSkinDetail`, `SKIN_MARKING`, `SKIN_BRASS` and `STAR_POINTS` **in this implementation PR**, not in an unspecified later cleanup. Keep `PLANE_FILL` and `PLANE_STROKE` because other board geometry still uses them.
+- Only the human-colour planes use the unlocked selected skin. Rival-colour planes always show Classic; the setup picker shows each of the five skin choices in the current human colour, respecting existing lock/selection rules.
+- Render the existing 1024 × 1024 board art in the `BoardSurface` image slot at x=1, y=1, 98 × 98, beneath track/hangar/guide geometry and overlays, while keeping the existing border.
+- Render the ten Sky Tycoon tile icons using `tileIconUrl(kind)` in the current small anchor positions. Preserve ownership tint, `data-label`, test IDs and the existing accessible screen-reader list. Render the coin SVG decoratively next to each current balance; keep the colour, numeric value and word “coins” available to assistive technology.
+- Standard mode keeps no Tycoon markers or balance list. No changes to legal-move controls, animation geometry, accessible move names or game logic.
 
-- Resolve a sprite from the existing typed `SkinId` and `AeroplaneColor`: `/aeroplane/planes/{skin}-{color}.svg`. The default for an undefined skin is `classic`.
-- Put the URL selection inside the already-shared `PlaneGlyph` rather than passing a URL at each call site. Remove the old colour-only `PLANE_SPRITE_HREFS` and obsolete geometric skin-detail placeholders when integration is complete. Keep the number as a separate SVG `<text>` label and keep the existing 6 × 6 display footprint.
-- Every place using `PlaneGlyph` must show the actual requested skin and colour. In match views, only `state.config.humanColor` receives `progress.selectedSkin`; AI opponents remain Classic. The setup picker continues to show all five choices regardless of locked state.
-- `data-skin` should describe the **rendered** sprite, and tests must inspect the actual image `href`, not merely the metadata attribute. Do not change legal-move controls or screen-reader names.
+### 3. Audio — one playback path, no delayed cues
 
-**Board surface and mode-specific markers**
+Keep `primeAeroplaneAudio`, `playAeroplaneCue`, `readAeroplaneMuted`, `writeAeroplaneMuted` and the existing single lazy `AudioContext`. Replace the oscillator implementation, do **not** retain a “temporary” oscillator fallback.
 
-- Render `/aeroplane/board/background.svg` in the existing `BoardSurface` slot (`x=1, y=1, width=98, height=98`) **behind** the track, hangars, lanes, guides, and plane overlays. Keep existing board stroke/border and overlays.
-- Replace `TycoonTileMarkers`' text glyph with `/aeroplane/icons/{kind}.svg` for the ten `TycoonTileKind` values. Keep the owner-tint circle, `data-testid`, `data-label` and the separate screen-reader list unchanged. Check that each icon fits the small track anchor and does not hide an ownership tint.
-- Use `/aeroplane/icons/coin.svg` as a decorative icon beside **existing** coin numbers in `AeroplaneStatus`. Keep the word `coins`, colour names, balances and assistive-technology labels. Do not add an additional economy widget.
-- Standard mode continues to render no Tycoon tiles or balance list.
+- When the context is first created **following user activation**, begin best-effort loading/decoding the nine short `.m4a` files once; cache decoded `AudioBuffer` objects. Each ready cue plays through `AudioBufferSourceNode` and a restrained gain node in the same context. No new dependency or general audio engine.
+- Prime on **Start match**, **Roll**, and direct **unmute** (as needed), using the existing click callbacks. This gives initial AI turns a chance to load audio even when the human does not play Red. Never load/play at module import, SSR render or before a permitted gesture.
+- If the buffer is not decoded, the context is suspended/unsupported, or user activation is blocked, **drop the requested sound**. Never schedule a sound later when its buffer finishes loading. No oscillator substitute and no burst of queued sounds.
+- Muted playback is a no-op. Respect the existing persisted mute preference, including start/roll/unmute; failure to construct, resume, fetch, decode or play cannot interrupt a game action.
+- Pace `hop` to a **150 ms minimum interval** inside `sound.ts`. No generalized overlap-policy abstraction is needed. Avoid stacking multiple economy/trap cues for the same committed action.
 
-### 3. Sound: preserve the existing small helper
+### 4. Timing — use the board clock for all move effects
 
-Keep the existing public API (`primeAeroplaneAudio`, `playAeroplaneCue`, `readAeroplaneMuted`, `writeAeroplaneMuted`) and one shared lazy `AudioContext`; **do not** introduce a global sound manager or a second audio subsystem.
+Keep one owner of timing and duplicate suppression. **Do not create an `eventFeed` watcher or a second event ID ref in `AeroplaneGame.tsx`.**
 
-- Extend `AeroplaneCue` to exactly the nine delivered names: `roll`, `hop`, `flight`, `capture`, `finish`, `win`, `coin-gain`, `coin-loss`, `trap`. Map each to `/aeroplane/sfx/{cue}.m4a`.
-- On the existing direct gesture (Roll, or unmuting), resume/prime the context and start best-effort loading/decoding of the small cue set. Cache decoded buffers and reuse them; play through `AudioBufferSourceNode` with the existing restrained gain approach. A decode/play promise rejection is not a game failure.
-- **Never queue a past cue to play after an async load**: if a requested buffer is not yet ready, drop that file playback. Keeping an existing low-volume tone as a temporary fallback for the five legacy cues is acceptable, but once a file is ready it is the only sound played for that cue. An unsupported cue simply remains silent. No later catch-up burst.
-- Do not create or play audio before user activation. Preserve the mute storage key and SSR-safe, best-effort behavior. Muting prevents playback immediately, including during or after loading. A first silent/muted roll is preferable to a blocked interaction or delayed sound burst.
-- Hop clips are longer than the board's fast hop segments. Apply a small hop rate limit (about 150 ms) or equivalent per-cue one-at-a-time policy to prevent multiple overlapping taps. Play at most one economy/trap cue per committed action.
+Widen the board's `presentationQueue` prop so it can read each real entry's `action.events` (use a minimal compatible action shape; simple test fixtures without action may remain valid and simply have no effects). Define `AeroplaneBoardCue` from `Exclude<AeroplaneCue, 'roll'>` so type lists cannot drift.
 
-**Sound triggers**
-
-| Cue | Existing signal |
+| Cue | Trigger |
 | --- | --- |
-| `roll` | `AeroplaneGame` latest roll ID (once per roll) |
-| `hop` | Board motion segment start for hop/jump |
-| `flight` | Board motion segment start when `segment.kind === 'flight'` |
-| `capture` | Existing capture-return/terminal path |
-| `finish` | Existing finished-plane terminal path |
-| `win` | Existing victorious terminal path, taking priority |
-| `coin-gain` | One new `eventFeed` action with a positive coin delta **affecting the human** |
-| `coin-loss` | One new `eventFeed` action with a negative coin delta **affecting the human** |
-| `trap` | One new action with storm/crash relocation or a Customs skip; wins priority over economy cues |
+| `roll` | Existing `rollPresentation.id` logic in `AeroplaneGame.tsx` |
+| `hop` | Existing board clock for hop/jump segments |
+| `flight` | Same board clock when `segment.kind === 'flight'` |
+| `capture` | Existing capture-return boundary, or the existing zero-duration capture fallback |
+| `finish` | Board terminal cue for a finished plane |
+| `win` | Board terminal cue for a win |
+| `coin-gain` / `coin-loss` | **Board terminal**, from a pure selector applied to the move's `action.events`, when the human gains/loses coins |
+| `trap` | **Board terminal** for storm/crash relocations or a Customs `skip` affecting **any player** |
 
-For transfers, derive the sign relative to `state.config.humanColor` (`from` is loss, `to` is gain). Economy cues for AI-only transfers stay silent to avoid noise during three-AI turns. For a single action, pick **trap > coin-loss > coin-gain** instead of playing every effect event. Keep this selection in a small pure function that can be unit-tested.
+Effect selector rules:
 
-Use the already-ephemeral `eventFeed`, keyed by each entry's ID, to avoid rerender duplicates and replayed historic effects. It is empty after reset/resume and suppressed when animations are skipped. Do not add sound fields to serialized game actions or persistence. Reduced-motion presentation keeps existing immediate terminal cue behavior; no requirement to simulate all skipped segment sounds.
+- Only typed `coins` and `transfer` events affect coin sound selection; derive the transfer direction relative to `state.config.humanColor`. AI-only coin changes are silent.
+- `trap` can fire on **any** player's trap, consistently with existing capture feedback. Only `relocation` for `storm`/`crash` and the Customs `skip` event count as a trap sound. A roll-only `skipped` event **does not**: it would double-play a Customs penalty and is not queued to the board anyway.
+- Pick **one** effect cue per action with priority `trap > coin-loss > coin-gain`. Do not fire every event separately, even if an action includes multiple transfers/coin deltas.
+- On an animated move, emit its chosen effect **after landing**, in the same terminal branch that already emits `win`/`finish`. Terminal priority is `win > finish > effect`; preserve normal segment/capture sounds earlier in the motion. An ordinary landing with no terminal effect has no extra sound.
+- On the existing reduced-motion/no-RAF immediate path, use the **same** terminal selection, preserving old capture/hop fallback when there is no win, finish or effect: `win > finish > effect > capture > hop`.
+- Reset, resume, Skip animations, unmount and repeated renders rely on the existing queue lifecycle/`lastProcessedIdRef`. Do not persist sounds or add a new playback ID store.
 
-## Test and acceptance matrix
+## Verification
 
-1. **Visual component tests:** all 20 skin/colour URLs resolve by naming convention, picker preview and human/opponent/ghost/mover/parked glyph URLs are correct, and the human's selected skin persists through overlays. Replace old assertions about `.skin-detail-*` with assertions about `<image href>`.
-2. **Board and mode tests:** background is behind existing shapes; all Sky Tycoon tile kinds map to the right icons and preserve owner colour/accessible labels; Standard shows none; coin balance text stays accessible.
-3. **Audio unit tests:** fake a running/suspended/broken `AudioContext`, fetch/decode failures and loaded buffers; check mute, activation, single playback, no asynchronous catch-up, volume/rate limiting, and one effect cue per action.
-4. **Lifecycle tests:** reset, resume, re-render, repeated roll ID and skipped animations do not replay a burst of sounds; changing mute affects the next cue without replaying the previous one.
-5. **Build/smoke:** `bun run test`, `bun run lint`, `bun run typecheck`, `bun run build` and focused web/E2E checks; request a plane, icon, background and `.m4a` URL from the built site and verify successful static delivery.
-6. **Human QA, explicitly not automatable:** inspect at actual board and picker sizes, with all team colours/skins, especially icons over brass airport tiles; listen to all nine sounds in the real game mix, including a rapid move, mute/unmute and the first roll. Test one Chromium and one Safari session where available. Record anything not verified.
+1. **Permanent runtime asset inventory unit test:** enumerate `SKIN_CATALOG × AEROPLANE_COLORS` (20), unique `TYCOON_TILES` kinds and coin (11), `AEROPLANE_CUES` (9), plus board background (1). Verify existence of all 41 files under `public/aeroplane` using a path rooted at the test file rather than relying on the current working directory. Test the same exported URL builders the components use. This removes the risk of silent 404s after placeholder deletion.
+2. **Visual/unit tests:** assert actual `<image href>` on each skin, colour, picker, mover, ghost and parked victim; retain `data-skin` semantics. Verify background layer, ten tile icons, owner tint, Standard mode and accessible coin labels.
+3. **Audio/unit tests:** stub `AudioContext`, fetch/`decodeAudioData` and buffer sources; verify one decode per cue, mute, activation, suspended/unsupported failures, no late playback, 150 ms hop pacing and one-effect selector priority. Replace old oscillator-focused tests.
+4. **Motion/unit tests:** verify flight segment uses the new cue; terminal/zero-duration priority, human-only coins, any-player traps, Customs `skipped` exclusion, and reset/resume/Skip deduplication.
+5. **Early codec smoke test:** after basic file playback is implemented **before wiring effects**, open the dev build and actually hear a file-backed Roll cue in Chromium and Safari (when available). If a browser cannot decode AAC, document the precise affected browser; do not invent a fallback framework.
+6. **Final checks:** focused Bun tests at the end of **every phase**, then full web tests, lint, typecheck, Astro build, and human visual/audio QA at actual board size. The permanent inventory test replaces the proposed one-off file/HTTP spot check; Astro serves `public/` files as-is.
 
-## Non-goals
+## Non-goals and risks
 
-- Creating or editing art/SFX (HPA-437 owns asset generation).
-- New rules, Sky Tycoon tile behavior, AI tactics, unlock thresholds or account/persistence changes.
-- Reworking the layout, animation timeline, responsive framework, API, database, or generalized media systems.
-- Additional PRs for this ticket: design, implementation and tests belong to **one PR**.
+No new art/SFX production, gameplay rules, AI, stars, save formats, APIs, animation redesign, generic asset registry or audio framework. All implementation and tests land in **the same HPA-692 PR** after design review.
 
-## Implementation review risks
-
-- A green `data-skin` attribute is not evidence that the correct sprite URL rendered; assert `href` and visually inspect at size.
-- A 0.30-second hop cue can overlap several 80 ms hops; bound sound density.
-- AAC decoding and browser gesture rules differ; play failures must never block a turn, and the manual listening check remains a release gate.
-- The art pack's source takes must not accidentally be copied to `public/` or counted as deployable runtime assets.
+The real compatibility unknown is `decodeAudioData` with AAC. Check Chromium and Safari early; **Firefox on Linux may depend on available system codecs**, so a silent cue there should be documented as a compatibility limitation rather than causing gameplay failure. Clip length versus rapid hops is handled by the 150 ms rate limit. Human listening remains necessary to judge in-game gain/mix; unit tests cannot establish perceived audio quality.
