@@ -28,7 +28,8 @@ Four team colours, Classic plus four existing unlockable skin IDs, eleven distin
 
 - [x] Produce one centred sprite for each of five skin IDs and four team colours.
 - [x] Produce the eleven icons and quiet square board background.
-- [x] Validate SVG decoding and inventory; inspect in a board-scale contact sheet and the actual board. Inventory and a headless contact sheet (native + ~14 px scale, dark and brass tiles) checked; actual board integration remains a separate ticket.
+- [x] Validate SVG decoding and inventory; inspect in a board-scale contact sheet. Inventory and a headless contact sheet (native + ~14 px scale, dark and brass tiles) checked.
+- [ ] Inspect sprites at board scale on the actual board — still open; blocked on board integration, which remains a separate ticket.
 
 ### Task 2: Audio and handoff
 
