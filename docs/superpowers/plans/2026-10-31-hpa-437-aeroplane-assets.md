@@ -4,11 +4,11 @@
 
 **Goal:** Deliver the approved standalone art and SFX pack for HPA-437.
 
-**Architecture:** Keep assets and their handoff README together under `apps/web/public/assets/aeroplane-pack/`; do not change application code. Generate consistent plane and icon artwork and separate short sounds, then validate the full inventory and inspect the results.
+**Architecture:** Keep assets and their handoff README together under `apps/web/assets/aeroplane-pack/` (outside `public/` so nothing deploys until integration); do not change application code. Generate consistent plane and icon artwork and separate short sounds, then validate the full inventory and inspect the results.
 
 **Tech Stack:** SVG or PNG artwork, browser-compatible audio, existing local media tools.
 
-**Spec:** `docs/superpowers/plans/2026-10-31-hpa-437-aeroplane-asset-pack-design.md`
+**Spec:** `docs/superpowers/specs/2026-10-31-hpa-437-aeroplane-asset-pack-design.md`
 
 ## Global Constraints
 
@@ -24,17 +24,18 @@ Four team colours, Classic plus four existing unlockable skin IDs, eleven distin
 
 ### Task 1: Art
 
-**Files:** Create assets in `apps/web/public/assets/aeroplane-pack/{planes,icons,board}/`.
+**Files:** Create assets in `apps/web/assets/aeroplane-pack/{planes,icons,board}/`.
 
 - [x] Produce one centred sprite for each of five skin IDs and four team colours.
 - [x] Produce the eleven icons and quiet square board background.
-- [ ] Validate SVG decoding and inventory; inspect in a board-scale contact sheet and the actual board. Inventory and contact sheet checked; actual board integration remains open.
+- [x] Validate SVG decoding and inventory; inspect in a board-scale contact sheet and the actual board. Inventory and a headless contact sheet (native + ~14 px scale, dark and brass tiles) checked; actual board integration remains a separate ticket.
 
 ### Task 2: Audio and handoff
 
-**Files:** Create audio under `apps/web/public/assets/aeroplane-pack/sfx/` and a README in the pack root.
+**Files:** Create audio under `apps/web/assets/aeroplane-pack/sfx/` and a README in the pack root.
 
 - [x] Produce the nine named cues with the agreed mechanical/chime direction.
-- [ ] Check each cue decodes, has sensible duration, peak and endpoints; listen to the set.
+- [x] Check each cue decodes, has sensible duration, peak and endpoints (measured via ffprobe/volumedetect after encode).
+- [ ] Human listening pass on the set in the game mix — still open.
 - [x] Document mapping, dimensions, provenance, usage constraints and integration limitations.
-- [ ] Recheck inventory, final assets, and repository status; report any remaining checks honestly.
+- [x] Recheck inventory, final assets, and repository status; report any remaining checks honestly.
