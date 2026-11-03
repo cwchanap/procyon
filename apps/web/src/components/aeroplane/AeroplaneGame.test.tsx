@@ -21,6 +21,11 @@ import { checksumState } from '../../lib/aeroplane/checksum';
 import { applyResolvedMove, resolveLegalMove } from '../../lib/aeroplane/rules';
 import { toPosition } from '../../lib/aeroplane/topology';
 import { TYCOON_TILES, initialTycoonState } from '../../lib/aeroplane/tycoon';
+import {
+	BOARD_BACKGROUND_URL,
+	spriteUrl,
+	tileIconUrl,
+} from '../../lib/aeroplane/assets';
 import { TYCOON_CHANCE_CARDS } from '../../lib/aeroplane/types';
 import { scoreMatch, type SkinId } from '../../lib/aeroplane/rewards';
 import { positionAnchor } from '../../lib/aeroplane/presentation';
@@ -437,9 +442,26 @@ describe('Aeroplane board interactions', () => {
 		expect(
 			getByTestId('aeroplane-tycoon-tile-0').querySelector('circle')
 		).toBeNull();
-		expect(queryAllByTestId(/^aeroplane-tycoon-tile-/)).toHaveLength(
-			TYCOON_TILES.size
+		const tiles = queryAllByTestId(/^aeroplane-tycoon-tile-/);
+		expect(tiles).toHaveLength(TYCOON_TILES.size);
+		// Every shared-map tile kind renders its own icon image centred on
+		// the anchor, and the old text-glyph placeholder is gone.
+		const hrefs = tiles.map(
+			tile => tile.querySelector('image')?.getAttribute('href') ?? null
 		);
+		expect(new Set(hrefs)).toEqual(
+			new Set([...TYCOON_TILES.values()].map(kind => tileIconUrl(kind)))
+		);
+		expect(new Set(hrefs).size).toBe(10);
+		expect(owned.querySelector('text')).toBeNull();
+		const icon = owned.querySelector('image')!;
+		expect(icon.getAttribute('href')).toBe(tileIconUrl('airport'));
+		expect(
+			Number(icon.getAttribute('x')) + Number(icon.getAttribute('width')) / 2
+		).toBeCloseTo(TRACK_ANCHORS[6]!.x, 6);
+		expect(
+			Number(icon.getAttribute('y')) + Number(icon.getAttribute('height')) / 2
+		).toBeCloseTo(TRACK_ANCHORS[6]!.y, 6);
 	});
 
 	test('Standard boards render no Sky Tycoon markers', () => {
@@ -452,6 +474,36 @@ describe('Aeroplane board interactions', () => {
 		);
 		expect(queryByRole('list', { name: 'Sky Tycoon tiles' })).toBeNull();
 		expect(queryAllByTestId(/^aeroplane-tycoon-tile-/)).toHaveLength(0);
+	});
+
+	test('draws the board background behind geometry, tiles and planes', () => {
+		const { container, getAllByTestId, getByTestId } = render(
+			<AeroplaneBoard
+				state={fixtureState({
+					config: { ...CLASSIC_CONFIG, mode: 'sky-tycoon' },
+					tycoon: {
+						...initialTycoonState(1),
+						airports: { 6: 'blue' as const },
+					},
+				})}
+				legalMoves={[]}
+				onRoll={mock(() => {})}
+			/>
+		);
+		const images = [...container.querySelectorAll('svg image')];
+		const hrefs = images.map(image => image.getAttribute('href'));
+		// Exactly one background image, first in document order, so every
+		// painted geometry layer, tile icon and plane sprite draws above it.
+		expect(hrefs.filter(href => href === BOARD_BACKGROUND_URL)).toHaveLength(1);
+		expect(hrefs[0]).toBe(BOARD_BACKGROUND_URL);
+		const background = images[0]!;
+		const behind = (element: Element) =>
+			(background.compareDocumentPosition(element) &
+				Node.DOCUMENT_POSITION_FOLLOWING) !==
+			0;
+		expect(behind(getAllByTestId('aeroplane-hangar-slot')[0]!)).toBe(true);
+		expect(behind(getByTestId('aeroplane-tycoon-tile-0'))).toBe(true);
+		expect(behind(getByTestId('aeroplane-plane-control-red-0'))).toBe(true);
 	});
 
 	test('keeps all sixteen hangar slots visible after planes launch', () => {
@@ -1221,11 +1273,12 @@ function overlayAnchor(
 	queryByTestId: (id: string) => Element | null,
 	testId = 'aeroplane-motion-overlay'
 ): { x: number; y: number } | null {
-	const circle = queryByTestId(testId)?.querySelector('circle');
-	if (!circle) return null;
+	// Plane glyphs render a 6×6 sprite image centred on (x, y).
+	const image = queryByTestId(testId)?.querySelector('image');
+	if (!image) return null;
 	return {
-		x: Number(circle.getAttribute('cx')),
-		y: Number(circle.getAttribute('cy')),
+		x: Number(image.getAttribute('x')) + 3,
+		y: Number(image.getAttribute('y')) + 3,
 	};
 }
 
@@ -1263,6 +1316,11 @@ function skinOf(control: Element): string | null {
 	return (
 		control.querySelector('[data-skin]')?.getAttribute('data-skin') ?? null
 	);
+}
+
+/** The sprite `<image href>` worn by any plane glyph container. */
+function spriteHrefOf(container: Element): string | null {
+	return container.querySelector('image')?.getAttribute('href') ?? null;
 }
 
 describe('Aeroplane skin picker', () => {
@@ -1308,7 +1366,7 @@ describe('Aeroplane skin picker', () => {
 		expect(setSelectedSkin.mock.calls).toEqual([]);
 	});
 
-	test('each option previews its own glyph via the shared PlaneGlyph', () => {
+	test('each option previews its own sprite via the shared PlaneGlyph', () => {
 		const { getByTestId } = renderSetup(skinProgress());
 		for (const id of [
 			'classic',
@@ -1317,11 +1375,11 @@ describe('Aeroplane skin picker', () => {
 			'starlight',
 			'ace',
 		] as const) {
-			expect(
-				getByTestId(`aeroplane-skin-option-${id}`).querySelector(
-					`[data-skin='${id}']`
-				)
-			).not.toBeNull();
+			const option = getByTestId(`aeroplane-skin-option-${id}`);
+			expect(option.querySelector(`[data-skin='${id}']`)).not.toBeNull();
+			expect(option.querySelector('image')?.getAttribute('href')).toBe(
+				spriteUrl(id, CLASSIC_CONFIG.humanColor)
+			);
 		}
 	});
 
@@ -1419,15 +1477,27 @@ describe('Aeroplane board skins', () => {
 		expect(skinOf(first.getByTestId('aeroplane-plane-control-red-0'))).toBe(
 			'racer'
 		);
+		expect(
+			spriteHrefOf(first.getByTestId('aeroplane-plane-control-red-0'))
+		).toBe(spriteUrl('racer', 'red'));
 		expect(skinOf(first.getByTestId('aeroplane-plane-control-yellow-0'))).toBe(
 			'classic'
 		);
+		expect(
+			spriteHrefOf(first.getByTestId('aeroplane-plane-control-yellow-0'))
+		).toBe(spriteUrl('classic', 'yellow'));
 		expect(skinOf(first.getByTestId('aeroplane-plane-control-blue-0'))).toBe(
 			'classic'
 		);
+		expect(
+			spriteHrefOf(first.getByTestId('aeroplane-plane-control-blue-0'))
+		).toBe(spriteUrl('classic', 'blue'));
 		expect(skinOf(first.getByTestId('aeroplane-plane-control-green-0'))).toBe(
 			'classic'
 		);
+		expect(
+			spriteHrefOf(first.getByTestId('aeroplane-plane-control-green-0'))
+		).toBe(spriteUrl('classic', 'green'));
 		first.unmount();
 		const plain = render(
 			<AeroplaneBoard state={state} legalMoves={[]} onRoll={mock(() => {})} />
@@ -1435,9 +1505,12 @@ describe('Aeroplane board skins', () => {
 		expect(skinOf(plain.getByTestId('aeroplane-plane-control-red-0'))).toBe(
 			'classic'
 		);
+		expect(
+			spriteHrefOf(plain.getByTestId('aeroplane-plane-control-red-0'))
+		).toBe(spriteUrl('classic', 'red'));
 	});
 
-	test('each non-classic skin renders its distinctive detail element', () => {
+	test('each skin renders its own sprite; the placeholder detail path is gone', () => {
 		const state = fixtureState({
 			planes: COLORS.flatMap(color =>
 				Array.from({ length: 4 }, (_, index) => ({
@@ -1447,7 +1520,13 @@ describe('Aeroplane board skins', () => {
 				}))
 			),
 		});
-		for (const skin of ['contrail', 'racer', 'starlight', 'ace'] as const) {
+		for (const skin of [
+			'classic',
+			'contrail',
+			'racer',
+			'starlight',
+			'ace',
+		] as const) {
 			const view = render(
 				<AeroplaneBoard
 					state={state}
@@ -1456,21 +1535,20 @@ describe('Aeroplane board skins', () => {
 					onRoll={mock(() => {})}
 				/>
 			);
-			const glyph = view
-				.getByTestId('aeroplane-plane-control-red-0')
-				.querySelector(`[data-skin='${skin}']`);
-			expect(glyph).not.toBeNull();
-			expect(glyph!.querySelector(`.skin-detail-${skin}`)).not.toBeNull();
+			const control = view.getByTestId('aeroplane-plane-control-red-0');
+			expect(control.querySelector(`[data-skin='${skin}']`)).not.toBeNull();
+			expect(spriteHrefOf(control)).toBe(spriteUrl(skin, 'red'));
+			// The glyph is image-only: no painted circle fallback remains.
+			expect(control.querySelector('circle')).toBeNull();
 			view.unmount();
 		}
-		// Classic stays unadorned.
+		// The dead skin-detail hook no longer exists anywhere in the tree.
 		const plain = render(
 			<AeroplaneBoard state={state} legalMoves={[]} onRoll={mock(() => {})} />
 		);
-		const classic = plain
-			.getByTestId('aeroplane-plane-control-red-0')
-			.querySelector('[data-skin="classic"]');
-		expect(classic!.querySelector('[class*="skin-detail"]')).toBeNull();
+		expect(
+			plain.container.querySelectorAll('[class*="skin-detail"]')
+		).toHaveLength(0);
 	});
 
 	test('mover, ghost and parked victims follow each plane’s colour during playback', () => {
@@ -1498,11 +1576,17 @@ describe('Aeroplane board skins', () => {
 					'[data-skin="racer"]'
 				)
 			).not.toBeNull();
+			expect(spriteHrefOf(queryByTestId('aeroplane-motion-overlay')!)).toBe(
+				spriteUrl('racer', 'red')
+			);
 			expect(
 				queryByTestId('aeroplane-capture-parked')!.querySelector(
 					'[data-skin="classic"]'
 				)
 			).not.toBeNull();
+			expect(spriteHrefOf(queryByTestId('aeroplane-capture-parked')!)).toBe(
+				spriteUrl('classic', 'yellow')
+			);
 			act(() => clock.advance(80));
 			// The returning ghost keeps the victim's own (non-human) skin.
 			expect(
@@ -1510,6 +1594,9 @@ describe('Aeroplane board skins', () => {
 					'[data-skin="classic"]'
 				)
 			).not.toBeNull();
+			expect(spriteHrefOf(queryByTestId('aeroplane-capture-ghost')!)).toBe(
+				spriteUrl('classic', 'yellow')
+			);
 			act(() => clock.advance(160));
 			// Playback settles into the identical committed representations.
 			expect(skinOf(getByTestId('aeroplane-plane-control-red-0'))).toBe(
@@ -1551,17 +1638,26 @@ describe('Aeroplane board skins', () => {
 					'[data-skin="classic"]'
 				)
 			).not.toBeNull();
+			expect(spriteHrefOf(queryByTestId('aeroplane-motion-overlay')!)).toBe(
+				spriteUrl('classic', 'red')
+			);
 			expect(
 				queryByTestId('aeroplane-capture-parked')!.querySelector(
 					'[data-skin="racer"]'
 				)
 			).not.toBeNull();
+			expect(spriteHrefOf(queryByTestId('aeroplane-capture-parked')!)).toBe(
+				spriteUrl('racer', 'yellow')
+			);
 			act(() => clock.advance(80));
 			expect(
 				queryByTestId('aeroplane-capture-ghost')!.querySelector(
 					'[data-skin="racer"]'
 				)
 			).not.toBeNull();
+			expect(spriteHrefOf(queryByTestId('aeroplane-capture-ghost')!)).toBe(
+				spriteUrl('racer', 'yellow')
+			);
 			act(() => clock.advance(160));
 			expect(skinOf(getByTestId('aeroplane-plane-control-yellow-1'))).toBe(
 				'racer'

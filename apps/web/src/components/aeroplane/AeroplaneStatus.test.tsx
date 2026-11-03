@@ -4,6 +4,7 @@ import { setupReactDom } from '../../test/reactSetup';
 import { installFrameClock } from '../../test/frameClock';
 import { CLASSIC_CONFIG } from '../../lib/aeroplane/game';
 import { initialTycoonState } from '../../lib/aeroplane/tycoon';
+import { tileIconUrl } from '../../lib/aeroplane/assets';
 import type { AeroplaneRollPresentation } from '../../hooks/useAeroplaneMatch';
 import type {
 	AeroplaneEvent,
@@ -327,6 +328,12 @@ describe('Aeroplane status Sky Tycoon balances', () => {
 			/>
 		);
 		expect(getByRole('list', { name: 'Sky Tycoon balances' })).toBeTruthy();
+		// A decorative, screen-reader-hidden coin image rides beside the
+		// number while the readable balance text stays byte-for-byte.
+		const coin = getByTestId('aeroplane-coins-red').querySelector('img');
+		expect(coin?.getAttribute('src')).toBe(tileIconUrl('coin'));
+		expect(coin?.getAttribute('alt')).toBe('');
+		expect(coin?.getAttribute('aria-hidden')).toBe('true');
 		expect(getByTestId('aeroplane-coins-red').textContent).toBe(
 			'Red 13 coins1 shielded plane'
 		);

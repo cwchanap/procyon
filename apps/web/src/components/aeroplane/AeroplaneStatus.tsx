@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Panel from '../ui/Panel';
 import { colorLabel } from '../../lib/aeroplane/labels';
+import { tileIconUrl } from '../../lib/aeroplane/assets';
 import { AEROPLANE_VISUAL_MAX_MS } from '../../lib/aeroplane/presentation';
 import { TURN_ORDER } from '../../lib/aeroplane/topology';
 import type { AeroplaneState, ResolvedMove } from '../../lib/aeroplane/types';
@@ -194,6 +195,12 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 									<span className='font-semibold text-ivory'>
 										{colorLabel[color]}
 									</span>{' '}
+									<img
+										src={tileIconUrl('coin')}
+										alt=''
+										aria-hidden='true'
+										className='mr-1 inline-block h-4 w-4 align-[-0.2em]'
+									/>
 									<span className='font-mono text-aeroplane'>
 										{tycoon.coins[color]}
 									</span>{' '}

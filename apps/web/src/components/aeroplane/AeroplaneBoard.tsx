@@ -23,6 +23,11 @@ import {
 	type AeroplaneMoveTimeline,
 } from '../../lib/aeroplane/presentation';
 import { colorLabel } from '../../lib/aeroplane/labels';
+import {
+	BOARD_BACKGROUND_URL,
+	spriteUrl,
+	tileIconUrl,
+} from '../../lib/aeroplane/assets';
 import { TYCOON_TILES, type TycoonTileKind } from '../../lib/aeroplane/tycoon';
 import type { SkinId } from '../../lib/aeroplane/rewards';
 import { Button } from '../ui/Button';
@@ -73,37 +78,8 @@ const PLANE_STROKE: Record<AeroplaneColor, string> = {
 	green: '#D0FFE2',
 };
 
-/** Render-only asset slot for HPA-437; absent URLs keep the SVG silhouettes. */
-const PLANE_SPRITE_HREFS: Partial<Record<AeroplaneColor, string>> = {};
-
-/** Skin marking accents layered over the unchanged team-colour fill. */
-const SKIN_MARKING: Record<SkinId, string> = {
-	classic: '#17263A',
-	contrail: '#0E7490',
-	racer: '#7F1D1D',
-	starlight: '#5B21B6',
-	ace: '#064E3B',
-};
-
-/** Brass shared by the starlight/ace placeholder accents. */
-const SKIN_BRASS = '#D97706';
-
-/** Five-point star outline centred on (0, 0), outer r≈0.6, inner r≈0.25. */
-const STAR_POINTS = [
-	'0 -1.17',
-	'0.15 -0.76',
-	'0.59 -0.74',
-	'0.25 -0.47',
-	'0.36 -0.05',
-	'0 -0.29',
-	'-0.36 -0.05',
-	'-0.25 -0.47',
-	'-0.59 -0.74',
-	'-0.15 -0.76',
-].join(' ');
-
-/** Render-only asset slot for HPA-437; absent URL keeps the painted board. */
-const BOARD_BACKGROUND_HREF: string | undefined = undefined;
+/** Tile icon footprint in board units, centred on the track anchor. */
+const TILE_ICON_SIZE = 3.4;
 
 function planeNumber(planeId: string): number {
 	return planeIndex(planeId) + 1;
@@ -162,120 +138,34 @@ function isCoarsePointer(event: React.SyntheticEvent): boolean {
 }
 
 /**
- * Placeholder per-skin accent layered over the unchanged team glyph
- * (HPA-362); HPA-437 replaces these with real art. Sized for the 12×12
- * glyph viewBox; the `skin-detail-*` class is a stable test hook.
- */
-function PlaneSkinDetail({
-	x,
-	y,
-	skinId,
-}: {
-	x: number;
-	y: number;
-	skinId: SkinId;
-}) {
-	switch (skinId) {
-		case 'contrail':
-			return (
-				<line
-					className='skin-detail-contrail'
-					x1={x}
-					y1={y + 1}
-					x2={x}
-					y2={y + 2.4}
-					stroke='#BAE6FD'
-					strokeWidth='0.55'
-					strokeLinecap='round'
-				/>
-			);
-		case 'racer':
-			return (
-				<g
-					className='skin-detail-racer'
-					stroke='#FFF5D3'
-					strokeWidth='0.32'
-					strokeLinecap='round'
-				>
-					<line x1={x - 0.42} y1={y - 0.5} x2={x - 0.42} y2={y + 0.6} />
-					<line x1={x + 0.42} y1={y - 0.5} x2={x + 0.42} y2={y + 0.6} />
-				</g>
-			);
-		case 'starlight':
-			return (
-				<polygon
-					className='skin-detail-starlight'
-					points={STAR_POINTS}
-					transform={`translate(${x} ${y - 0.55})`}
-					fill={SKIN_BRASS}
-					stroke='#78350F'
-					strokeWidth='0.12'
-				/>
-			);
-		case 'ace':
-			return (
-				<circle
-					className='skin-detail-ace'
-					cx={x}
-					cy={y}
-					r='2.5'
-					fill='none'
-					stroke={SKIN_BRASS}
-					strokeWidth='0.35'
-				/>
-			);
-		default:
-			return null;
-	}
-}
-
-/**
- * Render-only plane glyph shared by the committed layer, motion overlays and
- * the setup picker previews. `skinId` adds a marking accent plus a
- * placeholder detail; the team fill and outline stay owning-colour.
+ * Served plane sprite plus its separate text number, shared by the
+ * committed layer, motion overlays and the setup picker previews. The
+ * sprite carries the whole skin identity, so `data-skin` always names the
+ * art actually drawn (defaulting to classic).
  */
 export function PlaneGlyph({
 	x,
 	y,
 	color,
 	number,
-	spriteHref,
 	skinId,
 }: {
 	x: number;
 	y: number;
 	color: AeroplaneColor;
 	number: number;
-	spriteHref?: string;
 	skinId?: SkinId;
 }) {
-	// A sprite replaces the whole glyph including the skin marking and detail;
-	// data-skin therefore names only what is actually drawn, so tests fail
-	// loudly rather than pass on a skin the sprite silently dropped (HPA-437
-	// must supply per-skin art or restore the overlay before claiming one).
-	const renderedSkin = spriteHref ? undefined : (skinId ?? 'classic');
+	const renderedSkin = skinId ?? 'classic';
 	return (
 		<g data-skin={renderedSkin}>
-			{spriteHref ? (
-				<image href={spriteHref} x={x - 3} y={y - 3} width={6} height={6} />
-			) : (
-				<>
-					<circle
-						cx={x}
-						cy={y}
-						r='3'
-						fill={PLANE_FILL[color]}
-						stroke={PLANE_STROKE[color]}
-						strokeWidth='0.65'
-					/>
-					<path
-						d={`M ${x - 1.2} ${y + 0.8} L ${x} ${y - 1.8} L ${x + 1.2} ${y + 0.8} L ${x} ${y + 0.2} Z`}
-						fill={SKIN_MARKING[skinId ?? 'classic']}
-						fillOpacity='0.72'
-					/>
-					<PlaneSkinDetail x={x} y={y} skinId={skinId ?? 'classic'} />
-				</>
-			)}
+			<image
+				href={spriteUrl(renderedSkin, color)}
+				x={x - 3}
+				y={y - 3}
+				width={6}
+				height={6}
+			/>
 			<text
 				x={x}
 				y={y + 5.1}
@@ -308,15 +198,7 @@ const BoardSurface = React.memo(function BoardSurface() {
 				strokeOpacity='0.3'
 				strokeWidth='0.7'
 			/>
-			{BOARD_BACKGROUND_HREF && (
-				<image
-					href={BOARD_BACKGROUND_HREF}
-					x='1'
-					y='1'
-					width='98'
-					height='98'
-				/>
-			)}
+			<image href={BOARD_BACKGROUND_URL} x='1' y='1' width='98' height='98' />
 			<circle
 				cx='50'
 				cy='50'
@@ -421,20 +303,6 @@ const BoardSurface = React.memo(function BoardSurface() {
 	);
 });
 
-/** Placeholder text glyphs per Sky Tycoon tile; HPA-437 owns real art. */
-const TILE_GLYPH: Record<TycoonTileKind, string> = {
-	airport: '\u2708',
-	chance: '?',
-	boost: '\u00BB',
-	tailwind: '\u21BB',
-	shield: '\u25C6',
-	wormhole: '\u25CE',
-	storm: '\u2248',
-	customs: '$',
-	tax: '%',
-	crash: '\u2716',
-};
-
 const TILE_NAME: Record<TycoonTileKind, string> = {
 	airport: 'Airport',
 	chance: 'Chance',
@@ -505,16 +373,13 @@ const TycoonTileMarkers = React.memo(function TycoonTileMarkers({
 								strokeWidth='0.35'
 							/>
 						)}
-						<text
-							x={anchor.x}
-							y={anchor.y + 0.6}
-							fill='#FFF5D3'
-							fillOpacity='0.85'
-							fontSize='1.7'
-							textAnchor='middle'
-						>
-							{TILE_GLYPH[kind]}
-						</text>
+						<image
+							href={tileIconUrl(kind)}
+							x={anchor.x - TILE_ICON_SIZE / 2}
+							y={anchor.y - TILE_ICON_SIZE / 2}
+							width={TILE_ICON_SIZE}
+							height={TILE_ICON_SIZE}
+						/>
 					</g>
 				);
 			})}
@@ -571,7 +436,6 @@ const CommittedPlanes = React.memo(function CommittedPlanes({
 							y={y}
 							color={plane.color}
 							number={planeNumber(plane.id)}
-							spriteHref={PLANE_SPRITE_HREFS[plane.color]}
 							skinId={plane.color === humanColor ? skinId : undefined}
 						/>
 					</g>
@@ -968,7 +832,6 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 									y={playback.frame.mover.y}
 									color={playback.timeline.color}
 									number={planeNumber(playback.timeline.planeId)}
-									spriteHref={PLANE_SPRITE_HREFS[playback.timeline.color]}
 									skinId={
 										playback.timeline.color === state.config.humanColor
 											? skinId
@@ -983,7 +846,6 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 										y={playback.frame.ghost.y}
 										color={ghostPlane.color}
 										number={planeNumber(ghostPlane.id)}
-										spriteHref={PLANE_SPRITE_HREFS[ghostPlane.color]}
 										skinId={
 											ghostPlane.color === state.config.humanColor
 												? skinId
@@ -1007,7 +869,6 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 											y={parked.y}
 											color={victim.color}
 											number={planeNumber(victim.id)}
-											spriteHref={PLANE_SPRITE_HREFS[victim.color]}
 											skinId={
 												victim.color === state.config.humanColor
 													? skinId
