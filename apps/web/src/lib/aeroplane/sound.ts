@@ -6,8 +6,48 @@
  * play; a cue whose buffer is not ready is dropped, never queued.
  */
 import { AEROPLANE_CUES, cueUrl, type AeroplaneCue } from './assets';
+import type {
+	AeroplaneColor,
+	AeroplaneEvent,
+	TycoonEffectEvent,
+} from './types';
 
 export type { AeroplaneCue };
+
+/** The one effect cue a move's serialized events call for, if any. */
+export type AeroplaneEffectCue = 'trap' | 'coin-loss' | 'coin-gain';
+
+/**
+ * Pick at most one effect cue from a move's serialized action events:
+ * traps (Storm/Crash relocations and the Customs `skip`, on any colour)
+ * outrank a human coin loss, which outranks a human coin gain. AI-only
+ * money is silent, and the roll-only `skipped` never re-sounds Customs —
+ * the arming `skip` already trapped on the move that landed there.
+ */
+export function selectEffectCue(
+	events: readonly (AeroplaneEvent | TycoonEffectEvent)[],
+	humanColor: AeroplaneColor
+): AeroplaneEffectCue | null {
+	let humanGain = false;
+	let humanLoss = false;
+	for (const event of events) {
+		if (event.type === 'relocation') {
+			if (event.effect === 'storm' || event.effect === 'crash') return 'trap';
+		} else if (event.type === 'skip') {
+			return 'trap';
+		} else if (event.type === 'coins') {
+			if (event.color !== humanColor) continue; // AI-only money is silent
+			if (event.amount < 0) humanLoss = true;
+			else if (event.amount > 0) humanGain = true;
+		} else if (event.type === 'transfer') {
+			if (event.from === humanColor) humanLoss = true;
+			else if (event.to === humanColor) humanGain = true;
+		}
+	}
+	if (humanLoss) return 'coin-loss';
+	if (humanGain) return 'coin-gain';
+	return null;
+}
 
 export const AEROPLANE_MUTED_STORAGE_KEY = 'procyon.aeroplane.muted';
 

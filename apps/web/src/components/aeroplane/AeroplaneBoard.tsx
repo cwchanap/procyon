@@ -23,6 +23,7 @@ import {
 	type AeroplaneMoveTimeline,
 } from '../../lib/aeroplane/presentation';
 import { colorLabel } from '../../lib/aeroplane/labels';
+import { selectEffectCue, type AeroplaneCue } from '../../lib/aeroplane/sound';
 import {
 	BOARD_BACKGROUND_URL,
 	spriteUrl,
@@ -33,24 +34,31 @@ import type { SkinId } from '../../lib/aeroplane/rewards';
 import { Button } from '../ui/Button';
 import type {
 	AeroplaneColor,
+	AeroplaneEvent,
 	AeroplanePosition,
 	AeroplaneState,
 	PlaneState,
 	ResolvedMove,
 	SkyTycoonState,
+	TycoonEffectEvent,
 } from '../../lib/aeroplane/types';
 
 /** Cues emitted by the board's playback clock; `roll` belongs to the die. */
-export type AeroplaneBoardCue = 'hop' | 'capture' | 'finish' | 'win';
+export type AeroplaneBoardCue = Exclude<AeroplaneCue, 'roll'>;
+
+/** One queued move presentation, its serialized action events optional. */
+export interface AeroplaneBoardPresentation {
+	id: number;
+	move: ResolvedMove;
+	/** Positional plus coordinate-free Tycoon effect events. */
+	action?: { events: readonly (AeroplaneEvent | TycoonEffectEvent)[] };
+}
 
 export interface AeroplaneBoardProps {
 	state: AeroplaneState;
 	legalMoves: readonly ResolvedMove[];
 	isHumanTurn?: boolean;
-	presentationQueue?: readonly {
-		id: number;
-		move: ResolvedMove;
-	}[];
+	presentationQueue?: readonly AeroplaneBoardPresentation[];
 	/** Skip tweening: committed positions render immediately. */
 	reducedMotion?: boolean;
 	/** Fired as the playback clock crosses each timeline segment boundary. */
@@ -556,14 +564,24 @@ function frameAt(
 }
 
 /**
- * One terminal cue under zero-duration playback, win taking priority. The
- * finish tone is reserved for a plane that actually reached the finish
- * cell; a plain move falls back to a single hop.
+ * One terminal cue under zero-duration playback, win taking priority, then
+ * the finish cell, then the move's effect cue (trap or human money). A
+ * plain move falls back to a single capture or hop; the animated terminal
+ * instead stops at the effect — its hop/capture boundary cues already
+ * played, so an effectless move adds nothing.
  */
-function terminalCue(move: ResolvedMove, won: boolean): AeroplaneBoardCue {
+function terminalCue(
+	move: ResolvedMove,
+	events: readonly (AeroplaneEvent | TycoonEffectEvent)[] | undefined,
+	humanColor: AeroplaneColor,
+	won: boolean
+): AeroplaneBoardCue {
 	if (won) return 'win';
 	if (move.finalEndpoint.kind === 'finished') return 'finish';
-	return move.capturedPlaneIds.length > 0 ? 'capture' : 'hop';
+	return (
+		selectEffectCue(events ?? [], humanColor) ??
+		(move.capturedPlaneIds.length > 0 ? 'capture' : 'hop')
+	);
 }
 
 // Playback begins synchronously so the committed destination never paints a
@@ -629,7 +647,12 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 				// Zero-duration fallback: the committed state is already on screen;
 				// emit only the appropriate terminal cue, exactly once.
 				onCueRef.current?.(
-					terminalCue(newest.move, state.phase === 'finished')
+					terminalCue(
+						newest.move,
+						newest.action?.events,
+						state.config.humanColor,
+						state.phase === 'finished'
+					)
 				);
 				return;
 			}
@@ -645,7 +668,13 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 			const emitDueCues = (through: number) => {
 				const due = Math.min(through, segmentCount - 1);
 				if (due < cuedSegmentsRef.current) return;
-				onCueRef.current?.(due < timeline.segments.length ? 'hop' : 'capture');
+				onCueRef.current?.(
+					due < timeline.segments.length
+						? timeline.segments[due]!.kind === 'flight'
+							? 'flight'
+							: 'hop'
+						: 'capture'
+				);
 				cuedSegmentsRef.current = due + 1;
 			};
 			const tick = (now: number) => {
@@ -659,6 +688,13 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 					if (won) onCueRef.current?.('win');
 					else if (newest.move.finalEndpoint.kind === 'finished')
 						onCueRef.current?.('finish');
+					else {
+						const effect = selectEffectCue(
+							newest.action?.events ?? [],
+							state.config.humanColor
+						);
+						if (effect) onCueRef.current?.(effect);
+					}
 					return;
 				}
 				const { frame, activeSegment } = frameAt(timeline, elapsed);

@@ -1765,7 +1765,200 @@ describe('Aeroplane board motion playback', () => {
 			expect(Math.abs(position!.x - midpoint.x)).toBeLessThan(1e-6);
 			expect(Math.abs(position!.y - midpoint.y)).toBeLessThan(1e-6);
 			act(() => clock.advance(120));
+			// The flight segment's own cue fires when its boundary is crossed;
+			// no terminal cue follows a plain move.
+			expect(cueNames(onCue)).toEqual(['hop', 'flight']);
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('the animated terminal emits win > finish > effect, effects landing at arrival', () => {
+		const clock = installFrameClock();
+		try {
+			const pre = motionState({ 'red-0': 30, 'red-1': 53 });
+			const plain = committedMove(pre, 'red-0', 3);
+			const finishing = committedMove(pre, 'red-1', 3);
+			const storm = [
+				{
+					type: 'relocation',
+					planeId: 'red-0',
+					effect: 'storm',
+					toProgress: 13,
+				},
+			] as const;
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			render(
+				<AeroplaneBoard
+					state={plain.committed}
+					legalMoves={[]}
+					presentationQueue={[
+						{ id: 1, move: plain.move, action: { events: storm } },
+					]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(1)); // first boundary hop; the trap waits
+			expect(cueNames(onCue)).toEqual(['hop']);
+			act(() => clock.advance(120)); // second boundary crossed mid-flight
 			expect(cueNames(onCue)).toEqual(['hop', 'hop']);
+			act(() => clock.advance(120)); // completion frame: final hop then trap
+			expect(cueNames(onCue)).toEqual(['hop', 'hop', 'hop', 'trap']);
+
+			// A finished endpoint outranks the effect cue.
+			const finished = mock((_cue: AeroplaneBoardCue) => {});
+			render(
+				<AeroplaneBoard
+					state={finishing.committed}
+					legalMoves={[]}
+					presentationQueue={[
+						{
+							id: 2,
+							move: finishing.move,
+							action: { events: storm },
+						},
+					]}
+					onCue={finished}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(1));
+			act(() => clock.advance(240));
+			expect(cueNames(finished).at(-1)).toBe('finish');
+
+			// A won match outranks both finish and effect.
+			const won = mock((_cue: AeroplaneBoardCue) => {});
+			render(
+				<AeroplaneBoard
+					state={{
+						...finishing.committed,
+						phase: 'finished',
+						winner: 'red',
+					}}
+					legalMoves={[]}
+					presentationQueue={[
+						{
+							id: 3,
+							move: finishing.move,
+							action: { events: storm },
+						},
+					]}
+					onCue={won}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(1));
+			act(() => clock.advance(240));
+			expect(cueNames(won).at(-1)).toBe('win');
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('zero-duration playback applies the same selector, then the capture/hop fallback', () => {
+		expect(globalThis.requestAnimationFrame).toBeUndefined();
+		const capturing = committedMove(
+			motionState({ 'red-0': 26, 'yellow-1': 14 }),
+			'red-0',
+			1
+		);
+		const plain = committedMove(motionState({ 'red-0': 30 }), 'red-0', 3);
+		const storm = [
+			{
+				type: 'relocation',
+				planeId: 'red-0',
+				effect: 'storm',
+				toProgress: 13,
+			},
+		] as const;
+
+		// The effect cue replaces the capture fallback entirely.
+		const trapped = mock((_cue: AeroplaneBoardCue) => {});
+		render(
+			<AeroplaneBoard
+				state={capturing.committed}
+				legalMoves={[]}
+				presentationQueue={[
+					{
+						id: 1,
+						move: capturing.move,
+						action: { events: storm },
+					},
+				]}
+				onCue={trapped}
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(cueNames(trapped)).toEqual(['trap']);
+
+		// Without an effect the old capture/hop fallback stands.
+		const fallback = mock((_cue: AeroplaneBoardCue) => {});
+		render(
+			<AeroplaneBoard
+				state={capturing.committed}
+				legalMoves={[]}
+				presentationQueue={[{ id: 1, move: capturing.move }]}
+				onCue={fallback}
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(cueNames(fallback)).toEqual(['capture']);
+
+		const hopping = mock((_cue: AeroplaneBoardCue) => {});
+		render(
+			<AeroplaneBoard
+				state={plain.committed}
+				legalMoves={[]}
+				presentationQueue={[{ id: 1, move: plain.move }]}
+				onCue={hopping}
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(cueNames(hopping)).toEqual(['hop']);
+	});
+
+	test('queue removal mid-flight cancels playback without the terminal effect cue', () => {
+		const clock = installFrameClock();
+		try {
+			const { move, committed } = committedMove(
+				motionState({ 'red-0': 30 }),
+				'red-0',
+				3
+			);
+			const storm = [
+				{
+					type: 'relocation',
+					planeId: 'red-0',
+					effect: 'storm',
+					toProgress: 13,
+				},
+			] as const;
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { rerender } = render(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move, action: { events: storm } }]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(40));
+			expect(cueNames(onCue)).toEqual(['hop']);
+			// Skip/reset/resume all empty the queue: the clock is cancelled and
+			// the never-reached terminal effect stays silent.
+			rerender(
+				<AeroplaneBoard
+					state={committed}
+					legalMoves={[]}
+					presentationQueue={[]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			act(() => clock.advance(500));
+			expect(cueNames(onCue)).toEqual(['hop']);
 		} finally {
 			clock.uninstall();
 		}
@@ -3106,9 +3299,19 @@ describe('Aeroplane game composition', () => {
 			act(() => clock.advance(1));
 			expect(view.getByTestId('aeroplane-motion-overlay')).toBeTruthy();
 			act(() => clock.advance(800));
-			// Two route hops then the warp: cues stay hop-only (the immediate
-			// second hop is spaced out by the 150 ms hop limit), no terminal cue.
-			expect(audio.cues).toEqual(['roll', 'hop']);
+			// Boundary hops first (an immediate second hop may still space out
+			// under the 150 ms hop limit), then the Storm trap exactly once at
+			// visual arrival.
+			expect(audio.cues[0]).toBe('roll');
+			expect(audio.cues.at(-1)).toBe('trap');
+			expect(audio.cues.filter(cue => cue === 'trap')).toHaveLength(1);
+			// Toggling mute re-renders with a fresh cue callback but never
+			// replays the already-processed action.
+			fireEvent.click(view.getByTestId('aeroplane-mute-toggle'));
+			fireEvent.click(view.getByTestId('aeroplane-mute-toggle'));
+			act(() => clock.advance(800));
+			expect(audio.cues.at(-1)).toBe('trap');
+			expect(audio.cues.filter(cue => cue === 'trap')).toHaveLength(1);
 			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
 			const arrival = positionAnchor(toPosition('red', 13), 'red-0');
 			expect(
@@ -3175,6 +3378,134 @@ describe('Aeroplane game composition', () => {
 		);
 	});
 
+	test('a Customs skip roll stays silent beyond the die: no second trap', async () => {
+		const audio = installCueAudioStub();
+		try {
+			await audio.warm();
+			const view = renderGame(
+				tycoonFixture(
+					[6],
+					hangarPlanes().map(plane =>
+						plane.id === 'red-0' ? { ...plane, progress: 1 } : plane
+					),
+					{
+						skipNextRoll: {
+							red: true,
+							yellow: false,
+							blue: false,
+							green: false,
+						},
+					}
+				),
+				{ aiDelayMs: 10_000 }
+			);
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			// The roll-only `skipped` action is never queued for the board, so
+			// Customs does not trap twice: the die cue is the only sound.
+			expect(audio.cues).toEqual(['roll']);
+		} finally {
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('a broke human landing on Customs arms a skip and traps once', async () => {
+		const clock = installFrameClock();
+		const audio = installCueAudioStub();
+		try {
+			await audio.warm();
+			// red-0 rolls 2 from 17 onto Customs (global 18) with 0 coins: the
+			// fee is unpayable, so the move's serialized events carry `skip`.
+			const view = renderGame(
+				tycoonFixture(
+					[2],
+					hangarPlanes().map(plane =>
+						plane.id === 'red-0' ? { ...plane, progress: 17 } : plane
+					),
+					{ coins: { red: 0, yellow: 10, blue: 10, green: 10 } }
+				),
+				{ aiDelayMs: 10_000 }
+			);
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(audio.cues).toEqual(['roll']);
+			act(() => clock.advance(1));
+			act(() => clock.advance(400));
+			expect(audio.cues[0]).toBe('roll');
+			expect(audio.cues.at(-1)).toBe('trap');
+			expect(audio.cues.filter(cue => cue === 'trap')).toHaveLength(1);
+		} finally {
+			clock.uninstall();
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('human Tycoon money collapses to one coin cue at arrival', async () => {
+		const clock = installFrameClock();
+		const audio = installCueAudioStub();
+		try {
+			await audio.warm();
+			// Departure +3 then airport purchase -5 in one action: one loss.
+			const loss = renderGame(tycoonDepartureFixture(1), { aiDelayMs: 10_000 });
+			fireEvent.click(loss.getByRole('button', { name: /roll die/i }));
+			expect(audio.cues).toEqual(['roll']);
+			act(() => clock.advance(1));
+			act(() => clock.advance(400));
+			expect(audio.cues.at(-1)).toBe('coin-loss');
+			expect(audio.cues.filter(cue => cue === 'coin-loss')).toHaveLength(1);
+			loss.unmount();
+
+			// Departure +3 plus Chance gain-4: one gain.
+			const gain = renderGame(tycoonDepartureFixture(4), { aiDelayMs: 10_000 });
+			fireEvent.click(gain.getByRole('button', { name: /roll die/i }));
+			act(() => clock.advance(1));
+			act(() => clock.advance(400));
+			expect(audio.cues.at(-1)).toBe('coin-gain');
+			expect(audio.cues.filter(cue => cue === 'coin-gain')).toHaveLength(1);
+		} finally {
+			clock.uninstall();
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('an AI mover hitting Storm still traps at its arrival', async () => {
+		jest.useFakeTimers();
+		const clock = installFrameClock();
+		const audio = installCueAudioStub();
+		try {
+			await audio.warm();
+			// Yellow (AI) rolls 2 from 27 onto Storm (global 41) and retreats.
+			const aiPlanes = hangarPlanes().map(plane =>
+				plane.id === 'yellow-0' ? { ...plane, progress: 27 } : plane
+			);
+			const fixture = gameFixtureForRolls([2], aiPlanes, 'yellow');
+			const view = renderGame(
+				{
+					...fixture,
+					state: {
+						...fixture.state!,
+						config: { ...CLASSIC_CONFIG, mode: 'sky-tycoon' },
+						tycoon: initialTycoonState(4242),
+					},
+				},
+				{ aiDelayMs: 50 }
+			);
+			advanceTimers(50); // AI roll
+			expect(audio.cues).toEqual(['roll']);
+			advanceTimers(50); // AI decision queues the Storm presentation
+			expect(
+				view.getByText('Storm pushes Yellow plane 1 back to track 26.')
+			).toBeTruthy();
+			act(() => clock.advance(1));
+			act(() => clock.advance(800));
+			expect(audio.cues[0]).toBe('roll');
+			expect(audio.cues.at(-1)).toBe('trap');
+			expect(audio.cues.filter(cue => cue === 'trap')).toHaveLength(1);
+		} finally {
+			jest.useRealTimers();
+			clock.uninstall();
+			uninstallCueAudioStub();
+		}
+	});
+
 	test('Sky Tycoon honours reduced motion and Skip animations', async () => {
 		const clock = installFrameClock();
 		const audio = installCueAudioStub();
@@ -3198,8 +3529,9 @@ describe('Aeroplane game composition', () => {
 			fireEvent.click(reduced.getByRole('button', { name: /roll die/i }));
 			// Settled at the effective arrival with one terminal cue.
 			expect(reduced.queryByTestId('aeroplane-motion-overlay')).toBeNull();
-			// The board's layout-effect terminal cue lands before the roll cue.
-			expect(audio.cues).toEqual(['hop', 'roll']);
+			// The board's zero-duration selector picks the Storm trap (not the
+			// hop fallback); its layout-effect cue lands before the roll cue.
+			expect(audio.cues).toEqual(['trap', 'roll']);
 			const arrival = positionAnchor(toPosition('red', 13), 'red-0');
 			expect(
 				overlayAnchor(reduced.queryByTestId, 'aeroplane-plane-control-red-0')
@@ -3216,6 +3548,13 @@ describe('Aeroplane game composition', () => {
 				skipped.getByRole('button', { name: /skip animations/i })
 			);
 			expect(skipped.queryByTestId('aeroplane-motion-overlay')).toBeNull();
+			// Skip cancels the clock before arrival: no boundary or trap cue
+			// beyond the reduced mount's earlier trap.
+			const settled = audio.cues.length;
+			expect(audio.cues.slice(-1)).toEqual(['roll']);
+			expect(audio.cues.filter(cue => cue === 'trap')).toHaveLength(1);
+			act(() => clock.advance(800));
+			expect(audio.cues).toHaveLength(settled);
 			expect(
 				overlayAnchor(skipped.queryByTestId, 'aeroplane-plane-control-red-0')
 			).toEqual({ x: arrival.x, y: arrival.y });

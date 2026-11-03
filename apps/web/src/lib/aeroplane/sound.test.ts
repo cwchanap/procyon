@@ -7,6 +7,7 @@ import {
 	primeAeroplaneAudio,
 	readAeroplaneMuted,
 	resetAeroplaneAudioForTest,
+	selectEffectCue,
 	writeAeroplaneMuted,
 } from './sound';
 
@@ -166,6 +167,173 @@ afterEach(() => {
 	activeStack = null;
 	Date.now = realDateNow;
 	resetAeroplaneAudioForTest();
+});
+
+describe('aeroplane effect cue selection', () => {
+	test('storm and crash relocations and Customs skips are traps on any colour', () => {
+		// An AI mover's storm is as audible as the human's own.
+		expect(
+			selectEffectCue(
+				[
+					{
+						type: 'relocation',
+						planeId: 'yellow-0',
+						effect: 'storm',
+						toProgress: 26,
+					},
+				],
+				'red'
+			)
+		).toBe('trap');
+		expect(
+			selectEffectCue(
+				[
+					{
+						type: 'relocation',
+						planeId: 'red-0',
+						effect: 'crash',
+						toProgress: null,
+					},
+				],
+				'red'
+			)
+		).toBe('trap');
+		expect(selectEffectCue([{ type: 'skip', color: 'blue' }], 'red')).toBe(
+			'trap'
+		);
+	});
+
+	test('a trap outranks human money regardless of event order', () => {
+		expect(
+			selectEffectCue(
+				[
+					{ type: 'coins', color: 'red', amount: 3, reason: 'departure' },
+					{
+						type: 'relocation',
+						planeId: 'red-0',
+						effect: 'crash',
+						toProgress: null,
+					},
+				],
+				'red'
+			)
+		).toBe('trap');
+		expect(
+			selectEffectCue(
+				[
+					{ type: 'skip', color: 'red' },
+					{ type: 'coins', color: 'red', amount: -3, reason: 'customs' },
+				],
+				'red'
+			)
+		).toBe('trap');
+	});
+
+	test('human money collapses to one cue, loss outranking gain', () => {
+		// Departure bonus plus airport purchase in one move: one coin-loss.
+		expect(
+			selectEffectCue(
+				[
+					{ type: 'coins', color: 'red', amount: 3, reason: 'departure' },
+					{ type: 'coins', color: 'red', amount: -5, reason: 'airport-buy' },
+				],
+				'red'
+			)
+		).toBe('coin-loss');
+		expect(
+			selectEffectCue(
+				[{ type: 'coins', color: 'red', amount: 4, reason: 'chance' }],
+				'red'
+			)
+		).toBe('coin-gain');
+	});
+
+	test('AI-only money is silent', () => {
+		expect(
+			selectEffectCue(
+				[
+					{ type: 'coins', color: 'yellow', amount: 3, reason: 'departure' },
+					{ type: 'coins', color: 'yellow', amount: -5, reason: 'airport-buy' },
+				],
+				'red'
+			)
+		).toBeNull();
+	});
+
+	test('transfer polarity follows the human side; AI-only transfers are silent', () => {
+		expect(
+			selectEffectCue(
+				[
+					{
+						type: 'transfer',
+						from: 'red',
+						to: 'blue',
+						amount: 2,
+						reason: 'airport-toll',
+					},
+				],
+				'red'
+			)
+		).toBe('coin-loss');
+		expect(
+			selectEffectCue(
+				[
+					{
+						type: 'transfer',
+						from: 'yellow',
+						to: 'red',
+						amount: 3,
+						reason: 'steal',
+					},
+				],
+				'red'
+			)
+		).toBe('coin-gain');
+		expect(
+			selectEffectCue(
+				[
+					{
+						type: 'transfer',
+						from: 'yellow',
+						to: 'green',
+						amount: 3,
+						reason: 'steal',
+					},
+				],
+				'red'
+			)
+		).toBeNull();
+	});
+
+	test('roll-only skipped, positional events and benign relocations select nothing', () => {
+		// The roll-only `skipped` never re-sounds Customs: the arming `skip`
+		// already trapped on the move that landed there.
+		expect(
+			selectEffectCue([{ type: 'skipped', color: 'red' }], 'red')
+		).toBeNull();
+		const hop = {
+			type: 'move',
+			planeId: 'red-0',
+			from: { kind: 'track', color: 'red', progress: 14, globalIndex: 13 },
+			to: { kind: 'track', color: 'red', progress: 16, globalIndex: 15 },
+			distance: 2,
+		} as const;
+		expect(selectEffectCue([hop], 'red')).toBeNull();
+		expect(
+			selectEffectCue(
+				[
+					{
+						type: 'relocation',
+						planeId: 'red-0',
+						effect: 'boost',
+						toProgress: 20,
+					},
+				],
+				'red'
+			)
+		).toBeNull();
+		expect(selectEffectCue([], 'red')).toBeNull();
+	});
 });
 
 describe('aeroplane cue audio', () => {
