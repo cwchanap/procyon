@@ -1,6 +1,6 @@
 # Aeroplane asset pack
 
-Standalone assets for HPA-437. These files are not wired into the game and live outside `public/` so nothing ships until integration chooses how to serve them — Vite `?url` imports from this directory, or a copy into `public/` at integration time.
+Standalone assets for HPA-437, now wired into the game by HPA-692. The runtime media is served from `apps/web/public/aeroplane/` at `/aeroplane/…` URLs (built by `apps/web/src/lib/aeroplane/assets.ts`); this directory keeps only this README and the `source-sfx/` provenance takes, which must stay outside `public/`.
 
 ## Artwork
 
@@ -8,11 +8,11 @@ Standalone assets for HPA-437. These files are not wired into the game and live 
 - `board/background.svg` is a 1024 × 1024 square background sized to sit just inside the board's painted border (rx 5). It contains no track, tile or game geometry.
 - `icons/{boost,tailwind,shield,wormhole,storm,customs,tax,crash,chance,airport,coin}.svg` are transparent 128 × 128 icons. `airport` uses an ink silhouette with a brass outline so it stays legible on the brass launch tiles (indices 0, 13, 26, 39) as well as the dark anchors at 6, 19, 32, 45; the other icons are brass-on-dark line art since no other tycoon tile sits on a brass anchor.
 
-The artwork was drawn as original SVG for this pack. Body fills mirror `PLANE_FILL` and trim echoes `PLANE_STROKE` in `apps/web/src/components/aeroplane/AeroplaneBoard.tsx` — those constants are the source of truth; re-derive the sprites if the palette changes. Skin accent hues follow `SKIN_MARKING`; on the yellow body, marks use a dark bronze `#4a3413` for legibility. No third-party artwork was used.
+The artwork was drawn as original SVG for this pack. Body fills mirror `PLANE_FILL` and trim echoes `PLANE_STROKE` in `apps/web/src/components/aeroplane/AeroplaneBoard.tsx` — those constants are the source of truth; re-derive the sprites if the palette changes. Skin accent hues were chosen to match the board's placeholder `SKIN_MARKING` accents (that constant is deleted once the sprites render); on the yellow body, marks use a dark bronze `#4a3413` for legibility. No third-party artwork was used.
 
 ## Sound
 
-`sfx/` contains mono 44.1 kHz AAC `.m4a` cues (~64 kbps): `roll`, `hop`, `flight`, `capture`, `finish`, `win`, `coin-gain`, `coin-loss`, and `trap`. The original stereo ElevenLabs MP3 takes are retained in `source-sfx/` for provenance only.
+`/aeroplane/sfx/` (in `public/aeroplane/sfx/`) contains mono 44.1 kHz AAC `.m4a` cues (~64 kbps): `roll`, `hop`, `flight`, `capture`, `finish`, `win`, `coin-gain`, `coin-loss`, and `trap`. The original stereo ElevenLabs MP3 takes are retained in `source-sfx/` here for provenance only.
 
 Each cue was produced from its matching take by: stereo → mono downmix, leading-silence strip, dead-air trim to the durations below, per-cue gain so every cue lands near −30 dB RMS (the placeholder tones sit at −27 dB RMS, so cues play at roughly the same loudness rather than ~20 dB hotter), a −6 dBFS peak limiter, 3 ms fade-in and 35 ms fade-out, then AAC encode. Post-encode measurements: mean −29.9…−32.6 dB (was −22…−33.2 dB, an 11 dB spread), peaks −6…−12.7 dBFS.
 
@@ -42,7 +42,7 @@ The takes were generated with ElevenLabs `eleven_text_to_sound_v2` from these pr
 | coin-loss | A single low brass coin clunk on wood, soft and muted.                 |               0.7 |
 | trap      | A quick spring mechanism snaps with a soft metallic clack.             |               0.7 |
 
-ElevenLabs usage and distribution rights for these outputs were verified against the generating account's terms by the repository owner before this pack was published; `sfx/` and `source-sfx/` may be committed and can move into `public/` (and any published bundle) at integration time. The cues were decoded, measured and level-checked, but still require a human listening review in the game mix.
+ElevenLabs usage and distribution rights for these outputs were verified against the generating account's terms by the repository owner before this pack was published; `sfx/` and `source-sfx/` may be committed and published in any bundle — the optimized cues now ship from `public/`. The cues were decoded, measured and level-checked, but still require a human listening review in the game mix.
 
 ## Integration handoff
 
