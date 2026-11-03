@@ -95,6 +95,10 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 		const next = !muted;
 		setMuted(next);
 		writeAeroplaneMuted(next);
+		// Unmuting is a direct gesture, so it must prime synchronously: a
+		// restored match can already be mid-AI-turn, and its next cue needs a
+		// live context now rather than lazily on some later click.
+		if (!next) primeAeroplaneAudio();
 	};
 
 	const handleCue = useCallback(

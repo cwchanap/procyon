@@ -440,6 +440,14 @@ describe('Aeroplane board interactions', () => {
 		expect(owned.querySelector('circle')?.getAttribute('cx')).toBe(
 			String(TRACK_ANCHORS[6]!.x)
 		);
+		// The ownership tint is genuinely Blue paint, not just a label: the
+		// ring fills and strokes in Blue's plane-body colour (#4F8FD8, the
+		// PLANE_FILL.blue the board uses) at the subtle marker opacities.
+		const ring = owned.querySelector('circle')!;
+		expect(ring.getAttribute('fill')).toBe('#4F8FD8');
+		expect(ring.getAttribute('stroke')).toBe('#4F8FD8');
+		expect(ring.getAttribute('fill-opacity')).toBe('0.35');
+		expect(ring.getAttribute('stroke-opacity')).toBe('0.8');
 		expect(
 			getByTestId('aeroplane-tycoon-tile-0').querySelector('circle')
 		).toBeNull();
@@ -2746,6 +2754,44 @@ describe('Aeroplane game composition', () => {
 		} finally {
 			window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
 			uninstallCueAudioStub();
+		}
+	});
+
+	test('an initially muted match on an AI turn stays silent until the unmute gesture primes audio', async () => {
+		jest.useFakeTimers();
+		window.localStorage.setItem(AEROPLANE_MUTED_STORAGE_KEY, '1');
+		const audio = installCueAudioStub();
+		try {
+			// The restored-match shape: yellow (AI) is to roll at mount, so a
+			// cue fires before any Start/Roll gesture, and the persisted mute
+			// preference suppresses it. Unwarmed: no priming has happened.
+			const view = renderGame(
+				gameFixtureForRolls([1, 1, 1], undefined, 'yellow'),
+				{ aiDelayMs: 100 }
+			);
+			expect(
+				view.getByTestId('aeroplane-mute-toggle').getAttribute('aria-pressed')
+			).toBe('false');
+			advanceTimers(100); // the yellow AI rolls; its cue is muted
+			expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
+			// Blue and green take their AI turns too — the roll button stays
+			// disabled until the turn comes back to red, still with no gesture.
+			advanceTimers(100);
+			advanceTimers(100);
+			expect(audio.fetches).toEqual([]);
+			expect(audio.cues).toEqual([]);
+			// The direct unmute click primes synchronously: context creation
+			// and all nine cue fetches begin inside the gesture, not lazily on
+			// the next cue.
+			fireEvent.click(view.getByTestId('aeroplane-mute-toggle'));
+			expect(audio.fetches).toHaveLength(9);
+			await audio.warm(); // settle the preloaded decodes
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(audio.cues).toEqual(['roll']);
+		} finally {
+			jest.useRealTimers();
+			uninstallCueAudioStub();
+			window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
 		}
 	});
 

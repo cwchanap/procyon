@@ -62,10 +62,18 @@ const cueBuffers = new Map<AeroplaneCue, AudioBuffer>();
 let lastHopStartMs = 0;
 
 /**
- * Without any user activation the autoplay policy holds the context
- * suspended; cues requested that early must be dropped rather than queued,
- * or every pre-gesture AI sound fires as one blast on the first click.
- * Stacks lacking the API fall through to the suspended-state check below.
+ * True once a permitted direct gesture (Start/Roll/unmute click) primed
+ * audio. Context creation — and with it the preload fetches — must never
+ * happen before one, so a restored match's pre-gesture AI cues cannot
+ * fetch or play even on stacks without the activation API.
+ */
+let primedByGesture = false;
+
+/**
+ * A second belt for stacks that do expose the activation API: an
+ * activation report of "never active" drops the cue rather than queuing
+ * it, or every pre-gesture AI sound would fire as one blast on the first
+ * click. Stacks lacking the API are held back by `primedByGesture` above.
  */
 function userHasActivated(): boolean {
 	const activation = (
@@ -78,6 +86,7 @@ function userHasActivated(): boolean {
 
 function audioContext(): AudioContext | null {
 	if (cachedContext) return cachedContext;
+	if (!primedByGesture) return null;
 	const root = globalThis as typeof globalThis & {
 		AudioContext?: typeof AudioContext;
 		webkitAudioContext?: typeof AudioContext;
@@ -122,6 +131,7 @@ function loadCue(context: AudioContext, cue: AeroplaneCue): void {
 
 /** Unlock/resume the AudioContext from a direct user gesture. */
 export function primeAeroplaneAudio(): void {
+	primedByGesture = true;
 	try {
 		const context = audioContext();
 		if (context && context.state === 'suspended') {
@@ -196,9 +206,10 @@ export function writeAeroplaneMuted(muted: boolean): void {
 	}
 }
 
-/** Drop the cached AudioContext and decoded buffers; for tests only. */
+/** Drop the cached AudioContext, decoded buffers and gesture state; tests only. */
 export function resetAeroplaneAudioForTest(): void {
 	cachedContext = null;
 	cueBuffers.clear();
 	lastHopStartMs = 0;
+	primedByGesture = false;
 }

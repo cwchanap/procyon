@@ -488,6 +488,31 @@ describe('aeroplane cue audio', () => {
 		}
 	});
 
+	test('without the activation API, audio is created only after the direct priming gesture', async () => {
+		const stack = installAudioStack();
+		activeStack = stack;
+		const nav = globalThis.navigator as Navigator & {
+			userActivation?: unknown;
+		};
+		delete (nav as { userActivation?: unknown }).userActivation; // stacks without the API must not pass by default
+		// A restored match's AI cues fire before any click: without the
+		// activation API to vouch for a gesture, nothing may be created,
+		// fetched or played yet.
+		playAeroplaneCue('roll');
+		playAeroplaneCue('hop');
+		expect(stack.constructs).toBe(0);
+		expect(stack.fetches).toEqual([]);
+		expect(stack.cues).toEqual([]);
+		// The permitted direct priming gesture (Start/Roll/unmute click)
+		// is what unlocks creation and the nine-cue preload.
+		primeAeroplaneAudio();
+		expect(stack.constructs).toBe(1);
+		expect(stack.fetches).toHaveLength(9);
+		await flushAsync();
+		playAeroplaneCue('roll');
+		expect(stack.cues).toEqual(['roll']);
+	});
+
 	test('hop starts are spaced at least 150 ms apart; other cues are unlimited', async () => {
 		const stack = installAudioStack();
 		activeStack = stack;
@@ -505,7 +530,7 @@ describe('aeroplane cue audio', () => {
 		expect(stack.cues).toEqual(['hop', 'roll', 'roll', 'hop']);
 	});
 
-	test('resetAeroplaneAudioForTest clears contexts, buffers and hop pacing', async () => {
+	test('resetAeroplaneAudioForTest clears contexts, buffers, hop pacing and gesture state', async () => {
 		const stack = installAudioStack();
 		activeStack = stack;
 		primeAeroplaneAudio();
@@ -515,10 +540,16 @@ describe('aeroplane cue audio', () => {
 		expect(stack.cues).toEqual(['hop']);
 
 		resetAeroplaneAudioForTest();
+		// Gesture state cleared too: a cue before the next permitted gesture
+		// constructs nothing.
+		playAeroplaneCue('hop');
+		expect(stack.cues).toEqual(['hop']);
+		expect(stack.constructs).toBe(1);
+		primeAeroplaneAudio();
+		expect(stack.constructs).toBe(2);
 		// Buffers are gone: the cue drops again until the new context decodes.
 		playAeroplaneCue('hop');
 		expect(stack.cues).toEqual(['hop']);
-		expect(stack.constructs).toBe(2);
 		await flushAsync();
 		// The pacing clock reset too: a hop may start immediately again.
 		playAeroplaneCue('hop');
@@ -541,8 +572,11 @@ describe('aeroplane cue audio', () => {
 		resetAeroplaneAudioForTest();
 		releaseDecode!();
 		await flushAsync();
+		// With gesture state cleared, the cue drops without constructing.
 		playAeroplaneCue('roll');
 		expect(stack.cues).toEqual([]);
+		expect(stack.constructs).toBe(1);
+		primeAeroplaneAudio();
 		expect(stack.constructs).toBe(2);
 
 		// The fresh context decodes anew and the cue plays normally.
