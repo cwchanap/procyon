@@ -67,9 +67,13 @@ function loadCue(context: AudioContext, cue: AeroplaneCue): void {
 			const response = await fetch(cueUrl(cue));
 			if (!response.ok) return;
 			const bytes = await response.arrayBuffer();
-			// Callback-only decodeAudioData stacks resolve to undefined.
 			const buffer = await context.decodeAudioData(bytes);
-			if (buffer) cueBuffers.set(cue, buffer);
+			// Callback-only decodeAudioData stacks resolve to undefined. A
+			// reset since this decode began makes the context obsolete; its
+			// late buffers must not refill the cleared cache.
+			if (buffer && context === cachedContext) {
+				cueBuffers.set(cue, buffer);
+			}
 		} catch {
 			// A cue that cannot load or decode stays silent; best-effort.
 		}

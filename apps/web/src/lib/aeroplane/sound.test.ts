@@ -51,6 +51,8 @@ interface InstalledAudioStack {
 	readonly cues: string[];
 	/** Cue URLs fetched so far. */
 	readonly fetches: string[];
+	/** Cue names whose decode was attempted, whatever the outcome. */
+	readonly decodes: string[];
 	readonly constructs: number;
 	readonly resumes: number;
 	uninstall(): void;
@@ -71,6 +73,7 @@ interface StubBufferSource {
 function installAudioStack(options?: AudioStackOptions): InstalledAudioStack {
 	const cues: string[] = [];
 	const fetches: string[] = [];
+	const decodes: string[] = [];
 	const counts = { constructs: 0, resumes: 0 };
 	class StubAudioContext {
 		destination = {};
@@ -88,6 +91,7 @@ function installAudioStack(options?: AudioStackOptions): InstalledAudioStack {
 			};
 		}
 		decodeAudioData(bytes: ArrayBuffer & Partial<StubBuffer>) {
+			decodes.push(bytes.cue ?? '?');
 			if (options?.decodeRejects) {
 				return Promise.reject(new Error('undecodable'));
 			}
@@ -140,6 +144,7 @@ function installAudioStack(options?: AudioStackOptions): InstalledAudioStack {
 	return {
 		cues,
 		fetches,
+		decodes,
 		get constructs() {
 			return counts.constructs;
 		},
@@ -223,46 +228,64 @@ describe('aeroplane cue audio', () => {
 		expect(stack.fetches).toHaveLength(9);
 	});
 
-	test('unsupported and throwing audio stacks never throw or fetch', () => {
-		const missing = installAudioStack({ unsupported: true });
-		activeStack = missing;
+	test('an unsupported audio stack never throws or fetches', () => {
+		const stack = installAudioStack({ unsupported: true });
+		activeStack = stack;
 		expect(() => {
 			primeAeroplaneAudio();
 			playAeroplaneCue('win');
 		}).not.toThrow();
-		expect(missing.fetches).toEqual([]);
-		expect(missing.cues).toEqual([]);
-
-		const throwing = installAudioStack({ constructorThrows: true });
-		activeStack = throwing;
-		expect(() => {
-			primeAeroplaneAudio();
-			playAeroplaneCue('win');
-		}).not.toThrow();
-		expect(throwing.constructs).toBe(0); // the stub counts before its throw
-		expect(throwing.fetches).toEqual([]);
-		expect(throwing.cues).toEqual([]);
+		expect(stack.fetches).toEqual([]);
+		expect(stack.cues).toEqual([]);
 	});
 
-	test('fetch and decode failures stay silent and harmless', async () => {
-		const offline = installAudioStack({ fetchRejects: true });
-		primeAeroplaneAudio();
-		await flushAsync();
-		playAeroplaneCue('roll');
-		expect(offline.cues).toEqual([]);
+	test('a throwing AudioContext constructor never throws or fetches', () => {
+		const stack = installAudioStack({ constructorThrows: true });
+		activeStack = stack;
+		expect(() => {
+			primeAeroplaneAudio();
+			playAeroplaneCue('win');
+		}).not.toThrow();
+		expect(stack.constructs).toBe(0); // no construction ever succeeded
+		expect(stack.fetches).toEqual([]);
+		expect(stack.cues).toEqual([]);
+	});
 
-		const notOk = installAudioStack({ fetchNotOk: true });
+	test('a rejected fetch stays silent and harmless', async () => {
+		const stack = installAudioStack({ fetchRejects: true });
+		activeStack = stack;
 		primeAeroplaneAudio();
+		// The failure scenario genuinely attempted all nine fetches.
+		expect(stack.fetches).toHaveLength(9);
 		await flushAsync();
+		expect(stack.decodes).toEqual([]);
 		playAeroplaneCue('roll');
-		expect(notOk.cues).toEqual([]);
+		expect(stack.cues).toEqual([]);
+	});
 
-		const undecodable = installAudioStack({ decodeRejects: true });
-		activeStack = undecodable;
+	test('a non-200 fetch response stays silent and harmless', async () => {
+		const stack = installAudioStack({ fetchNotOk: true });
+		activeStack = stack;
 		primeAeroplaneAudio();
+		// All nine cues were fetched; each response failed the ok check
+		// before any decode could be attempted.
+		expect(stack.fetches).toHaveLength(9);
 		await flushAsync();
+		expect(stack.decodes).toEqual([]);
 		playAeroplaneCue('roll');
-		expect(undecodable.cues).toEqual([]);
+		expect(stack.cues).toEqual([]);
+	});
+
+	test('a rejected decode stays silent and harmless', async () => {
+		const stack = installAudioStack({ decodeRejects: true });
+		activeStack = stack;
+		primeAeroplaneAudio();
+		expect(stack.fetches).toHaveLength(9);
+		await flushAsync();
+		// Every cue was fetched and its decode genuinely attempted.
+		expect(stack.decodes).toHaveLength(9);
+		playAeroplaneCue('roll');
+		expect(stack.cues).toEqual([]);
 	});
 
 	test('a throwing buffer source never interrupts play', async () => {
@@ -332,6 +355,32 @@ describe('aeroplane cue audio', () => {
 		// The pacing clock reset too: a hop may start immediately again.
 		playAeroplaneCue('hop');
 		expect(stack.cues).toEqual(['hop', 'hop']);
+		expect(stack.fetches).toHaveLength(18);
+	});
+
+	test('a reset while decodes are pending leaves no stale buffers behind', async () => {
+		let releaseDecode: (() => void) | undefined;
+		const gate = new Promise<void>(resolve => {
+			releaseDecode = resolve;
+		});
+		const stack = installAudioStack({ decodeGate: gate });
+		activeStack = stack;
+		primeAeroplaneAudio();
+		expect(stack.constructs).toBe(1);
+
+		// Reset before the first context's decodes resolve: those loaders
+		// become obsolete and must not refill the cleared buffer cache.
+		resetAeroplaneAudioForTest();
+		releaseDecode!();
+		await flushAsync();
+		playAeroplaneCue('roll');
+		expect(stack.cues).toEqual([]);
+		expect(stack.constructs).toBe(2);
+
+		// The fresh context decodes anew and the cue plays normally.
+		await flushAsync();
+		playAeroplaneCue('roll');
+		expect(stack.cues).toEqual(['roll']);
 		expect(stack.fetches).toHaveLength(18);
 	});
 
