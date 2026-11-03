@@ -1511,40 +1511,58 @@ describe('Aeroplane board skins', () => {
 	});
 
 	test('each skin renders its own sprite; the placeholder detail path is gone', () => {
-		const state = fixtureState({
-			planes: COLORS.flatMap(color =>
-				Array.from({ length: 4 }, (_, index) => ({
-					id: `${color}-${index}`,
-					color,
-					progress: 14,
-				}))
-			),
-		});
-		for (const skin of [
-			'classic',
-			'contrail',
-			'racer',
-			'starlight',
-			'ace',
-		] as const) {
-			const view = render(
-				<AeroplaneBoard
-					state={state}
-					legalMoves={[]}
-					skinId={skin}
-					onRoll={mock(() => {})}
-				/>
-			);
-			const control = view.getByTestId('aeroplane-plane-control-red-0');
-			expect(control.querySelector(`[data-skin='${skin}']`)).not.toBeNull();
-			expect(spriteHrefOf(control)).toBe(spriteUrl(skin, 'red'));
-			// The glyph is image-only: no painted circle fallback remains.
-			expect(control.querySelector('circle')).toBeNull();
-			view.unmount();
+		const planes = COLORS.flatMap(color =>
+			Array.from({ length: 4 }, (_, index) => ({
+				id: `${color}-${index}`,
+				color,
+				progress: 14,
+			}))
+		);
+		for (const humanColor of COLORS) {
+			for (const skin of [
+				'classic',
+				'contrail',
+				'racer',
+				'starlight',
+				'ace',
+			] as const) {
+				const view = render(
+					<AeroplaneBoard
+						state={fixtureState({
+							config: { ...CLASSIC_CONFIG, humanColor },
+							planes,
+						})}
+						legalMoves={[]}
+						skinId={skin}
+						onRoll={mock(() => {})}
+					/>
+				);
+				for (const color of COLORS) {
+					const control = view.getByTestId(
+						`aeroplane-plane-control-${color}-0`
+					);
+					// Every human colour wears the selected skin; every
+					// opponent stays classic in its own colour.
+					const worn = color === humanColor ? skin : ('classic' as const);
+					expect(control.querySelector(`[data-skin='${worn}']`)).not.toBeNull();
+					expect(spriteHrefOf(control)).toBe(spriteUrl(worn, color));
+				}
+				// The glyph is image-only: no painted circle fallback remains.
+				expect(
+					view
+						.getByTestId(`aeroplane-plane-control-${humanColor}-0`)
+						.querySelector('circle')
+				).toBeNull();
+				view.unmount();
+			}
 		}
 		// The dead skin-detail hook no longer exists anywhere in the tree.
 		const plain = render(
-			<AeroplaneBoard state={state} legalMoves={[]} onRoll={mock(() => {})} />
+			<AeroplaneBoard
+				state={fixtureState({ planes })}
+				legalMoves={[]}
+				onRoll={mock(() => {})}
+			/>
 		);
 		expect(
 			plain.container.querySelectorAll('[class*="skin-detail"]')
