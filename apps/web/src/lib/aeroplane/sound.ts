@@ -1,29 +1,25 @@
 /**
- * Browser-only Aeroplane cue helper (HPA-428 design §5): five understated
- * placeholder tones, lazily initialized after a user gesture, best-effort
+ * Browser-only Aeroplane cue helper (HPA-692 design §audio): the nine AAC
+ * cues from the asset pack, fetched and decoded once after a permitted user
+ * gesture and played back as one-shot buffer sources. Best-effort
  * everywhere — muted, unsupported, or blocked audio must never interrupt
- * play. HPA-437 may later map cues to real audio URLs inside this module.
+ * play; a cue whose buffer is not ready is dropped, never queued.
  */
+import { AEROPLANE_CUES, cueUrl, type AeroplaneCue } from './assets';
 
-export type AeroplaneCue = 'roll' | 'hop' | 'capture' | 'finish' | 'win';
+export type { AeroplaneCue };
 
 export const AEROPLANE_MUTED_STORAGE_KEY = 'procyon.aeroplane.muted';
 
-interface CueTone {
-	frequency: number;
-	durationMs: number;
-	type: OscillatorType;
-}
+/** Minimum spacing between hop starts; chained jumps would otherwise stack. */
+const HOP_MIN_SPACING_MS = 150;
 
-const CUE_TONES: Record<AeroplaneCue, CueTone> = {
-	roll: { frequency: 340, durationMs: 90, type: 'triangle' },
-	hop: { frequency: 500, durationMs: 60, type: 'sine' },
-	capture: { frequency: 175, durationMs: 170, type: 'sawtooth' },
-	finish: { frequency: 640, durationMs: 140, type: 'sine' },
-	win: { frequency: 790, durationMs: 260, type: 'triangle' },
-};
+/** Master gain for every cue; the pack is mastered, so this stays simple. */
+const CUE_GAIN = 1;
 
 let cachedContext: AudioContext | null = null;
+const cueBuffers = new Map<AeroplaneCue, AudioBuffer>();
+let lastHopStartMs = 0;
 
 /**
  * Without any user activation the autoplay policy holds the context
@@ -54,7 +50,30 @@ function audioContext(): AudioContext | null {
 		// Autoplay policy or construction failure; retry on the next cue.
 		return null;
 	}
+	preloadCues(cachedContext);
 	return cachedContext;
+}
+
+/** Kick off one best-effort fetch/decode per cue for a fresh context. */
+function preloadCues(context: AudioContext): void {
+	for (const cue of AEROPLANE_CUES) {
+		loadCue(context, cue);
+	}
+}
+
+function loadCue(context: AudioContext, cue: AeroplaneCue): void {
+	void (async () => {
+		try {
+			const response = await fetch(cueUrl(cue));
+			if (!response.ok) return;
+			const bytes = await response.arrayBuffer();
+			// Callback-only decodeAudioData stacks resolve to undefined.
+			const buffer = await context.decodeAudioData(bytes);
+			if (buffer) cueBuffers.set(cue, buffer);
+		} catch {
+			// A cue that cannot load or decode stays silent; best-effort.
+		}
+	})();
 }
 
 /** Unlock/resume the AudioContext from a direct user gesture. */
@@ -69,7 +88,7 @@ export function primeAeroplaneAudio(): void {
 	}
 }
 
-/** Play one placeholder tone; a no-op when muted, unsupported, or blocked. */
+/** Play one decoded cue; a no-op when muted, unsupported, or blocked. */
 export function playAeroplaneCue(cue: AeroplaneCue, muted = false): void {
 	if (muted) return;
 	try {
@@ -82,28 +101,29 @@ export function playAeroplaneCue(cue: AeroplaneCue, muted = false): void {
 			}
 			return;
 		}
-		const tone = CUE_TONES[cue];
-		const seconds = tone.durationMs / 1000;
-		const start = context.currentTime;
-		const oscillator = context.createOscillator();
+		const buffer = cueBuffers.get(cue);
+		// Not decoded yet (or failed): drop the cue, never queue it.
+		if (!buffer) return;
+		if (cue === 'hop') {
+			const now = Date.now();
+			if (now - lastHopStartMs < HOP_MIN_SPACING_MS) return;
+			lastHopStartMs = now;
+		}
+		const source = context.createBufferSource();
+		source.buffer = buffer;
 		const gain = context.createGain();
-		oscillator.type = tone.type;
-		oscillator.frequency.value = tone.frequency;
-		gain.gain.setValueAtTime(0.0001, start);
-		gain.gain.exponentialRampToValueAtTime(0.06, start + 0.012);
-		gain.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
-		oscillator.connect(gain);
+		gain.gain.value = CUE_GAIN;
+		source.connect(gain);
 		gain.connect(context.destination);
-		oscillator.onended = () => {
+		source.onended = () => {
 			try {
-				oscillator.disconnect();
+				source.disconnect();
 				gain.disconnect();
 			} catch {
 				// Cleanup is best-effort.
 			}
 		};
-		oscillator.start(start);
-		oscillator.stop(start + seconds);
+		source.start();
 	} catch {
 		// Blocked or half-broken audio stacks must never interrupt play.
 	}
@@ -132,7 +152,9 @@ export function writeAeroplaneMuted(muted: boolean): void {
 	}
 }
 
-/** Drop the cached AudioContext; intended for tests stubbing the constructor. */
+/** Drop the cached AudioContext and decoded buffers; for tests only. */
 export function resetAeroplaneAudioForTest(): void {
 	cachedContext = null;
+	cueBuffers.clear();
+	lastHopStartMs = 0;
 }
