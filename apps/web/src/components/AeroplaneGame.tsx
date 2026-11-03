@@ -207,7 +207,12 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 					<AeroplaneSetup
 						setup={match.setup}
 						onChange={match.setSetup}
-						onStart={match.newMatch}
+						onStart={() => {
+							// Start is a direct gesture: unlock audio and begin cue
+							// decoding before the match's first roll.
+							primeAeroplaneAudio();
+							match.newMatch();
+						}}
 						progress={progress}
 					/>
 					<AeroplaneEventFeed

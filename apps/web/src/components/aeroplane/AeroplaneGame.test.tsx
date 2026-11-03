@@ -32,6 +32,7 @@ import { positionAnchor } from '../../lib/aeroplane/presentation';
 import { rollFair } from '../../lib/aeroplane/dice';
 import {
 	AEROPLANE_MUTED_STORAGE_KEY,
+	primeAeroplaneAudio,
 	resetAeroplaneAudioForTest,
 } from '../../lib/aeroplane/sound';
 import type { AeroplaneStorage } from '../../lib/aeroplane/persistence';
@@ -2300,21 +2301,34 @@ function advanceTimers(ms: number): void {
 	});
 }
 
-/** Recording AudioContext stub; frequencies double as cue names. */
-function installCueAudioStub(): number[] {
-	const frequencies: number[] = [];
-	class StubOscillator {
-		type = '';
-		frequency = { value: 0 };
+/**
+ * Recording file-backed AudioContext stub: fetched cues decode into
+ * tagged buffers, and started buffer sources record their cue name.
+ */
+let activeCueAudio: {
+	cues: string[];
+	fetches: string[];
+	warm(): Promise<void>;
+	uninstall(): void;
+} | null = null;
+
+function installCueAudioStub(): {
+	cues: string[];
+	fetches: string[];
+	warm(): Promise<void>;
+} {
+	const cues: string[] = [];
+	const fetches: string[] = [];
+	class StubBufferSource {
+		buffer: { cue: string } | null = null;
 		onended: (() => void) | null = null;
 		connect() {
 			return this;
 		}
-		start() {
-			frequencies.push(this.frequency.value);
-		}
-		stop() {}
 		disconnect() {}
+		start() {
+			cues.push((this.buffer as { cue: string }).cue);
+		}
 	}
 	class StubAudioContext {
 		destination = {};
@@ -2325,23 +2339,53 @@ function installCueAudioStub(): number[] {
 		}
 		createGain() {
 			return {
-				gain: {
-					setValueAtTime() {},
-					exponentialRampToValueAtTime() {},
-				},
+				gain: { value: 1 },
 				connect() {},
 				disconnect() {},
 			};
 		}
-		createOscillator() {
-			return new StubOscillator();
+		decodeAudioData(bytes: ArrayBuffer & { cue: string }) {
+			return Promise.resolve(bytes);
+		}
+		createBufferSource() {
+			return new StubBufferSource();
 		}
 	}
-	(globalThis as Record<string, unknown>).AudioContext = StubAudioContext;
-	return frequencies;
+	const root = globalThis as Record<string, unknown>;
+	root.AudioContext = StubAudioContext;
+	const originalFetch = globalThis.fetch;
+	root.fetch = (async (input: RequestInfo | URL) => {
+		const url = typeof input === 'string' ? input : input.toString();
+		if (!url.startsWith('/aeroplane/sfx/')) {
+			return originalFetch(input);
+		}
+		fetches.push(url);
+		const cue = url.slice(url.lastIndexOf('/') + 1).replace(/\.m4a$/, '');
+		const bytes = new ArrayBuffer(8) as ArrayBuffer & { cue: string };
+		bytes.cue = cue;
+		return { ok: true, arrayBuffer: async () => bytes };
+	}) as typeof fetch;
+	activeCueAudio = {
+		cues,
+		fetches,
+		// Decodes the preloaded cues so plays land synchronously afterwards.
+		async warm() {
+			primeAeroplaneAudio();
+			for (let i = 0; i < 12; i += 1) {
+				await Promise.resolve();
+			}
+		},
+		uninstall() {
+			root.fetch = originalFetch;
+		},
+	};
+	return activeCueAudio;
 }
 
 function uninstallCueAudioStub() {
+	const stub = activeCueAudio;
+	activeCueAudio = null;
+	if (stub) stub.uninstall();
 	delete (globalThis as Record<string, unknown>).AudioContext;
 	resetAeroplaneAudioForTest();
 }
@@ -2462,40 +2506,67 @@ describe('Aeroplane game composition', () => {
 		}
 	});
 
-	test('plays one roll cue per roll id plus board cues, never duplicated on rerender', () => {
+	test('plays one roll cue per roll id plus board cues, never duplicated on rerender', async () => {
 		const clock = installFrameClock();
-		const frequencies = installCueAudioStub();
+		const audio = installCueAudioStub();
 		try {
+			await audio.warm();
 			const fixture = gameFixture(1, launchReadyPlanes());
 			const { rerender, getByRole } = renderGame(fixture);
 			fireEvent.click(getByRole('button', { name: /roll die/i }));
 			// The roll cue fires once for the roll id, before any board frame.
-			expect(frequencies).toEqual([340]);
+			expect(audio.cues).toEqual(['roll']);
 			act(() => clock.advance(1)); // first frame crosses the initial hop
-			expect(frequencies).toEqual([340, 500]);
+			expect(audio.cues).toEqual(['roll', 'hop']);
 			act(() => clock.advance(600)); // playback completes (hop + jump)
-			// Both motion segments cue 'hop'; a non-finishing move has no
-			// terminal cue.
-			expect(frequencies).toEqual([340, 500, 500]);
+			// Both motion segments cue 'hop', but the immediate second hop is
+			// spaced out by the 150 ms hop limit (sound.test.ts); a
+			// non-finishing move has no terminal cue.
+			expect(audio.cues).toEqual(['roll', 'hop']);
 			rerender(<AeroplaneGame controllerOptions={gameOptions(fixture)} />);
 			act(() => clock.advance(600));
-			expect(frequencies).toEqual([340, 500, 500]);
+			expect(audio.cues).toEqual(['roll', 'hop']);
 		} finally {
 			clock.uninstall();
 			uninstallCueAudioStub();
 		}
 	});
 
-	test('the mute toggle round-trips through localStorage and silences cues immediately', () => {
-		const frequencies = installCueAudioStub();
+	test('the Start match click primes cue decoding before the first roll', async () => {
+		const audio = installCueAudioStub();
 		window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
 		try {
+			const view = renderGame(gameFixture(3));
+			// No audio work happens before any user gesture.
+			expect(audio.fetches).toEqual([]);
+			fireEvent.click(view.getByRole('button', { name: /start match/i }));
+			// The direct Start gesture creates the context and begins one
+			// fetch per cue, so decoding is underway before the first roll.
+			expect(audio.fetches).toHaveLength(9);
+			await audio.warm();
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(audio.cues).toEqual(['roll']);
+			// The wrapped Start still starts a fresh match: the die rolls.
+			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
+				'Red'
+			);
+		} finally {
+			window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('the mute toggle round-trips through localStorage and silences cues immediately', async () => {
+		const audio = installCueAudioStub();
+		window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+		try {
+			await audio.warm();
 			const fixture = gameFixture(3);
 			const first = renderGame(fixture);
 			const toggle = first.getByTestId('aeroplane-mute-toggle');
 			expect(toggle.getAttribute('aria-pressed')).toBe('true');
 			fireEvent.click(first.getByRole('button', { name: /roll die/i }));
-			expect(frequencies).toEqual([340]);
+			expect(audio.cues).toEqual(['roll']);
 			fireEvent.click(toggle);
 			expect(toggle.getAttribute('aria-pressed')).toBe('false');
 			expect(window.localStorage.getItem(AEROPLANE_MUTED_STORAGE_KEY)).toBe(
@@ -2509,7 +2580,7 @@ describe('Aeroplane game composition', () => {
 				second.getByTestId('aeroplane-mute-toggle').getAttribute('aria-pressed')
 			).toBe('false');
 			fireEvent.click(second.getByRole('button', { name: /roll die/i }));
-			expect(frequencies).toEqual([340]);
+			expect(audio.cues).toEqual(['roll']);
 			// Muting never affects the authoritative action.
 			expect(second.getByTestId('aeroplane-die-face').textContent).toBe('3');
 			fireEvent.click(second.getByTestId('aeroplane-mute-toggle'));
@@ -2820,12 +2891,13 @@ describe('Aeroplane game composition', () => {
 		expect(view.getByTestId('aeroplane-die-face').textContent).toBe('1');
 	});
 
-	test('a rapid AI move supersedes the in-flight human presentation without late cues', () => {
+	test('a rapid AI move supersedes the in-flight human presentation without late cues', async () => {
 		jest.useFakeTimers();
 		const clock = installFrameClock();
 		window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
-		const frequencies = installCueAudioStub();
+		const audio = installCueAudioStub();
 		try {
+			await audio.warm();
 			const fixture = gameFixtureForRolls(
 				[1, 1],
 				launchReadyPlanes().map(plane =>
@@ -2841,7 +2913,7 @@ describe('Aeroplane game composition', () => {
 			// Roll cue, then the human timeline's first hop.
 			act(() => clock.advance(1));
 			act(() => clock.advance(40));
-			expect(frequencies).toEqual([340, 500]);
+			expect(audio.cues).toEqual(['roll', 'hop']);
 			// The paced AI roll and its auto-selected move supersede the overlay.
 			advanceTimers(200);
 			act(() => clock.advance(1));
@@ -2852,10 +2924,12 @@ describe('Aeroplane game composition', () => {
 			);
 			expect(position).toEqual(yellowStart);
 			// Only the newest timeline's cues fire: the yellow roll cue (one per
-			// roll id) plus its hops; the superseded red hop, jump, capture, and
-			// terminal cue never do, and a non-finishing move has none either.
+			// roll id) plus its hops; the immediate second yellow hop is spaced
+			// out by the 150 ms hop limit (sound.test.ts), and the superseded
+			// red hop, jump, capture, and terminal cue never do — a
+			// non-finishing move has none either.
 			act(() => clock.advance(1000));
-			expect(frequencies).toEqual([340, 500, 340, 500, 500]);
+			expect(audio.cues).toEqual(['roll', 'hop', 'roll', 'hop']);
 			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
 			// Both moves committed in order in the unchanged original feed.
 			expect(
@@ -3008,10 +3082,11 @@ describe('Aeroplane game composition', () => {
 		};
 	}
 
-	test('Sky Tycoon animates and cues the effective Storm arrival', () => {
+	test('Sky Tycoon animates and cues the effective Storm arrival', async () => {
 		const clock = installFrameClock();
-		const frequencies = installCueAudioStub();
+		const audio = installCueAudioStub();
 		try {
+			await audio.warm();
 			// red-0 rolls 2 from 14 onto Storm (16) and retreats to 13.
 			const view = renderGame(
 				tycoonFixture(
@@ -3027,12 +3102,13 @@ describe('Aeroplane game composition', () => {
 			expect(
 				view.getByText('Storm pushes Red plane 1 back to track 13.')
 			).toBeTruthy();
-			expect(frequencies).toEqual([340]);
+			expect(audio.cues).toEqual(['roll']);
 			act(() => clock.advance(1));
 			expect(view.getByTestId('aeroplane-motion-overlay')).toBeTruthy();
 			act(() => clock.advance(800));
-			// Two route hops then the warp: cues stay hop-only, no terminal cue.
-			expect(frequencies).toEqual([340, 500, 500]);
+			// Two route hops then the warp: cues stay hop-only (the immediate
+			// second hop is spaced out by the 150 ms hop limit), no terminal cue.
+			expect(audio.cues).toEqual(['roll', 'hop']);
 			expect(view.queryByTestId('aeroplane-motion-overlay')).toBeNull();
 			const arrival = positionAnchor(toPosition('red', 13), 'red-0');
 			expect(
@@ -3099,9 +3175,10 @@ describe('Aeroplane game composition', () => {
 		);
 	});
 
-	test('Sky Tycoon honours reduced motion and Skip animations', () => {
+	test('Sky Tycoon honours reduced motion and Skip animations', async () => {
 		const clock = installFrameClock();
-		const frequencies = installCueAudioStub();
+		const audio = installCueAudioStub();
+		await audio.warm();
 		const windowWithMedia = window as unknown as { matchMedia: unknown };
 		const originalMatchMedia = windowWithMedia.matchMedia;
 		windowWithMedia.matchMedia = (query: string) => ({
@@ -3122,7 +3199,7 @@ describe('Aeroplane game composition', () => {
 			// Settled at the effective arrival with one terminal cue.
 			expect(reduced.queryByTestId('aeroplane-motion-overlay')).toBeNull();
 			// The board's layout-effect terminal cue lands before the roll cue.
-			expect(frequencies).toEqual([500, 340]);
+			expect(audio.cues).toEqual(['hop', 'roll']);
 			const arrival = positionAnchor(toPosition('red', 13), 'red-0');
 			expect(
 				overlayAnchor(reduced.queryByTestId, 'aeroplane-plane-control-red-0')
