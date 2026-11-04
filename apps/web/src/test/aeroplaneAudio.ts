@@ -74,6 +74,9 @@ export function installAudioStack(
 	const requests: { url: string; init: RequestInit | undefined }[] = [];
 	const decodes: string[] = [];
 	const counts = { constructs: 0, resumes: 0 };
+	// The Web Audio decode algorithm detaches its input; a second
+	// decodeAudioData call with the same bytes must fail like a browser.
+	const consumedDecodeInputs = new WeakSet<object>();
 	// Mutable so patch() can simulate a network/stack recovering mid-test.
 	const flags: AudioStackOptions = { ...options };
 	let now = 1_000_000;
@@ -98,6 +101,15 @@ export function installAudioStack(
 			error?: (reason: unknown) => void
 		) {
 			decodes.push(bytes.cue ?? '?');
+			if (consumedDecodeInputs.has(bytes)) {
+				const reuse = new TypeError('detached ArrayBuffer');
+				if (flags.callbackOnlyDecode) {
+					error?.(reuse);
+					return undefined;
+				}
+				return Promise.reject(reuse);
+			}
+			consumedDecodeInputs.add(bytes);
 			const failure = new Error('undecodable');
 			if (flags.callbackOnlyDecode) {
 				// Older Safari: synchronous undefined return; the result only
