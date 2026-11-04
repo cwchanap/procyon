@@ -299,14 +299,15 @@ describe('aeroplane cue audio', () => {
 		expect(stack.cues).toEqual(['roll']);
 	});
 
-	test('callback-only decodeAudioData stacks decode through the callback signature', async () => {
+	test('callback-only decodeAudioData stacks decode each cue exactly once', async () => {
 		const stack = installAudioStack({ callbackOnlyDecode: true });
 		activeStack = stack;
 		primeAeroplaneAudio();
 		await flushAudioPromises();
-		// Each cue got one promise-form probe (undefined) then the real
-		// callback-form decode — older Safari keeps its cues.
-		expect(stack.decodes).toHaveLength(18);
+		// The decode detaches its input, so a promise-form probe followed
+		// by a callback retry fails on the detached buffer and silences
+		// every cue on older Safari — one call per cue is the only safe path.
+		expect(stack.decodes).toHaveLength(9);
 		playAeroplaneCue('roll');
 		expect(stack.cues).toEqual(['roll']);
 	});

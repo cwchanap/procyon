@@ -128,27 +128,27 @@ function audioContext(): AudioContext | null {
 }
 
 /**
- * Promise-returning stacks resolve decodeAudioData to the buffer;
- * callback-only stacks (older Safari) return undefined synchronously and
- * need completion callbacks instead — without this fallback every cue on
- * those browsers decodes to nothing and stays silent. A rejected promise
- * means the decode itself failed, so it propagates without a second try.
+ * One call covers both stacks: the Web Audio decode algorithm detaches
+ * its ArrayBuffer, so probing the promise form and retrying with
+ * callbacks would hand the retry a detached buffer and silence every
+ * cue on callback-only stacks (older Safari). Passing the callbacks up
+ * front serves those stacks, which return undefined synchronously;
+ * promise stacks also settle the returned promise — whichever fires
+ * first wins the wrapper.
  */
 function decodeAudio(
 	context: AudioContext,
 	bytes: ArrayBuffer
 ): Promise<AudioBuffer | undefined> {
-	try {
-		const result: unknown = context.decodeAudioData(bytes);
-		if (result && typeof (result as Promise<AudioBuffer>).then === 'function') {
-			return result as Promise<AudioBuffer>;
-		}
-	} catch {
-		// A synchronous throw also marks the callback-only signature.
-	}
 	return new Promise((resolve, reject) => {
 		try {
-			context.decodeAudioData(bytes, resolve, reject);
+			const result: unknown = context.decodeAudioData(bytes, resolve, reject);
+			if (
+				result &&
+				typeof (result as Promise<AudioBuffer>).then === 'function'
+			) {
+				void (result as Promise<AudioBuffer>).then(resolve, reject);
+			}
 		} catch (error) {
 			reject(error);
 		}
