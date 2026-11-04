@@ -1,5 +1,10 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { setupReactDom } from '../../test/reactSetup';
+import {
+	flushAudioPromises,
+	installAudioStack,
+	type InstalledAudioStack,
+} from '../../test/aeroplaneAudio';
 import { AEROPLANE_CUES, cueUrl } from './assets';
 import {
 	AEROPLANE_MUTED_STORAGE_KEY,
@@ -13,159 +18,11 @@ import {
 
 setupReactDom();
 
-/**
- * Settles the preload fetch→arrayBuffer→decodeAudioData promise chain
- * without relying on real (or faked) timers.
- */
-async function flushAsync(): Promise<void> {
-	for (let i = 0; i < 12; i += 1) {
-		await Promise.resolve();
-	}
-}
-
-/** Freeze Date.now at a controllable instant for hop-spacing tests. */
-function fakeDateNow(startMs = 1_000_000): (advanceMs: number) => void {
-	let now = startMs;
-	Date.now = () => now;
-	return (advanceMs: number) => {
-		now += advanceMs;
-	};
-}
-
-const realDateNow = Date.now.bind(Date);
-
-interface AudioStackOptions {
-	/** Never install an AudioContext constructor (unsupported stack). */
-	readonly unsupported?: boolean;
-	readonly constructorThrows?: boolean;
-	readonly decodeRejects?: boolean;
-	/** Decode promises stay pending until this gate resolves. */
-	readonly decodeGate?: Promise<void>;
-	readonly fetchRejects?: boolean;
-	readonly fetchNotOk?: boolean;
-	readonly createBufferSourceThrows?: boolean;
-	readonly state?: string;
-}
-
-interface InstalledAudioStack {
-	/** Cue names whose buffer source actually started. */
-	readonly cues: string[];
-	/** Cue URLs fetched so far. */
-	readonly fetches: string[];
-	/** Cue names whose decode was attempted, whatever the outcome. */
-	readonly decodes: string[];
-	readonly constructs: number;
-	readonly resumes: number;
-	uninstall(): void;
-}
-
-interface StubBuffer {
-	cue: string;
-}
-
-interface StubBufferSource {
-	buffer: StubBuffer | null;
-	onended: (() => void) | null;
-	connect(): StubBufferSource;
-	disconnect(): void;
-	start(): void;
-}
-
-function installAudioStack(options?: AudioStackOptions): InstalledAudioStack {
-	const cues: string[] = [];
-	const fetches: string[] = [];
-	const decodes: string[] = [];
-	const counts = { constructs: 0, resumes: 0 };
-	class StubAudioContext {
-		destination = {};
-		currentTime = 0;
-		state = options?.state ?? 'running';
-		resume() {
-			counts.resumes += 1;
-			return Promise.resolve();
-		}
-		createGain() {
-			return {
-				gain: { value: 1 },
-				connect() {},
-				disconnect() {},
-			};
-		}
-		decodeAudioData(bytes: ArrayBuffer & Partial<StubBuffer>) {
-			decodes.push(bytes.cue ?? '?');
-			if (options?.decodeRejects) {
-				return Promise.reject(new Error('undecodable'));
-			}
-			const decode = options?.decodeGate ?? Promise.resolve();
-			return decode.then(() => bytes);
-		}
-		createBufferSource(): StubBufferSource {
-			if (options?.createBufferSourceThrows) {
-				throw new Error('node creation blocked');
-			}
-			const source: StubBufferSource = {
-				buffer: null,
-				onended: null,
-				connect() {
-					return source;
-				},
-				disconnect() {},
-				start() {
-					cues.push((source.buffer as StubBuffer).cue);
-				},
-			};
-			return source;
-		}
-		constructor() {
-			if (options?.constructorThrows) {
-				throw new Error('autoplay blocked');
-			}
-			counts.constructs += 1;
-		}
-	}
-	const root = globalThis as Record<string, unknown>;
-	if (!options?.unsupported) {
-		root.AudioContext = StubAudioContext;
-	}
-	const originalFetch = globalThis.fetch;
-	root.fetch = (async (input: RequestInfo | URL) => {
-		const url = typeof input === 'string' ? input : input.toString();
-		fetches.push(url);
-		if (options?.fetchRejects) {
-			throw new Error('offline');
-		}
-		const cue = url.slice(url.lastIndexOf('/') + 1).replace(/\.m4a$/, '');
-		const bytes = new ArrayBuffer(8) as ArrayBuffer & StubBuffer;
-		bytes.cue = cue;
-		return {
-			ok: options?.fetchNotOk !== true,
-			arrayBuffer: async () => bytes,
-		};
-	}) as unknown as typeof fetch;
-	return {
-		cues,
-		fetches,
-		decodes,
-		get constructs() {
-			return counts.constructs;
-		},
-		get resumes() {
-			return counts.resumes;
-		},
-		uninstall() {
-			root.fetch = originalFetch;
-			delete root.AudioContext;
-			delete root.webkitAudioContext;
-		},
-	};
-}
-
 let activeStack: InstalledAudioStack | null = null;
 
 afterEach(() => {
 	activeStack?.uninstall();
 	activeStack = null;
-	Date.now = realDateNow;
 	resetAeroplaneAudioForTest();
 });
 
@@ -337,6 +194,10 @@ describe('aeroplane effect cue selection', () => {
 });
 
 describe('aeroplane cue audio', () => {
+	beforeEach(() => {
+		window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+	});
+
 	test('priming begins exactly one best-effort fetch and decode per cue', async () => {
 		const stack = installAudioStack();
 		activeStack = stack;
@@ -347,7 +208,7 @@ describe('aeroplane cue audio', () => {
 		expect([...stack.fetches].sort()).toEqual(
 			[...AEROPLANE_CUES].map(cueUrl).sort()
 		);
-		await flushAsync();
+		await flushAudioPromises();
 		// Decoded buffers are cached: replays never refetch.
 		playAeroplaneCue('roll');
 		playAeroplaneCue('roll');
@@ -356,7 +217,30 @@ describe('aeroplane cue audio', () => {
 		expect(stack.fetches).toHaveLength(9);
 	});
 
-	test('a cue requested before its decode finishes is dropped, never queued', async () => {
+	test('priming while muted creates no context and starts no downloads', async () => {
+		const stack = installAudioStack();
+		activeStack = stack;
+		window.localStorage.setItem(AEROPLANE_MUTED_STORAGE_KEY, '1');
+		try {
+			primeAeroplaneAudio();
+			expect(stack.constructs).toBe(0);
+			expect(stack.fetches).toEqual([]);
+			// A cue call that forgets the muted flag still creates nothing:
+			// the saved preference is the authoritative gate.
+			playAeroplaneCue('roll');
+			expect(stack.constructs).toBe(0);
+			expect(stack.fetches).toEqual([]);
+			// The same gesture after unmuting primes normally.
+			writeAeroplaneMuted(false);
+			primeAeroplaneAudio();
+			expect(stack.constructs).toBe(1);
+			expect(stack.fetches).toHaveLength(9);
+		} finally {
+			window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+		}
+	});
+
+	test('a cue requested during its load waits a bounded grace, then plays', async () => {
 		let releaseDecode: (() => void) | undefined;
 		const gate = new Promise<void>(resolve => {
 			releaseDecode = resolve;
@@ -367,10 +251,62 @@ describe('aeroplane cue audio', () => {
 		playAeroplaneCue('roll');
 		expect(stack.cues).toEqual([]);
 		releaseDecode!();
-		await flushAsync();
-		// No delayed catch-up: the dropped cue never erupts once decoding ends.
+		await flushAudioPromises();
+		// The first roll after priming waits out the in-flight decode
+		// rather than dropping silently.
+		expect(stack.cues).toEqual(['roll']);
+		playAeroplaneCue('roll');
+		expect(stack.cues).toEqual(['roll', 'roll']);
+	});
+
+	test('a cue whose load never settles is still dropped', () => {
+		const stack = installAudioStack({
+			decodeGate: new Promise<void>(() => {}),
+		});
+		activeStack = stack;
+		primeAeroplaneAudio();
+		playAeroplaneCue('roll');
 		expect(stack.cues).toEqual([]);
-		// The newly ready buffer serves the next request normally.
+	});
+
+	test('a failed load retries on the next priming gesture', async () => {
+		const stack = installAudioStack({ fetchNotOk: true });
+		activeStack = stack;
+		primeAeroplaneAudio();
+		expect(stack.fetches).toHaveLength(9);
+		await flushAudioPromises();
+		expect(stack.decodes).toEqual([]);
+		// A network blip must not silence the cue until reload: the next
+		// Start/Roll/unmute gesture refetches what failed.
+		stack.patch({ fetchNotOk: false });
+		primeAeroplaneAudio();
+		await flushAudioPromises();
+		expect(stack.decodes).toHaveLength(9);
+		playAeroplaneCue('roll');
+		expect(stack.cues).toEqual(['roll']);
+	});
+
+	test('a failed cue retries when next requested', async () => {
+		const stack = installAudioStack({ fetchNotOk: true });
+		activeStack = stack;
+		primeAeroplaneAudio();
+		await flushAudioPromises();
+		stack.patch({ fetchNotOk: false });
+		playAeroplaneCue('roll'); // drops, but starts the retry
+		expect(stack.cues).toEqual([]);
+		await flushAudioPromises();
+		playAeroplaneCue('roll'); // the retry's buffer serves normally
+		expect(stack.cues).toEqual(['roll']);
+	});
+
+	test('callback-only decodeAudioData stacks decode through the callback signature', async () => {
+		const stack = installAudioStack({ callbackOnlyDecode: true });
+		activeStack = stack;
+		primeAeroplaneAudio();
+		await flushAudioPromises();
+		// Each cue got one promise-form probe (undefined) then the real
+		// callback-form decode — older Safari keeps its cues.
+		expect(stack.decodes).toHaveLength(18);
 		playAeroplaneCue('roll');
 		expect(stack.cues).toEqual(['roll']);
 	});
@@ -385,15 +321,28 @@ describe('aeroplane cue audio', () => {
 		expect(stack.cues).toEqual([]);
 	});
 
-	test('a suspended context resumes but plays nothing until running', () => {
+	test('a suspended context resumes but plays nothing until running', async () => {
 		const stack = installAudioStack({ state: 'suspended' });
 		activeStack = stack;
 		primeAeroplaneAudio();
+		// Preload still runs so cues are ready once the context resumes.
+		expect(stack.fetches).toHaveLength(9);
+		await flushAudioPromises();
 		playAeroplaneCue('roll');
 		expect(stack.resumes).toBe(2);
 		expect(stack.cues).toEqual([]);
-		// Preload still runs so cues are ready once the context resumes.
-		expect(stack.fetches).toHaveLength(9);
+	});
+
+	test('an interrupted context resumes like a suspended one', async () => {
+		// Safari reports 'interrupted' after a phone call, Siri or an app
+		// switch; ignoring it left iOS audio dead for the session.
+		const stack = installAudioStack({ state: 'interrupted' });
+		activeStack = stack;
+		primeAeroplaneAudio();
+		await flushAudioPromises();
+		playAeroplaneCue('roll');
+		expect(stack.resumes).toBe(2);
+		expect(stack.cues).toEqual([]);
 	});
 
 	test('an unsupported audio stack never throws or fetches', () => {
@@ -425,7 +374,7 @@ describe('aeroplane cue audio', () => {
 		primeAeroplaneAudio();
 		// The failure scenario genuinely attempted all nine fetches.
 		expect(stack.fetches).toHaveLength(9);
-		await flushAsync();
+		await flushAudioPromises();
 		expect(stack.decodes).toEqual([]);
 		playAeroplaneCue('roll');
 		expect(stack.cues).toEqual([]);
@@ -438,7 +387,7 @@ describe('aeroplane cue audio', () => {
 		// All nine cues were fetched; each response failed the ok check
 		// before any decode could be attempted.
 		expect(stack.fetches).toHaveLength(9);
-		await flushAsync();
+		await flushAudioPromises();
 		expect(stack.decodes).toEqual([]);
 		playAeroplaneCue('roll');
 		expect(stack.cues).toEqual([]);
@@ -449,7 +398,7 @@ describe('aeroplane cue audio', () => {
 		activeStack = stack;
 		primeAeroplaneAudio();
 		expect(stack.fetches).toHaveLength(9);
-		await flushAsync();
+		await flushAudioPromises();
 		// Every cue was fetched and its decode genuinely attempted.
 		expect(stack.decodes).toHaveLength(9);
 		playAeroplaneCue('roll');
@@ -460,7 +409,7 @@ describe('aeroplane cue audio', () => {
 		const stack = installAudioStack({ createBufferSourceThrows: true });
 		activeStack = stack;
 		primeAeroplaneAudio();
-		await flushAsync();
+		await flushAudioPromises();
 		expect(() => playAeroplaneCue('hop')).not.toThrow();
 		expect(stack.cues).toEqual([]);
 	});
@@ -508,7 +457,7 @@ describe('aeroplane cue audio', () => {
 		primeAeroplaneAudio();
 		expect(stack.constructs).toBe(1);
 		expect(stack.fetches).toHaveLength(9);
-		await flushAsync();
+		await flushAudioPromises();
 		playAeroplaneCue('roll');
 		expect(stack.cues).toEqual(['roll']);
 	});
@@ -517,15 +466,14 @@ describe('aeroplane cue audio', () => {
 		const stack = installAudioStack();
 		activeStack = stack;
 		primeAeroplaneAudio();
-		await flushAsync();
-		const advance = fakeDateNow();
+		await flushAudioPromises();
 		playAeroplaneCue('hop'); // first start passes
 		playAeroplaneCue('hop'); // same instant: dropped
 		playAeroplaneCue('roll'); // only hop is paced
 		playAeroplaneCue('roll');
-		advance(149);
+		stack.advanceNow(149);
 		playAeroplaneCue('hop'); // 149 ms later: still dropped
-		advance(1);
+		stack.advanceNow(1);
 		playAeroplaneCue('hop'); // exactly 150 ms later: passes
 		expect(stack.cues).toEqual(['hop', 'roll', 'roll', 'hop']);
 	});
@@ -534,8 +482,7 @@ describe('aeroplane cue audio', () => {
 		const stack = installAudioStack();
 		activeStack = stack;
 		primeAeroplaneAudio();
-		await flushAsync();
-		fakeDateNow();
+		await flushAudioPromises();
 		playAeroplaneCue('hop');
 		expect(stack.cues).toEqual(['hop']);
 
@@ -547,13 +494,17 @@ describe('aeroplane cue audio', () => {
 		expect(stack.constructs).toBe(1);
 		primeAeroplaneAudio();
 		expect(stack.constructs).toBe(2);
-		// Buffers are gone: the cue drops again until the new context decodes.
+		// Buffers are gone: the cue waits on the fresh context's decode
+		// and lands once it finishes inside the grace window.
 		playAeroplaneCue('hop');
 		expect(stack.cues).toEqual(['hop']);
-		await flushAsync();
-		// The pacing clock reset too: a hop may start immediately again.
-		playAeroplaneCue('hop');
+		await flushAudioPromises();
 		expect(stack.cues).toEqual(['hop', 'hop']);
+		// The pacing clock reset only holds the new context to the same
+		// 150 ms spacing as any other hop start.
+		stack.advanceNow(200);
+		playAeroplaneCue('hop');
+		expect(stack.cues).toEqual(['hop', 'hop', 'hop']);
 		expect(stack.fetches).toHaveLength(18);
 	});
 
@@ -571,7 +522,7 @@ describe('aeroplane cue audio', () => {
 		// become obsolete and must not refill the cleared buffer cache.
 		resetAeroplaneAudioForTest();
 		releaseDecode!();
-		await flushAsync();
+		await flushAudioPromises();
 		// With gesture state cleared, the cue drops without constructing.
 		playAeroplaneCue('roll');
 		expect(stack.cues).toEqual([]);
@@ -580,8 +531,8 @@ describe('aeroplane cue audio', () => {
 		expect(stack.constructs).toBe(2);
 
 		// The fresh context decodes anew and the cue plays normally.
-		await flushAsync();
 		playAeroplaneCue('roll');
+		await flushAudioPromises();
 		expect(stack.cues).toEqual(['roll']);
 		expect(stack.fetches).toHaveLength(18);
 	});

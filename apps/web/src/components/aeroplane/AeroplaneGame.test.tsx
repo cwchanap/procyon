@@ -28,13 +28,19 @@ import {
 } from '../../lib/aeroplane/assets';
 import { TYCOON_CHANCE_CARDS } from '../../lib/aeroplane/types';
 import { scoreMatch, type SkinId } from '../../lib/aeroplane/rewards';
-import { positionAnchor } from '../../lib/aeroplane/presentation';
+import {
+	buildMoveTimeline,
+	positionAnchor,
+} from '../../lib/aeroplane/presentation';
 import { rollFair } from '../../lib/aeroplane/dice';
 import {
 	AEROPLANE_MUTED_STORAGE_KEY,
-	primeAeroplaneAudio,
 	resetAeroplaneAudioForTest,
 } from '../../lib/aeroplane/sound';
+import {
+	installAudioStack,
+	type InstalledAudioStack,
+} from '../../test/aeroplaneAudio';
 import type { AeroplaneStorage } from '../../lib/aeroplane/persistence';
 import type { RngState } from '../../lib/aeroplane/rng';
 import type {
@@ -471,6 +477,44 @@ describe('Aeroplane board interactions', () => {
 		expect(
 			Number(icon.getAttribute('y')) + Number(icon.getAttribute('height')) / 2
 		).toBeCloseTo(TRACK_ANCHORS[6]!.y, 6);
+	});
+
+	test('a tile icon that fails to load falls back to its text glyph', () => {
+		const { getByTestId } = render(
+			<AeroplaneBoard
+				state={fixtureState({
+					tycoon: initialTycoonState(1),
+				})}
+				legalMoves={[]}
+				onRoll={mock(() => {})}
+			/>
+		);
+		const tile = getByTestId('aeroplane-tycoon-tile-6');
+		const icon = tile.querySelector('image')!;
+		expect(icon.getAttribute('href')).toBe(tileIconUrl('airport'));
+		fireEvent.error(icon);
+		// A failed download must not leave the tile blank.
+		expect(tile.querySelector('image')).toBeNull();
+		expect(tile.querySelector('text')?.textContent).toBe('✈');
+	});
+
+	test('a plane sprite that fails to load falls back to the colour disc', () => {
+		const { getByTestId } = render(
+			<AeroplaneBoard
+				state={fixtureState()}
+				legalMoves={[]}
+				onRoll={mock(() => {})}
+			/>
+		);
+		const control = getByTestId('aeroplane-plane-control-red-0');
+		const sprite = control.querySelector('image')!;
+		expect(sprite.getAttribute('href')).toBe(spriteUrl('classic', 'red'));
+		fireEvent.error(sprite);
+		// The committed plane stays visible as its team-colour disc and
+		// number instead of vanishing with the broken sprite.
+		expect(control.querySelector('image')).toBeNull();
+		expect(control.querySelector('circle')).not.toBeNull();
+		expect(control.querySelector('text')?.textContent).toBe('1');
 	});
 
 	test('Standard boards render no Sky Tycoon markers', () => {
@@ -1972,6 +2016,88 @@ describe('Aeroplane board motion playback', () => {
 		}
 	});
 
+	test('a cancel arriving after the last boundary cue still lands the terminal cue', () => {
+		const clock = installFrameClock();
+		try {
+			const finishing = committedMove(motionState({ 'red-1': 53 }), 'red-1', 3);
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { rerender } = render(
+				<AeroplaneBoard
+					state={finishing.committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move: finishing.move }]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			const totalMs = buildMoveTimeline(
+				finishing.move,
+				finishing.committed
+			).totalMs;
+			act(() => clock.advance(1)); // first boundary
+			act(() => clock.advance(totalMs - 1));
+			// Inside the last segment: every boundary cue has sounded but the
+			// playback clock has not emitted its terminal frame yet.
+			expect(cueNames(onCue).at(-1)).not.toBe('finish');
+			// The queue's 650 ms expiry races that final frame on slow
+			// displays: the consequence cue must not be dropped with the
+			// playback it belonged to.
+			rerender(
+				<AeroplaneBoard
+					state={finishing.committed}
+					legalMoves={[]}
+					presentationQueue={[]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			expect(cueNames(onCue).at(-1)).toBe('finish');
+		} finally {
+			clock.uninstall();
+		}
+	});
+
+	test('a quick follow-up move still lands the cancelled move’s terminal cue', () => {
+		const clock = installFrameClock();
+		try {
+			const finishing = committedMove(motionState({ 'red-1': 53 }), 'red-1', 3);
+			const followUp = committedMove(finishing.committed, 'red-0', 3);
+			const onCue = mock((_cue: AeroplaneBoardCue) => {});
+			const { rerender } = render(
+				<AeroplaneBoard
+					state={finishing.committed}
+					legalMoves={[]}
+					presentationQueue={[{ id: 1, move: finishing.move }]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			const totalMs = buildMoveTimeline(
+				finishing.move,
+				finishing.committed
+			).totalMs;
+			act(() => clock.advance(1));
+			act(() => clock.advance(totalMs - 1));
+			// The bonus-roll move arrives inside the last segment, replacing
+			// the nearly-finished playback before its final frame.
+			rerender(
+				<AeroplaneBoard
+					state={followUp.committed}
+					legalMoves={[]}
+					presentationQueue={[
+						{ id: 1, move: finishing.move },
+						{ id: 2, move: followUp.move },
+					]}
+					onCue={onCue}
+					onRoll={mock(() => {})}
+				/>
+			);
+			expect(cueNames(onCue)).toContain('finish');
+		} finally {
+			clock.uninstall();
+		}
+	});
+
 	test('returns a captured plane to its hangar and masks it while airborne', () => {
 		const clock = installFrameClock();
 		try {
@@ -2503,92 +2629,21 @@ function advanceTimers(ms: number): void {
 }
 
 /**
- * Recording file-backed AudioContext stub: fetched cues decode into
- * tagged buffers, and started buffer sources record their cue name.
+ * Recording file-backed AudioContext stub (shared with sound.test.ts):
+ * fetched cues decode into tagged buffers, and started buffer sources
+ * record their cue name.
  */
-let activeCueAudio: {
-	cues: string[];
-	fetches: string[];
-	warm(): Promise<void>;
-	uninstall(): void;
-} | null = null;
+let activeCueAudio: InstalledAudioStack | null = null;
 
-function installCueAudioStub(): {
-	cues: string[];
-	fetches: string[];
-	warm(): Promise<void>;
-} {
-	const cues: string[] = [];
-	const fetches: string[] = [];
-	class StubBufferSource {
-		buffer: { cue: string } | null = null;
-		onended: (() => void) | null = null;
-		connect() {
-			return this;
-		}
-		disconnect() {}
-		start() {
-			cues.push((this.buffer as { cue: string }).cue);
-		}
-	}
-	class StubAudioContext {
-		destination = {};
-		currentTime = 0;
-		state = 'running';
-		resume() {
-			return Promise.resolve();
-		}
-		createGain() {
-			return {
-				gain: { value: 1 },
-				connect() {},
-				disconnect() {},
-			};
-		}
-		decodeAudioData(bytes: ArrayBuffer & { cue: string }) {
-			return Promise.resolve(bytes);
-		}
-		createBufferSource() {
-			return new StubBufferSource();
-		}
-	}
-	const root = globalThis as Record<string, unknown>;
-	root.AudioContext = StubAudioContext;
-	const originalFetch = globalThis.fetch;
-	root.fetch = (async (input: RequestInfo | URL) => {
-		const url = typeof input === 'string' ? input : input.toString();
-		if (!url.startsWith('/aeroplane/sfx/')) {
-			return originalFetch(input);
-		}
-		fetches.push(url);
-		const cue = url.slice(url.lastIndexOf('/') + 1).replace(/\.m4a$/, '');
-		const bytes = new ArrayBuffer(8) as ArrayBuffer & { cue: string };
-		bytes.cue = cue;
-		return { ok: true, arrayBuffer: async () => bytes };
-	}) as typeof fetch;
-	activeCueAudio = {
-		cues,
-		fetches,
-		// Decodes the preloaded cues so plays land synchronously afterwards.
-		async warm() {
-			primeAeroplaneAudio();
-			for (let i = 0; i < 12; i += 1) {
-				await Promise.resolve();
-			}
-		},
-		uninstall() {
-			root.fetch = originalFetch;
-		},
-	};
+function installCueAudioStub(): InstalledAudioStack {
+	activeCueAudio = installAudioStack();
 	return activeCueAudio;
 }
 
 function uninstallCueAudioStub() {
 	const stub = activeCueAudio;
 	activeCueAudio = null;
-	if (stub) stub.uninstall();
-	delete (globalThis as Record<string, unknown>).AudioContext;
-	resetAeroplaneAudioForTest();
+	stub?.uninstall();
 }
 
 describe('Aeroplane game composition', () => {
@@ -2614,6 +2669,9 @@ describe('Aeroplane game composition', () => {
 		// bun:test fake timers leak across tests in a file; restore real ones so
 		// timer-free tests below stay timer-free regardless of order.
 		jest.useRealTimers();
+		// Gesture state set by unstubbed Roll/Start clicks must not leak
+		// into the next test either.
+		resetAeroplaneAudioForTest();
 		if (hadInitialAuthUser && originalInitialAuthUser !== undefined) {
 			window.__PROCYON_INITIAL_AUTH_USER__ = originalInitialAuthUser;
 		} else {
@@ -2720,9 +2778,9 @@ describe('Aeroplane game composition', () => {
 			act(() => clock.advance(1)); // first frame crosses the initial hop
 			expect(audio.cues).toEqual(['roll', 'hop']);
 			act(() => clock.advance(600)); // playback completes (hop + jump)
-			// Both motion segments cue 'hop', but the immediate second hop is
-			// spaced out by the 150 ms hop limit (sound.test.ts); a
-			// non-finishing move has no terminal cue.
+			// Both motion segments cue 'hop', but the second lands inside the
+			// 150 ms spacing window and is dropped — deterministically, on the
+			// stub's frozen monotonic clock rather than machine time.
 			expect(audio.cues).toEqual(['roll', 'hop']);
 			rerender(<AeroplaneGame controllerOptions={gameOptions(fixture)} />);
 			act(() => clock.advance(600));
@@ -2740,6 +2798,12 @@ describe('Aeroplane game composition', () => {
 			const view = renderGame(gameFixture(3));
 			// No audio work happens before any user gesture.
 			expect(audio.fetches).toEqual([]);
+			// Non-cue traffic keeps its request options when forwarded —
+			// dropping init would silently lose credentials and POST bodies.
+			const history = audio.requests.find(request =>
+				request.url.endsWith('/api/play-history')
+			);
+			expect(history?.init?.credentials).toBe('include');
 			fireEvent.click(view.getByRole('button', { name: /start match/i }));
 			// The direct Start gesture creates the context and begins one
 			// fetch per cue, so decoding is underway before the first roll.
@@ -2751,6 +2815,24 @@ describe('Aeroplane game composition', () => {
 			expect(view.getByTestId('aeroplane-die-roller').textContent).toContain(
 				'Red'
 			);
+		} finally {
+			window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+			uninstallCueAudioStub();
+		}
+	});
+
+	test('the first roll after a reload sounds once its in-flight load lands', async () => {
+		const audio = installCueAudioStub();
+		window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
+		try {
+			// No warm(): the restored match's first Roll gesture only starts
+			// the downloads, so its own cue waits out the bounded grace
+			// window rather than dropping silently.
+			const view = renderGame(gameFixture(3));
+			fireEvent.click(view.getByRole('button', { name: /roll die/i }));
+			expect(audio.cues).toEqual([]);
+			await audio.warm(); // the gesture's preload finishes decoding
+			expect(audio.cues).toEqual(['roll']);
 		} finally {
 			window.localStorage.removeItem(AEROPLANE_MUTED_STORAGE_KEY);
 			uninstallCueAudioStub();
@@ -3154,7 +3236,10 @@ describe('Aeroplane game composition', () => {
 			act(() => clock.advance(40));
 			expect(audio.cues).toEqual(['roll', 'hop']);
 			// The paced AI roll and its auto-selected move supersede the overlay.
+			// Monotonic hop pacing runs on the stub's performance.now clock, so
+			// it advances alongside the AI timers.
 			advanceTimers(200);
+			audio.advanceNow(200);
 			act(() => clock.advance(1));
 			const yellowStart = positionAnchor(toPosition('yellow', 1), 'yellow-0');
 			const position = overlayAnchor(

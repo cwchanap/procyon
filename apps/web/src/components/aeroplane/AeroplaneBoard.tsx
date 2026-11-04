@@ -165,15 +165,32 @@ export function PlaneGlyph({
 	skinId?: SkinId;
 }) {
 	const renderedSkin = skinId ?? 'classic';
+	const href = spriteUrl(renderedSkin, color);
+	// A sprite that fails to load (slow network, strict CSP, stale path)
+	// falls back to the team-colour disc so the plane never vanishes; the
+	// failed URL is remembered so a skin/colour change retries its own art.
+	const [failedHref, setFailedHref] = useState<string | null>(null);
 	return (
 		<g data-skin={renderedSkin}>
-			<image
-				href={spriteUrl(renderedSkin, color)}
-				x={x - 3}
-				y={y - 3}
-				width={6}
-				height={6}
-			/>
+			{failedHref === href ? (
+				<circle
+					cx={x}
+					cy={y}
+					r='3'
+					fill={PLANE_FILL[color]}
+					stroke={PLANE_STROKE[color]}
+					strokeWidth='0.65'
+				/>
+			) : (
+				<image
+					href={href}
+					x={x - 3}
+					y={y - 3}
+					width={6}
+					height={6}
+					onError={() => setFailedHref(href)}
+				/>
+			)}
 			<text
 				x={x}
 				y={y + 5.1}
@@ -329,6 +346,59 @@ const SORTED_TYCOON_TILES = [...TYCOON_TILES.entries()].sort(
 	(left, right) => left[0] - right[0]
 );
 
+/** Text stand-in per tile kind, drawn when the icon image fails to load. */
+const TILE_GLYPH: Record<TycoonTileKind, string> = {
+	airport: '✈',
+	chance: '?',
+	boost: '»',
+	tailwind: '↻',
+	shield: '◆',
+	wormhole: '◎',
+	storm: '≈',
+	customs: '$',
+	tax: '%',
+	crash: '✖',
+};
+
+/**
+ * One tile's served icon, falling back to the text glyph on a load error
+ * so the tile never renders blank (same failure modes as the sprites).
+ */
+function TileIcon({
+	kind,
+	anchor,
+}: {
+	kind: TycoonTileKind;
+	anchor: LayoutAnchor;
+}) {
+	const href = tileIconUrl(kind);
+	const [failedHref, setFailedHref] = useState<string | null>(null);
+	if (failedHref === href) {
+		return (
+			<text
+				x={anchor.x}
+				y={anchor.y + 0.6}
+				fill='#FFF5D3'
+				fillOpacity='0.85'
+				fontSize='1.7'
+				textAnchor='middle'
+			>
+				{TILE_GLYPH[kind]}
+			</text>
+		);
+	}
+	return (
+		<image
+			href={href}
+			x={anchor.x - TILE_ICON_SIZE / 2}
+			y={anchor.y - TILE_ICON_SIZE / 2}
+			width={TILE_ICON_SIZE}
+			height={TILE_ICON_SIZE}
+			onError={() => setFailedHref(href)}
+		/>
+	);
+}
+
 /** Shared-map tiles in board order, labelled with any airport owner. */
 function tycoonTiles(airports: SkyTycoonState['airports']) {
 	return SORTED_TYCOON_TILES.map(([index, kind]) => {
@@ -381,13 +451,7 @@ const TycoonTileMarkers = React.memo(function TycoonTileMarkers({
 								strokeWidth='0.35'
 							/>
 						)}
-						<image
-							href={tileIconUrl(kind)}
-							x={anchor.x - TILE_ICON_SIZE / 2}
-							y={anchor.y - TILE_ICON_SIZE / 2}
-							width={TILE_ICON_SIZE}
-							height={TILE_ICON_SIZE}
-						/>
+						<TileIcon kind={kind} anchor={anchor} />
 					</g>
 				);
 			})}
@@ -564,6 +628,22 @@ function frameAt(
 }
 
 /**
+ * The move's consequence cue under win > finish > effect priority, or null
+ * when it has none. Both terminal paths select through this one ranking so
+ * the animated and zero-duration playback can never drift apart.
+ */
+function terminalEffectCue(
+	move: ResolvedMove,
+	events: readonly (AeroplaneEvent | TycoonEffectEvent)[] | undefined,
+	humanColor: AeroplaneColor,
+	won: boolean
+): AeroplaneBoardCue | null {
+	if (won) return 'win';
+	if (move.finalEndpoint.kind === 'finished') return 'finish';
+	return selectEffectCue(events ?? [], humanColor);
+}
+
+/**
  * One terminal cue under zero-duration playback, win taking priority, then
  * the finish cell, then the move's effect cue (trap or human money). A
  * plain move falls back to a single capture or hop; the animated terminal
@@ -576,10 +656,8 @@ function terminalCue(
 	humanColor: AeroplaneColor,
 	won: boolean
 ): AeroplaneBoardCue {
-	if (won) return 'win';
-	if (move.finalEndpoint.kind === 'finished') return 'finish';
 	return (
-		selectEffectCue(events ?? [], humanColor) ??
+		terminalEffectCue(move, events, humanColor, won) ??
 		(move.capturedPlaneIds.length > 0 ? 'capture' : 'hop')
 	);
 }
@@ -612,6 +690,13 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	const cuedSegmentsRef = useRef(0);
 	const lastProcessedIdRef = useRef(0);
 	const onCueRef = useRef(onCue);
+	// The active playback's consequence cue (win/finish/effect), kept apart
+	// from the rAF loop so a cancellation arriving after the last boundary
+	// cue can still land it rather than dropping it mid-flight.
+	const pendingTerminalRef = useRef<{
+		id: number;
+		cue: AeroplaneBoardCue | null;
+	} | null>(null);
 	useEffect(() => {
 		onCueRef.current = onCue;
 	}, [onCue]);
@@ -626,6 +711,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 		frameRef.current = null;
 		startedAtRef.current = null;
 		cuedSegmentsRef.current = 0;
+		pendingTerminalRef.current = null;
 		playbackRef.current = null;
 		setPlayback(null);
 	}, []);
@@ -634,6 +720,23 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	useEffect(() => () => cancelPlayback(), [cancelPlayback]);
 
 	useIsomorphicLayoutEffect(() => {
+		// The queue's 650 ms expiry races the playback clock's final frame on
+		// slow displays, and a quick follow-up move can cancel mid-gap: when
+		// every boundary cue already fired, land the move's consequence cue
+		// before tearing the playback down. Cancels earlier than that (Skip,
+		// reset, a genuinely interrupted move) stay silent as before.
+		const emitDueTerminal = () => {
+			const active = playbackRef.current;
+			const pending = pendingTerminalRef.current;
+			pendingTerminalRef.current = null;
+			if (!active || !pending || pending.id !== active.id) return;
+			const count =
+				active.timeline.segments.length + active.timeline.captures.length;
+			if (pending.cue !== null && cuedSegmentsRef.current >= count) {
+				onCueRef.current?.(pending.cue);
+			}
+		};
+
 		const newest = presentationQueue.at(-1);
 		const fresh =
 			newest !== undefined && newest.id !== lastProcessedIdRef.current;
@@ -643,6 +746,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 		if (fresh) {
 			lastProcessedIdRef.current = newest.id;
 			if (!canAnimate) {
+				emitDueTerminal();
 				cancelPlayback();
 				// Zero-duration fallback: the committed state is already on screen;
 				// emit only the appropriate terminal cue, exactly once.
@@ -656,11 +760,21 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 				);
 				return;
 			}
+			emitDueTerminal();
 			cancelPlayback();
 			const timeline = buildMoveTimeline(newest.move, state);
 			const totalMs = timeline.totalMs;
 			const segmentCount = timeline.segments.length + timeline.captures.length;
 			const won = state.phase === 'finished';
+			pendingTerminalRef.current = {
+				id: newest.id,
+				cue: terminalEffectCue(
+					newest.move,
+					newest.action?.events,
+					state.config.humanColor,
+					won
+				),
+			};
 			// Cue each timeline boundary as the frame loop crosses it; hops for
 			// motion segments, capture for each captured-plane return. A slow
 			// frame can cross several boundaries at once: emit only the latest
@@ -684,17 +798,8 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 				const elapsed = now - startedAtRef.current;
 				if (elapsed >= totalMs) {
 					emitDueCues(segmentCount - 1);
+					emitDueTerminal();
 					cancelPlayback();
-					if (won) onCueRef.current?.('win');
-					else if (newest.move.finalEndpoint.kind === 'finished')
-						onCueRef.current?.('finish');
-					else {
-						const effect = selectEffectCue(
-							newest.action?.events ?? [],
-							state.config.humanColor
-						);
-						if (effect) onCueRef.current?.(effect);
-					}
 					return;
 				}
 				const { frame, activeSegment } = frameAt(timeline, elapsed);
@@ -724,6 +829,7 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 			activeId !== undefined &&
 			(reducedMotion || !presentationQueue.some(item => item.id === activeId))
 		) {
+			emitDueTerminal();
 			cancelPlayback();
 		}
 	}, [presentationQueue, state, reducedMotion, cancelPlayback]);
