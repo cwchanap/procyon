@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import {
 	AEROPLANE_CUES,
 	BOARD_BACKGROUND_URL,
@@ -27,9 +27,11 @@ function toFsPath(url: string): string {
 function listPublicFiles(dir: string): string[] {
 	const out: string[] = [];
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		// OS metadata junk (`.DS_Store`, `Thumbs.db`, …) is not an asset.
+		if (entry.name.startsWith('.')) continue;
 		const full = join(dir, entry.name);
 		if (entry.isDirectory()) out.push(...listPublicFiles(full));
-		else out.push(full.slice(publicRoot.length));
+		else out.push(`/${relative(publicRoot, full).split(sep).join('/')}`);
 	}
 	return out.sort();
 }
