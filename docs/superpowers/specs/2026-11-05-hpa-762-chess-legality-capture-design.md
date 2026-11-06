@@ -1,6 +1,6 @@
 # HPA-762 — Chess capture and illegal-move regression design
 
-**Status:** Proposed; revised after [PR #60 design review](https://github.com/cwchanap/procyon/pull/60#issuecomment-6676225300)
+**Status:** Proposed; revised after [initial PR #60 review](https://github.com/cwchanap/procyon/pull/60#issuecomment-6676225300) and [revision 2 review](https://github.com/cwchanap/procyon/pull/60#pullrequestreview-5796113768)
 **Issue:** [HPA-762](https://linear.app/cwchanap/issue/HPA-762/standard-chess-on-device-ai-plays-an-illegal-pawn-move-and-human)
 **Date:** 2026-11-05
 **Scope:** One PR for design, focused tests, and any **proven** fix.
@@ -44,8 +44,8 @@ GitHub's Cloudflare bot reported a successful `afc21fb7` build on November 6, **
 ## Minimal acceptance coverage
 
 1. **One compact rules test (table-driven if helpful):** `exd5`, `Nxe5` apply with correct capture record, FEN and turn; e5→e6 returns `{kind: 'rejected', reason: 'illegal-move'}` from a valid non-terminal position. No separate negative knight geometry test.
-2. **One new React component test:** fake Black engine plays `d7d5` after the White human plays e2→e4; click White pawn on occupied d5, verify White pawn replaces Black pawn, e4 empties and turn advances.
-3. **Extend the existing Black-oriented browser journey:** scripted White engine plays e2→e4, then g1→f3; human Black replies d7→d5 and then captures d5→e4. Verify captured White pawn disappears and Black pawn occupies e4.
+2. **One new React component test:** fake Black engine first plays `d7d5` after the White human plays e2→e4. Use a **call-aware fake** with a deferred/legal second response: White's capture immediately hands the turn back to Black, and a one-move static fake must not replay `d7d5`. Click White pawn on occupied d5; verify White pawn replaces Black pawn, e4 empties and turn advances. If deferred, settle the second call with a legal move (such as `g8f6`) before test cleanup.
+3. **Extend the existing Black-oriented browser journey:** script White engine moves **`['e2e4', 'g1f3', 'd2d4']`**. Human Black replies d7→d5 and then captures d5→e4. The third fake move must be legal after the capture because the Worker repeats its last scripted move when the list is exhausted; otherwise it would illegally replay `g1f3` and create a misleading error. Verify captured White pawn disappears, Black pawn occupies e4, and the scripted follow-up does not halt the session.
 
 Reuse existing tests for invalid engine results, square mapping, orientation and real engine packaging. Do not add a real-Stockfish midgame smoke or duplicate illegal-move browser test unless new evidence reveals an uncovered failure.
 
