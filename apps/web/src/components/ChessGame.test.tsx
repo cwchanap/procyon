@@ -832,6 +832,81 @@ describe('ChessGame — atomic Start & rival session', () => {
 		expect(view.queryByText('Computer move timed out')).toBeNull();
 	});
 
+	test('a human White pawn captures the pawn the engine just played', async () => {
+		const secondReply = deferred<RivalMoveResult>();
+		let engineMoveCalls = 0;
+		const { options, instances } = engineOptions(() => ({
+			makeMove: () => {
+				engineMoveCalls += 1;
+				return engineMoveCalls === 1
+					? Promise.resolve({ ok: true, move: { from: 'd7', to: 'd5' } })
+					: secondReply.promise;
+			},
+		}));
+		const view = render(<ChessGame rivalSessionOptions={options} />);
+		await waitForSetupResolved(view);
+
+		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		await waitFor(() =>
+			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy()
+		);
+
+		fireEvent.click(view.getByRole('button', { name: 'Square 6-4' }));
+		fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
+		await waitFor(() => expect(instances[0]?.makeMoveCount).toBe(1), {
+			timeout: 3000,
+		});
+		await waitFor(() => {
+			expect(
+				view.getByRole('button', { name: 'Square 3-3' }).textContent
+			).toContain('♟');
+			expect(view.getByText(/White to move/i)).toBeTruthy();
+		});
+
+		fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
+		expect(
+			view.getByRole('button', { name: 'Square 4-4' }).className
+		).toContain('ring-brass');
+		expect(
+			view
+				.getByRole('button', { name: 'Square 3-3' })
+				.querySelector('.border-chess')
+		).toBeTruthy();
+
+		fireEvent.click(view.getByRole('button', { name: 'Square 3-3' }));
+
+		expect(
+			view.getByRole('button', { name: 'Square 3-3' }).textContent
+		).toContain('♙');
+		expect(view.getByRole('button', { name: 'Square 4-4' }).textContent).toBe(
+			''
+		);
+		expect(
+			view.getByRole('button', { name: 'Square 4-4' }).className
+		).not.toContain('ring-brass');
+		expect(
+			view
+				.getByRole('button', { name: 'Square 3-3' })
+				.querySelector('.border-chess')
+		).toBeNull();
+		expect(view.getByText(/Black to move/i)).toBeTruthy();
+
+		await waitFor(() => expect(instances[0]?.makeMoveCount).toBe(2), {
+			timeout: 3000,
+		});
+		expect(view.getByText(/Black to move/i)).toBeTruthy();
+
+		await act(async () => {
+			secondReply.resolve({ ok: true, move: { from: 'g8', to: 'f6' } });
+		});
+		await waitFor(() => {
+			expect(view.getByText(/White to move/i)).toBeTruthy();
+			expect(
+				view.getByRole('button', { name: 'Square 2-5' }).textContent
+			).toContain('♞');
+		});
+	});
+
 	test('an LLM Start is blocked until the model is configured', async () => {
 		const llmCreated = { count: 0 };
 		const options = {
