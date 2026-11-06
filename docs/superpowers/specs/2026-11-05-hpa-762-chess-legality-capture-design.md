@@ -1,75 +1,62 @@
-# HPA-762 — Standard Chess Move-Legality and Capture Regression Design
+# HPA-762 — Chess capture and illegal-move regression design
 
-**Status:** Proposed — design review, not implemented
+**Status:** Proposed; revised after [PR #60 design review](https://github.com/cwchanap/procyon/pull/60#issuecomment-6676225300)
+**Issue:** [HPA-762](https://linear.app/cwchanap/issue/HPA-762/standard-chess-on-device-ai-plays-an-illegal-pawn-move-and-human)
 **Date:** 2026-11-05
-**Linear:** [HPA-762 — Standard Chess: on-device AI plays an illegal pawn move, and human captures fail to execute](https://linear.app/cwchanap/issue/HPA-762/standard-chess-on-device-ai-plays-an-illegal-pawn-move-and-human)
-**Scope:** One bug-fix PR, extending this draft planning PR after design review.
+**Scope:** One PR for design, focused tests, and any **proven** fix.
 
-## Problem and corrected reproductions
+## Problem and accurate reproduction
 
-A live-site playtest reported (1) Black's e-pawn moving backward from e5 to e6 after 1.e4 e5 2.Nf3, and (2) human captures apparently doing nothing. An AI pawn retreat and a legal capture being ignored would be game-breaking, but neither root cause has been established in the checked-in code.
+The November 4 live-site report describes Black's e-pawn moving *backward* e5→e6 after `1.e4 e5 2.Nf3` and apparently ignored human captures. One reported knight example was not legal in the first place.
 
-The ticket's second capture example needs correction:
+| Case | Correct result |
+| --- | --- |
+| `1.e4 d5 2.exd5` | Legal pawn capture. White pawn on d5; Black pawn removed; Black to move. |
+| `1.Nf3 e5 2.Nxe5` | Legal knight capture. White knight on e5; Black pawn removed. |
+| White knight f3→e4, regardless of target | **Illegal** knight displacement; no move should occur. Correct the Linear report rather than make it pass. |
+| Black e-pawn e5→e6 after `1.e4 e5 2.Nf3` | **Illegal** pawn retreat; must not alter board/FEN/history. |
 
-| Scenario | Legal? | Expected |
-| --- | --- | --- |
-| 1.e4 d5 2.exd5 | Yes | White pawn on e4 captures the black pawn on d5; turn and FEN advance |
-| 1.Nf3 e5 2.Nxe5 | Yes | White knight on f3 captures the black pawn on e5 |
-| Knight f3 → e4 (ticket's “Nxe4”) | **No** | Reject without changing board/history; a knight cannot move one file and one rank |
-| After 1.e4 e5 2.Nf3, black pawn e5 → e6 | **No** | Reject; Black pawns cannot retreat |
+The review author ran these cases against current main (`5d4e2b1`) with the public game API. They reported that both captures applied, f3→e4 was rejected, and the AI pawn retreat returned `null`. These are reviewer-provided scratch results, **not** a reproduction of the November 4 production failure; no repository changes were involved. In the final regression, assert `attemptMove` rejects the pawn retreat specifically as `illegal-move`, rather than treating any `null` result as proof.
 
-These examples assume no intervening move makes the position different. Do not change rules so that the invalid f3→e4 click becomes accepted.
+## Current architecture and already-covered behavior
 
-## Current-code audit (main at 5d4e2b1d)
+- `apps/web/src/lib/chess/rules.ts` implements the authoritative standard-chess façade over `chess.js`; `attemptMove` applies legal moves and checks serializable FEN/history, `getLegalDestinations` supplies the legal click targets.
+- `apps/web/src/lib/chess/game.ts` routes both `makeMove` and `makeAIMove` through `attemptMove`. `ChessGame.tsx:605-633` handles square clicks; `ChessBoard.tsx:77-91` renders the underlying square buttons. The capture overlay in `board-accents.ts` is `pointer-events-none`.
+- `stockfish-provider.ts` sends the current state FEN as the UCI position command. `stockfish-protocol.ts` parses move notation, while legality and stale-result handling remain in the existing game/session boundary.
+- `ChessGame.test.tsx` already verifies a rejected illegal successful engine suggestion leaves the board unchanged and stops instead of retrying; `stockfish-provider.test.ts` already pins the FEN command. `board.test.ts` covers algebraic conversion; `ChessBoard.test.tsx` covers Black orientation. `stockfish-assets.spec.ts` already verifies the real bundled worker.
 
-- `apps/web/src/lib/chess/rules.ts` owns the short-lived `chess.js` engine, serializable state and replay. `attemptMove` filters legal verbose moves and records the resulting FEN/history; `getLegalDestinations` drives UI indicators. `replayEngine` rejects FEN/history mismatch.
-- `apps/web/src/lib/chess/game.ts` delegates both `makeMove` (human) and `makeAIMove` (rival) to that same `attemptMove`. `selectSquare` draws destinations from the same authoritative rules.
-- `apps/web/src/components/ChessGame.tsx` passes square clicks to `handleSquareClick`. For a selection it tries `makeMove`, otherwise it calls `selectSquare`; the rival callback uses a generation/FEN/turn-checked session result, then `makeAIMove`.
-- `apps/web/src/components/ChessBoard.tsx` renders one button per square and an overlaid capture ring for occupied legal destinations.
-- `apps/web/src/lib/chess/rival/stockfish-provider.ts` sends `position fen <current fen>` and parses the Worker result through `stockfish-protocol.ts`. This provider does not itself apply board mutations; the game boundary must continue to reject illegal suggestions.
-- `apps/web/src/lib/chess/rival/stockfish-protocol.ts` validates UCI move *format*, not legality; this separation is intentional.
-- Existing tests already cover many standard rules, en passant, promotion, bad engine moves, Worker packaging, and basic browser opponent flows, but do not explicitly cover these exact ordinary captures or the 1.e4 e5 2.Nf3 / e5→e6 regression.
+**Remaining meaningful gap:** an occupied-square human capture *via UI button clicks* in a running rival session. Build focused coverage for that path, not another general chess engine or redundant Worker-validation suite.
 
-The current architecture appears to prohibit the reported AI pawn retreat. It is **not proven** that the reported live-site sequence can be reproduced on current main; stale UI, a different deployed build, or a session transition remain hypotheses, not findings.
+## Decision: establish deployment provenance before changing code
 
-## Design decision
+The application uses Astro static output and Cloudflare hosting. On a production report, first inspect **Cloudflare Workers & Pages → procyon → Deployments / Builds** (the Cloudflare deployment notification on PR #60 links to that service). Record:
 
-**Keep `chess.js` as the sole rules authority.** Reuse the existing state and provider boundaries. Add deterministic regression coverage first; change the smallest component demonstrated to be incorrect by a failing test. No replacement chess engine, custom legality fallback, new shared game abstraction, second state store, or broad rewrite.
+1. The deployed revision/build serving `https://procyon.cwchanap.dev/chess/` at the **November 4** incident time, if historical records are available.
+2. The **current** production revision and whether it includes the `chess.js` foundation commit `32a4fcb` (2026-07-28) and subsequent chess/rival changes.
+3. Whether the public URL and build environment match the reported experience. Check for cached older assets when versions disagree.
 
-### Diagnostic decision tree
+GitHub's Cloudflare bot reported a successful `afc21fb7` build on November 6, **after** the incident. Do not infer that this build was serving the November 4 session or that it fixes anything. When the dashboard cannot prove the old build, state that limitation.
 
-1. **Rules-level failure:** Reproduce using `createInitialGameState` / `attemptMove` / `makeMove` / `makeAIMove` with exact moves. If a legal capture is rejected, inspect the current FEN, move-history replay, square conversion and promotion request. If an illegal retreat is applied, fix the `rules.ts` / orchestration boundary without creating parallel rules.
-2. **React/UI-only failure:** If the pure game API succeeds, exercise `ChessGame` with button clicks against an injected/fake rival, including occupied capture targets, board disabled state and turn transitions. Fix only the click handler or board interaction that drops a legal click. Avoid bypassing the legality gate or manually mutating board state.
-3. **Worker/session-only failure:** If a deterministic browser fake passes, inspect the actual Worker request/response against the exact position FEN. Confirm generation/session/FEN ownership and ensure a syntactically valid but illegal `bestmove` leads to the existing engine move-failed/New Game path while preserving the last legal board.
-4. **Cannot reproduce on main:** Verify which source revision the reported site serves and retest on that build. Record the observed FEN, move history, requested UCI move, and rendered squares when possible. Do not invent a production root cause or land speculative changes. Update HPA-762 with evidence and the remaining reproducibility gap.
+- **Outdated deploy verified:** get the current code deployed through the existing pipeline, retest the two captures and opening, then record the result. No speculative rules patch.
+- **Current deploy or unknown:** confirm the precise production reproduction and run the small tests below. If pure rules pass but clicks fail, inspect `handleSquareClick`/`ChessBoard` and fix the smallest demonstrated UI defect.
+- **Everything green:** record evidence and request the original move history/FEN or screenshot. Do not claim a confirmed production fix.
 
-Any diagnostic traces should be test-local or temporary; do not add persistent logging, telemetry, or a player-facing debug facility for this issue.
+## Minimal acceptance coverage
 
-## State and interaction invariants
+1. **One compact rules test (table-driven if helpful):** `exd5`, `Nxe5` apply with correct capture record, FEN and turn; e5→e6 returns `{kind: 'rejected', reason: 'illegal-move'}` from a valid non-terminal position. No separate negative knight geometry test.
+2. **One new React component test:** fake Black engine plays `d7d5` after the White human plays e2→e4; click White pawn on occupied d5, verify White pawn replaces Black pawn, e4 empties and turn advances.
+3. **Extend the existing Black-oriented browser journey:** scripted White engine plays e2→e4, then g1→f3; human Black replies d7→d5 and then captures d5→e4. Verify captured White pawn disappears and Black pawn occupies e4.
 
-- Only `attemptMove` may advance the playable chess position; no direct board cell edits.
-- After an applied move, `state.board`, `state.fen`, `state.currentPlayer` and the newest `moveHistory` record describe the **same** position.
-- After rejection, the game keeps the same position/FEN/history and human-to-move or rival failure state as appropriate.
-- Clicking a legal occupied enemy square must reach the same move path as clicking a legal empty destination.
-- Invalid opponent move output is never committed, even if it passes UCI syntax parsing. Preserve current engine-only failure behavior (no same-position automatic retry).
-- Black-oriented board display must not alter logical square coordinates; affected game tests should use White orientation from the issue, with a light orientation regression if that is where the failure occurs.
-- Preserve the LLM rival and other chess variants without changing their interfaces.
+Reuse existing tests for invalid engine results, square mapping, orientation and real engine packaging. Do not add a real-Stockfish midgame smoke or duplicate illegal-move browser test unless new evidence reveals an uncovered failure.
 
-## Scope and non-goals
+## Invariants and non-goals
 
-In scope: exact scenario regression tests at the appropriate layer(s); a minimal implementation fix **only after** the failing boundary is identified; confirmation in a browser that humans can capture and invalid AI moves cannot corrupt a match.
+- Only the `chess.js` rules façade can commit a chess position. The board, FEN, move history and side-to-move remain consistent after an applied move; rejected moves preserve the position.
+- A human click on a legal occupied target must follow the same application path as clicking an empty legal destination.
+- An illegal engine suggestion remains uncommitted and follows the **existing** failure/New Game behavior. No automatic same-position retry or bypass of legality.
+- If a UI test fails, investigate `ChessGame.tsx:605-633` or `ChessBoard.tsx:77-91` first; expand beyond them only if the evidence requires it.
+- No new state store, telemetry, chess engine, broad refactor, migration, art/SFX, or Aeroplane fixes (HPA-761/HPA-763).
 
-Out of scope: rule redesign, Stockfish tuning or difficulty changes, new engine recovery flow, game persistence/reload work (HPA-763), Aeroplane fixes (HPA-761), other variants, database migrations, new art/SFX, UI redesign, or backward-compatibility shims.
+## Completion criterion
 
-## Acceptance criteria
-
-- White human vs Black on-device computer can complete a legal `exd5` capture after `1.e4 d5`; the captured pawn disappears, move record captures the correct piece, FEN and turn agree with the board.
-- White human can complete a legal `Nxe5` after `1.Nf3 e5`; `f3→e4` is rejected as illegal with no state mutation.
-- After `1.e4 e5 2.Nf3`, the black e-pawn cannot be applied from e5 to e6 by the rules API or an injected UCI result. A rejected suggestion leaves the prior position intact and surfaces existing engine failure feedback.
-- Deterministic component/browser tests guard the click-to-state pipeline, alongside a lightweight real-Worker smoke check if the issue reproduces beyond mocks.
-- Existing promotion, castling, en passant, terminal-state, opponent-session, and LLM paths remain green.
-- Any deployed-only discrepancy is documented with the tested revision and exact reproduction evidence, rather than silently asserted fixed.
-
-## Implementation vehicle
-
-Keep **one PR for HPA-762**. This draft starts with design and checklist files under `docs/superpowers/`. Once reviewed, add only the verified minimal code/tests **to the same PR**. See the paired implementation plan for the red/green/test sequence and stop conditions.
+Capture tests pass in both human orientations as covered above, existing illegal-move guard remains green, and the original report is reconciled with a verified deployment revision or an explicitly documented inability to reproduce. Only describe a bug as fixed if a failing behavior is reproduced and corrected. All implementation work belongs in **this same PR**, per [implementation plan](../plans/2026-11-05-hpa-762-chess-legality-capture.md).
