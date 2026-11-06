@@ -4,7 +4,7 @@
 
 **Linear:** [HPA-762](https://linear.app/cwchanap/issue/HPA-762/standard-chess-on-device-ai-plays-an-illegal-pawn-move-and-human)
 **Design:** [HPA-762 regression design](../specs/2026-11-05-hpa-762-chess-legality-capture-design.md)
-**Review:** [PR #60 feedback](https://github.com/cwchanap/procyon/pull/60#issuecomment-6676225300)
+**Reviews:** [First pass](https://github.com/cwchanap/procyon/pull/60#issuecomment-6676225300) · [Revision 2](https://github.com/cwchanap/procyon/pull/60#pullrequestreview-5796113768)
 
 ## Evidence already available
 
@@ -33,18 +33,20 @@ The reviewer used a scratch script against main `5d4e2b1` and reported: `exd5` a
 
 **File:** `apps/web/src/components/ChessGame.test.tsx`. Reuse existing `engineOptions` fake provider and `waitForSetupResolved` helper.
 
-- [ ] Human **White**, local engine **Black**. Start, click `Square 6-4` (e2) → `Square 4-4` (e4). Script the first Black engine reply as `{from:'d7',to:'d5'}`.
+- [ ] Human **White**, local engine **Black**. Start, click `Square 6-4` (e2) → `Square 4-4` (e4). The first Black reply must be `{from:'d7',to:'d5'}`.
+- [ ] Make the `engineOptions` fake **call-aware**: after the capture it will be Black's turn again, so a static `d7d5` mock would illegally repeat the first engine move. Return a controllable `deferred<RivalMoveResult>()` promise on the second call (or a **legal** second reply such as `g8f6`). Prefer deferred for stable assertions of the Black-to-move state before the second engine response changes the turn.
 - [ ] Wait for Black pawn `♟` on occupied `Square 3-3` (d5), then select `Square 4-4` and click `Square 3-3`.
 - [ ] Assert `Square 3-3` contains White pawn `♙`, `Square 4-4` is empty, the move finished, and the status advances to Black's turn. Where useful, assert the capture ring is visible on the occupied legal target before the click.
+- [ ] If the second response is deferred, resolve it **with a legal move** (e.g. `g8f6`) and await the resulting White turn before unmounting. No dangling promise, engine timeout, or retry should be mistaken for a capture failure.
 - [ ] If this fails despite green rules tests, inspect `ChessGame.tsx:605-633` `handleSquareClick` and `ChessBoard.tsx:77-91` button event delivery first. Patch **only the owner demonstrated by the failure**.
 
 ## Step 3 — Extend one existing browser journey
 
-**File:** `apps/web/e2e/chess-rival.spec.ts`, signed-out on-device journey (near line 368). Keep its existing fake Stockfish scripted White moves `['e2e4','g1f3']` and the human **Black** orientation.
+**File:** `apps/web/e2e/chess-rival.spec.ts`, signed-out on-device journey (near line 368). Keep the human **Black** orientation. Change the fake Stockfish script to **`bestmoves: ['e2e4', 'g1f3', 'd2d4']`**: after Black captures, the game automatically requests White's third move. The fake Worker repeats the *last* entry when exhausted, so leaving only the two original moves would replay the now-illegal `g1f3` and show an unrelated engine error. `d2d4` remains legal after `1.e4 d5 2.Nf3 dxe4`.
 
 - [ ] After White engine's e2→e4, change human reply from e7→e5 to **d7→d5** (Black pawn `Square 1-3` → `Square 3-3`).
 - [ ] Wait until the scripted White knight g1→f3 (`Square 5-5`), leaving White pawn on e4. Then click Black pawn d5→e4 (`Square 3-3` → `Square 4-4`) to capture.
-- [ ] Assert `Square 4-4` has Black pawn `♟`, d5 is empty, and the White pawn was removed. Keep the existing journey's Start, lazy Worker, orientation, and cleanup assertions.
+- [ ] Assert `Square 4-4` has Black pawn `♟`, d5 is empty, and the White pawn was removed. Allow the scripted third engine move to resolve cleanly (or click `New Game` after verifying the capture); no invalid-move error should come from an exhausted fake script. Keep the existing journey's Start, lazy Worker, orientation, and cleanup assertions.
 - [ ] Do **not** add separate fake-Worker invalid-retreat, Black-orientation, or raw Stockfish-FEN tests: the existing tests already cover those boundaries.
 
 ## Step 4 — Smallest warranted fix or evidence-only closeout
