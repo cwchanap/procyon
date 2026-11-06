@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import type { ChessPiece, PromotionPiece } from './types';
+import type {
+	ChessMoveRequest,
+	ChessPiece,
+	GameState,
+	PromotionPiece,
+} from './types';
 import {
 	attemptMove,
 	createGameStateFromBoard,
@@ -107,6 +112,93 @@ describe('chess rules state factories', () => {
 });
 
 describe('chess rules move application', () => {
+	function replayFromInitial(requests: readonly ChessMoveRequest[]): GameState {
+		let state = createInitialGameState();
+		for (const request of requests) {
+			const result = attemptMove(state, request);
+			if (result.kind !== 'applied') {
+				throw new Error(`expected ${request.from}-${request.to} to apply`);
+			}
+			state = result.state;
+		}
+		return state;
+	}
+
+	test('captures record the taken piece and stay consistent with the FEN', () => {
+		const cases = [
+			{
+				script: [
+					{ from: 'e2', to: 'e4' },
+					{ from: 'd7', to: 'd5' },
+					{ from: 'e4', to: 'd5' },
+				],
+				san: 'exd5',
+				destination: { row: 3, col: 3 },
+				vacated: { row: 4, col: 4 },
+				piece: 'pawn',
+				fen: 'rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2',
+			},
+			{
+				script: [
+					{ from: 'g1', to: 'f3' },
+					{ from: 'e7', to: 'e5' },
+					{ from: 'f3', to: 'e5' },
+				],
+				san: 'Nxe5',
+				destination: { row: 3, col: 4 },
+				vacated: { row: 5, col: 5 },
+				piece: 'knight',
+				fen: 'rnbqkbnr/pppp1ppp/8/4N3/8/8/PPPPPPPP/RNBQKB1R b KQkq - 0 2',
+			},
+		] as const;
+
+		for (const { script, san, destination, vacated, piece, fen } of cases) {
+			const state = replayFromInitial(script);
+			const firstMove = state.moveHistory[0];
+			const penultimateMove = state.moveHistory.at(-2);
+			const lastMove = state.moveHistory.at(-1);
+			if (!firstMove || !penultimateMove || !lastMove) {
+				throw new Error('expected three recorded moves');
+			}
+			expect(state.moveHistory).toHaveLength(script.length);
+			expect(lastMove.san).toBe(san);
+			expect(lastMove.capturedPiece).toEqual({
+				type: 'pawn',
+				color: 'black',
+			});
+			expect(lastMove.beforeFen).toBe(penultimateMove.afterFen);
+			expect(lastMove.afterFen).toBe(state.fen);
+			expect(firstMove.beforeFen).toBe(state.initialFen);
+			expect(state.board[destination.row]?.[destination.col]).toEqual({
+				type: piece,
+				color: 'white',
+			});
+			expect(state.board[vacated.row]?.[vacated.col]).toBeNull();
+			expect(state.currentPlayer).toBe('black');
+			expect(state.fen).toBe(fen);
+			expect(createGameStateFromFen(state.fen).board).toEqual(state.board);
+		}
+	});
+
+	test('rejects a backward pawn move by the side to move without mutating state', () => {
+		const state = replayFromInitial([
+			{ from: 'e2', to: 'e4' },
+			{ from: 'e7', to: 'e5' },
+			{ from: 'g1', to: 'f3' },
+		]);
+		const snapshot = JSON.parse(JSON.stringify(state)) as GameState;
+		expect(state.currentPlayer).toBe('black');
+		expect(state.board[3]?.[4]).toEqual({
+			type: 'pawn',
+			color: 'black',
+		});
+		expect(attemptMove(state, { from: 'e5', to: 'e6' })).toEqual({
+			kind: 'rejected',
+			reason: 'illegal-move',
+		});
+		expect(state).toEqual(snapshot);
+	});
+
 	test('applies castling atomically for either color and side', () => {
 		const white = createGameStateFromFen(
 			'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1'
