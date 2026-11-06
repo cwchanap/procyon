@@ -370,8 +370,10 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 		page,
 	}) => {
 		await installFakeStockfish(page, {
-			// White (the rival) opens 1.e4, then answers …e5 with 2.Nf3.
-			bestmoves: ['e2e4', 'g1f3'],
+			// White (the rival) opens 1.e4, answers …d5 with 2.Nf3, then
+			// plays 3.d4 after …dxe4 — a third entry keeps the engine's
+			// post-capture turn inside the legal script.
+			bestmoves: ['e2e4', 'g1f3', 'd2d4'],
 		});
 		const stockfishRequests = trackStockfishRequests(page);
 
@@ -474,10 +476,26 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 		});
 		await expect(square(page, 'Square 6-4')).not.toContainText('♙');
 
-		// (10) The human (Black) reply works: e7 → e5 places a black pawn (♟).
-		await square(page, 'Square 1-4').click();
-		await square(page, 'Square 3-4').click();
-		await expect(square(page, 'Square 3-4')).toContainText('♟');
+		// (10) The human (Black) reply works: d7 → d5 places a black pawn
+		// (♟). Once White's scripted 2.Nf3 lands, that pawn captures on e4
+		// (the White pawn is removed), and the scripted 3.d4 resolves
+		// without an invalid-move error from the engine.
+		await square(page, 'Square 1-3').click();
+		await square(page, 'Square 3-3').click();
+		await expect(square(page, 'Square 3-3')).toContainText('♟');
+		await expect(square(page, 'Square 5-5')).toContainText('♘', {
+			timeout: 15000,
+		});
+		await square(page, 'Square 3-3').click();
+		await square(page, 'Square 4-4').click();
+		await expect(square(page, 'Square 4-4')).toContainText('♟');
+		await expect(square(page, 'Square 4-4')).not.toContainText('♙');
+		await expect(square(page, 'Square 3-3')).not.toContainText('♟');
+		await expect(square(page, 'Square 4-3')).toContainText('♙', {
+			timeout: 15000,
+		});
+		await expect(square(page, 'Square 6-3')).not.toContainText('♙');
+		await expect(page.getByText('Computer move failed')).toHaveCount(0);
 
 		// (11) New Game unlocks the setup and disposes the engine provider.
 		await newGameButton(page).click();
