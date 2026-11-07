@@ -370,10 +370,8 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 		page,
 	}) => {
 		await installFakeStockfish(page, {
-			// White (the rival) opens 1.e4, answers …d5 with 2.Nf3, then
-			// plays 3.d4 after …dxe4 — a third entry keeps the engine's
-			// post-capture turn inside the legal script.
-			bestmoves: ['e2e4', 'g1f3', 'd2d4'],
+			// White (the rival) opens 1.e4, then answers …e5 with 2.Nf3.
+			bestmoves: ['e2e4', 'g1f3'],
 		});
 		const stockfishRequests = trackStockfishRequests(page);
 
@@ -476,28 +474,14 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 		});
 		await expect(square(page, 'Square 6-4')).not.toContainText('♙');
 
-		// (10) The human (Black) reply works: d7 → d5 places a black pawn
-		// (♟). Once White's scripted 2.Nf3 lands, that pawn captures on e4
-		// (the White pawn is removed), and the scripted 3.d4 resolves
-		// without an invalid-move error from the engine.
-		await square(page, 'Square 1-3').click();
-		await square(page, 'Square 3-3').click();
-		await expect(square(page, 'Square 3-3')).toContainText('♟');
-		await expect(square(page, 'Square 5-5')).toContainText('♘', {
-			timeout: 15000,
-		});
-		await square(page, 'Square 3-3').click();
-		await square(page, 'Square 4-4').click();
-		await expect(square(page, 'Square 4-4')).toContainText('♟');
-		await expect(square(page, 'Square 4-4')).not.toContainText('♙');
-		await expect(square(page, 'Square 3-3')).not.toContainText('♟');
-		await expect(square(page, 'Square 4-3')).toContainText('♙', {
-			timeout: 15000,
-		});
-		await expect(square(page, 'Square 6-3')).not.toContainText('♙');
-		await expect(page.getByText('Computer move failed')).toHaveCount(0);
+		// (10) The human (Black) reply works: e7 → e5 places a black pawn (♟),
+		// reaching the 1.e4 e5 opening.
+		await square(page, 'Square 1-4').click();
+		await square(page, 'Square 3-4').click();
+		await expect(square(page, 'Square 3-4')).toContainText('♟');
 
-		// (11) New Game unlocks the setup and disposes the engine provider.
+		// (11) New Game is clicked while the engine's move is pending, testing
+		// timer clearance and mid-move Worker shutdown.
 		await newGameButton(page).click();
 		await expect(startButton(page)).toBeVisible();
 		await expect(opponentRadio(page, 'White')).toBeEnabled();
@@ -512,6 +496,64 @@ test.describe('Chess rival — signed-out on-device engine journey', () => {
 
 		// Real vendor assets were never requested during the whole journey.
 		expect(stockfishRequests).toHaveLength(0);
+	});
+
+	test('applies a human pawn capture against the engine and preserves the captured state across follow-up engine turns', async ({
+		page,
+	}) => {
+		await installFakeStockfish(page, {
+			// White (the rival) opens 1.e4, answers …d5 with 2.Nf3, then
+			// plays 3.d4 after …dxe4.
+			bestmoves: ['e2e4', 'g1f3', 'd2d4'],
+		});
+
+		await page.goto('/chess');
+		await waitForSetupResolved(page);
+		await opponentRadio(page, 'Black').click();
+		await expect(opponentRadio(page, 'Black')).toBeChecked();
+
+		await startButton(page).click();
+		await expect(newGameButton(page)).toBeVisible({ timeout: 15000 });
+
+		// 1.e4: White pawn moves from e2 to e4.
+		await expect(square(page, 'Square 4-4')).toContainText('♙', {
+			timeout: 15000,
+		});
+		await expect(square(page, 'Square 6-4')).not.toContainText('♙');
+
+		// 1...d5: Human Black pawn advances from d7 (Square 1-3) to d5 (Square 3-3).
+		await square(page, 'Square 1-3').click();
+		await square(page, 'Square 3-3').click();
+		await expect(square(page, 'Square 3-3')).toContainText('♟');
+
+		// 2.Nf3: Scripted engine knight moves from g1 to f3 (Square 5-5).
+		await expect(square(page, 'Square 5-5')).toContainText('♘', {
+			timeout: 15000,
+		});
+
+		// 2...dxe4: Human Black captures the White pawn on e4.
+		await square(page, 'Square 3-3').click();
+		await square(page, 'Square 4-4').click();
+		await expect(square(page, 'Square 4-4')).toContainText('♟');
+		await expect(square(page, 'Square 3-3')).not.toContainText('♟');
+
+		// 3.d4: Scripted engine pawn moves from d2 (Square 6-3) to d4 (Square 4-3).
+		await expect(square(page, 'Square 4-3')).toContainText('♙', {
+			timeout: 15000,
+		});
+		await expect(square(page, 'Square 6-3')).not.toContainText('♙');
+
+		// Re-check that the human's capture remains intact after the engine reply:
+		// Black pawn is still on e4 (Square 4-4) and White knight is still on f3 (Square 5-5).
+		await expect(square(page, 'Square 4-4')).toContainText('♟');
+		await expect(square(page, 'Square 5-5')).toContainText('♘');
+
+		// Verify no engine failure, timeout, or invalid-move alert is active.
+		await expect(page.getByRole('alert')).toHaveCount(0);
+
+		// Clean up with New Game.
+		await newGameButton(page).click();
+		await expect(startButton(page)).toBeVisible();
 	});
 });
 

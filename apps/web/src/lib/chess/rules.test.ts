@@ -117,7 +117,10 @@ describe('chess rules move application', () => {
 		for (const request of requests) {
 			const result = attemptMove(state, request);
 			if (result.kind !== 'applied') {
-				throw new Error(`expected ${request.from}-${request.to} to apply`);
+				const detail = result.kind === 'rejected' ? result.reason : result.kind;
+				throw new Error(
+					`expected ${request.from}-${request.to} to apply, rejected with: ${detail}`
+				);
 			}
 			state = result.state;
 		}
@@ -136,6 +139,10 @@ describe('chess rules move application', () => {
 				destination: { row: 3, col: 3 },
 				vacated: { row: 4, col: 4 },
 				piece: 'pawn',
+				capturedPiece: {
+					type: 'pawn',
+					color: 'black',
+				},
 				fen: 'rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2',
 			},
 			{
@@ -148,24 +155,35 @@ describe('chess rules move application', () => {
 				destination: { row: 3, col: 4 },
 				vacated: { row: 5, col: 5 },
 				piece: 'knight',
+				capturedPiece: {
+					type: 'pawn',
+					color: 'black',
+				},
 				fen: 'rnbqkbnr/pppp1ppp/8/4N3/8/8/PPPPPPPP/RNBQKB1R b KQkq - 0 2',
 			},
 		] as const;
 
-		for (const { script, san, destination, vacated, piece, fen } of cases) {
+		for (const {
+			script,
+			san,
+			destination,
+			vacated,
+			piece,
+			capturedPiece,
+			fen,
+		} of cases) {
 			const state = replayFromInitial(script);
 			const firstMove = state.moveHistory[0];
 			const penultimateMove = state.moveHistory.at(-2);
 			const lastMove = state.moveHistory.at(-1);
 			if (!firstMove || !penultimateMove || !lastMove) {
-				throw new Error('expected three recorded moves');
+				throw new Error(
+					`expected at least three recorded moves, got ${state.moveHistory.length}`
+				);
 			}
 			expect(state.moveHistory).toHaveLength(script.length);
 			expect(lastMove.san).toBe(san);
-			expect(lastMove.capturedPiece).toEqual({
-				type: 'pawn',
-				color: 'black',
-			});
+			expect(lastMove.capturedPiece).toEqual(capturedPiece);
 			expect(lastMove.beforeFen).toBe(penultimateMove.afterFen);
 			expect(lastMove.afterFen).toBe(state.fen);
 			expect(firstMove.beforeFen).toBe(state.initialFen);
@@ -186,7 +204,7 @@ describe('chess rules move application', () => {
 			{ from: 'e7', to: 'e5' },
 			{ from: 'g1', to: 'f3' },
 		]);
-		const snapshot = JSON.parse(JSON.stringify(state)) as GameState;
+		const snapshot = structuredClone(state);
 		expect(state.currentPlayer).toBe('black');
 		expect(state.board[3]?.[4]).toEqual({
 			type: 'pawn',
@@ -196,7 +214,7 @@ describe('chess rules move application', () => {
 			kind: 'rejected',
 			reason: 'illegal-move',
 		});
-		expect(state).toEqual(snapshot);
+		expect(state).toStrictEqual(snapshot);
 	});
 
 	test('applies castling atomically for either color and side', () => {

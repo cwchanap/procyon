@@ -15,6 +15,7 @@ import ChessGame from './ChessGame';
 import { AUTH_CHANGE_EVENT, __resetSharedAuthUserForTests } from '../lib/auth';
 import { resetAIConfigStore, setConfig } from '../lib/ai/ai-config-store';
 import { ENGINE_MOVE_TIMEOUT_MS } from '../hooks/useChessRivalSession';
+import type { GameState } from '../lib/chess/types';
 import type { RivalMoveResult } from '../lib/chess/rival/types';
 import {
 	deferred,
@@ -834,77 +835,136 @@ describe('ChessGame — atomic Start & rival session', () => {
 
 	test('a human White pawn captures the pawn the engine just played', async () => {
 		const secondReply = deferred<RivalMoveResult>();
-		let engineMoveCalls = 0;
+		const observedFens: string[] = [];
 		const { options, instances } = engineOptions(() => ({
-			makeMove: () => {
-				engineMoveCalls += 1;
-				return engineMoveCalls === 1
-					? Promise.resolve({ ok: true, move: { from: 'd7', to: 'd5' } })
-					: secondReply.promise;
+			makeMove: (state: GameState) => {
+				observedFens.push(state.fen);
+				if (
+					state.fen ===
+					'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1'
+				) {
+					return Promise.resolve({
+						ok: true,
+						move: { from: 'd7', to: 'd5' },
+					});
+				}
+				if (
+					state.fen ===
+					'rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2'
+				) {
+					return secondReply.promise;
+				}
+				throw new Error(`unexpected engine makeMove state FEN: ${state.fen}`);
 			},
 		}));
 		const view = render(<ChessGame rivalSessionOptions={options} />);
 		await waitForSetupResolved(view);
 
-		fireEvent.click(view.getByRole('button', { name: /start/i }));
+		// Explicitly choose White side before starting.
+		await act(async () => {
+			fireEvent.click(view.getByRole('radio', { name: 'White' }));
+		});
+		expect(
+			(view.getByRole('radio', { name: 'White' }) as HTMLInputElement).checked
+		).toBe(true);
+
+		await act(async () => {
+			fireEvent.click(view.getByRole('button', { name: /start/i }));
+		});
 		await waitFor(() =>
 			expect(view.getByRole('button', { name: /new game/i })).toBeTruthy()
 		);
 
-		fireEvent.click(view.getByRole('button', { name: 'Square 6-4' }));
-		fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
-		await waitFor(() => expect(instances[0]?.makeMoveCount).toBe(1), {
-			timeout: 3000,
-		});
-		await waitFor(() => {
+		jest.useFakeTimers();
+		try {
+			await act(async () => {
+				fireEvent.click(view.getByRole('button', { name: 'Square 6-4' }));
+			});
+			await act(async () => {
+				fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
+			});
+
+			// Advance across the rival-trigger UX delay (1000ms) for move 1.
+			await act(async () => {
+				advanceTimers(1000);
+				for (let i = 0; i < 20; i++) {
+					await Promise.resolve();
+				}
+			});
+			expect(instances[0]?.makeMoveCount).toBe(1);
 			expect(
 				view.getByRole('button', { name: 'Square 3-3' }).textContent
 			).toContain('♟');
 			expect(view.getByText(/White to move/i)).toBeTruthy();
-		});
 
-		fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
-		expect(
-			view.getByRole('button', { name: 'Square 4-4' }).className
-		).toContain('ring-brass');
-		expect(
-			view
-				.getByRole('button', { name: 'Square 3-3' })
-				.querySelector('.border-chess')
-		).toBeTruthy();
+			await act(async () => {
+				fireEvent.click(view.getByRole('button', { name: 'Square 4-4' }));
+			});
+			expect(
+				view.getByRole('button', { name: 'Square 4-4' }).className
+			).toContain('ring-brass');
+			expect(
+				view
+					.getByRole('button', { name: 'Square 3-3' })
+					.querySelector('.border-chess')
+			).toBeTruthy();
 
-		fireEvent.click(view.getByRole('button', { name: 'Square 3-3' }));
+			await act(async () => {
+				fireEvent.click(view.getByRole('button', { name: 'Square 3-3' }));
+			});
 
-		expect(
-			view.getByRole('button', { name: 'Square 3-3' }).textContent
-		).toContain('♙');
-		expect(view.getByRole('button', { name: 'Square 4-4' }).textContent).toBe(
-			''
-		);
-		expect(
-			view.getByRole('button', { name: 'Square 4-4' }).className
-		).not.toContain('ring-brass');
-		expect(
-			view
-				.getByRole('button', { name: 'Square 3-3' })
-				.querySelector('.border-chess')
-		).toBeNull();
-		expect(view.getByText(/Black to move/i)).toBeTruthy();
+			expect(
+				view.getByRole('button', { name: 'Square 3-3' }).textContent
+			).toContain('♙');
+			expect(view.getByRole('button', { name: 'Square 4-4' }).textContent).toBe(
+				''
+			);
+			expect(
+				view.getByRole('button', { name: 'Square 4-4' }).className
+			).not.toContain('ring-brass');
+			expect(
+				view
+					.getByRole('button', { name: 'Square 3-3' })
+					.querySelector('.border-chess')
+			).toBeNull();
+			expect(view.getByText(/Black to move/i)).toBeTruthy();
 
-		await waitFor(() => expect(instances[0]?.makeMoveCount).toBe(2), {
-			timeout: 3000,
-		});
-		expect(view.getByText(/Black to move/i)).toBeTruthy();
+			// Advance across the second rival-trigger UX delay (1000ms) for move 2.
+			await act(async () => {
+				advanceTimers(1000);
+				for (let i = 0; i < 5; i++) {
+					await Promise.resolve();
+				}
+			});
 
-		await act(async () => {
-			secondReply.resolve({ ok: true, move: { from: 'g8', to: 'f6' } });
-		});
-		await waitFor(() => {
+			expect(instances[0]?.makeMoveCount).toBe(2);
+			expect(observedFens).toEqual([
+				'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+				'rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2',
+			]);
+			expect(view.getByText(/Black to move/i)).toBeTruthy();
+
+			await act(async () => {
+				secondReply.resolve({ ok: true, move: { from: 'g8', to: 'f6' } });
+				for (let i = 0; i < 5; i++) {
+					await Promise.resolve();
+				}
+			});
+
 			expect(view.getByText(/White to move/i)).toBeTruthy();
 			expect(
 				view.getByRole('button', { name: 'Square 2-5' }).textContent
 			).toContain('♞');
-		});
+			// Re-check that the human's capture is still on the board after the engine replies.
+			expect(
+				view.getByRole('button', { name: 'Square 3-3' }).textContent
+			).toContain('♙');
+			expect(view.getByRole('button', { name: 'Square 4-4' }).textContent).toBe(
+				''
+			);
+		} finally {
+			jest.useRealTimers();
+		}
 	});
 
 	test('an LLM Start is blocked until the model is configured', async () => {
