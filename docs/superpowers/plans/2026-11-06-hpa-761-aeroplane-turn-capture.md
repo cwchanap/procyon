@@ -24,7 +24,7 @@ No Cloudflare build archaeology is needed to choose the fix. Report the **tested
 - [ ] **Duplicate click:** Calling the human `roll()` twice from the same start yields **one authoritative roll action**, unchanged consumed RNG on the rejected call, and no double-advance.
 - [ ] **Occupied launch pad:** With Red plane 1 on its launch pad (progress 0), all other Red planes in hangars, and a fixed roll **6**, the pad blocks further launches; exactly **one** legal move exists for Red plane 1 and the hook auto-applies it. The player will not be shown a choice; this is expected.
 
-If these pass, do **not** rewrite turn scheduling or add speculative race guards. Note that a silent *legitimate pass* followed by an AI die, or an auto-applied only legal move, might look like a lost Red turn. Mark the original lost-legal-move symptom **"not reproduced on <tested-sha>"** unless new failing evidence emerges.
+If these pass, do **not** rewrite turn scheduling or add speculative race guards. Note that a silent *legitimate pass* followed by an AI die, or an auto-applied only legal move, might look like a lost Red turn. Mark the original lost-legal-move symptom **"not reproduced on `<tested-sha>`"** unless new failing evidence emerges.
 
 ## Step 2 — Widen the existing roll-only feed entry
 
@@ -79,7 +79,7 @@ bun run format:check
 
 - [ ] Confirm Standard/Tycoon passes, bonus six, Customs, single/multiple captures and no-capture lines in rendered UI, with the correct fixture animation setting.
 - [ ] Keep rules, RNG, timer semantics, action records/checksums, persisted match, audio, and existing replay behavior unchanged unless a failing focused test demonstrates a required change.
-- [ ] Report the **tested SHA**, whether the original lost *legal* turn reproduced, actual changes, and tests run to **HPA-761 and this same PR**. If it did not reproduce, say **"not reproduced on <tested-sha>"**, not "fixed".
+- [ ] Report the **tested SHA**, whether the original lost *legal* turn reproduced, actual changes, and tests run to **HPA-761 and this same PR**. If it did not reproduce, say **"not reproduced on `<tested-sha>`"**, not "fixed".
 - [ ] Keep **PR #66** draft while implementing, then mark ready when changes and verification are complete.
 
 ## Stop rule
