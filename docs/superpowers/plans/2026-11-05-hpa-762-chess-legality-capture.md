@@ -17,7 +17,8 @@ The reviewer used a scratch script against main `5d4e2b1` and reported: `exd5` a
 ## Step 0 — Identify the deployed revision first
 
 - [x] Open **Cloudflare Dashboard → Workers & Pages → procyon → Deployments / Builds**. Inspect the build/commit serving `procyon.cwchanap.dev` at the November 4 incident (if deployment history is available), **and** the current production build.
-- [x] Compare with the chess-authoritative foundation `32a4fcb` (2026-07-28) and main `5d4e2b1` (2026-11-04). Verify the public site's build actually includes the chess/rival implementation under investigation.
+- [x] Compare with the chess-authoritative foundation `32a4fcb` (2026-07-28) and main `5d4e2b1` (2026-11-04).
+- [ ] Verify the public site's build actually includes the chess/rival implementation under investigation. Blocked: a Cloudflare human-verification challenge prevented the check, so the deployed SHA is unknown.
 - [x] Cross-check the relevant domain/environment and possible cached old assets. The PR #60 Cloudflare bot's `afc21fb7` deployment notification is from **November 6**, after the reported incident; it cannot identify the November 4 build.
 - [x] Record exact SHA/build/date and outcomes in HPA-762. If an out-of-date deployment is confirmed, redeploy the current build via the existing deployment workflow and retest `exd5`, `Nxe5` and `1.e4 e5 2.Nf3` on the actual site before designing code changes. If dashboard history is unavailable, mark provenance **unknown** and continue focused verification.
 
