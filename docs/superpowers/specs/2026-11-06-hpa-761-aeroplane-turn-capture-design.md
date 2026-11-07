@@ -1,6 +1,6 @@
 # HPA-761 — Aeroplane turn handling and capture announcements
 
-**Status:** Proposed design (documentation-only draft; refined after [PR #66 design review](https://github.com/cwchanap/procyon/pull/66#issuecomment-6702765762))
+**Status:** Proposed design (documentation-only draft; refined after [first review](https://github.com/cwchanap/procyon/pull/66#issuecomment-6702765762) and [follow-up review](https://github.com/cwchanap/procyon/pull/66#pullrequestreview-5810574105))
 **Date:** 2026-11-06
 **Linear:** [HPA-761 — Human turns are silently skipped and captures are never announced](https://linear.app/cwchanap/issue/HPA-761/aeroplane-chess-human-turns-are-silently-skipped-and-captures-are)
 **Implementation plan:** [Focused single-PR plan](../plans/2026-11-06-hpa-761-aeroplane-turn-capture.md)
@@ -51,20 +51,34 @@ Test the three uncovered deterministic cases against a recorded **tested commit 
 
 `executeRoll` already constructs a `move: null` roll-only `AeroplaneSkipFeedEntry` for Customs. **Widen** that existing condition from `result.effectEvents.some(event => event.type === 'skipped')` to `result.legalMoves.length === 0`; never fabricate a `ResolvedMove` or an extra authoritative action.
 
-Add only `nextPlayer: result.state.currentPlayer` to the roll-only feed entry. Its `action` already contains the actual roller, roll face, and the Customs `{ type: 'skipped' }` event:
+Add **required** `nextPlayer: AeroplaneColor` to the hook's `AeroplaneSkipFeedEntry`, populated from `result.state.currentPlayer`. Also update the separately declared component-side `AeroplanePresentationLike` interface (`AeroplaneEventFeed.tsx:19-30`) with **optional** `nextPlayer?: AeroplaneColor`: ordinary move presentations do not include it, and synthetic test presentations use this interface. For committed roll-only entries from the hook, `nextPlayer` is always populated. Its `action` already contains the actual roller, roll face, and the Customs `{ type: 'skipped' }` event:
 
 - If `action.events` contains `type === 'skipped'`, keep the existing Customs message (including when the die is six).
 - Otherwise, when `nextPlayer === action.color`, render a no-legal-moves **rolls again** line (ordinary bonus six).
 - Otherwise, render a no-legal-moves **turn passes to {nextPlayer}** line.
 
-Examples:
+Use these **exact `eventCopy` templates** (actor is "AI" or "You"; colour and next-player labels come from `colorLabel`). Preserve the existing Customs line byte-for-byte:
 
-- "You: Red rolled 3; no legal moves. Turn passes to Yellow."
-- "You: Red rolled 6; no legal moves. Red rolls again."
-- "AI: Yellow rolled 2; no legal moves. Turn passes to Blue."
-- "You: Red rolled 6 and skips this turn at Customs."
+```ts
+const actor = presentation.action.actor === 'ai' ? 'AI' : 'You';
+const color = colorLabel[presentation.action.color];
+const roll = presentation.action.roll;
+// Inside the presentation.move === null branch:
+if ((presentation.action.events ?? []).some(event => event.type === 'skipped')) {
+  return `${actor}: ${color} rolled ${roll} and skips this turn at Customs.`;
+}
+if (presentation.nextPlayer === presentation.action.color) {
+  return `${actor}: ${color} rolled ${roll}; no legal moves. ${color} rolls again.`;
+}
+const next = presentation.nextPlayer
+  ? colorLabel[presentation.nextPlayer]
+  : 'next player';
+return `${actor}: ${color} rolled ${roll}; no legal moves. Turn passes to ${next}.`;
+```
 
-Do **not** add a second `reason` field: it duplicates `action.events` and can disagree. Do not derive post-roll turn order again in the renderer.
+Examples: "You: Red rolled 3; no legal moves. Turn passes to Yellow.", "You: Red rolled 6; no legal moves. Red rolls again.", "AI: Yellow rolled 2; no legal moves. Turn passes to Blue.", and "You: Red rolled 6 and skips this turn at Customs."
+
+The `next player` fallback is only for a synthetic/older component presentation missing optional `nextPlayer`; the runtime roll-only hook entry must always carry the actual next player. Ensure tests assert the exact punctuation and labels, not loose fragments. Do **not** add a second `reason` field: it duplicates `action.events` and can disagree. Do not derive post-roll turn order again in the renderer.
 
 **Presentation gate:** Keep the same `!skipAnimationsRef.current` condition used by existing Customs feed entries. The test-only `skipAnimations: true` fixture suppresses both these feed entries and move presentations; a Playwright feed test must set it to `false`. The user-facing **Skip animations** button is separate: it stops the pending visual route without erasing already-logged feed entries. Feed entries are not persisted and never affect checksums, action records, board animation or RNG.
 
@@ -74,9 +88,9 @@ Only zero-legal-move rolls receive these extra lines. Normal legal rolls still u
 
 In `AeroplaneEventFeed.tsx`, remove the `tycoon` gate around capture details; use the committed `presentation.move.capturedPlaneIds` and existing `planeName` to render `"${planeName(move.planeId)} captures ${planeName(victimId)}."` for each victim, in the resolved order. This identifies both sides even when the AI is Blue and the victim is human Red.
 
-Once capture rendering is unconditional, the `tycoon` prop becomes unused. Remove it from `AeroplaneEventFeedProps`, `detailCopy`, `AeroplaneGame.tsx`'s call site, and tests. Preserve Tycoon action-effect details with their existing `action.events` type checks; no mode prop is needed.
+Once capture rendering is unconditional, the `tycoon` prop becomes unused. Remove it from `AeroplaneEventFeedProps`, `detailCopy`, `AeroplaneGame.tsx`'s call site, **and the explicit `<AeroplaneEventFeed events={...} tycoon />` test render in `AeroplaneGame.test.tsx` near line 1086** (plus any other test render using the prop). Preserve Tycoon action-effect details with their existing `action.events` type checks; no mode prop is needed.
 
-Reuse the integrated **"Standard matches show no Sky Tycoon UI"** test: it already performs a Standard capture. Flip the assertion that capture text is absent to assert **"Red plane 1 captures Blue plane 1."** Extend pure feed-props renders to cover Blue capturing Red and multi-victim messages; no additional AI-specific gameplay fixture is required. Update the Tycoon expectation from "Captured Blue plane 3." to "Red plane 1 captures Blue plane 3."
+Reuse the integrated **"Standard matches show no Sky Tycoon UI"** test: it already performs a Standard capture. Flip the assertion that capture text is absent to assert **"Red plane 1 captures Blue plane 1."** Extend pure feed-props renders to cover Blue capturing Red and multi-victim messages; no additional AI-specific gameplay fixture is required. Update the Tycoon expectation from "Captured Blue plane 3." to "Red plane 1 captures Blue plane 3." The synthetic Customs roll in that same test should have `action.events: [{ type: 'skipped', color: 'yellow' }]` (not `{ type: 'skip' }`) and `nextPlayer` set to the actual next player; otherwise it exercises the wrong message.
 
 Keep the existing capture/position rules, visual return-to-hangar, scoring and action checksums unchanged. No second collision calculation, extra SFX/art, or event-sourcing system.
 
@@ -89,7 +103,7 @@ The **event feed** now owns all ordinary pass explanations. No HPA-763 die/statu
 ## Acceptance criteria
 
 1. Test only uncovered turn cases: Classic **all-hangar six → four launch choices**, duplicate human `roll()` → one action, **occupied Red launch pad with six → exactly one auto-applied move**. Preserve existing turn, bonus-roll and AI sequencing tests.
-2. A no-move roll creates one correct roll-only feed entry (human/AI pass, bonus-six replay, or Customs skip) when animations are enabled. A legal roll creates no extra pass line. The dead Board/Status pass copy and impossible-state tests are removed.
+2. A no-move roll creates one correct roll-only feed entry (human/AI pass, bonus-six replay, or Customs skip) when animations are enabled. Its hook type has required `nextPlayer`, and the feed interface has optional `nextPlayer`; `eventCopy` follows the exact templates and null-safe fallback above. A legal roll creates no extra pass line. The dead Board/Status pass copy and impossible-state tests are removed.
 3. Standard and Tycoon captures identify both attacker and victim (including Blue → Red and multi-victim cases), and neither the obsolete `tycoon` feed prop nor the old Standard-capture-suppression assertion remains.
 4. Playwright feed checks set `skipAnimations: false` and wait through paced AI behavior. Existing presentation suppression under the `true` fixture is preserved.
 5. Action ordering, checksum, deterministic dice, rules, audio, and persistence remain unchanged. Report the tested SHA and actual reproduced/unreproduced findings; one PR contains documentation and eventual implementation.
