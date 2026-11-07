@@ -1,6 +1,6 @@
 # HPA-762 — Chess capture and illegal-move regression design
 
-**Status:** Proposed; revised after [initial PR #60 review](https://github.com/cwchanap/procyon/pull/60#issuecomment-6676225300) and [revision 2 review](https://github.com/cwchanap/procyon/pull/60#pullrequestreview-5796113768)
+**Status:** Implemented; revised after [initial PR #60 review](https://github.com/cwchanap/procyon/pull/60#issuecomment-6676225300), [revision 2 review](https://github.com/cwchanap/procyon/pull/60#pullrequestreview-5796113768), and review reception addressing capture retention and test coverage gaps
 **Issue:** [HPA-762](https://linear.app/cwchanap/issue/HPA-762/standard-chess-on-device-ai-plays-an-illegal-pawn-move-and-human)
 **Date:** 2026-11-05
 **Scope:** One PR for design, focused tests, and any **proven** fix.
