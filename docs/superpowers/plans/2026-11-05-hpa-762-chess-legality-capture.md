@@ -26,7 +26,7 @@ The reviewer used a scratch script against main `5d4e2b1` and reported: `exd5` a
 **File:** `apps/web/src/lib/chess/game.test.ts` (or `rules.test.ts` if that avoids repeated setup).
 
 - [ ] Using a compact table-driven helper for moves from `createInitialGameState`, assert: `1.e4 d5 2.exd5` records a captured Black pawn, places White pawn on d5, advances to Black with consistent FEN; `1.Nf3 e5 2.Nxe5` captures a Black pawn on e5 with consistent history/FEN/turn.
-- [ ] After `1.e4 e5 2.Nf3`, assert `attemptMove(state, {from:'e5', to:'e6'})` equals **`{kind:'rejected', reason:'illegal-move'}`** and the original state is unchanged. **Do not** use `makeAIMove(...) === null` as the *sole* assertion: a corrupted FEN, wrong side or terminal state can produce the same null.
+- [ ] After `1.e4 e5 2.Nf3`, assert `attemptMove(state, {from:'e5', to:'e6'})` equals **`{kind:'rejected', reason:'illegal-move'}`** and the original state is unchanged. **Do not** use `makeAIMove(...) === null` as the _sole_ assertion: a corrupted FEN, wrong side or terminal state can produce the same null.
 - [ ] Record pass/fail. The reviewer's scratch results suggest these cases already pass on main. They are a compact regression baseline, not proof that a deployed UI issue is fixed.
 
 ## Step 2 — One click-to-capture React test (real gap)
@@ -42,7 +42,7 @@ The reviewer used a scratch script against main `5d4e2b1` and reported: `exd5` a
 
 ## Step 3 — Extend one existing browser journey
 
-**File:** `apps/web/e2e/chess-rival.spec.ts`, signed-out on-device journey (near line 368). Keep the human **Black** orientation. Change the fake Stockfish script to **`bestmoves: ['e2e4', 'g1f3', 'd2d4']`**: after Black captures, the game automatically requests White's third move. The fake Worker repeats the *last* entry when exhausted, so leaving only the two original moves would replay the now-illegal `g1f3` and show an unrelated engine error. `d2d4` remains legal after `1.e4 d5 2.Nf3 dxe4`.
+**File:** `apps/web/e2e/chess-rival.spec.ts`, signed-out on-device journey (near line 368). Keep the human **Black** orientation. Change the fake Stockfish script to **`bestmoves: ['e2e4', 'g1f3', 'd2d4']`**: after Black captures, the game automatically requests White's third move. The fake Worker repeats the _last_ entry when exhausted, so leaving only the two original moves would replay the now-illegal `g1f3` and show an unrelated engine error. `d2d4` remains legal after `1.e4 d5 2.Nf3 dxe4`.
 
 - [ ] After White engine's e2→e4, change human reply from e7→e5 to **d7→d5** (Black pawn `Square 1-3` → `Square 3-3`).
 - [ ] Wait until the scripted White knight g1→f3 (`Square 5-5`), leaving White pawn on e4. Then click Black pawn d5→e4 (`Square 3-3` → `Square 4-4`) to capture.
@@ -60,21 +60,21 @@ The reviewer used a scratch script against main `5d4e2b1` and reported: `exd5` a
 
 - [ ] Run focused tests, plus existing invalid-engine gate:
 
-~~~bash
+```bash
 cd apps/web
-bun test src/lib/chess/game.test.ts src/components/ChessGame.test.tsx
+bun test src/lib/chess/rules.test.ts src/lib/chess/game.test.ts src/components/ChessGame.test.tsx
 bun test src/lib/chess/rival/stockfish-provider.test.ts
 bun run test:e2e e2e/chess-rival.spec.ts
-~~~
+```
 
 - [ ] Run repository checks if implementation changed:
 
-~~~bash
+```bash
 # repository root
 bun run typecheck
 bun run lint
 bun run format:check
-~~~
+```
 
 - [ ] Record the tested revision, deployment evidence, new/modified test results, whether the reported behavior reproduced, and any actual code fix in the **existing PR #60** and HPA-762. Keep the draft until the implementation and verification are ready for review.
 
