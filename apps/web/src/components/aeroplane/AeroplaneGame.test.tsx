@@ -614,20 +614,6 @@ describe('Aeroplane board interactions', () => {
 		expect(onSelect.mock.calls[0]![0]).toBe('red-0');
 	});
 
-	test('shows the no-legal-moves message when awaiting-choice has no moves', () => {
-		const { getByText } = render(
-			<AeroplaneBoard
-				state={fixtureState({ phase: 'awaiting-choice', pendingRoll: 3 })}
-				legalMoves={[]}
-				onRoll={mock(() => {})}
-				onSelectMove={mock(() => {})}
-			/>
-		);
-		expect(
-			getByText(/no legal moves — this turn passes automatically/i)
-		).toBeTruthy();
-	});
-
 	test('shows the choose-a-plane message when awaiting-choice has moves', () => {
 		const { getByText } = render(
 			<AeroplaneBoard

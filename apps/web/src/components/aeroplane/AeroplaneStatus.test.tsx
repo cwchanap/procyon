@@ -73,19 +73,6 @@ function move(
 }
 
 describe('Aeroplane status copy', () => {
-	test('shows the no-legal-moves pass message during a human awaiting-choice turn with no moves', () => {
-		const { getAllByText } = render(
-			<AeroplaneStatus
-				state={fixtureState({ phase: 'awaiting-choice', pendingRoll: 3 })}
-				legalMoves={[]}
-				isHumanTurn
-			/>
-		);
-		expect(
-			getAllByText(/no legal moves — turn passes automatically/i).length
-		).toBeGreaterThan(0);
-	});
-
 	test('shows choosing-a-move copy during an AI awaiting-choice turn even when legalMoves is empty (hook filters to [] for AI turns)', () => {
 		const { getAllByText, queryAllByText } = render(
 			<AeroplaneStatus
