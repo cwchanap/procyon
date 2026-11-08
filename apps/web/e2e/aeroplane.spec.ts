@@ -244,6 +244,19 @@ async function redIsAwaitingRoll(page: Page): Promise<boolean> {
 	}
 }
 
+function isPermanentDriveError(error: unknown): boolean {
+	if (!(error instanceof Error)) return true;
+	const message = error.message;
+	return (
+		message.includes('strict mode violation') ||
+		message.includes('has been closed') ||
+		message.includes('Page closed') ||
+		message.includes('crashed') ||
+		message.includes('while parsing selector') ||
+		message.includes('not a valid selector')
+	);
+}
+
 /**
  * Drive a fixture control until `until` observes the scenario outcome:
  * while the persisted match shows no committed action the control is
@@ -260,25 +273,53 @@ async function driveUntil(
 	until: () => Promise<boolean>
 ): Promise<void> {
 	const button = page.getByRole('button', { name });
-	await expect
-		.poll(
-			async () => {
-				if ((await committed()) === 0) {
-					try {
-						await button.click({ timeout: 1500 });
-					} catch {
-						// Pre-hydration, disabled, or detached mid-remount.
+	const control =
+		typeof name === 'string' ? `button "${name}"` : `button ${String(name)}`;
+	let lastCommitted = 'unknown';
+	let lastClickError: unknown;
+	let lastObserveError: unknown;
+	try {
+		await expect
+			.poll(
+				async () => {
+					const committedCount = await committed();
+					lastCommitted = String(committedCount);
+					if (committedCount === 0) {
+						try {
+							await button.click({ timeout: 1500 });
+							lastClickError = undefined;
+						} catch (error) {
+							if (isPermanentDriveError(error)) throw error;
+							// Pre-hydration, disabled, or detached mid-remount.
+							lastClickError = error;
+						}
 					}
-				}
-				try {
-					return await until();
-				} catch {
-					return false;
-				}
-			},
-			{ timeout: 15000 }
-		)
-		.toBe(true);
+					try {
+						const outcome = await until();
+						lastObserveError = undefined;
+						return outcome;
+					} catch (error) {
+						if (isPermanentDriveError(error)) throw error;
+						lastObserveError = error;
+						return false;
+					}
+				},
+				{ timeout: 15000 }
+			)
+			.toBe(true);
+	} catch (error) {
+		if (isPermanentDriveError(error)) throw error;
+		const lines = [
+			`driveUntil gave up on ${control}.`,
+			`Last observed: committed=${lastCommitted}, url=${page.url()}.`,
+		];
+		if (lastClickError !== undefined)
+			lines.push(`Last click error: ${String(lastClickError)}`);
+		if (lastObserveError !== undefined)
+			lines.push(`Last observation error: ${String(lastObserveError)}`);
+		lines.push('', error instanceof Error ? error.message : String(error));
+		throw new Error(lines.join('\n'));
+	}
 }
 
 interface HistoryMock {
