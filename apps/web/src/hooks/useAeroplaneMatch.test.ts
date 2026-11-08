@@ -531,6 +531,90 @@ describe('useAeroplaneMatch controller', () => {
 	});
 });
 
+describe('useAeroplaneMatch legal human turns', () => {
+	function allHangarSixFixture(): AeroplaneE2EFixture {
+		return {
+			seed: 39400,
+			state: fixtureState('red', []),
+			diceRng: diceStateForRoll(6),
+			aiRng: { value: 33 },
+			skipAnimations: true,
+		};
+	}
+
+	test('an all-hangar six exposes four launch choices and never advances', () => {
+		const match = createHookHarness(allHangarSixFixture());
+		match.roll();
+
+		expect(match.state()).toMatchObject({
+			currentPlayer: 'red',
+			phase: 'awaiting-choice',
+			pendingRoll: 6,
+		});
+		expect(
+			match
+				.legalMoves()
+				.map(move => move.planeId)
+				.sort()
+		).toEqual(['red-0', 'red-1', 'red-2', 'red-3']);
+		match.advanceTime(1000);
+		expect(match.state().currentPlayer).toBe('red');
+		expect(match.state().phase).toBe('awaiting-choice');
+	});
+
+	test('a duplicate human roll() commits one action and consumes no extra RNG', () => {
+		const fixture = allHangarSixFixture();
+		const match = createHookHarness(fixture);
+		act(() => {
+			match.result.current.roll();
+			match.result.current.roll();
+		});
+
+		expect(match.result.current.actions).toHaveLength(1);
+		expect(match.result.current.actions[0]).toMatchObject({
+			kind: 'roll',
+			actor: 'human',
+			color: 'red',
+			roll: 6,
+		});
+		expect(match.result.current.diceRng).toEqual(
+			rollFair(fixture.diceRng!).rng
+		);
+		expect(match.state()).toMatchObject({
+			currentPlayer: 'red',
+			phase: 'awaiting-choice',
+			pendingRoll: 6,
+			turnNumber: 1,
+		});
+	});
+
+	test('an occupied launch pad auto-applies the only legal move', () => {
+		const fixture: AeroplaneE2EFixture = {
+			seed: 39401,
+			state: fixtureState('red', [plane('red', 1, 0)]),
+			diceRng: diceStateForRoll(6),
+			aiRng: { value: 33 },
+			skipAnimations: true,
+		};
+		const match = createHookHarness(fixture);
+		match.roll();
+
+		expect(match.result.current.actions.map(action => action.kind)).toEqual([
+			'roll',
+			'move',
+		]);
+		expect(
+			match.state().planes.find(candidate => candidate.id === 'red-1')?.progress
+		).toBe(10);
+		expect(match.state()).toMatchObject({
+			currentPlayer: 'red',
+			phase: 'awaiting-roll',
+			pendingRoll: null,
+		});
+		expect(match.legalMoves()).toHaveLength(0);
+	});
+});
+
 describe('useAeroplaneMatch roll presentation and AI roll pacing', () => {
 	function blockedHumanRollPacedFixture(): AeroplaneE2EFixture {
 		const config: AeroplaneConfig = {
