@@ -230,6 +230,41 @@ describe('Aeroplane status copy', () => {
 			getAllByText(/Red rolled 6 and skips this turn at Customs\./).length
 		).toBeGreaterThan(0);
 	});
+
+	test('replaces the notice node for a consecutive identical no-move roll', () => {
+		// Two no-move sixes in a row produce identical copy; keying on the
+		// committed roll id swaps the DOM node so the live region announces it.
+		const notice = rollOnlyEntry({
+			nextPlayer: 'red',
+			action: {
+				kind: 'roll',
+				actor: 'human',
+				color: 'red',
+				roll: 6,
+				selectedPlaneId: null,
+				events: [],
+				checksum: '00000000',
+			},
+		});
+		const state = fixtureState();
+		const { getAllByText, rerender } = render(
+			<AeroplaneStatus state={state} legalMoves={[]} noMoveNotice={notice} />
+		);
+		const copy = /Red rolled 6; no legal moves\. Red rolls again\./;
+		const first = getAllByText(copy);
+		rerender(
+			<AeroplaneStatus
+				state={state}
+				legalMoves={[]}
+				noMoveNotice={{ ...notice, id: notice.id + 1 }}
+			/>
+		);
+		const second = getAllByText(copy);
+		expect(second).toHaveLength(first.length);
+		for (let index = 0; index < first.length; index += 1) {
+			expect(second[index]).not.toBe(first[index]);
+		}
+	});
 });
 
 function rollPresentation(
