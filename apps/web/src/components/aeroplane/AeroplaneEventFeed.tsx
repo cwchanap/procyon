@@ -35,8 +35,6 @@ export interface AeroplaneEventFeedProps {
 	events?: readonly AeroplanePresentationLike[];
 	eventFeed?: readonly AeroplanePresentationLike[];
 	onSkipAnimations?: () => void;
-	/** Sky Tycoon feeds list captures; the Standard feed stays unchanged. */
-	tycoon?: boolean;
 }
 
 function endpointCopy(position: AeroplanePosition): string {
@@ -136,16 +134,13 @@ function effectCopy(event: TycoonEffectEvent): string {
 }
 
 /** Capture and economy details shown under the main move line. */
-function detailCopy(
-	presentation: AeroplanePresentationLike,
-	tycoon: boolean
-): string[] {
+function detailCopy(presentation: AeroplanePresentationLike): string[] {
 	const move = presentation.move;
 	// A roll-only entry's roll outcome is covered by its main line.
 	if (move === null) return [];
-	const captures = tycoon
-		? move.capturedPlaneIds.map(planeId => `Captured ${planeName(planeId)}.`)
-		: [];
+	const captures = move.capturedPlaneIds.map(
+		victimId => `${planeName(move.planeId)} captures ${planeName(victimId)}.`
+	);
 	const effects = (presentation.action.events ?? [])
 		.filter(isTycoonEffect)
 		.map(effectCopy);
@@ -190,7 +185,6 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 	events = [],
 	eventFeed,
 	onSkipAnimations,
-	tycoon = false,
 }) => {
 	const [open, setOpen] = useState(false);
 	// Start expanded so SSR markup is accessible and hydration-stable. Mobile
@@ -278,7 +272,7 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 						.slice()
 						.reverse()
 						.map(presentation => {
-							const details = detailCopy(presentation, tycoon);
+							const details = detailCopy(presentation);
 							return (
 								<div
 									key={presentation.id}

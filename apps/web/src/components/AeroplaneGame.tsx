@@ -222,7 +222,6 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 					<AeroplaneEventFeed
 						events={match.eventFeed}
 						onSkipAnimations={match.skipAnimations}
-						tycoon={match.state.config.mode === 'sky-tycoon'}
 					/>
 					<button
 						type='button'

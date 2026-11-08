@@ -1084,12 +1084,11 @@ describe('Aeroplane event feed', () => {
 							},
 						},
 					]}
-					tycoon
 				/>
 			);
 			for (const line of [
 				'You: Red plane 1 to track 13.',
-				'Captured Blue plane 3.',
+				'Red plane 1 captures Blue plane 3.',
 				'Red gains 3 coins (departure bonus).',
 				'Red pays 5 coins (airport purchase).',
 				'Red now owns the airport on square 7.',
@@ -1112,6 +1111,60 @@ describe('Aeroplane event feed', () => {
 				'AI: Yellow rolled 6 and skips this turn at Customs.'
 			);
 			expect(skip.parentElement?.querySelector('ul')).toBeNull();
+		});
+	});
+
+	test('lists committed captures for either actor and every victim in order', () => {
+		withDesktopMatchMedia(() => {
+			const { getByText, getAllByText } = render(
+				<AeroplaneEventFeed
+					events={[
+						{
+							id: 1,
+							move: {
+								...move('blue-3', 20),
+								color: 'blue',
+								capturedPlaneIds: ['red-0'],
+							},
+							events: [],
+							action: {
+								kind: 'move',
+								actor: 'ai',
+								color: 'blue',
+								roll: 4,
+								selectedPlaneId: 'blue-3',
+								events: [],
+								checksum: '00000000',
+							},
+						},
+						{
+							id: 2,
+							move: {
+								...move('red-0', 20),
+								capturedPlaneIds: ['blue-0', 'yellow-1', 'green-2'],
+							},
+							events: [],
+							action: {
+								kind: 'move',
+								actor: 'human',
+								color: 'red',
+								roll: 3,
+								selectedPlaneId: 'red-0',
+								events: [],
+								checksum: '00000000',
+							},
+						},
+					]}
+				/>
+			);
+			expect(getByText('Blue plane 4 captures Red plane 1.')).toBeTruthy();
+			expect(
+				getAllByText(/^Red plane 1 captures /).map(line => line.textContent)
+			).toEqual([
+				'Red plane 1 captures Blue plane 1.',
+				'Red plane 1 captures Yellow plane 2.',
+				'Red plane 1 captures Green plane 3.',
+			]);
 		});
 	});
 
@@ -3797,7 +3850,7 @@ describe('Aeroplane game composition', () => {
 		expect(
 			view.getByText('You: Red plane 1 via jump to track 6.')
 		).toBeTruthy();
-		expect(view.queryByText(/^Captured /)).toBeNull();
+		expect(view.getByText('Red plane 1 captures Blue plane 1.')).toBeTruthy();
 		expect(view.queryByRole('list', { name: 'Sky Tycoon tiles' })).toBeNull();
 		expect(
 			view.queryByRole('list', { name: 'Sky Tycoon balances' })
