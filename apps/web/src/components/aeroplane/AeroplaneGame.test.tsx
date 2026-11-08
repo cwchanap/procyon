@@ -1072,13 +1072,14 @@ describe('Aeroplane event feed', () => {
 							id: 2,
 							move: null,
 							events: [],
+							nextPlayer: 'blue',
 							action: {
 								kind: 'roll',
 								actor: 'ai',
 								color: 'yellow',
 								roll: 6,
 								selectedPlaneId: null,
-								events: [{ type: 'skip', color: 'yellow' }],
+								events: [{ type: 'skipped', color: 'yellow' }],
 								checksum: '00000000',
 							},
 						},
@@ -1111,6 +1112,91 @@ describe('Aeroplane event feed', () => {
 				'AI: Yellow rolled 6 and skips this turn at Customs.'
 			);
 			expect(skip.parentElement?.querySelector('ul')).toBeNull();
+		});
+	});
+
+	test('roll-only entries describe Customs, bonus rolls and passes exactly', () => {
+		withDesktopMatchMedia(() => {
+			const { getByText } = render(
+				<AeroplaneEventFeed
+					events={[
+						{
+							id: 1,
+							move: null,
+							events: [],
+							nextPlayer: 'red',
+							action: {
+								kind: 'roll',
+								actor: 'human',
+								color: 'red',
+								roll: 6,
+								selectedPlaneId: null,
+								events: [{ type: 'skipped', color: 'red' }],
+								checksum: '00000000',
+							},
+						},
+						{
+							id: 2,
+							move: null,
+							events: [],
+							nextPlayer: 'red',
+							action: {
+								kind: 'roll',
+								actor: 'human',
+								color: 'red',
+								roll: 6,
+								selectedPlaneId: null,
+								events: [],
+								checksum: '00000000',
+							},
+						},
+						{
+							id: 3,
+							move: null,
+							events: [],
+							nextPlayer: 'blue',
+							action: {
+								kind: 'roll',
+								actor: 'ai',
+								color: 'yellow',
+								roll: 1,
+								selectedPlaneId: null,
+								events: [],
+								checksum: '00000000',
+							},
+						},
+						{
+							id: 4,
+							move: null,
+							events: [],
+							action: {
+								kind: 'roll',
+								actor: 'ai',
+								color: 'blue',
+								roll: 2,
+								selectedPlaneId: null,
+								events: [],
+								checksum: '00000000',
+							},
+						},
+					]}
+				/>
+			);
+			// A committed Customs skip outranks the bonus branch even on a six.
+			expect(
+				getByText('You: Red rolled 6 and skips this turn at Customs.')
+			).toBeTruthy();
+			expect(
+				getByText('You: Red rolled 6; no legal moves. Red rolls again.')
+			).toBeTruthy();
+			expect(
+				getByText('AI: Yellow rolled 1; no legal moves. Turn passes to Blue.')
+			).toBeTruthy();
+			expect(
+				getByText(
+					'AI: Blue rolled 2; no legal moves. Turn passes to next player.'
+				)
+			).toBeTruthy();
 		});
 	});
 

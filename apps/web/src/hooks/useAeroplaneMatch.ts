@@ -78,14 +78,16 @@ export interface AeroplanePresentation {
 }
 
 /**
- * Roll-only feed entry for a committed Customs skip: it carries the real die
- * and skip action, never a fabricated move, and is not queued for the board.
+ * Roll-only feed entry for a committed roll with no legal move: it carries
+ * the real die and roll action, never a fabricated move, and is not queued
+ * for the board. `nextPlayer` is the committed next player.
  */
 export interface AeroplaneSkipFeedEntry {
 	id: number;
 	move: null;
 	events: [];
 	action: AeroplaneActionRecord;
+	nextPlayer: AeroplaneColor;
 	chatter?: never;
 }
 
@@ -829,15 +831,13 @@ export function useAeroplaneMatch(
 				color: current.state.currentPlayer,
 				animate: !skipAnimationsRef.current,
 			});
-			if (
-				!skipAnimationsRef.current &&
-				result.effectEvents.some(event => event.type === 'skipped')
-			) {
+			if (!skipAnimationsRef.current && result.legalMoves.length === 0) {
 				const entry: AeroplaneSkipFeedEntry = {
 					id: (presentationIdRef.current += 1),
 					move: null,
 					events: [],
 					action: rollAction,
+					nextPlayer: result.state.currentPlayer,
 				};
 				setEventFeed(previous => [...previous, entry]);
 			}

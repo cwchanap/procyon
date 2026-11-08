@@ -18,10 +18,12 @@ import { planeColor, planeIndex } from '../../lib/aeroplane/layout';
 
 export interface AeroplanePresentationLike {
 	id: number;
-	/** Null for a roll-only Customs skip entry; no move is fabricated. */
+	/** Null for a roll-only entry (no legal move); no move is fabricated. */
 	move: ResolvedMove | null;
 	events: AeroplaneEvent[];
 	chatter?: string;
+	/** Committed next player for a roll-only entry; optional for other items. */
+	nextPlayer?: AeroplaneColor;
 	action: {
 		actor: AeroplaneActionActor;
 		color: AeroplaneColor;
@@ -139,7 +141,7 @@ function detailCopy(
 	tycoon: boolean
 ): string[] {
 	const move = presentation.move;
-	// A roll-only skip entry's single skip event is its main line.
+	// A roll-only entry's roll outcome is covered by its main line.
 	if (move === null) return [];
 	const captures = tycoon
 		? move.capturedPlaneIds.map(planeId => `Captured ${planeName(planeId)}.`)
@@ -153,8 +155,20 @@ function detailCopy(
 function eventCopy(presentation: AeroplanePresentationLike): string {
 	const move = presentation.move;
 	const actor = presentation.action.actor === 'ai' ? 'AI' : 'You';
-	if (move === null)
-		return `${actor}: ${colorLabel[presentation.action.color]} rolled ${presentation.action.roll} and skips this turn at Customs.`;
+	if (move === null) {
+		const color = colorLabel[presentation.action.color];
+		const roll = presentation.action.roll;
+		if (
+			(presentation.action.events ?? []).some(event => event.type === 'skipped')
+		)
+			return `${actor}: ${color} rolled ${roll} and skips this turn at Customs.`;
+		if (presentation.nextPlayer === presentation.action.color)
+			return `${actor}: ${color} rolled ${roll}; no legal moves. ${color} rolls again.`;
+		const next = presentation.nextPlayer
+			? colorLabel[presentation.nextPlayer]
+			: 'next player';
+		return `${actor}: ${color} rolled ${roll}; no legal moves. Turn passes to ${next}.`;
+	}
 	const planeNumber = planeIndex(move.planeId) + 1;
 	const route = move.events
 		.map(event => {
