@@ -147,6 +147,11 @@ function detailCopy(presentation: AeroplanePresentationLike): string[] {
 	return [...captures, ...effects];
 }
 
+/**
+ * Main feed line for one presentation: a roll-only Customs skip, bonus-roll
+ * or pass line when `move` is null, otherwise the actor's move line with its
+ * route hops and landing endpoint.
+ */
 function eventCopy(presentation: AeroplanePresentationLike): string {
 	const move = presentation.move;
 	const actor = presentation.action.actor === 'ai' ? 'AI' : 'You';
@@ -181,6 +186,11 @@ function eventCopy(presentation: AeroplanePresentationLike): string {
 	return `${actor}: ${colorLabel[move.color]} plane ${planeNumber}${routeLabel} to ${endpointCopy(move.finalEndpoint)}.`;
 }
 
+/**
+ * Collapsible match event feed. Renders committed presentations newest-first
+ * with capture and effect details, expanded on desktop and collapsed behind a
+ * toggle on small screens.
+ */
 export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 	events = [],
 	eventFeed,

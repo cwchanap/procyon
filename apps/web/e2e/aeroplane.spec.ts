@@ -217,6 +217,10 @@ async function clearStoredMatch(page: Page): Promise<void> {
 	}
 }
 
+/**
+ * Number of committed human roll actions in the persisted match; 0 when the
+ * stored envelope is absent or unreadable.
+ */
 async function humanRollCount(page: Page): Promise<number> {
 	try {
 		return (await storedMatch(page)).actions.filter(
@@ -244,6 +248,11 @@ async function redIsAwaitingRoll(page: Page): Promise<boolean> {
 	}
 }
 
+/**
+ * Whether an error is fatal for `driveUntil` — strict-mode, selector and
+ * closed-page failures — versus transient pre-hydration or mid-remount click
+ * errors worth retrying.
+ */
 function isPermanentDriveError(error: unknown): boolean {
 	if (!(error instanceof Error)) return true;
 	const message = error.message;
