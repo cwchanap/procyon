@@ -228,30 +228,57 @@ async function humanRollCount(page: Page): Promise<number> {
 }
 
 /**
- * Keep clicking a control until its action lands in the persisted match:
- * the SSR button is visible before hydration attaches onClick, so a lone
- * click can be swallowed (the same hazard the mute toggle test retries
- * around). Once the action commits the poll stops clicking.
+ * Whether the persisted match handed the die back to Red for a later turn —
+ * the paced AI cycle's authoritative end state.
  */
-async function clickUntilCommitted(
+async function redIsAwaitingRoll(page: Page): Promise<boolean> {
+	try {
+		const { state } = await storedMatch(page);
+		return (
+			state.currentPlayer === 'red' &&
+			state.phase === 'awaiting-roll' &&
+			state.turnNumber > 1
+		);
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Drive a fixture control until `until` observes the scenario outcome:
+ * while the persisted match shows no committed action the control is
+ * re-clicked. That covers both pre-hydration clicks (the SSR button is
+ * actionable before React attaches onClick) and a cold-start navigation —
+ * after which the reinstalling fixture resets the committed action to zero
+ * and replays the same deterministic outcome. The poll stays bounded by
+ * the expect timeout, so real copy or flow failures still fail.
+ */
+async function driveUntil(
 	page: Page,
 	name: string | RegExp,
-	committed: () => Promise<number>
+	committed: () => Promise<number>,
+	until: () => Promise<boolean>
 ): Promise<void> {
 	const button = page.getByRole('button', { name });
 	await expect
-		.poll(async () => {
-			const count = await committed();
-			if (count === 0) {
-				try {
-					await button.click({ timeout: 1500 });
-				} catch {
-					// A transient detach or disable mid-commit; the poll retries.
+		.poll(
+			async () => {
+				if ((await committed()) === 0) {
+					try {
+						await button.click({ timeout: 1500 });
+					} catch {
+						// Pre-hydration, disabled, or detached mid-remount.
+					}
 				}
-			}
-			return count;
-		})
-		.toBeGreaterThan(0);
+				try {
+					return await until();
+				} catch {
+					return false;
+				}
+			},
+			{ timeout: 15000 }
+		)
+		.toBe(true);
 }
 
 interface HistoryMock {
@@ -536,6 +563,7 @@ test.describe('Aeroplane Chess critical journey', () => {
 	}) => {
 		// Feed entries are presentation, so every fixture asserting feed text
 		// here explicitly keeps animations on.
+		const feedText = async () => (await feed(page).textContent()) ?? '';
 		const passFixture = fixtureFrom(
 			CLASSIC_CONFIG,
 			41860,
@@ -544,14 +572,24 @@ test.describe('Aeroplane Chess critical journey', () => {
 		);
 		await gotoAeroplane(page, passFixture);
 		// Classic: a 1 with every plane hangared has no legal move.
-		await clickUntilCommitted(page, 'Roll die', () => humanRollCount(page));
-		await expect(feed(page)).toContainText(
-			'You: Red rolled 1; no legal moves. Turn passes to Yellow.'
+		await driveUntil(
+			page,
+			'Roll die',
+			() => humanRollCount(page),
+			async () =>
+				(await feedText()).includes(
+					'You: Red rolled 1; no legal moves. Turn passes to Yellow.'
+				)
 		);
 		// The paced AI turns roll 1 into the same empty-hangar pass.
-		await waitForRedToRoll(page);
-		await expect(feed(page)).toContainText(
-			'AI: Green rolled 1; no legal moves. Turn passes to Red.'
+		await driveUntil(
+			page,
+			'Roll die',
+			() => humanRollCount(page),
+			async () =>
+				(await feedText()).includes(
+					'AI: Green rolled 1; no legal moves. Turn passes to Red.'
+				)
 		);
 
 		// The "captures only at the final endpoint" landing: Red plane 1 flies
@@ -577,21 +615,31 @@ test.describe('Aeroplane Chess critical journey', () => {
 			);
 			fixture.state = withPlaneProgress(fixture.state!, landing.progressById);
 			await gotoAeroplane(page, fixture);
-			await clickUntilCommitted(page, /Red plane 1/i, () =>
-				humanMoveCount(page)
+			await driveUntil(
+				page,
+				/Red plane 1/i,
+				() => humanMoveCount(page),
+				async () =>
+					(await feedText()).includes(
+						'You: Red plane 1 via long flight to track 30.'
+					)
 			);
-			await expect(feed(page)).toContainText(
-				'You: Red plane 1 via long flight to track 30.'
+			// The paced AI turns roll 1 and can never capture on these boards;
+			// the settle wait also keeps the noncapture check off an empty feed.
+			await driveUntil(
+				page,
+				/Red plane 1/i,
+				() => humanMoveCount(page),
+				async () => {
+					const text = await feedText();
+					const settled =
+						(await redIsAwaitingRoll(page)) &&
+						text.includes('You: Red plane 1 via long flight to track 30.');
+					return landing.captured
+						? settled && text.includes('Red plane 1 captures Yellow plane 1.')
+						: settled && !text.includes('captures');
+				}
 			);
-			// The paced AI turns roll 1 and can never capture on these boards.
-			await waitForRedToRoll(page);
-			if (landing.captured) {
-				await expect(feed(page)).toContainText(
-					'Red plane 1 captures Yellow plane 1.'
-				);
-			} else {
-				await expect(feed(page)).not.toContainText('captures');
-			}
 		}
 	});
 
