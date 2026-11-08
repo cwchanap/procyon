@@ -1101,11 +1101,9 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 							? state.phase === 'awaiting-choice'
 								? `${colorLabel[state.currentPlayer]} is choosing a move…`
 								: `${colorLabel[state.currentPlayer]} is rolling…`
-							: state.phase === 'awaiting-choice' && legalMoves.length === 0
-								? 'No legal moves — this turn passes automatically.'
-								: state.phase === 'awaiting-choice'
-									? 'Choose a highlighted plane, or use Enter / Space.'
-									: 'Roll the die to start your turn.'}
+							: state.phase === 'awaiting-choice'
+								? 'Choose a highlighted plane, or use Enter / Space.'
+								: 'Roll the die to start your turn.'}
 				</p>
 				<Button
 					type='button'

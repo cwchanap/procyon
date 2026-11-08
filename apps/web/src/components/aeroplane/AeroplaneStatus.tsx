@@ -34,8 +34,6 @@ function statusCopy(
 			: `${colorLabel[state.currentPlayer]} is rolling…`;
 	}
 	if (state.phase === 'awaiting-choice') {
-		if (legalMoves.length === 0)
-			return 'No legal moves — turn passes automatically.';
 		return legalMoves.length === 1
 			? 'One legal plane will move.'
 			: `${legalMoves.length} legal planes — choose one.`;
