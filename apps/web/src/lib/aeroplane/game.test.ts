@@ -332,15 +332,15 @@ test('an all-hangar six offers all four launches and keeps red awaiting choice',
 
 test('an occupied launch pad blocks launches and leaves only the pad plane', () => {
 	const state = stateWithPlanes([
-		plane('red-0', null),
-		plane('red-1', 0),
+		plane('red-0', 0),
+		plane('red-1', null),
 		plane('red-2', null),
 		plane('red-3', null),
 	]);
 	const result = rollTurn(state, 6);
 
 	expect(result.legalMoves).toHaveLength(1);
-	expect(result.legalMoves[0]!.planeId).toBe('red-1');
+	expect(result.legalMoves[0]!.planeId).toBe('red-0');
 	expect(result.state.phase).toBe('awaiting-choice');
 	expect(result.state.pendingRoll).toBe(6);
 	expect(result.state.currentPlayer).toBe('red');

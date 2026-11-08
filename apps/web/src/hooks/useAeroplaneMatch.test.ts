@@ -591,7 +591,7 @@ describe('useAeroplaneMatch legal human turns', () => {
 	test('an occupied launch pad auto-applies the only legal move', () => {
 		const fixture: AeroplaneE2EFixture = {
 			seed: 39401,
-			state: fixtureState('red', [plane('red', 1, 0)]),
+			state: fixtureState('red', [plane('red', 0, 0)]),
 			diceRng: diceStateForRoll(6),
 			aiRng: { value: 33 },
 			skipAnimations: true,
@@ -604,7 +604,7 @@ describe('useAeroplaneMatch legal human turns', () => {
 			'move',
 		]);
 		expect(
-			match.state().planes.find(candidate => candidate.id === 'red-1')?.progress
+			match.state().planes.find(candidate => candidate.id === 'red-0')?.progress
 		).toBe(10);
 		expect(match.state()).toMatchObject({
 			currentPlayer: 'red',
