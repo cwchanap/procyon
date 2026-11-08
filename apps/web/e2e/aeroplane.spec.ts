@@ -217,6 +217,43 @@ async function clearStoredMatch(page: Page): Promise<void> {
 	}
 }
 
+async function humanRollCount(page: Page): Promise<number> {
+	try {
+		return (await storedMatch(page)).actions.filter(
+			action => action.actor === 'human' && action.kind === 'roll'
+		).length;
+	} catch {
+		return 0;
+	}
+}
+
+/**
+ * Keep clicking a control until its action lands in the persisted match:
+ * the SSR button is visible before hydration attaches onClick, so a lone
+ * click can be swallowed (the same hazard the mute toggle test retries
+ * around). Once the action commits the poll stops clicking.
+ */
+async function clickUntilCommitted(
+	page: Page,
+	name: string | RegExp,
+	committed: () => Promise<number>
+): Promise<void> {
+	const button = page.getByRole('button', { name });
+	await expect
+		.poll(async () => {
+			const count = await committed();
+			if (count === 0) {
+				try {
+					await button.click({ timeout: 1500 });
+				} catch {
+					// A transient detach or disable mid-commit; the poll retries.
+				}
+			}
+			return count;
+		})
+		.toBeGreaterThan(0);
+}
+
 interface HistoryMock {
 	/** Raw POST bodies, in arrival order. */
 	posts: string[];
@@ -491,6 +528,70 @@ test.describe('Aeroplane Chess critical journey', () => {
 			expect(saved.state.stats.capturesMade.red).toBe(
 				scenario.expectedCaptured ? 1 : 0
 			);
+		}
+	});
+
+	test('narrates a Classic pass and a Standard capture in the event feed', async ({
+		page,
+	}) => {
+		// Feed entries are presentation, so every fixture asserting feed text
+		// here explicitly keeps animations on.
+		const passFixture = fixtureFrom(
+			CLASSIC_CONFIG,
+			41860,
+			{ currentPlayer: 'red', phase: 'awaiting-roll', pendingRoll: null },
+			{ diceRng: rngForRolls([1, 1, 1, 1]), skipAnimations: false }
+		);
+		await gotoAeroplane(page, passFixture);
+		// Classic: a 1 with every plane hangared has no legal move.
+		await clickUntilCommitted(page, 'Roll die', () => humanRollCount(page));
+		await expect(feed(page)).toContainText(
+			'You: Red rolled 1; no legal moves. Turn passes to Yellow.'
+		);
+		// The paced AI turns roll 1 into the same empty-hangar pass.
+		await waitForRedToRoll(page);
+		await expect(feed(page)).toContainText(
+			'AI: Green rolled 1; no legal moves. Turn passes to Red.'
+		);
+
+		// The "captures only at the final endpoint" landing: Red plane 1 flies
+		// to track 30 whether or not Yellow plane 1 waits on that endpoint.
+		const landings = [
+			{
+				progressById: { 'red-0': 16, 'yellow-0': 5 },
+				captured: false,
+			},
+			{
+				progressById: { 'red-0': 16, 'yellow-0': 17 },
+				captured: true,
+			},
+		] as const;
+
+		for (const [index, landing] of landings.entries()) {
+			await clearStoredMatch(page);
+			const fixture = fixtureFrom(
+				CLASSIC_CONFIG,
+				41870 + index,
+				{ currentPlayer: 'red', phase: 'awaiting-choice', pendingRoll: 2 },
+				{ diceRng: rngForRolls([1, 1, 1]), skipAnimations: false }
+			);
+			fixture.state = withPlaneProgress(fixture.state!, landing.progressById);
+			await gotoAeroplane(page, fixture);
+			await clickUntilCommitted(page, /Red plane 1/i, () =>
+				humanMoveCount(page)
+			);
+			await expect(feed(page)).toContainText(
+				'You: Red plane 1 via long flight to track 30.'
+			);
+			// The paced AI turns roll 1 and can never capture on these boards.
+			await waitForRedToRoll(page);
+			if (landing.captured) {
+				await expect(feed(page)).toContainText(
+					'Red plane 1 captures Yellow plane 1.'
+				);
+			} else {
+				await expect(feed(page)).not.toContainText('captures');
+			}
 		}
 	});
 
