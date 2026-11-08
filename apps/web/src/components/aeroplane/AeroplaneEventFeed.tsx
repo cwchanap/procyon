@@ -1,39 +1,24 @@
 import React, { useEffect, useId, useState } from 'react';
 import { Button } from '../ui/Button';
 import type {
-	AeroplaneActionActor,
-	AeroplaneActionRecord,
-	AeroplaneColor,
 	AeroplaneEvent,
 	AeroplaneEventType,
 	AeroplanePosition,
-	ResolvedMove,
 	TycoonChanceCard,
 	TycoonCoinReason,
 	TycoonEffectEvent,
 } from '../../lib/aeroplane/types';
+import type {
+	AeroplaneFeedEntry,
+	AeroplaneRollOnlyFeedEntry,
+} from '../../hooks/useAeroplaneMatch';
 import { toPosition } from '../../lib/aeroplane/topology';
 import { colorLabel } from '../../lib/aeroplane/labels';
 import { planeColor, planeIndex } from '../../lib/aeroplane/layout';
 
-export interface AeroplanePresentationLike {
-	id: number;
-	/** Null for a roll-only entry (no legal move); no move is fabricated. */
-	move: ResolvedMove | null;
-	events: AeroplaneEvent[];
-	chatter?: string;
-	/** Committed next player for a roll-only entry; optional for other items. */
-	nextPlayer?: AeroplaneColor;
-	action: {
-		actor: AeroplaneActionActor;
-		color: AeroplaneColor;
-		roll: number;
-	} & Partial<AeroplaneActionRecord>;
-}
-
 export interface AeroplaneEventFeedProps {
-	events?: readonly AeroplanePresentationLike[];
-	eventFeed?: readonly AeroplanePresentationLike[];
+	events?: readonly AeroplaneFeedEntry[];
+	eventFeed?: readonly AeroplaneFeedEntry[];
 	onSkipAnimations?: () => void;
 }
 
@@ -133,15 +118,35 @@ function effectCopy(event: TycoonEffectEvent): string {
 	}
 }
 
+/** True when a committed roll-only entry is a Sky Tycoon Customs skip. */
+function isCustomsSkip(entry: AeroplaneRollOnlyFeedEntry): boolean {
+	return entry.action.events.some(event => event.type === 'skipped');
+}
+
+/**
+ * Outcome sentence for a committed roll with no legal move — a Customs skip,
+ * a bonus roll, or a pass — without the feed's actor prefix. Shared by the
+ * feed line and the status live region.
+ */
+export function rollOutcomeCopy(entry: AeroplaneRollOnlyFeedEntry): string {
+	const color = colorLabel[entry.action.color];
+	const roll = entry.action.roll;
+	if (isCustomsSkip(entry))
+		return `${color} rolled ${roll} and skips this turn at Customs.`;
+	if (entry.nextPlayer === entry.action.color)
+		return `${color} rolled ${roll}; no legal moves. ${color} rolls again.`;
+	return `${color} rolled ${roll}; no legal moves. Turn passes to ${colorLabel[entry.nextPlayer]}.`;
+}
+
 /** Capture and economy details shown under the main move line. */
-function detailCopy(presentation: AeroplanePresentationLike): string[] {
+function detailCopy(presentation: AeroplaneFeedEntry): string[] {
 	const move = presentation.move;
 	// A roll-only entry's roll outcome is covered by its main line.
 	if (move === null) return [];
 	const captures = move.capturedPlaneIds.map(
 		victimId => `${planeName(move.planeId)} captures ${planeName(victimId)}.`
 	);
-	const effects = (presentation.action.events ?? [])
+	const effects = presentation.action.events
 		.filter(isTycoonEffect)
 		.map(effectCopy);
 	return [...captures, ...effects];
@@ -152,23 +157,10 @@ function detailCopy(presentation: AeroplanePresentationLike): string[] {
  * or pass line when `move` is null, otherwise the actor's move line with its
  * route hops and landing endpoint.
  */
-function eventCopy(presentation: AeroplanePresentationLike): string {
+function eventCopy(presentation: AeroplaneFeedEntry): string {
 	const move = presentation.move;
 	const actor = presentation.action.actor === 'ai' ? 'AI' : 'You';
-	if (move === null) {
-		const color = colorLabel[presentation.action.color];
-		const roll = presentation.action.roll;
-		if (
-			(presentation.action.events ?? []).some(event => event.type === 'skipped')
-		)
-			return `${actor}: ${color} rolled ${roll} and skips this turn at Customs.`;
-		if (presentation.nextPlayer === presentation.action.color)
-			return `${actor}: ${color} rolled ${roll}; no legal moves. ${color} rolls again.`;
-		const next = presentation.nextPlayer
-			? colorLabel[presentation.nextPlayer]
-			: 'next player';
-		return `${actor}: ${color} rolled ${roll}; no legal moves. Turn passes to ${next}.`;
-	}
+	if (move === null) return `${actor}: ${rollOutcomeCopy(presentation)}`;
 	const planeNumber = planeIndex(move.planeId) + 1;
 	const route = move.events
 		.map(event => {
@@ -288,16 +280,20 @@ export const AeroplaneEventFeed: React.FC<AeroplaneEventFeedProps> = ({
 									key={presentation.id}
 									className='px-3 py-3 text-sm text-ivory-dim sm:px-4'
 								>
-									{presentation.move === null ? (
-										<p
-											data-testid='aeroplane-feed-skip'
-											className='border-l-2 border-brass pl-2 text-ivory'
-										>
-											{eventCopy(presentation)}
-										</p>
-									) : (
-										<p>{eventCopy(presentation)}</p>
-									)}
+									<p
+										data-testid={
+											presentation.move === null
+												? 'aeroplane-feed-roll-only'
+												: undefined
+										}
+										className={
+											presentation.move === null && isCustomsSkip(presentation)
+												? 'border-l-2 border-brass pl-2 text-ivory'
+												: undefined
+										}
+									>
+										{eventCopy(presentation)}
+									</p>
 									{details.length > 0 && (
 										<ul className='mt-1 space-y-0.5 text-xs text-ivory'>
 											{details.map((detail, index) => (

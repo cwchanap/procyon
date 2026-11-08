@@ -207,6 +207,7 @@ const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 						isHumanTurn={match.isHumanTurn}
 						isAnimating={match.isAnimating}
 						rollPresentation={match.rollPresentation}
+						noMoveNotice={match.noMoveNotice}
 						reducedMotion={reducedMotion}
 					/>
 				</section>

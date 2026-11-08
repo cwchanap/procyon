@@ -1,6 +1,6 @@
 # HPA-761 — Focused single-PR implementation plan
 
-**Status:** Implemented — steps 1–6 are complete and verified in this PR. Originally proposed; revised after [initial design review](https://github.com/cwchanap/procyon/pull/66#issuecomment-6702765762) and [type/string follow-up](https://github.com/cwchanap/procyon/pull/66#pullrequestreview-5810574105).
+**Status:** Implemented — steps 1–6 are complete and verified in this PR. Originally proposed; revised after [initial design review](https://github.com/cwchanap/procyon/pull/66#issuecomment-6702765762), [type/string follow-up](https://github.com/cwchanap/procyon/pull/66#pullrequestreview-5810574105), and a post-implementation review covering the status live region, feed typing, and e2e harness hardening.
 **Linear:** [HPA-761](https://linear.app/cwchanap/issue/HPA-761/aeroplane-chess-human-turns-are-silently-skipped-and-captures-are)
 **Design:** [Aeroplane turn/capture design](../specs/2026-11-06-hpa-761-aeroplane-turn-capture-design.md)
 **Delivery:** **One PR** for design, the eventual focused code changes, and verification. No separate implementation PR.
@@ -30,24 +30,25 @@ If these pass, do **not** rewrite turn scheduling or add speculative race guards
 
 **Targets:** `apps/web/src/hooks/useAeroplaneMatch.ts` and `apps/web/src/components/aeroplane/AeroplaneEventFeed.tsx`.
 
-- [x] Reuse `AeroplaneSkipFeedEntry` (`move: null`, real `action`, no board route). Add **required** `nextPlayer: AeroplaneColor` to the hook interface (`useAeroplaneMatch.ts:84-90`), populated from `result.state.currentPlayer`. **Also add `nextPlayer?: AeroplaneColor`** to the separately declared `AeroplanePresentationLike` view interface (`AeroplaneEventFeed.tsx:19-30`): move presentations/synthetic component fixtures may omit it. **Do not add `reason`:** the committed `action.events` already distinguishes Customs via `{ type: 'skipped' }`.
-- [x] In `executeRoll`, widen the current Customs-only feed condition to `result.legalMoves.length === 0`, under the **existing `!skipAnimationsRef.current` gate**. The entry is for a real committed roll with no legal move, not an extra action or an animation.
-- [x] For a null-move entry in `eventCopy`, use `(presentation.action.events ?? []).some(event => event.type === 'skipped')` first, then `presentation.nextPlayer === presentation.action.color`, otherwise a pass. Set `actor = 'AI' | 'You'`, `color = colorLabel[presentation.action.color]`, `roll = presentation.action.roll`. **Exact copy contract (including case/punctuation):**
+- [x] Reuse the roll-only entry — renamed `AeroplaneRollOnlyFeedEntry` in the review follow-up since it covers every no-move roll, not only skips (`move: null`, real `action`, no board route). **Required** `nextPlayer: AeroplaneColor` on the hook interface, populated from `result.state.currentPlayer`. On the component side, `AeroplaneEventFeedProps` is typed directly as the hook's `AeroplaneFeedEntry` union — the earlier `AeroplanePresentationLike` view interface and its optional `nextPlayer` were removed, so `nextPlayer` is required everywhere and the `'next player'` fallback was deleted. **Do not add `reason`:** the committed `action.events` already distinguishes Customs via `{ type: 'skipped' }`.
+- [x] In `executeRoll`, widen the current Customs-only feed condition to `result.legalMoves.length === 0`, under the **existing `!skipAnimationsRef.current` gate**. The entry is for a real committed roll with no legal move, not an extra action or an animation. The same entry is exposed as `noMoveNotice` **unconditionally** — the status live region is content, not presentation — and is replaced or cleared on the next roll and on reset.
+- [x] For a null-move entry, a shared `rollOutcomeCopy(entry)` uses `entry.action.events.some(event => event.type === 'skipped')` first, then `entry.nextPlayer === entry.action.color`, otherwise a pass; `eventCopy` prefixes `actor = 'AI' | 'You'`. Colour/roll come from `colorLabel[entry.action.color]` / `entry.action.roll`. **Exact copy contract (including case/punctuation):**
   - Customs: `${actor}: ${color} rolled ${roll} and skips this turn at Customs.`
   - Bonus roll: `${actor}: ${color} rolled ${roll}; no legal moves. ${color} rolls again.`
-  - Pass: `${actor}: ${color} rolled ${roll}; no legal moves. Turn passes to ${next}.`, with `next = presentation.nextPlayer ? colorLabel[presentation.nextPlayer] : 'next player'`.
-  - The fallback is null-safe for synthetic/older test items; committed hook roll-only entries **always** provide `nextPlayer`. Do not recompute the next player from the die or mode.
+  - Pass: `${actor}: ${color} rolled ${roll}; no legal moves. Turn passes to ${colorLabel[entry.nextPlayer]}.`
+  - `nextPlayer` is required on every roll-only entry — no fallback. Do not recompute the next player from the die or mode.
+- [x] Every `move === null` row uses `data-testid='aeroplane-feed-roll-only'` (renamed from `aeroplane-feed-skip`); the brass left-border is applied only when the action carries the Customs `skipped` event.
 - [x] Keep legal-roll handling as-is: one human move auto-applies, multiple choices await selection, and normal move feed lines are unchanged. No per-legal-roll lines or feed aggregation.
-- [x] Update hook and feed tests for human no-move, AI no-move, a no-move **six** (same player), Customs **six** (forced pass), exactly one entry per accepted roll, and the new `nextPlayer` field. The existing hook test comparing the entire Customs entry must include the field. Assert all three **exact** templates above, including a component fixture without optional `nextPlayer` falling back to `next player`.
-- [x] **Fixture semantics:** `skipAnimations: true` suppresses both existing move feed presentations and the new roll-only pass entry. The user-facing **Skip animations** button instead cancels queued board animation while retaining feed entries already shown. Preserve both behaviors.
+- [x] Update hook and feed tests for human no-move, AI no-move, a no-move **six** (same player), Customs **six** (forced pass), exactly one entry per accepted roll, and `noMoveNotice` set/clear behavior. The existing hook test comparing the entire Customs entry must include `nextPlayer`. Assert all three **exact** templates above; fixtures supply an engine-reachable `nextPlayer` (a Customs six always hands off, never to the roller).
+- [x] **Fixture semantics:** `skipAnimations: true` suppresses both existing move feed presentations and the roll-only feed entry, but **not** `noMoveNotice`. The user-facing **Skip animations** button instead cancels queued board animation while retaining feed entries already shown. Preserve both behaviors.
 
 ## Step 3 — Display capture details in both modes, remove the obsolete prop
 
 **Targets:** `AeroplaneEventFeed.tsx`, `AeroplaneGame.tsx`, and `AeroplaneGame.test.tsx`.
 
 - [x] Render every `move.capturedPlaneIds` victim as `"${planeName(move.planeId)} captures ${planeName(victimId)}."` in stable order, regardless of mode. Preserve Tycoon economy/chance/event details.
-- [x] Remove the now-unused `tycoon` prop from `AeroplaneEventFeedProps`, `detailCopy`, the `AeroplaneGame.tsx:225` call site **and the existing `<AeroplaneEventFeed events={...} tycoon />` test render at `AeroplaneGame.test.tsx:1086`**, plus any other test reference. Remove the stale "Standard feed stays unchanged" comment.
-- [x] Flip the **existing** integrated test `"Standard matches show no Sky Tycoon UI"` around `AeroplaneGame.test.tsx:3700-3714`: it already captures `blue-0` using Red plane 1. Replace its suppression assertion with **"Red plane 1 captures Blue plane 1."** Keep its checks that no Sky Tycoon UI renders.
+- [x] Remove the now-unused `tycoon` prop from `AeroplaneEventFeedProps`, `detailCopy`, the `<AeroplaneEventFeed>` call site in `AeroplaneGame.tsx` **and the existing `<AeroplaneEventFeed events={...} tycoon />` test render in `AeroplaneGame.test.tsx`**, plus any other test reference. Remove the stale "Standard feed stays unchanged" comment.
+- [x] Flip the **existing** integrated test `"Standard matches show no Sky Tycoon UI"` in `AeroplaneGame.test.tsx`: it already captures `blue-0` using Red plane 1. Replace its suppression assertion with **"Red plane 1 captures Blue plane 1."** Keep its checks that no Sky Tycoon UI renders.
 - [x] Update the Tycoon feed expectation `"Captured Blue plane 3."` to **"Red plane 1 captures Blue plane 3."** Fix the test's fabricated Customs roll action `{ type: 'skip' }` to the actual `{ type: 'skipped' }`, and give it `nextPlayer`.
 - [x] Add **pure-props feed renders** for Blue plane 4 capturing Red plane 1 and a multi-victim capture. The renderer is actor-agnostic; no extra AI-Blue gameplay fixture is needed. Do not duplicate existing state/capture checksum tests.
 
@@ -55,8 +56,9 @@ If these pass, do **not** rewrite turn scheduling or add speculative race guards
 
 **Targets:** `apps/web/src/components/aeroplane/AeroplaneBoard.tsx`, `AeroplaneStatus.tsx`, `AeroplaneGame.test.tsx`, `AeroplaneStatus.test.tsx`.
 
-- [x] Delete both copy branches under `phase === 'awaiting-choice' && legalMoves.length === 0`. The game engine never produces that phase for an ordinary no-move roll; the feed from Step 2 now describes it.
-- [x] Remove the direct component tests that manually build this impossible scenario (`AeroplaneGame.test.tsx` near line 617, `AeroplaneStatus.test.tsx` near line 85). Preserve the separate **AI-awaiting-choice with hidden legalMoves** tests, which are valid.
+- [x] Delete both copy branches under `phase === 'awaiting-choice' && legalMoves.length === 0`. The game engine never produces that phase for an ordinary no-move roll; the feed from Step 2 now describes it. Review follow-up: `AeroplaneStatus` regained a minimal `No legal planes can move.` guard — restored/fixture states can still enter `awaiting-choice` with zero moves and must not render "0 legal planes — choose one."
+- [x] `AeroplaneStatus` takes a `noMoveNotice` prop and appends `rollOutcomeCopy(noMoveNotice)` inside its `role='status'` live region, so the outcome is announced even when the feed is collapsed or `skipAnimations` suppressed it. Its single-move line reads `One legal plane — choose it.` (auto-apply only happens inside `executeRoll`; a restored awaiting-choice state still needs a click).
+- [x] Remove the direct component tests that manually build this impossible scenario (the `"shows 'No legal moves' when there are no legal moves"` tests in `AeroplaneGame.test.tsx` and `AeroplaneStatus.test.tsx`). Preserve the separate **AI-awaiting-choice with hidden legalMoves** tests, which are valid.
 - [x] Do not change HPA-763's status/die visuals, button styling, reload, audio settings or login.
 
 ## Step 5 — One focused browser regression with feed enabled
@@ -65,6 +67,7 @@ If these pass, do **not** rewrite turn scheduling or add speculative race guards
 
 - [x] Reuse the existing deterministic fixture helpers and nearby critical journeys rather than building a new harness. In **one concise e2e regression**, verify an ordinary Classic no-move roll produces the pass line and an actual Standard capture produces the attacker → victim line, while a noncapture produces no capture detail. Reuse the `"captures only at the final endpoint"` scenario to exercise captured/not-captured landing where possible.
 - [x] **Explicitly pass `{ skipAnimations: false }` to `fixtureFrom` for every scenario asserting feed text.** The default is `true`; otherwise `enqueuePresentation` returns without appending the move to the feed and the test cannot pass. Wait for the existing paced AI timers/status rather than assuming instant advancement.
+- [x] Review follow-up: `gotoAeroplane` now waits for the mount-time save (hydration proof) after navigation; `humanActionCount(page, 'roll'|'move')` throws on a failed read instead of returning 0; `isRedAwaitingRoll` is shared; the feed regression raises its timeout via `test.setTimeout`.
 - [x] Do not add a broad variant/colour matrix or extra e2e for the already-covered one/multiple move branches.
 
 ## Step 6 — Verify and report

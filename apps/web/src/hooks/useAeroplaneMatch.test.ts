@@ -29,6 +29,7 @@ import {
 	readDevOverrides,
 	useAeroplaneMatch,
 	type AeroplaneE2EFixture,
+	type AeroplaneRollOnlyFeedEntry,
 	type UseAeroplaneMatchOptions,
 } from './useAeroplaneMatch';
 import type { AuthSnapshot } from '../lib/auth';
@@ -944,6 +945,10 @@ describe('useAeroplaneMatch roll-only feed entries', () => {
 				nextPlayer: 'yellow',
 			},
 		]);
+		// The same committed outcome reaches the status live region.
+		expect(match.result.current.noMoveNotice).toEqual(
+			match.eventFeed()[0] as AeroplaneRollOnlyFeedEntry
+		);
 		expect(match.result.current.presentationQueue).toHaveLength(0);
 	});
 
@@ -1001,15 +1006,53 @@ describe('useAeroplaneMatch roll-only feed entries', () => {
 			move: null,
 			nextPlayer: 'red',
 		});
+		expect(match.result.current.noMoveNotice).toEqual(
+			match.eventFeed()[1] as AeroplaneRollOnlyFeedEntry
+		);
 	});
 
-	test('the skipAnimations fixture suppresses the roll-only entry', () => {
+	test('the skipAnimations fixture suppresses the feed entry but not the status notice', () => {
+		// skipAnimations also collapses the AI delay, so Red's roll cascades
+		// through all three AI turns; the notice holds the latest outcome.
 		const fixture = noMoveRollsFixture();
 		fixture.skipAnimations = true;
 		const match = createHookHarness(fixture, { aiDelayMs: 10_000 });
 		match.roll();
 		expect(match.eventFeed()).toEqual([]);
 		expect(match.result.current.presentationQueue).toHaveLength(0);
+		expect(match.state()).toMatchObject({
+			currentPlayer: 'red',
+			phase: 'awaiting-roll',
+		});
+		expect(match.result.current.noMoveNotice).toMatchObject({
+			move: null,
+			nextPlayer: 'red',
+			action: { actor: 'ai', color: 'green' },
+		});
+	});
+
+	test('the no-move notice follows the latest roll and clears on reset', () => {
+		// A six overshoots every plane near the finish (no move, red keeps the
+		// turn); the follow-up 1 has a legal move and clears the notice.
+		const match = createHookHarness(
+			{ ...noMoveSixFixture(), diceRng: rngForRolls([6, 1]) },
+			{ aiDelayMs: 10_000 }
+		);
+		match.roll();
+		expect(match.result.current.noMoveNotice).toMatchObject({
+			move: null,
+			nextPlayer: 'red',
+		});
+		match.roll();
+		expect(match.result.current.noMoveNotice).toBeNull();
+
+		const stillWaiting = createHookHarness(noMoveSixFixture(), {
+			aiDelayMs: 10_000,
+		});
+		stillWaiting.roll();
+		expect(stillWaiting.result.current.noMoveNotice).not.toBeNull();
+		act(() => stillWaiting.result.current.reset());
+		expect(stillWaiting.result.current.noMoveNotice).toBeNull();
 	});
 });
 

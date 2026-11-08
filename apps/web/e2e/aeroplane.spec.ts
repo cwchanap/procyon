@@ -124,6 +124,21 @@ async function installFixture(page: Page, fixture: AeroplaneE2EFixture) {
 	}, fixture);
 }
 
+async function storedMatchOrNull(
+	page: Page
+): Promise<PersistedAeroplaneMatchV2 | null> {
+	try {
+		return await page.evaluate(key => {
+			const raw = window.localStorage.getItem(key);
+			return raw ? (JSON.parse(raw) as PersistedAeroplaneMatchV2) : null;
+		}, ACTIVE_MATCH_STORAGE_KEY);
+	} catch {
+		// A pre-navigation page at an opaque origin has no same-origin
+		// storage; a mid-remount evaluate can also detach the frame.
+		return null;
+	}
+}
+
 async function installFixtureOnce(page: Page, fixture: AeroplaneE2EFixture) {
 	await page.addInitScript(
 		({ fixture: value, consumedKey }) => {
@@ -141,11 +156,20 @@ async function gotoAeroplane(
 	page: Page,
 	fixture: AeroplaneE2EFixture
 ): Promise<void> {
+	// A leftover envelope would satisfy the ready-wait before navigation; the
+	// controller's mount-time save carries a fresh savedAt, which is also the
+	// proof that hydration finished and click handlers are attached.
+	const previousSavedAt = (await storedMatchOrNull(page))?.savedAt ?? null;
 	await installFixture(page, fixture);
 	await page.goto('/aeroplane');
 	await expect(
 		page.getByRole('heading', { name: 'Aeroplane Chess', exact: true })
 	).toBeVisible({ timeout: 15000 });
+	await expect
+		.poll(async () => (await storedMatchOrNull(page))?.savedAt ?? null, {
+			timeout: 15000,
+		})
+		.not.toBe(previousSavedAt);
 }
 
 const TYCOON_CLASSIC: Partial<AeroplaneConfig> = {
@@ -177,11 +201,9 @@ function status(page: Page) {
 }
 
 async function storedMatch(page: Page): Promise<PersistedAeroplaneMatchV2> {
-	return page.evaluate(key => {
-		const raw = window.localStorage.getItem(key);
-		if (!raw) throw new Error('Aeroplane active match was not persisted');
-		return JSON.parse(raw) as PersistedAeroplaneMatchV2;
-	}, ACTIVE_MATCH_STORAGE_KEY);
+	const saved = await storedMatchOrNull(page);
+	if (!saved) throw new Error('Aeroplane active match was not persisted');
+	return saved;
 }
 
 async function waitForStoredMatch(
@@ -189,17 +211,7 @@ async function waitForStoredMatch(
 ): Promise<PersistedAeroplaneMatchV2> {
 	let saved: PersistedAeroplaneMatchV2 | null = null;
 	await expect
-		.poll(async () => {
-			try {
-				return (saved = await page.evaluate(key => {
-					const raw = localStorage.getItem(key);
-					return raw ? (JSON.parse(raw) as PersistedAeroplaneMatchV2) : null;
-				}, ACTIVE_MATCH_STORAGE_KEY));
-			} catch {
-				saved = null;
-				return null;
-			}
-		})
+		.poll(async () => (saved = await storedMatchOrNull(page)))
 		.not.toBeNull();
 	if (!saved) throw new Error('Aeroplane active match was not persisted');
 	return saved;
@@ -218,34 +230,30 @@ async function clearStoredMatch(page: Page): Promise<void> {
 }
 
 /**
- * Number of committed human roll actions in the persisted match; 0 when the
- * stored envelope is absent or unreadable.
+ * Number of committed human actions of `kind` in the persisted match. The
+ * read throws until the envelope exists and parses — returning 0 on a failed
+ * read would let driveUntil fire another real roll outside the fixture.
  */
-async function humanRollCount(page: Page): Promise<number> {
-	try {
-		return (await storedMatch(page)).actions.filter(
-			action => action.actor === 'human' && action.kind === 'roll'
-		).length;
-	} catch {
-		return 0;
-	}
+async function humanActionCount(
+	page: Page,
+	kind: 'roll' | 'move'
+): Promise<number> {
+	return (await storedMatch(page)).actions.filter(
+		action => action.actor === 'human' && action.kind === kind
+	).length;
 }
 
 /**
- * Whether the persisted match handed the die back to Red for a later turn —
- * the paced AI cycle's authoritative end state.
+ * Whether the persisted state handed the die back to Red for a later turn —
+ * the paced AI cycle's authoritative end state. Shared by waitForRedToRoll
+ * and driveUntil's until-predicates.
  */
-async function redIsAwaitingRoll(page: Page): Promise<boolean> {
-	try {
-		const { state } = await storedMatch(page);
-		return (
-			state.currentPlayer === 'red' &&
-			state.phase === 'awaiting-roll' &&
-			state.turnNumber > 1
-		);
-	} catch {
-		return false;
-	}
+function isRedAwaitingRoll(state: AeroplaneState): boolean {
+	return (
+		state.currentPlayer === 'red' &&
+		state.phase === 'awaiting-roll' &&
+		state.turnNumber > 1
+	);
 }
 
 /**
@@ -611,6 +619,9 @@ test.describe('Aeroplane Chess critical journey', () => {
 	test('narrates a Classic pass and a Standard capture in the event feed', async ({
 		page,
 	}) => {
+		// Multiple navigation, paced AI turns and bounded re-drives stack up
+		// well past the 30 s default on a cold dev server.
+		test.setTimeout(120_000);
 		// Feed entries are presentation, so every fixture asserting feed text
 		// here explicitly keeps animations on.
 		const feedText = async () => (await feed(page).textContent()) ?? '';
@@ -625,7 +636,7 @@ test.describe('Aeroplane Chess critical journey', () => {
 		await driveUntil(
 			page,
 			'Roll die',
-			() => humanRollCount(page),
+			() => humanActionCount(page, 'roll'),
 			async () =>
 				(await feedText()).includes(
 					'You: Red rolled 1; no legal moves. Turn passes to Yellow.'
@@ -635,7 +646,7 @@ test.describe('Aeroplane Chess critical journey', () => {
 		await driveUntil(
 			page,
 			'Roll die',
-			() => humanRollCount(page),
+			() => humanActionCount(page, 'roll'),
 			async () =>
 				(await feedText()).includes(
 					'AI: Green rolled 1; no legal moves. Turn passes to Red.'
@@ -668,7 +679,7 @@ test.describe('Aeroplane Chess critical journey', () => {
 			await driveUntil(
 				page,
 				/Red plane 1/i,
-				() => humanMoveCount(page),
+				() => humanActionCount(page, 'move'),
 				async () =>
 					(await feedText()).includes(
 						'You: Red plane 1 via long flight to track 30.'
@@ -679,11 +690,11 @@ test.describe('Aeroplane Chess critical journey', () => {
 			await driveUntil(
 				page,
 				/Red plane 1/i,
-				() => humanMoveCount(page),
+				() => humanActionCount(page, 'move'),
 				async () => {
 					const text = await feedText();
 					const settled =
-						(await redIsAwaitingRoll(page)) &&
+						isRedAwaitingRoll((await storedMatch(page)).state) &&
 						text.includes('You: Red plane 1 via long flight to track 30.');
 					return landing.captured
 						? settled && text.includes('Red plane 1 captures Yellow plane 1.')
@@ -1143,26 +1154,13 @@ test.describe('Aeroplane Chess critical journey', () => {
 	});
 });
 
-async function humanMoveCount(page: Page): Promise<number> {
-	try {
-		return (await storedMatch(page)).actions.filter(
-			action => action.actor === 'human' && action.kind === 'move'
-		).length;
-	} catch {
-		return 0;
-	}
-}
-
 /** Polls until the three passing AI turns hand the die back to Red. */
 async function waitForRedToRoll(
 	page: Page
 ): Promise<PersistedAeroplaneMatchV2> {
 	await expect
-		.poll(async () => {
-			const { state } = await storedMatch(page);
-			return `${state.currentPlayer}:${state.phase}:${state.turnNumber > 1}`;
-		})
-		.toBe('red:awaiting-roll:true');
+		.poll(async () => isRedAwaitingRoll((await storedMatch(page)).state))
+		.toBe(true);
 	return storedMatch(page);
 }
 
@@ -1206,7 +1204,7 @@ test.describe('Aeroplane Sky Tycoon journey', () => {
 			await expect(coins(page, 'red')).toHaveText(coinText('red', 10));
 
 			await page.getByRole('button', { name: 'Roll die' }).click();
-			await expect.poll(() => humanMoveCount(page)).toBe(1);
+			await expect.poll(() => humanActionCount(page, 'move')).toBe(1);
 
 			await expect(feed(page)).toContainText(scenario.line);
 			if (scenario.owner === 'red') {
@@ -1257,7 +1255,7 @@ test.describe('Aeroplane Sky Tycoon journey', () => {
 
 		await page.getByRole('button', { name: 'Roll die' }).click();
 		await expect(page.getByTestId('aeroplane-die-tumble')).toHaveCount(0);
-		await expect.poll(() => humanMoveCount(page)).toBe(1);
+		await expect.poll(() => humanActionCount(page, 'move')).toBe(1);
 
 		await expect(feed(page)).toContainText('Red draws Chance: gain 4 coins.');
 		await expect(feed(page)).toContainText('Red gains 4 coins (Chance).');
@@ -1287,7 +1285,7 @@ test.describe('Aeroplane Sky Tycoon journey', () => {
 		await page.goto('/aeroplane');
 		await expect(coins(page, 'red')).toHaveText(coinText('red', 10));
 		await page.getByRole('button', { name: 'Roll die' }).click();
-		await expect.poll(() => humanMoveCount(page)).toBe(1);
+		await expect.poll(() => humanActionCount(page, 'move')).toBe(1);
 		await expect(coins(page, 'red')).toHaveText(coinText('red', 5));
 		const before = await waitForRedToRoll(page);
 
@@ -1306,7 +1304,7 @@ test.describe('Aeroplane Sky Tycoon journey', () => {
 		expect(after.diceRng).toEqual(before.diceRng);
 
 		await page.getByRole('button', { name: 'Roll die' }).click();
-		await expect.poll(() => humanMoveCount(page)).toBe(2);
+		await expect.poll(() => humanActionCount(page, 'move')).toBe(2);
 		await expect(feed(page)).toContainText(
 			'Red plane 1 is shielded until it next moves.'
 		);

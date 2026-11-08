@@ -5,7 +5,10 @@ import { installFrameClock } from '../../test/frameClock';
 import { CLASSIC_CONFIG } from '../../lib/aeroplane/game';
 import { initialTycoonState } from '../../lib/aeroplane/tycoon';
 import { tileIconUrl } from '../../lib/aeroplane/assets';
-import type { AeroplaneRollPresentation } from '../../hooks/useAeroplaneMatch';
+import type {
+	AeroplaneRollOnlyFeedEntry,
+	AeroplaneRollPresentation,
+} from '../../hooks/useAeroplaneMatch';
 import type {
 	AeroplaneEvent,
 	AeroplaneState,
@@ -72,6 +75,27 @@ function move(
 	};
 }
 
+function rollOnlyEntry(
+	patch: Partial<AeroplaneRollOnlyFeedEntry> = {}
+): AeroplaneRollOnlyFeedEntry {
+	return {
+		id: 1,
+		move: null,
+		events: [],
+		nextPlayer: 'yellow',
+		action: {
+			kind: 'roll',
+			actor: 'human',
+			color: 'red',
+			roll: 1,
+			selectedPlaneId: null,
+			events: [],
+			checksum: '00000000',
+		},
+		...patch,
+	};
+}
+
 describe('Aeroplane status copy', () => {
 	test('shows choosing-a-move copy during an AI awaiting-choice turn even when legalMoves is empty (hook filters to [] for AI turns)', () => {
 		const { getAllByText, queryAllByText } = render(
@@ -134,6 +158,77 @@ describe('Aeroplane status copy', () => {
 			/>
 		);
 		expect(getAllByText(/red wins the match/i).length).toBeGreaterThan(0);
+	});
+
+	test('prompts to choose the only legal plane instead of promising it will move', () => {
+		// Auto-apply only happens inside executeRoll: a restored or fixture
+		// awaiting-choice state must still instruct the player to select.
+		const { getAllByText } = render(
+			<AeroplaneStatus
+				state={fixtureState()}
+				legalMoves={[move()]}
+				isHumanTurn
+			/>
+		);
+		expect(getAllByText('One legal plane — choose it.').length).toBeGreaterThan(
+			0
+		);
+	});
+
+	test('never asks for a plane when a synthetic awaiting-choice state has none', () => {
+		const { getAllByText } = render(
+			<AeroplaneStatus state={fixtureState()} legalMoves={[]} isHumanTurn />
+		);
+		expect(getAllByText(/no legal planes can move/i).length).toBeGreaterThan(0);
+	});
+
+	test('announces the latest no-move roll inside the live region', () => {
+		// After red's pass the die already belongs to yellow; the status must
+		// still explain why red's turn ended without a move.
+		const { getAllByText } = render(
+			<AeroplaneStatus
+				state={fixtureState({
+					currentPlayer: 'yellow',
+					phase: 'awaiting-roll',
+					pendingRoll: null,
+				})}
+				legalMoves={[]}
+				isHumanTurn={false}
+				noMoveNotice={rollOnlyEntry()}
+			/>
+		);
+		expect(
+			getAllByText(/Red rolled 1; no legal moves\. Turn passes to Yellow\./)
+				.length
+		).toBeGreaterThan(0);
+	});
+
+	test('announces a Customs skip as the no-move outcome', () => {
+		const { getAllByText } = render(
+			<AeroplaneStatus
+				state={fixtureState({
+					currentPlayer: 'yellow',
+					phase: 'awaiting-roll',
+					pendingRoll: null,
+				})}
+				legalMoves={[]}
+				isHumanTurn={false}
+				noMoveNotice={rollOnlyEntry({
+					action: {
+						kind: 'roll',
+						actor: 'human',
+						color: 'red',
+						roll: 6,
+						selectedPlaneId: null,
+						events: [{ type: 'skipped', color: 'red' }],
+						checksum: '00000000',
+					},
+				})}
+			/>
+		);
+		expect(
+			getAllByText(/Red rolled 6 and skips this turn at Customs\./).length
+		).toBeGreaterThan(0);
 	});
 });
 
