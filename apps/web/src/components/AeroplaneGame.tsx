@@ -36,6 +36,10 @@ export interface AeroplaneGameProps {
 	controllerOptions?: UseAeroplaneMatchOptions;
 }
 
+/**
+ * Aeroplane match island: wires the match controller to the board, status,
+ * feed and rewards surfaces, sharing one auth snapshot across feature hooks.
+ */
 const AeroplaneGame: React.FC<AeroplaneGameProps> = ({ controllerOptions }) => {
 	// One session fetch for the whole island; both feature hooks consume this
 	// snapshot rather than mounting their own /auth/session requests.

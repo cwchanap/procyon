@@ -18,6 +18,10 @@ export interface AeroplaneStatusProps {
 	reducedMotion?: boolean;
 }
 
+/**
+ * Turn-status line: the match result once finished, the acting player's
+ * pacing copy on AI turns, or the human's roll/choice prompt.
+ */
 function statusCopy(
 	state: AeroplaneState,
 	legalMoves: readonly ResolvedMove[],

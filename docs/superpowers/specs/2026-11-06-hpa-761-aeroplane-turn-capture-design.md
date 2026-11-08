@@ -1,6 +1,6 @@
 # HPA-761 — Aeroplane turn handling and capture announcements
 
-**Status:** Proposed design (documentation-only draft; refined after [first review](https://github.com/cwchanap/procyon/pull/66#issuecomment-6702765762) and [follow-up review](https://github.com/cwchanap/procyon/pull/66#pullrequestreview-5810574105))
+**Status:** Implemented — ships in this PR (refined after [first review](https://github.com/cwchanap/procyon/pull/66#issuecomment-6702765762) and [follow-up review](https://github.com/cwchanap/procyon/pull/66#pullrequestreview-5810574105))
 **Date:** 2026-11-06
 **Linear:** [HPA-761 — Human turns are silently skipped and captures are never announced](https://linear.app/cwchanap/issue/HPA-761/aeroplane-chess-human-turns-are-silently-skipped-and-captures-are)
 **Implementation plan:** [Focused single-PR plan](../plans/2026-11-06-hpa-761-aeroplane-turn-capture.md)
@@ -13,15 +13,15 @@ The reported setup is **Standard / Classic / 4-plane victory / Red human vs thre
 
 ## Evidence from the current source (not proof about the deployed build)
 
-| Path | Current behavior | Implication |
-| --- | --- | --- |
-| `apps/web/src/lib/aeroplane/game.ts` — `rollTurn` | Computes `getLegalMoves`; enters `awaiting-choice` when moves exist; advances only when no legal moves (or a Sky Tycoon Customs skip); a six retains a bonus turn on ordinary no-move rolls. | Pure rules do **not** obviously explain a legal six launching from the hangar being silently forfeited. Prove any actual turn loss before changing the engine. |
-| `apps/web/src/hooks/useAeroplaneMatch.ts` — `executeRoll` | Validates human/AI actor and phase, commits rolled state/action, updates the die; if zero legal moves, returns without a Standard-mode feed entry. One legal human move is auto-applied, multiple choices are exposed through `legalMoves`. | Real no-move passes are visually indistinguishable from lost turns in the event feed. |
-| `apps/web/src/hooks/useAeroplaneMatch.ts` — `applyMove` | Persists `playResolvedMove`'s effective move and action before the UI presentation; feeds a presentation for normal animations. | Use the committed move as the display source, not a second board-state calculation. |
-| `apps/web/src/components/aeroplane/AeroplaneEventFeed.tsx` — `detailCopy` | Prints `move.capturedPlaneIds` only when `tycoon` is true. | This **confirmed** presentation condition hides every Standard capture despite the existing engine capture data. |
-| `apps/web/src/components/aeroplane/AeroplaneBoard.tsx` and `AeroplaneStatus.tsx` | Each has a "No legal moves" branch under `phase === 'awaiting-choice' && legalMoves.length === 0`. The engine only enters `awaiting-choice` when it found legal moves. | These are **unreachable in normal engine-produced states** and currently have tests using manually constructed impossible states. Delete both branches and those tests; the feed owns pass explanations. |
-| `apps/web/src/components/aeroplane/AeroplaneStatus.tsx` | The die uses `rollPresentation`, which may continue to show the most recent roller after the turn advances. | Do not infer the current turn from the latest die alone; broader stale status and disabled-roll styling belong to HPA-763. |
-| `apps/web/e2e/aeroplane.spec.ts` — `fixtureFrom` | Defaults to `skipAnimations: true`, which suppresses `enqueuePresentation` and thus move-feed entries. | Feed assertions in Playwright **must use `skipAnimations: false`** and wait through the existing paced AI behavior. |
+| Path                                                                             | Current behavior                                                                                                                                                                                                                            | Implication                                                                                                                                                                                              |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/lib/aeroplane/game.ts` — `rollTurn`                                | Computes `getLegalMoves`; enters `awaiting-choice` when moves exist; advances only when no legal moves (or a Sky Tycoon Customs skip); a six retains a bonus turn on ordinary no-move rolls.                                                | Pure rules do **not** obviously explain a legal six launching from the hangar being silently forfeited. Prove any actual turn loss before changing the engine.                                           |
+| `apps/web/src/hooks/useAeroplaneMatch.ts` — `executeRoll`                        | Validates human/AI actor and phase, commits rolled state/action, updates the die; if zero legal moves, returns without a Standard-mode feed entry. One legal human move is auto-applied, multiple choices are exposed through `legalMoves`. | Real no-move passes are visually indistinguishable from lost turns in the event feed.                                                                                                                    |
+| `apps/web/src/hooks/useAeroplaneMatch.ts` — `applyMove`                          | Persists `playResolvedMove`'s effective move and action before the UI presentation; feeds a presentation for normal animations.                                                                                                             | Use the committed move as the display source, not a second board-state calculation.                                                                                                                      |
+| `apps/web/src/components/aeroplane/AeroplaneEventFeed.tsx` — `detailCopy`        | Prints `move.capturedPlaneIds` only when `tycoon` is true.                                                                                                                                                                                  | This **confirmed** presentation condition hides every Standard capture despite the existing engine capture data.                                                                                         |
+| `apps/web/src/components/aeroplane/AeroplaneBoard.tsx` and `AeroplaneStatus.tsx` | Each has a "No legal moves" branch under `phase === 'awaiting-choice' && legalMoves.length === 0`. The engine only enters `awaiting-choice` when it found legal moves.                                                                      | These are **unreachable in normal engine-produced states** and currently have tests using manually constructed impossible states. Delete both branches and those tests; the feed owns pass explanations. |
+| `apps/web/src/components/aeroplane/AeroplaneStatus.tsx`                          | The die uses `rollPresentation`, which may continue to show the most recent roller after the turn advances.                                                                                                                                 | Do not infer the current turn from the latest die alone; broader stale status and disabled-roll styling belong to HPA-763.                                                                               |
+| `apps/web/e2e/aeroplane.spec.ts` — `fixtureFrom`                                 | Defaults to `skipAnimations: true`, which suppresses `enqueuePresentation` and thus move-feed entries.                                                                                                                                      | Feed assertions in Playwright **must use `skipAnimations: false`** and wait through the existing paced AI behavior.                                                                                      |
 
 Existing coverage already checks one-legal-move auto-play, multiple-choice waiting, a human no-move roll pacing the AI, blocked-turn chaining, a six-without-moves retaining the turn, and launch-pad restrictions. Add only missing cases: all-hangar six, duplicate roll clicks, and an occupied launch pad yielding exactly one auto-playable move.
 
@@ -29,17 +29,17 @@ A six with a Red plane **already on the launch pad** cannot launch a second Red 
 
 ## Product decisions and expected behavior
 
-| Scenario | Expected result |
-| --- | --- |
-| Red's first Classic roll is **6** with all four Red planes in the hangar | Four legal launch choices remain available in `awaiting-choice`. Red is **not** handed to Yellow without a choice. |
-| Red rolls with at least one legal active plane | With multiple legal moves, present plane choices; with one, auto-play exactly that move. Never consume another roll or advance without a committed move. |
-| Red rolls 1–5 with all Red planes still in the Classic hangar | There is legitimately no move: advance according to existing rules **and** log a clear roll/pass explanation. |
-| A roll has no moves but is **6** | Preserve existing bonus-turn semantics; feed text must say Red rolls again, not that the turn passed to Yellow. |
-| Sky Tycoon Customs forces a skip | Keep the existing Customs-specific skip message; even a six hands over as today. Never confuse this with ordinary no-legal-move passes. |
-| Blue plane 4 captures Red plane 1 on a shared square | Show the normal move line **plus** "Blue plane 4 captures Red plane 1." Red plane 1 returns to its hangar via existing authoritative rules. |
-| One move captures multiple planes | Emit one readable capture detail per victim, in the resolved move's stable order, including the mover's colour/plane number. |
-| No capture | No capture detail; Sky Tycoon economy/effect details remain unchanged. |
-| Roll click while an AI is acting, or a rapid duplicate roll click | The controller's actor/phase guards reject extra human rolls; no extra consumed RNG or duplicate action. |
+| Scenario                                                                 | Expected result                                                                                                                                          |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Red's first Classic roll is **6** with all four Red planes in the hangar | Four legal launch choices remain available in `awaiting-choice`. Red is **not** handed to Yellow without a choice.                                       |
+| Red rolls with at least one legal active plane                           | With multiple legal moves, present plane choices; with one, auto-play exactly that move. Never consume another roll or advance without a committed move. |
+| Red rolls 1–5 with all Red planes still in the Classic hangar            | There is legitimately no move: advance according to existing rules **and** log a clear roll/pass explanation.                                            |
+| A roll has no moves but is **6**                                         | Preserve existing bonus-turn semantics; feed text must say Red rolls again, not that the turn passed to Yellow.                                          |
+| Sky Tycoon Customs forces a skip                                         | Keep the existing Customs-specific skip message; even a six hands over as today. Never confuse this with ordinary no-legal-move passes.                  |
+| Blue plane 4 captures Red plane 1 on a shared square                     | Show the normal move line **plus** "Blue plane 4 captures Red plane 1." Red plane 1 returns to its hangar via existing authoritative rules.              |
+| One move captures multiple planes                                        | Emit one readable capture detail per victim, in the resolved move's stable order, including the mover's colour/plane number.                             |
+| No capture                                                               | No capture detail; Sky Tycoon economy/effect details remain unchanged.                                                                                   |
+| Roll click while an AI is acting, or a rapid duplicate roll click        | The controller's actor/phase guards reject extra human rolls; no extra consumed RNG or duplicate action.                                                 |
 
 ### Design A — Keep the game state authoritative
 
@@ -64,7 +64,9 @@ const actor = presentation.action.actor === 'ai' ? 'AI' : 'You';
 const color = colorLabel[presentation.action.color];
 const roll = presentation.action.roll;
 // Inside the presentation.move === null branch:
-if ((presentation.action.events ?? []).some(event => event.type === 'skipped')) {
+if (
+  (presentation.action.events ?? []).some(event => event.type === 'skipped')
+) {
   return `${actor}: ${color} rolled ${roll} and skips this turn at Customs.`;
 }
 if (presentation.nextPlayer === presentation.action.color) {

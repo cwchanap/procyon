@@ -667,6 +667,11 @@ function terminalCue(
 const useIsomorphicLayoutEffect =
 	typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
+/**
+ * Interactive Aeroplane board: renders planes, tracks and highlights, plays
+ * queued move presentations on the overlay, and forwards selection, roll and
+ * cue callbacks to the match controller.
+ */
 export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 	state,
 	legalMoves,
