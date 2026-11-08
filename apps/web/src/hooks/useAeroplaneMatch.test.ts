@@ -887,6 +887,132 @@ describe('useAeroplaneMatch roll presentation and AI roll pacing', () => {
 	});
 });
 
+describe('useAeroplaneMatch roll-only feed entries', () => {
+	function noMoveRollsFixture(
+		currentPlayer: AeroplaneColor = 'red'
+	): AeroplaneE2EFixture {
+		return {
+			seed: 39410,
+			state: fixtureState(currentPlayer, []),
+			diceRng: rngForRolls([1, 1, 1, 1]),
+			aiRng: { value: 33 },
+			skipAnimations: false,
+		};
+	}
+
+	// Every red plane sits too close to an exact finish for a six, so the
+	// bonus roll commits with no legal move and red keeps the turn.
+	function noMoveSixFixture(): AeroplaneE2EFixture {
+		return {
+			seed: 39411,
+			state: fixtureState('red', [
+				plane('red', 0, 51),
+				plane('red', 1, 52),
+				plane('red', 2, 53),
+				plane('red', 3, 54),
+			]),
+			diceRng: rngForRolls([6, 6]),
+			aiRng: { value: 33 },
+			skipAnimations: false,
+		};
+	}
+
+	test('a human no-move roll commits exactly one feed entry with the next player', () => {
+		const match = createHookHarness(noMoveRollsFixture(), {
+			aiDelayMs: 10_000,
+		});
+		match.roll();
+
+		expect(match.state()).toMatchObject({
+			currentPlayer: 'yellow',
+			phase: 'awaiting-roll',
+		});
+		const action = match.result.current.actions[0]!;
+		expect(action).toMatchObject({
+			kind: 'roll',
+			actor: 'human',
+			color: 'red',
+			roll: 1,
+			events: [],
+		});
+		expect(match.eventFeed()).toEqual([
+			{
+				id: expect.any(Number),
+				move: null,
+				events: [],
+				action,
+				nextPlayer: 'yellow',
+			},
+		]);
+		expect(match.result.current.presentationQueue).toHaveLength(0);
+	});
+
+	test('an AI no-move roll commits the same roll-only entry', () => {
+		const match = createHookHarness(noMoveRollsFixture('yellow'), {
+			aiDelayMs: 100,
+		});
+		match.advanceTime(100);
+
+		const action = match.result.current.actions[0]!;
+		expect(action).toMatchObject({
+			kind: 'roll',
+			actor: 'ai',
+			color: 'yellow',
+			roll: 1,
+		});
+		expect(match.state()).toMatchObject({
+			currentPlayer: 'blue',
+			phase: 'awaiting-roll',
+		});
+		expect(match.eventFeed()).toEqual([
+			{
+				id: expect.any(Number),
+				move: null,
+				events: [],
+				action,
+				nextPlayer: 'blue',
+			},
+		]);
+	});
+
+	test('a no-move six keeps the roller as nextPlayer and adds one entry per roll', () => {
+		const match = createHookHarness(noMoveSixFixture(), {
+			aiDelayMs: 10_000,
+		});
+		match.roll();
+
+		expect(match.state()).toMatchObject({
+			currentPlayer: 'red',
+			phase: 'awaiting-roll',
+		});
+		expect(match.eventFeed()).toEqual([
+			{
+				id: expect.any(Number),
+				move: null,
+				events: [],
+				action: match.result.current.actions[0]!,
+				nextPlayer: 'red',
+			},
+		]);
+		// The bonus roll is still a normal roll: exactly one new entry each.
+		match.roll();
+		expect(match.eventFeed()).toHaveLength(2);
+		expect(match.eventFeed()[1]).toMatchObject({
+			move: null,
+			nextPlayer: 'red',
+		});
+	});
+
+	test('the skipAnimations fixture suppresses the roll-only entry', () => {
+		const fixture = noMoveRollsFixture();
+		fixture.skipAnimations = true;
+		const match = createHookHarness(fixture, { aiDelayMs: 10_000 });
+		match.roll();
+		expect(match.eventFeed()).toEqual([]);
+		expect(match.result.current.presentationQueue).toHaveLength(0);
+	});
+});
+
 describe('useAeroplaneMatch controller AI turn chaining (real timers)', () => {
 	// These tests use real timers with skipAnimations to verify the full
 	// human-no-move → AI roll/move → next AI auto-roll chain without
@@ -1553,7 +1679,13 @@ describe('useAeroplaneMatch Sky Tycoon effective moves', () => {
 		expect(match.state().tycoon?.skipNextRoll.red).toBe(false);
 		// The feed shows the roll-only skip without fabricating a move.
 		expect(match.eventFeed()).toEqual([
-			{ id: expect.any(Number), move: null, events: [], action: skipAction },
+			{
+				id: expect.any(Number),
+				move: null,
+				events: [],
+				action: skipAction,
+				nextPlayer: 'yellow',
+			},
 		]);
 		expect(match.result.current.presentationQueue).toHaveLength(0);
 		const restored = restoreActiveMatch(match.storage);
