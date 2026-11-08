@@ -55,6 +55,7 @@ import type {
 } from '../../lib/aeroplane/types';
 import type {
 	AeroplaneE2EFixture,
+	AeroplaneFeedEntry,
 	UseAeroplaneMatchOptions,
 } from '../../hooks/useAeroplaneMatch';
 import type { UseAeroplaneProgressResult } from '../../hooks/useAeroplaneProgress';
@@ -70,9 +71,7 @@ import {
 } from '../../lib/aeroplane/layout';
 import AeroplaneGame from '../AeroplaneGame';
 import AeroplaneBoard, { type AeroplaneBoardCue } from './AeroplaneBoard';
-import AeroplaneEventFeed, {
-	type AeroplanePresentationLike,
-} from './AeroplaneEventFeed';
+import AeroplaneEventFeed from './AeroplaneEventFeed';
 import AeroplaneSetup from './AeroplaneSetup';
 
 setupReactDom();
@@ -930,55 +929,53 @@ describe('Aeroplane event feed', () => {
 				{ kind: 'home', color: 'red', progress: 52, homeIndex: 1 },
 				{ kind: 'finished', color: 'red' },
 			];
-			const events: AeroplanePresentationLike[] = endpoints.map(
-				(to, index) => ({
-					id: index,
-					move: {
-						...move(
-							'red-0',
-							30,
-							index % 2 === 0
-								? [
-										{
-											type: 'jump',
-											planeId: 'red-0',
-											from: {
-												kind: 'track',
-												color: 'red',
-												progress: 1,
-												globalIndex: 0,
-											},
-											to,
+			const events: AeroplaneFeedEntry[] = endpoints.map((to, index) => ({
+				id: index,
+				move: {
+					...move(
+						'red-0',
+						30,
+						index % 2 === 0
+							? [
+									{
+										type: 'jump',
+										planeId: 'red-0',
+										from: {
+											kind: 'track',
+											color: 'red',
+											progress: 1,
+											globalIndex: 0,
 										},
-									]
-								: [
-										{
-											type: 'flight',
-											planeId: 'red-0',
-											from: {
-												kind: 'track',
-												color: 'red',
-												progress: 1,
-												globalIndex: 0,
-											},
-											to,
+										to,
+									},
+								]
+							: [
+									{
+										type: 'flight',
+										planeId: 'red-0',
+										from: {
+											kind: 'track',
+											color: 'red',
+											progress: 1,
+											globalIndex: 0,
 										},
-									]
-						),
-						finalEndpoint: to,
-					},
+										to,
+									},
+								]
+					),
+					finalEndpoint: to,
+				},
+				events: [],
+				action: {
+					kind: 'move' as const,
+					actor: (index % 2 === 0 ? 'human' : 'ai') as AeroplaneActionActor,
+					color: 'red' as const,
+					roll: 3,
+					selectedPlaneId: 'red-0',
 					events: [],
-					action: {
-						kind: 'move' as const,
-						actor: (index % 2 === 0 ? 'human' : 'ai') as AeroplaneActionActor,
-						color: 'red' as const,
-						roll: 3,
-						selectedPlaneId: 'red-0',
-						events: [],
-						checksum: '00000000',
-					},
-				})
-			);
+					checksum: '00000000',
+				},
+			}));
 			const { getByText } = render(<AeroplaneEventFeed events={events} />);
 			expect(getByText(/to hangar/i)).toBeTruthy();
 			expect(getByText(/to launch pad/i)).toBeTruthy();
@@ -1092,10 +1089,12 @@ describe('Aeroplane event feed', () => {
 				expect(getByText(line)).toBeTruthy();
 			}
 			// The roll-only skip keeps its real die and fabricates no movement.
-			const skip = getByTestId('aeroplane-feed-skip');
+			const skip = getByTestId('aeroplane-feed-roll-only');
 			expect(skip.textContent).toBe(
 				'AI: Yellow rolled 6 and skips this turn at Customs.'
 			);
+			// The brass highlight stays reserved for Customs.
+			expect(skip.className).toContain('border-brass');
 			expect(skip.parentElement?.querySelector('ul')).toBeNull();
 		});
 	});
@@ -1156,14 +1155,14 @@ describe('Aeroplane event feed', () => {
 
 	test('roll-only entries describe Customs, bonus rolls and passes exactly', () => {
 		withDesktopMatchMedia(() => {
-			const { getByText } = render(
+			const { getByText, getAllByTestId } = render(
 				<AeroplaneEventFeed
 					events={[
 						{
 							id: 1,
 							move: null,
 							events: [],
-							nextPlayer: 'red',
+							nextPlayer: 'yellow',
 							action: {
 								kind: 'roll',
 								actor: 'human',
@@ -1208,6 +1207,7 @@ describe('Aeroplane event feed', () => {
 							id: 4,
 							move: null,
 							events: [],
+							nextPlayer: 'green',
 							action: {
 								kind: 'roll',
 								actor: 'ai',
@@ -1232,10 +1232,19 @@ describe('Aeroplane event feed', () => {
 				getByText('AI: Yellow rolled 1; no legal moves. Turn passes to Blue.')
 			).toBeTruthy();
 			expect(
-				getByText(
-					'AI: Blue rolled 2; no legal moves. Turn passes to next player.'
-				)
+				getByText('AI: Blue rolled 2; no legal moves. Turn passes to Green.')
 			).toBeTruthy();
+			// Every no-move roll shares the roll-only row, but the brass
+			// highlight stays reserved for the Customs skip.
+			const rollOnlyRows = getAllByTestId('aeroplane-feed-roll-only');
+			expect(rollOnlyRows).toHaveLength(4);
+			for (const row of rollOnlyRows) {
+				if (row.textContent?.includes('skips this turn at Customs')) {
+					expect(row.className).toContain('border-brass');
+				} else {
+					expect(row.className).not.toContain('border-brass');
+				}
+			}
 		});
 	});
 
@@ -3624,7 +3633,7 @@ describe('Aeroplane game composition', () => {
 			'Red 10 coinsSkips next roll'
 		);
 		fireEvent.click(view.getByRole('button', { name: /roll die/i }));
-		expect(view.getByTestId('aeroplane-feed-skip').textContent).toBe(
+		expect(view.getByTestId('aeroplane-feed-roll-only').textContent).toBe(
 			'You: Red rolled 6 and skips this turn at Customs.'
 		);
 		expect(view.getByTestId('aeroplane-die-face').textContent).toBe('6');

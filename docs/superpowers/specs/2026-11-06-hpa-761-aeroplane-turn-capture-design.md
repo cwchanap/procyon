@@ -16,10 +16,10 @@ The reported setup is **Standard / Classic / 4-plane victory / Red human vs thre
 | Path                                                                             | Current behavior                                                                                                                                                                                                                            | Implication                                                                                                                                                                                              |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `apps/web/src/lib/aeroplane/game.ts` — `rollTurn`                                | Computes `getLegalMoves`; enters `awaiting-choice` when moves exist; advances only when no legal moves (or a Sky Tycoon Customs skip); a six retains a bonus turn on ordinary no-move rolls.                                                | Pure rules do **not** obviously explain a legal six launching from the hangar being silently forfeited. Prove any actual turn loss before changing the engine.                                           |
-| `apps/web/src/hooks/useAeroplaneMatch.ts` — `executeRoll`                        | Validates human/AI actor and phase, commits rolled state/action, updates the die; if zero legal moves, returns without a Standard-mode feed entry. One legal human move is auto-applied, multiple choices are exposed through `legalMoves`. | Real no-move passes are visually indistinguishable from lost turns in the event feed.                                                                                                                    |
+| `apps/web/src/hooks/useAeroplaneMatch.ts` — `executeRoll`                        | Validates human/AI actor and phase, commits rolled state/action, updates the die; on zero legal moves it commits a roll-only `AeroplaneRollOnlyFeedEntry` (real action and `nextPlayer`) into the feed and exposes the same entry as `noMoveNotice`. One legal human move is auto-applied, multiple choices are exposed through `legalMoves`. | No-move passes are now narrated in the feed **and** the status live region, so a real pass is no longer indistinguishable from a lost turn.                                                                                                |
 | `apps/web/src/hooks/useAeroplaneMatch.ts` — `applyMove`                          | Persists `playResolvedMove`'s effective move and action before the UI presentation; feeds a presentation for normal animations.                                                                                                             | Use the committed move as the display source, not a second board-state calculation.                                                                                                                      |
-| `apps/web/src/components/aeroplane/AeroplaneEventFeed.tsx` — `detailCopy`        | Prints `move.capturedPlaneIds` only when `tycoon` is true.                                                                                                                                                                                  | This **confirmed** presentation condition hides every Standard capture despite the existing engine capture data.                                                                                         |
-| `apps/web/src/components/aeroplane/AeroplaneBoard.tsx` and `AeroplaneStatus.tsx` | Each has a "No legal moves" branch under `phase === 'awaiting-choice' && legalMoves.length === 0`. The engine only enters `awaiting-choice` when it found legal moves.                                                                      | These are **unreachable in normal engine-produced states** and currently have tests using manually constructed impossible states. Delete both branches and those tests; the feed owns pass explanations. |
+| `apps/web/src/components/aeroplane/AeroplaneEventFeed.tsx` — `detailCopy`        | Renders every `move.capturedPlaneIds` victim as `"X captures Y."` in both modes; the `tycoon` prop is removed and feed props are typed as the hook's `AeroplaneFeedEntry`.                                                                  | Standard captures are announced; the earlier mode gate is gone.                                                                                                                                          |
+| `apps/web/src/components/aeroplane/AeroplaneBoard.tsx` and `AeroplaneStatus.tsx` | The unreachable `awaiting-choice && legalMoves.length === 0` "No legal moves" branches were deleted. `AeroplaneStatus` keeps a defensive `No legal planes can move.` guard for synthetic states and appends `rollOutcomeCopy(noMoveNotice)` inside its `role='status'` live region. | Pass explanations live in the feed and the live region, never in dead branches; the guard covers restored/fixture states the engine cannot produce.                                                      |
 | `apps/web/src/components/aeroplane/AeroplaneStatus.tsx`                          | The die uses `rollPresentation`, which may continue to show the most recent roller after the turn advances.                                                                                                                                 | Do not infer the current turn from the latest die alone; broader stale status and disabled-roll styling belong to HPA-763.                                                                               |
 | `apps/web/e2e/aeroplane.spec.ts` — `fixtureFrom`                                 | Defaults to `skipAnimations: true`, which suppresses `enqueuePresentation` and thus move-feed entries.                                                                                                                                      | Feed assertions in Playwright **must use `skipAnimations: false`** and wait through the existing paced AI behavior.                                                                                      |
 
@@ -49,38 +49,37 @@ Test the three uncovered deterministic cases against a recorded **tested commit 
 
 ### Design B — Reuse the existing roll-only feed entry for genuine passes
 
-`executeRoll` already constructs a `move: null` roll-only `AeroplaneSkipFeedEntry` for Customs. **Widen** that existing condition from `result.effectEvents.some(event => event.type === 'skipped')` to `result.legalMoves.length === 0`; never fabricate a `ResolvedMove` or an extra authoritative action.
+`executeRoll` already constructs a `move: null` roll-only `AeroplaneRollOnlyFeedEntry` (formerly `AeroplaneSkipFeedEntry`, renamed after review since it covers every no-move roll, not only skips) for Customs. **Widen** that existing condition from `result.effectEvents.some(event => event.type === 'skipped')` to `result.legalMoves.length === 0`; never fabricate a `ResolvedMove` or an extra authoritative action.
 
-Add **required** `nextPlayer: AeroplaneColor` to the hook's `AeroplaneSkipFeedEntry`, populated from `result.state.currentPlayer`. Also update the separately declared component-side `AeroplanePresentationLike` interface (`AeroplaneEventFeed.tsx:19-30`) with **optional** `nextPlayer?: AeroplaneColor`: ordinary move presentations do not include it, and synthetic test presentations use this interface. For committed roll-only entries from the hook, `nextPlayer` is always populated. Its `action` already contains the actual roller, roll face, and the Customs `{ type: 'skipped' }` event:
+The hook's `AeroplaneRollOnlyFeedEntry` carries **required** `nextPlayer: AeroplaneColor`, populated from `result.state.currentPlayer`. On the component side, `AeroplaneEventFeedProps` is typed directly as the hook's `AeroplaneFeedEntry` union — the earlier `AeroplanePresentationLike` view interface and its optional `nextPlayer` were removed, so `nextPlayer` is required on every roll-only entry and the `'next player'` fallback was deleted. Its `action` already contains the actual roller, roll face, and the Customs `{ type: 'skipped' }` event:
 
 - If `action.events` contains `type === 'skipped'`, keep the existing Customs message (including when the die is six).
 - Otherwise, when `nextPlayer === action.color`, render a no-legal-moves **rolls again** line (ordinary bonus six).
 - Otherwise, render a no-legal-moves **turn passes to {nextPlayer}** line.
 
-Use these **exact `eventCopy` templates** (actor is "AI" or "You"; colour and next-player labels come from `colorLabel`). Preserve the existing Customs line byte-for-byte:
+Use these **exact templates** (the feed line prefixes the actor as "AI" or "You"; colour and next-player labels come from `colorLabel`). Preserve the existing Customs line byte-for-byte. The outcome sentence lives in `rollOutcomeCopy` so the feed and `AeroplaneStatus`'s live region share it:
 
 ```ts
-const actor = presentation.action.actor === 'ai' ? 'AI' : 'You';
-const color = colorLabel[presentation.action.color];
-const roll = presentation.action.roll;
-// Inside the presentation.move === null branch:
-if (
-  (presentation.action.events ?? []).some(event => event.type === 'skipped')
-) {
-  return `${actor}: ${color} rolled ${roll} and skips this turn at Customs.`;
+const color = colorLabel[entry.action.color];
+const roll = entry.action.roll;
+// rollOutcomeCopy(entry: AeroplaneRollOnlyFeedEntry):
+if (entry.action.events.some(event => event.type === 'skipped')) {
+  return `${color} rolled ${roll} and skips this turn at Customs.`;
 }
-if (presentation.nextPlayer === presentation.action.color) {
-  return `${actor}: ${color} rolled ${roll}; no legal moves. ${color} rolls again.`;
+if (entry.nextPlayer === entry.action.color) {
+  return `${color} rolled ${roll}; no legal moves. ${color} rolls again.`;
 }
-const next = presentation.nextPlayer
-  ? colorLabel[presentation.nextPlayer]
-  : 'next player';
-return `${actor}: ${color} rolled ${roll}; no legal moves. Turn passes to ${next}.`;
+return `${color} rolled ${roll}; no legal moves. Turn passes to ${colorLabel[entry.nextPlayer]}.`;
+// eventCopy prefixes `${actor}: ` where actor is "AI" or "You".
 ```
 
 Examples: "You: Red rolled 3; no legal moves. Turn passes to Yellow.", "You: Red rolled 6; no legal moves. Red rolls again.", "AI: Yellow rolled 2; no legal moves. Turn passes to Blue.", and "You: Red rolled 6 and skips this turn at Customs."
 
-The `next player` fallback is only for a synthetic/older component presentation missing optional `nextPlayer`; the runtime roll-only hook entry must always carry the actual next player. Ensure tests assert the exact punctuation and labels, not loose fragments. Do **not** add a second `reason` field: it duplicates `action.events` and can disagree. Do not derive post-roll turn order again in the renderer.
+`nextPlayer` is required on every roll-only entry; there is no fallback. Ensure tests assert the exact punctuation and labels, not loose fragments. Do **not** add a second `reason` field: it duplicates `action.events` and can disagree. Do not derive post-roll turn order again in the renderer.
+
+The same committed entry is also exposed as `noMoveNotice` — set on every roll regardless of `skipAnimations` (the status live region is content, not presentation), replaced or cleared on the next roll, and cleared on reset/resume. `AeroplaneStatus` appends `rollOutcomeCopy(noMoveNotice)` inside its `role='status'` region, so a collapsed feed or a screen reader still hears why the turn ended without a move.
+
+Every `move === null` row carries `data-testid='aeroplane-feed-roll-only'`; the brass left-border highlight is reserved for the Customs `skipped` event so it keeps its meaning when several no-move rows accumulate.
 
 **Presentation gate:** Keep the same `!skipAnimationsRef.current` condition used by existing Customs feed entries. The test-only `skipAnimations: true` fixture suppresses both these feed entries and move presentations; a Playwright feed test must set it to `false`. The user-facing **Skip animations** button is separate: it stops the pending visual route without erasing already-logged feed entries. Feed entries are not persisted and never affect checksums, action records, board animation or RNG.
 
@@ -100,7 +99,9 @@ Keep the existing capture/position rules, visual return-to-hangar, scoring and a
 
 Delete the `awaiting-choice && legalMoves.length === 0` "No legal moves" branches from **both** `AeroplaneBoard.tsx` and `AeroplaneStatus.tsx`; `rollTurn` advances the turn directly rather than producing that normal-play state. Remove their direct component tests that construct it artificially (`AeroplaneGame.test.tsx` near the board status tests and `AeroplaneStatus.test.tsx`). Leave the valid AI awaiting-choice copy tests intact: `legalMoves` is intentionally empty when the controller hides an AI player's choices.
 
-The **event feed** now owns all ordinary pass explanations. No HPA-763 die/status visual redesign is required.
+Review follow-up: `AeroplaneStatus` regained a minimal `No legal planes can move.` guard because restored or fixture states can still enter `awaiting-choice` with zero legal moves — the guard must not render "0 legal planes — choose one." Its single-move line reads `One legal plane — choose it.` since auto-apply only occurs inside `executeRoll`, never on a restored state.
+
+The **event feed and the status live region** now own all ordinary pass explanations. No HPA-763 die/status visual redesign is required.
 
 ## Acceptance criteria
 

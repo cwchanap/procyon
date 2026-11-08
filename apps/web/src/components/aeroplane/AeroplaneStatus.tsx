@@ -5,7 +5,11 @@ import { tileIconUrl } from '../../lib/aeroplane/assets';
 import { AEROPLANE_VISUAL_MAX_MS } from '../../lib/aeroplane/presentation';
 import { TURN_ORDER } from '../../lib/aeroplane/topology';
 import type { AeroplaneState, ResolvedMove } from '../../lib/aeroplane/types';
-import type { AeroplaneRollPresentation } from '../../hooks/useAeroplaneMatch';
+import type {
+	AeroplaneRollOnlyFeedEntry,
+	AeroplaneRollPresentation,
+} from '../../hooks/useAeroplaneMatch';
+import { rollOutcomeCopy } from './AeroplaneEventFeed';
 
 export interface AeroplaneStatusProps {
 	state: AeroplaneState;
@@ -14,6 +18,8 @@ export interface AeroplaneStatusProps {
 	isAnimating?: boolean;
 	/** Latest roll signal; its face outranks `state.pendingRoll` when present. */
 	rollPresentation?: AeroplaneRollPresentation | null;
+	/** Latest committed roll with no legal move, announced in the live region. */
+	noMoveNotice?: AeroplaneRollOnlyFeedEntry | null;
 	/** Shared reduced-motion flag; disables the decorative die tumble. */
 	reducedMotion?: boolean;
 }
@@ -38,8 +44,11 @@ function statusCopy(
 			: `${colorLabel[state.currentPlayer]} is rolling…`;
 	}
 	if (state.phase === 'awaiting-choice') {
+		// The engine never commits awaiting-choice without legal moves, but a
+		// restored or fixture state can: never ask for a plane that does not exist.
+		if (legalMoves.length === 0) return 'No legal planes can move.';
 		return legalMoves.length === 1
-			? 'One legal plane will move.'
+			? 'One legal plane — choose it.'
 			: `${legalMoves.length} legal planes — choose one.`;
 	}
 	return `${colorLabel[state.currentPlayer]} to roll.`;
@@ -51,12 +60,17 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 	isHumanTurn = true,
 	isAnimating = false,
 	rollPresentation = null,
+	noMoveNotice = null,
 	reducedMotion = false,
 }) => {
 	const face = rollPresentation?.face ?? state.pendingRoll;
 	const roller = rollPresentation?.color ?? state.currentPlayer;
 	const die = face === null ? '—' : String(face);
-	const message = statusCopy(state, legalMoves, isHumanTurn);
+	// The no-move outcome rides the same live region so collapsed-feed and
+	// screen-reader users hear why a turn ended without a move.
+	const message =
+		statusCopy(state, legalMoves, isHumanTurn) +
+		(noMoveNotice === null ? '' : ` ${rollOutcomeCopy(noMoveNotice)}`);
 
 	// Decorative tumble keyed to the roll id. It never alters the displayed
 	// outcome: the tumble is drawn outside the live region (over the die

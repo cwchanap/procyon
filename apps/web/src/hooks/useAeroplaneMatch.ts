@@ -82,7 +82,7 @@ export interface AeroplanePresentation {
  * the real die and roll action, never a fabricated move, and is not queued
  * for the board. `nextPlayer` is the committed next player.
  */
-export interface AeroplaneSkipFeedEntry {
+export interface AeroplaneRollOnlyFeedEntry {
 	id: number;
 	move: null;
 	events: [];
@@ -91,7 +91,9 @@ export interface AeroplaneSkipFeedEntry {
 	chatter?: never;
 }
 
-export type AeroplaneFeedEntry = AeroplanePresentation | AeroplaneSkipFeedEntry;
+export type AeroplaneFeedEntry =
+	| AeroplanePresentation
+	| AeroplaneRollOnlyFeedEntry;
 
 /**
  * Ephemeral die presentation for the most recent roll.  It is controller UI
@@ -168,6 +170,12 @@ export interface UseAeroplaneMatchResult {
 	presentationQueue: AeroplanePresentation[];
 	eventFeed: AeroplaneFeedEntry[];
 	rollPresentation: AeroplaneRollPresentation | null;
+	/**
+	 * Latest committed roll with no legal move, for the status live region;
+	 * replaced or cleared on the next roll. Ephemeral like rollPresentation —
+	 * never persisted, replayed, or gated by skipAnimations.
+	 */
+	noMoveNotice: AeroplaneRollOnlyFeedEntry | null;
 	/** Ephemeral notable human moments; never persisted, cleared on reset/new match/resume. */
 	humanMoments: HumanMoment[];
 	isAnimating: boolean;
@@ -605,6 +613,8 @@ export function useAeroplaneMatch(
 	const [eventFeed, setEventFeed] = useState<AeroplaneFeedEntry[]>([]);
 	const [rollPresentation, setRollPresentation] =
 		useState<AeroplaneRollPresentation | null>(null);
+	const [noMoveNotice, setNoMoveNotice] =
+		useState<AeroplaneRollOnlyFeedEntry | null>(null);
 	const [humanMoments, setHumanMoments] = useState<HumanMoment[]>([]);
 	// Bumped by every successful terminal POST (via onSaved, not the guarded
 	// onSuccess) so server-sourced progress can refresh, including for a save
@@ -640,6 +650,7 @@ export function useAeroplaneMatch(
 		setPresentationQueue([]);
 		setEventFeed([]);
 		setRollPresentation(null);
+		setNoMoveNotice(null);
 	}, []);
 
 	const save = useCallback((match: ActiveAeroplaneMatch) => {
@@ -831,15 +842,21 @@ export function useAeroplaneMatch(
 				color: current.state.currentPlayer,
 				animate: !skipAnimationsRef.current,
 			});
-			if (!skipAnimationsRef.current && result.legalMoves.length === 0) {
-				const entry: AeroplaneSkipFeedEntry = {
-					id: (presentationIdRef.current += 1),
-					move: null,
-					events: [],
-					action: rollAction,
-					nextPlayer: result.state.currentPlayer,
-				};
-				setEventFeed(previous => [...previous, entry]);
+			// The roll-only entry doubles as the status notice: the live region
+			// must announce a no-move roll even when the feed is suppressed.
+			const rollOnlyEntry: AeroplaneRollOnlyFeedEntry | null =
+				result.legalMoves.length === 0
+					? {
+							id: (presentationIdRef.current += 1),
+							move: null,
+							events: [],
+							action: rollAction,
+							nextPlayer: result.state.currentPlayer,
+						}
+					: null;
+			setNoMoveNotice(rollOnlyEntry);
+			if (rollOnlyEntry !== null && !skipAnimationsRef.current) {
+				setEventFeed(previous => [...previous, rollOnlyEntry]);
 			}
 			if (result.legalMoves.length === 0) return;
 			if (actor === 'human') {
@@ -1081,6 +1098,7 @@ export function useAeroplaneMatch(
 		presentationQueue,
 		eventFeed,
 		rollPresentation,
+		noMoveNotice,
 		humanMoments,
 		isAnimating: presentationQueue.length > 0,
 		isHumanTurn: humanTurn,
