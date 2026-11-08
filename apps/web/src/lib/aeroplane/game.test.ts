@@ -303,3 +303,45 @@ test('the chance deck is seeded: same root seed, same order', () => {
 	expect(order(4242)).toEqual(order(4242));
 	expect(order(4242)).not.toEqual(order(4243));
 });
+
+test('an all-hangar six offers all four launches and keeps red awaiting choice', () => {
+	const state = stateWithPlanes([
+		plane('red-0', null),
+		plane('red-1', null),
+		plane('red-2', null),
+		plane('red-3', null),
+	]);
+	const result = rollTurn(state, 6);
+
+	expect(result.legalMoves.map(move => move.planeId)).toEqual([
+		'red-0',
+		'red-1',
+		'red-2',
+		'red-3',
+	]);
+	expect(
+		result.legalMoves.every(
+			move =>
+				move.start.kind === 'hangar' && move.finalEndpoint.kind === 'launch'
+		)
+	).toBe(true);
+	expect(result.state.phase).toBe('awaiting-choice');
+	expect(result.state.pendingRoll).toBe(6);
+	expect(result.state.currentPlayer).toBe('red');
+});
+
+test('an occupied launch pad blocks launches and leaves only the pad plane', () => {
+	const state = stateWithPlanes([
+		plane('red-0', null),
+		plane('red-1', 0),
+		plane('red-2', null),
+		plane('red-3', null),
+	]);
+	const result = rollTurn(state, 6);
+
+	expect(result.legalMoves).toHaveLength(1);
+	expect(result.legalMoves[0]!.planeId).toBe('red-1');
+	expect(result.state.phase).toBe('awaiting-choice');
+	expect(result.state.pendingRoll).toBe(6);
+	expect(result.state.currentPlayer).toBe('red');
+});
