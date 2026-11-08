@@ -67,10 +67,14 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 	const roller = rollPresentation?.color ?? state.currentPlayer;
 	const die = face === null ? '—' : String(face);
 	// The no-move outcome rides the same live region so collapsed-feed and
-	// screen-reader users hear why a turn ended without a move.
-	const message =
-		statusCopy(state, legalMoves, isHumanTurn) +
-		(noMoveNotice === null ? '' : ` ${rollOutcomeCopy(noMoveNotice)}`);
+	// screen-reader users hear why a turn ended without a move. It is keyed
+	// on the committed roll: a consecutive identical outcome still replaces
+	// the node, which the live region announces as a fresh update.
+	const message = statusCopy(state, legalMoves, isHumanTurn);
+	const notice =
+		noMoveNotice === null ? null : (
+			<span key={noMoveNotice.id}>{` ${rollOutcomeCopy(noMoveNotice)}`}</span>
+		);
 
 	// Decorative tumble keyed to the roll id. It never alters the displayed
 	// outcome: the tumble is drawn outside the live region (over the die
@@ -148,12 +152,16 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 					<p className='sr-only'>{`Die ${die}${face === null ? '' : `, rolled by ${colorLabel[roller]}`}`}</p>
 					<div className='order-3 hidden min-w-0 basis-full border-t border-line pt-2 text-sm text-ivory-dim sm:block'>
 						{message}
+						{notice}
 						{isAnimating && (
 							<span className='ml-2 text-aeroplane'>Route in flight…</span>
 						)}
 					</div>
 					<div className='order-3 min-w-0 basis-full border-t border-line pt-2 text-sm text-ivory-dim sm:hidden'>
-						<span>{message}</span>
+						<span>
+							{message}
+							{notice}
+						</span>
 						{isAnimating && (
 							<span className='ml-2 text-aeroplane'>In flight</span>
 						)}

@@ -166,10 +166,20 @@ async function gotoAeroplane(
 		page.getByRole('heading', { name: 'Aeroplane Chess', exact: true })
 	).toBeVisible({ timeout: 15000 });
 	await expect
-		.poll(async () => (await storedMatchOrNull(page))?.savedAt ?? null, {
-			timeout: 15000,
-		})
-		.not.toBe(previousSavedAt);
+		.poll(
+			async () => {
+				const saved = await storedMatchOrNull(page);
+				// Require the envelope itself — a swallowed read returning null
+				// must not pass — and its fixture identity plus fresh timestamp.
+				return (
+					saved !== null &&
+					(fixture.seed === undefined || saved.rootSeed === fixture.seed) &&
+					saved.savedAt !== previousSavedAt
+				);
+			},
+			{ timeout: 15000 }
+		)
+		.toBe(true);
 }
 
 const TYCOON_CLASSIC: Partial<AeroplaneConfig> = {
@@ -299,8 +309,17 @@ async function driveUntil(
 		await expect
 			.poll(
 				async () => {
-					const committedCount = await committed();
-					lastCommitted = String(committedCount);
+					let committedCount: number;
+					try {
+						committedCount = await committed();
+						lastCommitted = String(committedCount);
+						lastObserveError = undefined;
+					} catch (error) {
+						if (isPermanentDriveError(error)) throw error;
+						// A failed read is not a zero — retry without clicking.
+						lastObserveError = error;
+						return false;
+					}
 					if (committedCount === 0) {
 						try {
 							await button.click({ timeout: 1500 });
