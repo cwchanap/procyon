@@ -12,36 +12,37 @@
 - [ ] Record the exact commit/build deployed to `https://procyon.cwchanap.dev/` (if available) and the commit under test. Test in an anonymous browser without a dev fixture.
 - [ ] Start a Standard/Classic/Red match, make several committed moves, record piece positions, phase, active color, action count, and recent feed, reload, then continue the match. Repeat the focused awaiting-choice scenario and an AI-turn reload. Check Sky Tycoon as an existing regression.
 - [ ] Verify mute on/off through a reload in the production build. Compare against existing `e2e/aeroplane.spec.ts` tests (`reloads an awaiting-choice match`, `restores mode, coins and deck`, `persists the sound mute toggle`). **If match state and mute are already correct on current code, do not reimplement them.**
-- [ ] Check signed-out `/login`: browser console errors, response for `https://accounts.google.com/gsi/client`, whether the Google client ID was available at build time, and whether the React island hydrated. Differentiate configuration error from blocked external script and OAuth rejection.
+- [ ] Check signed-out `/login`: inspect browser console, GIS script loading, React hydration, and which **real vs test** public Google client ID was embedded in the deployed build. Verify `https://procyon.cwchanap.dev` is listed in that client's Google Authorized JavaScript origins. The existing `env.ts` guard fails builds with no ID; do not weaken it. Distinguish a bad ID/origin, blocked script, failed GIS initialization and OAuth rejection.
 - [ ] Reproduce the Aeroplane intro clipping at desktop/mobile widths. Do not modify CSS unless measurable clipping remains.
 
 **Exit:** Note which 2026-11-04 findings reproduce on the tested commit. Prioritize the verified login entry-point blocker, then remaining UI gaps.
 
-## Step 1 — Persist only the recent Aeroplane display feed
+## Step 1 — Reconstruct Aeroplane feed from saved actions
 
-**Targets:** `apps/web/src/lib/aeroplane/types.ts`, `persistence.ts`, `apps/web/src/hooks/useAeroplaneMatch.ts`; use existing `AeroplaneEventFeed.tsx` without changing copy if possible.
+**Targets:** `apps/web/src/lib/aeroplane/replay.ts`, `apps/web/src/hooks/useAeroplaneMatch.ts`, their existing tests; leave `types.ts`, `persistence.ts`, the v2 envelope and synchronous save order unchanged.
 
-- [ ] Reuse the v2 active-match envelope. Add a small, optionally present `recentFeed` collection for up to **50** committed `AeroplaneFeedEntry`-compatible items. Keep authority in `state`, RNGs and `actions`; the feed is presentation only.
-- [ ] Arrange move/roll-only entry construction so the active match and its associated new feed entry are saved together at the existing synchronous `commit` boundary, before board animation. Keep the existing `skipAnimationsRef` test-fixture semantics and HPA-761 no-move/capture copy. Avoid an independent second localStorage key or a second rules pass.
-- [ ] Restore saved entries into the hook's feed on initial mount and `resume()`; reset/new match clears them. Assign nonconflicting IDs for newly committed entries after a restore. Do **not** push restored entries to `presentationQueue`, replay audio or recompute past `chatter`.
-- [ ] Bound the serialized feed to 50 records without touching `actions`. Discard malformed optional feed data while keeping a valid authoritative match recoverable. Keep the shape validation proportional to this trusted same-origin UI cache.
-- [ ] Add a focused hook/persistence test and one Playwright scenario that makes a real move, reloads, checks the exact original feed text/count and unchanged board/turn/RNG, and continues with no duplicate log entry. Reuse the existing `installFixtureOnce` helper only where deterministic randomness is necessary.
+- [ ] Extend the existing deterministic `replayMatch` diagnostic to return ordered **display-only** steps for committed moves and rolls with no legal move: recorded action, effective resolved move (or `null`), and post-action state/turn/result needed by the formatter. Do not add a feed field, change match validation, or replay a saved match as authoritative game state.
+- [ ] Extract the existing move/no-move feed entry construction (including deterministic `getChatterLine` selection, terminal win/loss copy and the HPA-761 capture/Customs semantics) into one small pure builder reused by live play and restoration. A legal roll followed by a move must yield one move entry, not an extra roll entry. Preserve production behavior and DEV fixture `skipAnimationsRef` suppression of live presentations.
+- [ ] On initial mount and explicit `resume()`, derive `eventFeed` **once** from the stored actions when deterministic replay succeeds; seed `presentationIdRef` past restored IDs. Reset/new match still clears the feed. Do **not** enqueue restored entries into `presentationQueue`, replay audio, fire moments/banners, or trigger AI moves from reconstruction.
+- [ ] If replay is invalid or mismatches, retain the valid authoritative match and show an empty feed; add a DEV-only `console.warn` with the mismatch reason for diagnosis. Do not throw, clear the saved match, or block existing AI resume scheduling. No arbitrary 50-entry cap: match the full live feed count.
+- [ ] Add a focused non-skipping round-trip hook/unit test: play several committed actions including a move and a no-move roll, reload or call `resume()`, deep-compare feed entries excluding regenerated IDs, verify state/turn/RNG unchanged and later entries appended once. Extend the existing awaiting-choice reload Playwright test with a feed-count assertion; avoid extra full E2E fixtures unless needed.
 
-## Step 2 — Make Google sign-in discoverable and diagnosable
+## Step 2 — Fix the existing Google sign-in widget's blank state
 
-**Targets:** `apps/web/src/lib/env.ts`, `apps/web/src/components/GoogleSignInButton.tsx`, possibly `LoginForm.tsx`; existing GIS script in `Layout.astro`.
+**Targets:** `apps/web/src/components/GoogleSignInButton.tsx` and its tests; keep `lib/env.ts` production build-time guard, `LoginForm.tsx`, and `Layout.astro` GIS integration unless triage shows an additional reproducible defect.
 
-- [ ] Prevent a missing `PUBLIC_GOOGLE_CLIENT_ID` from throwing while importing `env.ts` in production and silently blanking the login island; show a visible configuration error at the sign-in component instead. Preserve the public build-time configuration contract and check the deployment setting without committing values.
-- [ ] Keep GIS `initialize` / `renderButton` / existing `signInWithGoogle` callback. Show an accessible loading state until the widget renders; on absent/blocked GIS or failed initialization, show a bounded error and a clear retry/reload affordance. Cancel polling on unmount; no new OAuth integration or fake credential button.
-- [ ] Write one deterministic component or Playwright test with a stub GIS `renderButton` for the healthy case; cover unavailable-library and missing-client-ID behavior without making real Google sign-in requests. Confirm `/login` is usable in the correctly configured deployed build.
+- [ ] **Retain** the existing `PUBLIC_GOOGLE_CLIENT_ID` production build failure and the component's existing missing-ID and bounded missing-GIS error handling. Check the deployed ID/origin (Step 0), not a new runtime configuration architecture.
+- [ ] Show an accessible pending message while the existing bounded GIS polling waits for the script. Wrap `google.accounts.id.initialize` and `renderButton` in `try/catch`; a thrown initialization/render error must show the existing error UI rather than leave the card blank. Keep polling cleanup on unmount.
+- [ ] Add a simple **Reload** button to the existing GIS error state. Keep the real Google `renderButton` and existing `signInWithGoogle` callback; do not create a fake login button or another auth flow.
+- [ ] Add focused component tests with a stubbed `window.google.accounts.id` and fake timers: normal render, missing script timeout, and a thrown `renderButton`/`initialize` error. No real Google OAuth calls; no redundant missing-client-ID test for production. Confirm the correctly configured deployed `/login` can expose the actual sign-in control.
 
 ## Step 3 — Aeroplane turn and die UI
 
-**Targets:** `apps/web/src/components/aeroplane/AeroplaneBoard.tsx`, `AeroplaneStatus.tsx`, and the smallest shared turn-copy helper if required.
+**Targets:** `apps/web/src/components/aeroplane/AeroplaneBoard.tsx` and `AeroplaneStatus.tsx`; **no new shared helper file**.
 
 - [ ] Keep `disabled={!isHumanTurn || state.phase !== 'awaiting-roll'}` and hook actor guard. Apply scoped disabled classes to the Roll control so AI turns are visually inactive, not brass/gold. Do not alter the global button palette.
-- [ ] Avoid competing board-vs-status wording: use the authoritative `state.phase` and `state.currentPlayer` in one small shared copy decision, or remove the redundant board status line. Preserve the HPA-761 live-region no-move explanation.
-- [ ] If the latest `rollPresentation.color` differs from `state.currentPlayer`, label the visible die as “Last roll by …” while preserving the already committed face and the 650 ms AI pacing. Clear/settle on new roll, reset and resume. Do not infer turn ownership from the die.
+- [ ] Export the existing `statusCopy` from `AeroplaneStatus.tsx` and call it from `AeroplaneBoard.tsx` with the same authoritative `state`, `legalMoves`, and `isHumanTurn`. Keep the board's keyboard hint (`Enter / Space`) only as a suffix when a human is choosing. Preserve the HPA-761 live-region no-move explanation.
+- [ ] If the latest `rollPresentation.color` differs from `state.currentPlayer`, change the existing die label to “Last roll by …”; otherwise retain “Rolled by …”. Preserve the committed face, screen-reader wording, and 650 ms AI pacing. Reset/resume behavior stays as-is; never infer turn ownership from the die.
 - [ ] Add focused Board/Status component assertions for AI awaiting-roll/awaiting-choice, human ready/choice, pending roll from a prior seat, and the disabled button's appearance/semantics. Playwright-smoke a handoff with repeated AI turns and no accidental human rolls.
 
 ## Step 4 — Copy and Chess Start readiness
@@ -56,11 +57,11 @@
 ## Step 5 — Verification and handoff
 
 - [ ] Run from `apps/web`: `bun test src`, `bun run typecheck`, `bun run lint`, `bun run build`.
-- [ ] Run the focused Playwright suite: `bunx playwright test e2e/aeroplane.spec.ts e2e/homepage.spec.ts e2e/auth.spec.ts e2e/chess-rival.spec.ts` (or narrower existing tests if full suite is costly). No live Google OAuth in CI.
-- [ ] Manual smoke on desktop and mobile: signed-out login control, valid GSI configuration, visible failure state with GIS blocked, a multi-turn reload, recent feed continuity, stored mute, AI-turn disabled roll, die/turn wording, Chess Start loading reason, and full homepage/intro copy.
+- [ ] Run focused Playwright tests from `apps/web`, including the existing Aeroplane awaiting-choice reload and homepage assertions plus auth/chess-rival tests that exist in the repo; avoid guessing test filenames (`bunx playwright test e2e/aeroplane.spec.ts e2e/homepage.spec.ts` plus discovered relevant files). No live Google OAuth in CI.
+- [ ] Manual smoke on desktop and mobile: signed-out login control, valid GSI ID/authorized origin, visible failure state with GIS blocked, a multi-turn reload and complete reconstructed feed, stored mute, AI-turn disabled roll, die/turn wording, Chess Start loading reason, and full homepage/intro copy.
 - [ ] Compare outcomes with the eight original findings in HPA-763, record the tested SHA and deployment status in this PR, and mark any already-fixed findings as **verified rather than re-implemented**.
 - [ ] Keep this PR in draft during implementation and review. After code and checks pass, update these docs with actual results and mark the existing PR ready. **Do not create a separate implementation PR.**
 
 ## Explicit exclusions
 
-No change to Aeroplane rules, dice/AI scheduling, HPA-761 capture/feed logic, database schema, other game variants beyond Chess Start readability, alternate authentication, full event-sourcing, art or audio production, and no new persistence service. Correct the reports with the fewest maintainable, testable changes.
+No change to Aeroplane rules, dice/AI scheduling, persisted v2 schema or save ordering, HPA-761 capture/feed semantics, database schema, other game variants beyond Chess Start readability, alternate authentication, full event-sourcing, art or audio production, and no new persistence service. Correct the reports with the fewest maintainable, testable changes.
