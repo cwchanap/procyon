@@ -847,6 +847,16 @@ test.describe('Aeroplane Chess critical journey', () => {
 		expect(after.state.phase).toBe('awaiting-choice');
 		expect(after.state.pendingRoll).toBe(1);
 		expect(after.diceRng).toEqual(before.diceRng);
+
+		// The restored feed matches the saved action count (none recorded), and
+		// the first post-restore commit appends exactly one entry (HPA-763).
+		await expect(
+			page.getByRole('heading', { name: /Event feed\s*\(0\)/ })
+		).toBeVisible();
+		await page.getByRole('button', { name: /Red plane 1/i }).click();
+		await expect(
+			page.getByRole('heading', { name: /Event feed\s*\(1\)/ })
+		).toBeVisible();
 	});
 
 	test('completes a deterministic Quick & Chill two-plane victory', async ({

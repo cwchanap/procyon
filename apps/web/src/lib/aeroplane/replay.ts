@@ -21,12 +21,26 @@ import type {
 	TycoonEffectEvent,
 } from './types';
 
+/**
+ * Display-only reconstruction of one committed feed-worthy action.  `move`
+ * is the effective resolved move for committed moves, or null for a roll
+ * with no legal move.  `state` is the committed post-action state the feed
+ * formatter reads turn/phase/result from.  Never authoritative game state.
+ */
+export interface ReplayFeedStep {
+	action: AeroplaneActionRecord;
+	move: ResolvedMove | null;
+	state: AeroplaneState;
+}
+
 export interface ReplayOkResult {
 	kind: 'ok';
 	state: AeroplaneState;
 	checksum: string;
 	actionCount: number;
 	match: AeroplaneMatch;
+	/** Ordered steps for committed moves and only no-move rolls. */
+	steps: ReplayFeedStep[];
 }
 
 export interface ReplayMismatchResult {
@@ -222,7 +236,8 @@ function finishResult(
 	state: AeroplaneState,
 	diceRng: AeroplaneMatch['diceRng'],
 	aiRng: AeroplaneMatch['aiRng'],
-	actionCount: number
+	actionCount: number,
+	steps: ReplayFeedStep[]
 ): ReplayResult {
 	const actualChecksum = checksumState(state);
 	const expectedChecksum = checksumState(snapshot.state);
@@ -265,6 +280,7 @@ function finishResult(
 			diceRng,
 			aiRng,
 		},
+		steps,
 	};
 }
 
@@ -284,6 +300,7 @@ export function replayMatch(value: PersistedAeroplaneMatchV2): ReplayResult {
 	let state = initial.state;
 	let diceRng = initial.diceRng;
 	let aiRng = initial.aiRng;
+	const steps: ReplayFeedStep[] = [];
 
 	for (let index = 0; index < snapshot.actions.length; index += 1) {
 		const action = snapshot.actions[index]!;
@@ -303,6 +320,10 @@ export function replayMatch(value: PersistedAeroplaneMatchV2): ReplayResult {
 			if (eventMismatch) return eventMismatch;
 			const checksumMismatch = checkActionChecksum(action, state, index);
 			if (checksumMismatch) return checksumMismatch;
+			// A roll with legal moves is presented by its subsequent move; only
+			// a no-move roll earns its own display step.
+			if (rolled.legalMoves.length === 0)
+				steps.push({ action, move: null, state });
 			continue;
 		}
 
@@ -365,6 +386,7 @@ export function replayMatch(value: PersistedAeroplaneMatchV2): ReplayResult {
 		if (eventMismatch) return eventMismatch;
 		const checksumMismatch = checkActionChecksum(action, state, index);
 		if (checksumMismatch) return checksumMismatch;
+		steps.push({ action, move: transition.move, state });
 	}
 
 	return finishResult(
@@ -373,6 +395,7 @@ export function replayMatch(value: PersistedAeroplaneMatchV2): ReplayResult {
 		state,
 		diceRng,
 		aiRng,
-		snapshot.actions.length
+		snapshot.actions.length,
+		steps
 	);
 }
