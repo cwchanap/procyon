@@ -32,6 +32,7 @@ import {
 import { TYCOON_TILES, type TycoonTileKind } from '../../lib/aeroplane/tycoon';
 import type { SkinId } from '../../lib/aeroplane/rewards';
 import { Button } from '../ui/Button';
+import { statusCopy } from './AeroplaneStatus';
 import type {
 	AeroplaneColor,
 	AeroplaneEvent,
@@ -1100,22 +1101,17 @@ export const AeroplaneBoard: React.FC<AeroplaneBoardProps> = ({
 			)}
 			<div className='flex flex-wrap items-center justify-between gap-3'>
 				<p className='text-sm text-ivory-dim'>
-					{state.phase === 'finished'
-						? `${colorLabel[state.winner ?? state.currentPlayer]} wins the match.`
-						: !isHumanTurn
-							? state.phase === 'awaiting-choice'
-								? `${colorLabel[state.currentPlayer]} is choosing a move…`
-								: `${colorLabel[state.currentPlayer]} is rolling…`
-							: state.phase === 'awaiting-choice'
-								? 'Choose a highlighted plane, or use Enter / Space.'
-								: 'Roll the die to start your turn.'}
+					{statusCopy(state, legalMoves, isHumanTurn)}
+					{isHumanTurn &&
+						state.phase === 'awaiting-choice' &&
+						legalMoves.length > 0 && <span> Use Enter / Space to choose.</span>}
 				</p>
 				<Button
 					type='button'
 					variant='default'
 					onClick={onRoll}
 					disabled={!isHumanTurn || state.phase !== 'awaiting-roll'}
-					className='min-h-11 min-w-32 touch-manipulation'
+					className='min-h-11 min-w-32 touch-manipulation disabled:bg-ink-600 disabled:text-ivory-dim'
 				>
 					Roll die
 				</Button>

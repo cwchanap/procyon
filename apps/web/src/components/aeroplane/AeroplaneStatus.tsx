@@ -26,9 +26,10 @@ export interface AeroplaneStatusProps {
 
 /**
  * Turn-status line: the match result once finished, the acting player's
- * pacing copy on AI turns, or the human's roll/choice prompt.
+ * pacing copy on AI turns, or the human's roll/choice prompt. Exported so
+ * the board hint reuses the exact same authoritative wording.
  */
-function statusCopy(
+export function statusCopy(
 	state: AeroplaneState,
 	legalMoves: readonly ResolvedMove[],
 	isHumanTurn: boolean
@@ -195,7 +196,9 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 							data-testid='aeroplane-die-roller'
 							className='text-center text-xs font-mono uppercase tracking-[0.18em] text-ivory-dim'
 						>
-							Rolled by {colorLabel[roller]}
+							{roller !== state.currentPlayer
+								? `Last roll by ${colorLabel[roller]}`
+								: `Rolled by ${colorLabel[roller]}`}
 						</p>
 					)}
 				</div>

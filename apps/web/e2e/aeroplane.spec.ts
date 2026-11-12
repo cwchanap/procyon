@@ -552,6 +552,61 @@ test.describe('Aeroplane Chess critical journey', () => {
 		]);
 	});
 
+	test('hands off to repeated AI turns with an inactive Roll and no accidental human rolls', async ({
+		page,
+	}) => {
+		const fixture = fixtureFrom(
+			QUICK_CONFIG,
+			41150,
+			{},
+			{
+				diceRng: rngForRolls([5, 1, 1, 1]),
+				// Animations on so each AI turn keeps its paced delay: the UI
+				// handoff window must be observable, not cascaded instantly.
+				skipAnimations: false,
+			}
+		);
+		await gotoAeroplane(page, fixture);
+		const rollButton = page.getByRole('button', { name: 'Roll die' });
+		const dieRoller = page.getByTestId('aeroplane-die-roller');
+		await expect(rollButton).toBeEnabled();
+
+		await rollButton.click();
+		await page.getByRole('button', { name: /Red plane 1/i }).click();
+
+		// Yellow is up: the committed face stays but is labelled as Red's last
+		// roll, the control is visibly inactive, and the status copy agrees.
+		await expect(dieRoller).toHaveText('Last roll by Red');
+		await expect(rollButton).toBeDisabled();
+		await expect(status(page)).toContainText('Yellow is rolling');
+
+		// Force-clicking the inactive control must not commit a human roll;
+		// the hook's actor guard is the backstop behind the disabled state.
+		await rollButton.click({ force: true }).catch(() => {});
+
+		// Yellow, blue and green each take exactly one paced AI turn, then the
+		// human turn returns — the forced click added no extra action.
+		await expect(status(page)).toContainText('Blue is rolling', {
+			timeout: 15_000,
+		});
+		await expect(rollButton).toBeEnabled({ timeout: 15_000 });
+		const saved = await storedMatch(page);
+		expect(
+			saved.actions.map(action => ({
+				actor: action.actor,
+				kind: action.kind,
+			}))
+		).toEqual([
+			{ actor: 'human', kind: 'roll' },
+			{ actor: 'human', kind: 'move' },
+			{ actor: 'ai', kind: 'roll' },
+			{ actor: 'ai', kind: 'roll' },
+			{ actor: 'ai', kind: 'roll' },
+		]);
+		await expect(status(page)).toContainText('Red to roll');
+		await expect(dieRoller).toHaveText('Last roll by Green');
+	});
+
 	test('resolves base arrival 30 to 34 while flight arrival 18 stops at 30', async ({
 		page,
 	}) => {

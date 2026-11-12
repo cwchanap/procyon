@@ -613,7 +613,9 @@ describe('Aeroplane board interactions', () => {
 		expect(onSelect.mock.calls[0]![0]).toBe('red-0');
 	});
 
-	test('shows the choose-a-plane message when awaiting-choice has moves', () => {
+	test('shows the authoritative choose copy with a keyboard suffix for a human choice', () => {
+		// The board reuses AeroplaneStatus's statusCopy; the Enter / Space hint
+		// survives only as a suffix while the human is choosing a plane.
 		const { getByText } = render(
 			<AeroplaneBoard
 				state={fixtureState({ phase: 'awaiting-choice', pendingRoll: 3 })}
@@ -622,9 +624,8 @@ describe('Aeroplane board interactions', () => {
 				onSelectMove={mock(() => {})}
 			/>
 		);
-		expect(
-			getByText(/choose a highlighted plane, or use enter \/ space/i)
-		).toBeTruthy();
+		expect(getByText(/one legal plane — choose it\./i)).toBeTruthy();
+		expect(getByText('Use Enter / Space to choose.')).toBeTruthy();
 	});
 
 	test('hides legal moves and disables Roll during an AI awaiting-choice turn', () => {
@@ -688,6 +689,59 @@ describe('Aeroplane board interactions', () => {
 		expect(getByText(/blue is rolling/i)).toBeTruthy();
 		const rollButton = getByRole('button', { name: /roll die/i });
 		expect(rollButton.getAttribute('disabled')).not.toBeNull();
+	});
+
+	test('shows the authoritative to-roll copy for a ready human without the keyboard hint', () => {
+		const { getByText, queryByText, getByRole } = render(
+			<AeroplaneBoard
+				state={fixtureState({ phase: 'awaiting-roll', pendingRoll: null })}
+				legalMoves={[]}
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(getByText('Red to roll.')).toBeTruthy();
+		expect(queryByText(/enter \/ space/i)).toBeNull();
+		expect(
+			getByRole('button', { name: /roll die/i }).getAttribute('disabled')
+		).toBeNull();
+	});
+
+	test('keeps the status copy and keyboard hint off an AI awaiting-roll turn', () => {
+		const { getByText, queryByText } = render(
+			<AeroplaneBoard
+				state={fixtureState({
+					currentPlayer: 'yellow',
+					phase: 'awaiting-roll',
+					pendingRoll: null,
+				})}
+				legalMoves={[]}
+				isHumanTurn={false}
+				onRoll={mock(() => {})}
+			/>
+		);
+		expect(getByText(/yellow is rolling…/i)).toBeTruthy();
+		expect(queryByText(/enter \/ space/i)).toBeNull();
+	});
+
+	test('the disabled Roll control carries scoped inactive styling and semantics', () => {
+		// The shared brass palette stays untouched; only this control overrides
+		// its disabled look so an AI turn reads as inactive, not gold.
+		const { getByRole } = render(
+			<AeroplaneBoard
+				state={fixtureState({
+					currentPlayer: 'blue',
+					phase: 'awaiting-roll',
+					pendingRoll: null,
+				})}
+				legalMoves={[]}
+				isHumanTurn={false}
+				onRoll={mock(() => {})}
+			/>
+		);
+		const rollButton = getByRole('button', { name: /roll die/i });
+		expect(rollButton.getAttribute('disabled')).not.toBeNull();
+		expect(rollButton.className).toContain('disabled:bg-ink-600');
+		expect(rollButton.className).toContain('disabled:text-ivory-dim');
 	});
 
 	test('renders planes in home and finished positions', () => {
