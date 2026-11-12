@@ -49,11 +49,17 @@ export function GoogleSignInButton({
 	const buttonRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState('');
 	const [loading, setLoading] = useState(false);
+	// True while the bounded poll waits for the GIS script; reserved-height
+	// status keeps the card from shifting when the real button renders.
+	const [pending, setPending] = useState(true);
+	// Bumping this re-runs the effect (restarting the poll) on Reload.
+	const [reloadKey, setReloadKey] = useState(0);
 
 	useEffect(() => {
 		const clientId = env.PUBLIC_GOOGLE_CLIENT_ID;
 		if (!clientId) {
 			setError('Google Sign-In is not configured.');
+			setPending(false);
 			return;
 		}
 
@@ -70,45 +76,63 @@ export function GoogleSignInButton({
 					setError(
 						'Google Sign-In library not loaded. Please refresh the page.'
 					);
+					setPending(false);
 					return;
 				}
 				setTimeout(tryInitialize, 100);
 				return;
 			}
 
-			window.google.accounts.id.initialize({
-				client_id: clientId,
-				callback: async (response: GoogleCredentialResponse) => {
-					setLoading(true);
-					setError('');
-					const result = await signInWithGoogle(response.credential);
-					if (result.success) {
-						window.location.href = '/';
-					} else {
-						setError(result.error || 'Sign-in failed');
-					}
-					setLoading(false);
-				},
-			});
+			try {
+				window.google.accounts.id.initialize({
+					client_id: clientId,
+					callback: async (response: GoogleCredentialResponse) => {
+						setLoading(true);
+						setError('');
+						const result = await signInWithGoogle(response.credential);
+						if (result.success) {
+							window.location.href = '/';
+						} else {
+							setError(result.error || 'Sign-in failed');
+						}
+						setLoading(false);
+					},
+				});
+			} catch {
+				setError(
+					'Google Sign-In failed to initialize. Please reload the page.'
+				);
+				setPending(false);
+				return;
+			}
 
 			if (buttonRef.current) {
-				const containerWidth =
-					buttonRef.current.parentElement?.clientWidth ?? 400;
-				const buttonWidth = Math.min(containerWidth, 400);
-				window.google.accounts.id.renderButton(buttonRef.current, {
-					theme: 'filled_black',
-					size: 'large',
-					text,
-					width: buttonWidth,
-				});
+				try {
+					const containerWidth =
+						buttonRef.current.parentElement?.clientWidth ?? 400;
+					const buttonWidth = Math.min(containerWidth, 400);
+					window.google.accounts.id.renderButton(buttonRef.current, {
+						theme: 'filled_black',
+						size: 'large',
+						text,
+						width: buttonWidth,
+					});
+				} catch {
+					setError(
+						'Google Sign-In failed to initialize. Please reload the page.'
+					);
+					setPending(false);
+					return;
+				}
 			}
+			setPending(false);
 		}
 
 		tryInitialize();
 		return () => {
 			cancelled = true;
 		};
-	}, [signInWithGoogle, text]);
+	}, [signInWithGoogle, text, reloadKey]);
 
 	if (error && !env.PUBLIC_GOOGLE_CLIENT_ID) {
 		return (
@@ -126,9 +150,29 @@ export function GoogleSignInButton({
 			data-testid='google-signin-button'
 		>
 			{loading && <div className='text-ivory-dim text-sm'>Signing in...</div>}
+			{pending && (
+				<div
+					role='status'
+					style={{ minHeight: '40px' }}
+					className='flex w-full items-center justify-center text-ivory-dim text-sm'
+				>
+					Loading Google Sign-In…
+				</div>
+			)}
 			{error && (
 				<div className='text-destructive text-sm text-center bg-destructive/10 border border-destructive/30 rounded-lg p-3'>
 					{error}
+					<button
+						type='button'
+						onClick={() => {
+							setError('');
+							setPending(true);
+							setReloadKey(key => key + 1);
+						}}
+						className='mt-3 block mx-auto rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/20'
+					>
+						Reload
+					</button>
 				</div>
 			)}
 			<div ref={buttonRef} />
