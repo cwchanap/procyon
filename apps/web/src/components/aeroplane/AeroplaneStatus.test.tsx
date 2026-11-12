@@ -467,3 +467,65 @@ describe('Aeroplane status Sky Tycoon balances', () => {
 		expect(queryByRole('list', { name: 'Sky Tycoon balances' })).toBeNull();
 	});
 });
+
+describe('Aeroplane die roller label', () => {
+	test('labels a prior-seat roll as the last roll during the next seat turn', () => {
+		// Red rolled; the turn already advanced to yellow's awaiting-roll.
+		// The committed face stays, but the label must not claim Yellow rolled.
+		const { getByTestId } = render(
+			<AeroplaneStatus
+				state={fixtureState({
+					currentPlayer: 'yellow',
+					phase: 'awaiting-roll',
+					pendingRoll: null,
+				})}
+				rollPresentation={rollPresentation({ face: 5, color: 'red' })}
+			/>
+		);
+		expect(getByTestId('aeroplane-die-roller').textContent).toBe(
+			'Last roll by Red'
+		);
+	});
+
+	test('retains the Rolled-by label while the roller is the current seat', () => {
+		const { getByTestId } = render(
+			<AeroplaneStatus
+				state={fixtureState({ phase: 'awaiting-choice' })}
+				rollPresentation={rollPresentation({ face: 5, color: 'red' })}
+			/>
+		);
+		expect(getByTestId('aeroplane-die-roller').textContent).toBe(
+			'Rolled by Red'
+		);
+	});
+
+	test('keeps the pendingRoll fallback label on the current seat', () => {
+		const { getByTestId } = render(
+			<AeroplaneStatus
+				state={fixtureState({ currentPlayer: 'blue', pendingRoll: 2 })}
+			/>
+		);
+		expect(getByTestId('aeroplane-die-roller').textContent).toBe(
+			'Rolled by Blue'
+		);
+	});
+
+	test('keeps the committed screen-reader wording under the Last-roll label', () => {
+		// Only the visible label changes; the sr-only announcement keeps its
+		// exact committed wording so assistive text stays stable.
+		const { getByTestId, getByText } = render(
+			<AeroplaneStatus
+				state={fixtureState({
+					currentPlayer: 'yellow',
+					phase: 'awaiting-roll',
+					pendingRoll: null,
+				})}
+				rollPresentation={rollPresentation({ face: 5, color: 'red' })}
+			/>
+		);
+		expect(getByTestId('aeroplane-die-roller').textContent).toBe(
+			'Last roll by Red'
+		);
+		expect(getByText('Die 5, rolled by Red')).toBeTruthy();
+	});
+});
