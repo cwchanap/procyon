@@ -808,15 +808,25 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 		? (activeSession?.humanSide ?? rivalSetup.setup.humanSide)
 		: 'white';
 	const rivalStarting = rivalSession.startState === 'starting';
-	// Pre-game the Start control always reads "▶️ Start" (so it stays findable
-	// even when disabled by a block reason); an engine Start attempt swaps in
+	// Pre-game the Start control reads "▶️ Start" (so it stays findable even
+	// when disabled by a block reason); while rival preference hydration is
+	// pending it reads "Preparing opponent…", an engine Start attempt swaps in
 	// the loading copy, and once started the default "🆕 New Game" label
 	// applies (`startLabel` left undefined).
 	const startControlLabel: React.ReactNode = gameStarted
 		? undefined
-		: rivalStarting && rivalSetup.setup.rivalKind === 'engine'
-			? '⏳ Loading on-device computer…'
-			: '▶️ Start';
+		: !rivalSetup.resolved
+			? '⏳ Preparing opponent…'
+			: rivalStarting && rivalSetup.setup.rivalKind === 'engine'
+				? '⏳ Loading on-device computer…'
+				: '▶️ Start';
+	// Blocked-but-resolved setups expose the hook's block reason next to the
+	// disabled Start control (never bypassing the gate); pre-resolution and
+	// while an engine Start is in flight no reason is shown.
+	const startBlockedReason =
+		!gameStarted && !rivalStarting && rivalSetup.resolved
+			? rivalSetup.startBlockedReason
+			: null;
 	const boardDisabled =
 		Boolean(gameState.pendingPromotion) ||
 		Boolean(gameState.isAiThinking) ||
@@ -930,6 +940,7 @@ const ChessGame: React.FC<ChessGameProps> = ({ rivalSessionOptions }) => {
 										Boolean(rivalSetup.startBlockedReason))
 								}
 								startLabel={startControlLabel}
+								startBlockedReason={startBlockedReason}
 								isDebugMode={isDebugMode}
 								canExport={gameStarted && !!gameExporterRef.current}
 								onStartOrReset={handleStartOrReset}

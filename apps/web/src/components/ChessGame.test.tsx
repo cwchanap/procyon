@@ -84,6 +84,56 @@ describe('ChessGame — rival setup & preview', () => {
 		clearRivalPreferences();
 	});
 
+	test('shows a disabled "Preparing opponent…" Start until the rival setup resolves, then an actionable Start', async () => {
+		const view = render(<ChessGame />);
+
+		// Synchronously (before the client-mount microtask), Start is disabled
+		// and self-explanatory: it reads "Preparing opponent…" instead of an
+		// actionable "▶️ Start" while the rival preference hydration is pending.
+		const preparing = view.getByRole('button', {
+			name: /Preparing opponent/i,
+		}) as HTMLButtonElement;
+		expect(preparing.disabled).toBe(true);
+		expect(view.queryByRole('button', { name: /^▶️ Start$/ })).toBeNull();
+
+		// Once hydration resolves (signed-out default: on-device engine, no
+		// block), Start becomes the actionable default.
+		await waitForSetupResolved(view);
+		const start = view.getByRole('button', {
+			name: /^▶️ Start$/,
+		}) as HTMLButtonElement;
+		expect(start.disabled).toBe(false);
+	});
+
+	test('shows the start-block reason near Start while blocked and clears it once the block lifts', async () => {
+		const view = render(<ChessGame />);
+		await waitForSetupResolved(view);
+
+		// Signed-out + language model → Start is disabled with the hook's
+		// visible block reason exposed near the control.
+		fireEvent.click(view.getByRole('radio', { name: /Language model/i }));
+		const reasonText =
+			'Sign in and configure an AI provider before starting a language-model opponent.';
+		await waitFor(() => {
+			expect(view.getByRole('status').textContent).toBe(reasonText);
+		});
+		const blockedStart = view.getByRole('button', {
+			name: /^▶️ Start$/,
+		}) as HTMLButtonElement;
+		expect(blockedStart.disabled).toBe(true);
+
+		// Switching back to the on-device engine lifts the block: the reason
+		// disappears and Start becomes actionable.
+		fireEvent.click(view.getByRole('radio', { name: /On-device computer/i }));
+		await waitFor(() => {
+			expect(view.queryByRole('status')).toBeNull();
+		});
+		expect(
+			(view.getByRole('button', { name: /^▶️ Start$/ }) as HTMLButtonElement)
+				.disabled
+		).toBe(false);
+	});
+
 	test('hides the rival setup and interactive board until preference hydration resolves', async () => {
 		const view = render(<ChessGame />);
 

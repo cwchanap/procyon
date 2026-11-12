@@ -774,11 +774,17 @@ test.describe('Chess rival — failure & fallback journeys', () => {
 		await expect(opponentRadio(page, /Language model/i)).toBeChecked();
 
 		// The explicit choice sticks — it is NOT auto-switched back to engine,
-		// and no auto-fallback notice is shown.
-		await expect(page.getByRole('status')).toHaveCount(0);
+		// and no auto-fallback notice is shown (the only status is the
+		// blocked-start guidance asserted below).
+		await expect(page.getByText(/opponent was selected\.$/i)).toHaveCount(0);
 		await expect(opponentRadio(page, /On-device computer/i)).not.toBeChecked();
 
 		// Start stays blocked with the unusable-LLM guidance.
 		await expect(startButton(page)).toBeDisabled();
+		await expect(
+			page.getByText(
+				'Sign in and configure an AI provider before starting a language-model opponent.'
+			)
+		).toBeVisible();
 	});
 });

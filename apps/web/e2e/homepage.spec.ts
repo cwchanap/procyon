@@ -8,7 +8,14 @@ test.describe('Homepage', () => {
 		await expect(
 			page.getByRole('heading', { name: 'Procyon Chess' })
 		).toBeVisible();
-		await expect(page.getByText('Four games. One board room.')).toBeVisible();
+		await expect(
+			page.getByText(
+				'Five games. One board room. Play Chess, Xiangqi, Shogi, and Jungle'
+			)
+		).toBeVisible();
+		await expect(
+			page.getByText('Aeroplane Chess uses built-in local heuristic rivals.')
+		).toBeVisible();
 	});
 
 	test('should display chess game options', async ({ page }) => {
