@@ -49,11 +49,9 @@ export function GoogleSignInButton({
 	const buttonRef = useRef<HTMLDivElement>(null);
 	const [error, setError] = useState('');
 	const [loading, setLoading] = useState(false);
-	// True while the bounded poll waits for the GIS script; reserved-height
-	// status keeps the card from shifting when the real button renders.
+	// True while the bounded poll waits for the GIS script; the widget space
+	// reserves the button height so clearing it cannot shift the layout.
 	const [pending, setPending] = useState(true);
-	// Bumping this re-runs the effect (restarting the poll) on Reload.
-	const [reloadKey, setReloadKey] = useState(0);
 
 	useEffect(() => {
 		const clientId = env.PUBLIC_GOOGLE_CLIENT_ID;
@@ -132,7 +130,7 @@ export function GoogleSignInButton({
 		return () => {
 			cancelled = true;
 		};
-	}, [signInWithGoogle, text, reloadKey]);
+	}, [signInWithGoogle, text]);
 
 	if (error && !env.PUBLIC_GOOGLE_CLIENT_ID) {
 		return (
@@ -150,32 +148,40 @@ export function GoogleSignInButton({
 			data-testid='google-signin-button'
 		>
 			{loading && <div className='text-ivory-dim text-sm'>Signing in...</div>}
-			{pending && (
-				<div
-					role='status'
-					style={{ minHeight: '40px' }}
-					className='flex w-full items-center justify-center text-ivory-dim text-sm'
-				>
-					Loading Google Sign-In…
-				</div>
-			)}
 			{error && (
 				<div className='text-destructive text-sm text-center bg-destructive/10 border border-destructive/30 rounded-lg p-3'>
 					{error}
 					<button
 						type='button'
-						onClick={() => {
-							setError('');
-							setPending(true);
-							setReloadKey(key => key + 1);
-						}}
+						// The GIS script is injected once by Layout.astro; only a
+						// real page reload can retry that request — polling again
+						// cannot recover a failed script load.
+						onClick={() => window.location.reload()}
 						className='mt-3 block mx-auto rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/20'
 					>
 						Reload
 					</button>
 				</div>
 			)}
-			<div ref={buttonRef} />
+			{/* Reserves the real Google button's height; the pending status
+			    overlays this same space instead of adding a flex item (a
+			    sibling would add a gap-4 that vanishes when cleared). */}
+			<div
+				data-testid='google-signin-widget-space'
+				style={{ minHeight: '40px' }}
+				className='relative w-full flex items-center justify-center'
+			>
+				{pending && (
+					<div
+						role='status'
+						style={{ position: 'absolute', inset: '0' }}
+						className='flex items-center justify-center text-ivory-dim text-sm'
+					>
+						Loading Google Sign-In…
+					</div>
+				)}
+				<div ref={buttonRef} />
+			</div>
 		</div>
 	);
 }
