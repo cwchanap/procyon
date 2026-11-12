@@ -8,6 +8,8 @@ import {
 	rollTurn,
 } from '../lib/aeroplane/game';
 import { rollFair } from '../lib/aeroplane/dice';
+import { checksumState } from '../lib/aeroplane/checksum';
+import { getChatterLine } from '../lib/aeroplane/chatter';
 import {
 	ACTIVE_MATCH_STORAGE_KEY,
 	restoreActiveMatch,
@@ -15,20 +17,24 @@ import {
 	type AeroplaneStorage,
 } from '../lib/aeroplane/persistence';
 import type {
+	AeroplaneActionRecord,
 	AeroplaneColor,
 	AeroplaneConfig,
 	AeroplaneState,
 	AiSeat,
 	PersistedAeroplaneMatchV2,
 	PlaneState,
+	ResolvedMove,
 	SkyTycoonState,
 } from '../lib/aeroplane/types';
 import { TYCOON_CHANCE_CARDS } from '../lib/aeroplane/types';
 import { initialTycoonState } from '../lib/aeroplane/tycoon';
 import {
+	buildAeroplaneFeedEntry,
 	readDevOverrides,
 	useAeroplaneMatch,
 	type AeroplaneE2EFixture,
+	type AeroplaneFeedEntry,
 	type AeroplaneRollOnlyFeedEntry,
 	type UseAeroplaneMatchOptions,
 } from './useAeroplaneMatch';
@@ -289,7 +295,7 @@ function saveAiAwaitingChoice(storage: MemoryStorage): void {
 }
 
 function createHookHarness(
-	fixture: AeroplaneE2EFixture,
+	fixture: AeroplaneE2EFixture | undefined,
 	options: Omit<UseAeroplaneMatchOptions, 'fixture' | 'dev'> = {}
 ) {
 	jest.useFakeTimers();
@@ -298,7 +304,7 @@ function createHookHarness(
 		useAeroplaneMatch(SIGNED_OUT_AUTH, {
 			...options,
 			storage,
-			fixture,
+			...(fixture === undefined ? {} : { fixture }),
 			dev: true,
 		})
 	);
@@ -1906,5 +1912,303 @@ describe('useAeroplaneMatch humanMoments', () => {
 		) as Record<string, unknown>;
 		expect(saved.humanMoments).toBeUndefined();
 		expect(saved.state).toBeDefined();
+	});
+});
+
+describe('buildAeroplaneFeedEntry', () => {
+	const seats: AiSeat[] = [
+		{ color: 'yellow', personality: 'aggressive' },
+		{ color: 'blue', personality: 'cautious' },
+		{ color: 'green', personality: 'unpredictable' },
+	];
+	const chatterConfig = { ...CLASSIC_CONFIG, chatter: true };
+
+	function feedMove(
+		color: AeroplaneColor,
+		planeId: string,
+		captured: string[] = []
+	): ResolvedMove {
+		return {
+			planeId,
+			color,
+			roll: 3,
+			start: { kind: 'hangar', color },
+			baseEndpoint: { kind: 'track', color, progress: 3, globalIndex: 0 },
+			finalEndpoint: { kind: 'track', color, progress: 3, globalIndex: 0 },
+			events: [
+				{
+					type: 'move',
+					planeId,
+					from: { kind: 'hangar', color },
+					to: { kind: 'launch', color },
+				},
+			],
+			capturedPlaneIds: captured,
+		};
+	}
+
+	function stepAction(
+		move: ResolvedMove | null,
+		state: AeroplaneState
+	): AeroplaneActionRecord {
+		return {
+			kind: move === null ? 'roll' : 'move',
+			actor: 'ai',
+			color: state.currentPlayer,
+			roll: 3,
+			selectedPlaneId: move?.planeId ?? null,
+			events: [],
+			checksum: checksumState(state),
+		};
+	}
+
+	test('builds a move presentation with deterministic chatter and copied events', () => {
+		const state = { ...fixtureState('yellow', []), config: chatterConfig };
+		const move = feedMove('yellow', 'yellow-0', ['red-0']);
+		const action = stepAction(move, state);
+
+		const entry = buildAeroplaneFeedEntry({ action, move, state }, 7, seats);
+
+		expect(entry.id).toBe(7);
+		expect(entry.move).toBe(move);
+		expect(entry.events).toEqual(move.events);
+		expect(entry.events).not.toBe(move.events);
+		expect(entry.action).toBe(action);
+		// Direct equality: jest-dom's bun:test matcher augmentation narrows
+		// toBe's expected parameter to the non-optional string.
+		expect(entry.chatter === getChatterLine(move, 'aggressive')).toBe(true);
+	});
+
+	test('builds a roll-only entry from the committed next player without chatter', () => {
+		const state = { ...fixtureState('blue', []), config: chatterConfig };
+		const action = stepAction(null, state);
+
+		const entry = buildAeroplaneFeedEntry(
+			{ action, move: null, state },
+			3,
+			seats
+		);
+
+		expect(entry).toEqual({
+			id: 3,
+			move: null,
+			events: [],
+			action,
+			nextPlayer: 'blue',
+		});
+	});
+
+	test('derives terminal win and loss chatter from the post-action state', () => {
+		const winState = {
+			...fixtureState('red', []),
+			phase: 'finished' as const,
+			pendingRoll: null,
+			winner: 'red' as const,
+			config: chatterConfig,
+		};
+		const winEntry = buildAeroplaneFeedEntry(
+			{
+				action: stepAction(feedMove('red', 'red-0'), winState),
+				move: feedMove('red', 'red-0'),
+				state: winState,
+			},
+			1,
+			seats
+		);
+		// The human colour has no AI seat, so the fallback personality applies.
+		expect(
+			winEntry.chatter ===
+				getChatterLine({ kind: 'win', token: 'red' }, 'cautious')
+		).toBe(true);
+
+		const lossState = {
+			...winState,
+			currentPlayer: 'blue' as const,
+			winner: 'blue' as const,
+		};
+		const lossEntry = buildAeroplaneFeedEntry(
+			{
+				action: stepAction(feedMove('blue', 'blue-0'), lossState),
+				move: feedMove('blue', 'blue-0'),
+				state: lossState,
+			},
+			2,
+			seats
+		);
+		expect(
+			lossEntry.chatter ===
+				getChatterLine({ kind: 'loss', token: 'blue' }, 'cautious')
+		).toBe(true);
+	});
+
+	test('omits chatter when the config toggle is disabled', () => {
+		const state = { ...fixtureState('yellow', []) };
+		expect(state.config.chatter).toBe(false);
+		const move = feedMove('yellow', 'yellow-0', ['red-0']);
+
+		const entry = buildAeroplaneFeedEntry(
+			{ action: stepAction(move, state), move, state },
+			1,
+			seats
+		);
+
+		expect(entry.chatter).toBeUndefined();
+	});
+});
+
+describe('useAeroplaneMatch restored feed reconstruction', () => {
+	// A seed-only fixture keeps the played match authoritative, so the saved
+	// actions replay deterministically from the root seed.  Seed 39413 sees a
+	// move and a no-move roll within three committed actions.
+	function freshMatchFixture(): AeroplaneE2EFixture {
+		return { seed: 39413, skipAnimations: false };
+	}
+
+	/** Commit exactly one authoritative action (roll, move or AI decision). */
+	function driveOneCommit(harness: ReturnType<typeof createHookHarness>): void {
+		const before = harness.result.current.actions.length;
+		for (let tries = 0; tries < 40; tries += 1) {
+			const current = harness.result.current;
+			if (current.state.phase === 'finished')
+				throw new Error('match finished before the drive completed');
+			if (current.state.phase === 'awaiting-roll') {
+				if (current.state.currentPlayer === current.config.humanColor) {
+					harness.roll();
+				} else {
+					harness.advanceTime(1);
+				}
+			} else if (current.state.phase === 'awaiting-choice') {
+				if (current.state.currentPlayer === current.config.humanColor) {
+					const target = current.legalMoves[0];
+					if (target) harness.select(target.planeId);
+				} else {
+					harness.advanceTime(1);
+				}
+			} else {
+				return;
+			}
+			if (harness.result.current.actions.length > before) return;
+		}
+		throw new Error('driveOneCommit did not commit a new action');
+	}
+
+	/** One entry per roll+move pair and per no-move roll; nothing else. */
+	function expectFeedMatchesActions(
+		actions: AeroplaneActionRecord[],
+		feed: AeroplaneFeedEntry[]
+	): void {
+		const moves = actions.filter(action => action.kind === 'move').length;
+		const rolls = actions.length - moves;
+		expect(feed.filter(entry => entry.move !== null)).toHaveLength(moves);
+		expect(feed.filter(entry => entry.move === null)).toHaveLength(
+			rolls - moves
+		);
+	}
+
+	function stripIds(entries: AeroplaneFeedEntry[]) {
+		return entries.map(({ id: _id, ...rest }) => rest);
+	}
+
+	test('reconstructs the full feed once from saved actions across remount and resume', () => {
+		const storage = memoryStorage();
+		const first = createHookHarness(freshMatchFixture(), {
+			storage,
+			aiDelayMs: 0,
+			config: { ...CLASSIC_CONFIG, chatter: true },
+		});
+
+		let sawMove = false;
+		let sawNoMove = false;
+		for (let guard = 0; guard < 20 && !(sawMove && sawNoMove); guard += 1) {
+			driveOneCommit(first);
+			sawMove ||= first.eventFeed().some(entry => entry.move !== null);
+			sawNoMove ||= first.eventFeed().some(entry => entry.move === null);
+		}
+		expect(sawMove).toBe(true);
+		expect(sawNoMove).toBe(true);
+
+		const liveFeed = first.eventFeed();
+		const liveActions = first.result.current.actions;
+		expectFeedMatchesActions(liveActions, liveFeed);
+		const liveState = first.state();
+		const liveDice = first.result.current.diceRng;
+		const liveAi = first.aiRng();
+		first.unmount();
+
+		// Cold remount without the fixture: derive the feed once from actions.
+		const second = createHookHarness(undefined, { storage, aiDelayMs: 0 });
+		const restored = second.result.current;
+		expect(restored.eventFeed).toHaveLength(liveFeed.length);
+		expect(stripIds(restored.eventFeed)).toEqual(stripIds(liveFeed));
+		expectFeedMatchesActions(restored.actions, restored.eventFeed);
+		const ids = restored.eventFeed.map(entry => entry.id);
+		expect(new Set(ids).size).toBe(ids.length);
+		// Reconstruction is display-only: state, turn and RNG are untouched,
+		// and nothing was enqueued for presentation.
+		expect(restored.state).toEqual(liveState);
+		expect(restored.diceRng).toEqual(liveDice);
+		expect(restored.aiRng).toEqual(liveAi);
+		expect(restored.presentationQueue).toHaveLength(0);
+
+		// Explicit resume rebuilds the same feed once more.
+		act(() => {
+			expect(second.result.current.resume()).toBe(true);
+		});
+		expect(second.result.current.eventFeed).toHaveLength(liveFeed.length);
+		expect(stripIds(second.result.current.eventFeed)).toEqual(
+			stripIds(liveFeed)
+		);
+		expect(second.result.current.presentationQueue).toHaveLength(0);
+		second.unmount();
+
+		// A later remount appends new commits exactly once with fresh unique
+		// ids beyond the restored maximum.
+		const third = createHookHarness(undefined, { storage, aiDelayMs: 0 });
+		const restoredIds = third.result.current.eventFeed.map(entry => entry.id);
+		driveOneCommit(third);
+		driveOneCommit(third);
+		const appended = third.result.current.eventFeed;
+		expectFeedMatchesActions(third.result.current.actions, appended);
+		const allIds = appended.map(entry => entry.id);
+		expect(new Set(allIds).size).toBe(allIds.length);
+		const freshIds = allIds.filter(id => !restoredIds.includes(id));
+		expect(freshIds).toHaveLength(allIds.length - restoredIds.length);
+		expect(Math.max(...freshIds)).toBeGreaterThan(Math.max(...restoredIds));
+		third.unmount();
+	});
+
+	test('a replay mismatch keeps the restored match, shows an empty feed and warns in DEV', () => {
+		const storage = memoryStorage();
+		const first = createHookHarness(freshMatchFixture(), {
+			storage,
+			aiDelayMs: 0,
+			config: { ...CLASSIC_CONFIG, chatter: true },
+		});
+		driveOneCommit(first);
+		const savedState = first.state();
+		const savedRaw = storage.getItem(ACTIVE_MATCH_STORAGE_KEY);
+		expect(savedRaw).not.toBeNull();
+		const saved = JSON.parse(savedRaw ?? '{}') as PersistedAeroplaneMatchV2;
+		expect(saved.actions.length).toBeGreaterThan(0);
+		first.unmount();
+
+		// Corrupt the recorded history only; structural validation still
+		// passes so restore succeeds while the diagnostic replay cannot.
+		saved.actions[0]!.checksum = '00000000';
+		storage.setItem(ACTIVE_MATCH_STORAGE_KEY, JSON.stringify(saved));
+
+		const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			const second = createHookHarness(undefined, { storage, aiDelayMs: 0 });
+			// The authoritative match is retained…
+			expect(second.state()).toEqual(savedState);
+			// …the feed stays empty, and the mismatch reason is diagnosed.
+			expect(second.eventFeed()).toEqual([]);
+			expect(warnSpy).toHaveBeenCalledTimes(1);
+			expect(warnSpy.mock.calls[0]?.[0]).toContain('checksum');
+			second.unmount();
+		} finally {
+			warnSpy.mockRestore();
+		}
 	});
 });

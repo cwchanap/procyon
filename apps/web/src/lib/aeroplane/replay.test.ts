@@ -37,6 +37,7 @@ function recordedMatch(): PersistedAeroplaneMatchV2 {
 			actor,
 			color,
 			roll: rolled.roll,
+			selectedPlaneId: null,
 			events: [],
 			checksum: checksumState(state),
 		});
@@ -596,4 +597,83 @@ test('Tycoon replay still compares exactly the two dice and AI continuations', (
 	const ai = structuredClone(tycoonRecordedMatch());
 	ai.aiRng = { value: ai.aiRng.value + 1 };
 	expectMismatch(ai, 'AI RNG');
+});
+
+// --- Display-only feed steps (HPA-763 Step 1) ---
+
+/**
+ * Rolls with legal moves are always immediately followed by their move
+ * record in controller-written histories; no-move rolls are followed by
+ * another roll (or end the history).
+ */
+function noMoveRollCount(match: PersistedAeroplaneMatchV2): number {
+	return match.actions.filter((action, index) => {
+		if (action.kind !== 'roll') return false;
+		const next = match.actions[index + 1];
+		return !next || next.kind !== 'move' || next.roll !== action.roll;
+	}).length;
+}
+
+test('replay steps include committed moves and only rolls with no legal move', () => {
+	const match = recordedMatch();
+	const result = replayMatch(match);
+	if (result.kind !== 'ok') throw new Error('expected an ok replay');
+
+	// QUICK seed 7 records: human 5+move, AI-yellow no-move 1, AI-blue
+	// 6+move, AI-blue 5+move — three moves and one feed-worthy roll.  Rolls
+	// with legal moves must not emit their own step.
+	expect(result.steps).toHaveLength(4);
+
+	const moveSteps = result.steps.filter(step => step.move !== null);
+	expect(moveSteps.map(step => step.action.selectedPlaneId)).toEqual(
+		match.actions
+			.filter(action => action.kind === 'move')
+			.map(action => action.selectedPlaneId)
+	);
+	for (const step of moveSteps) {
+		const move = step.move!;
+		expect(step.action.selectedPlaneId).toBe(move.planeId);
+		expect(checksumState(step.state)).toBe(step.action.checksum);
+		const endpoint = move.finalEndpoint;
+		if (endpoint.kind === 'track') {
+			expect(
+				step.state.planes.find(plane => plane.id === move.planeId)?.progress
+			).toBe(endpoint.progress);
+		}
+	}
+
+	const rollSteps = result.steps.filter(step => step.move === null);
+	expect(rollSteps).toEqual([
+		{
+			action: match.actions[2]!,
+			move: null,
+			state: expect.objectContaining({ currentPlayer: 'blue' }),
+		},
+	]);
+});
+
+test('replay steps carry the full Sky Tycoon history without extra roll steps', () => {
+	const match = tycoonRecordedMatch();
+	const result = replayMatch(match);
+	if (result.kind !== 'ok') throw new Error('expected an ok replay');
+
+	const moveCount = match.actions.filter(
+		action => action.kind === 'move'
+	).length;
+	const noMoveRolls = noMoveRollCount(match);
+	expect(moveCount).toBeGreaterThan(0);
+	expect(noMoveRolls).toBeGreaterThan(0);
+	expect(result.steps).toHaveLength(moveCount + noMoveRolls);
+	// The Customs skip roll becomes a step whose action still carries the
+	// informational skip event the HPA-761 feed formatter reads.
+	const skipStep = result.steps.find(
+		step =>
+			step.move === null &&
+			step.action.events.some(event => event.type === 'skipped')
+	);
+	expect(skipStep).toBeDefined();
+	for (const step of result.steps) {
+		expect(checksumState(step.state)).toBe(step.action.checksum);
+		expect(step.state.turnNumber).toBeGreaterThanOrEqual(1);
+	}
 });
