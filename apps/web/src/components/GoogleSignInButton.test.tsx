@@ -74,13 +74,17 @@ describe('GoogleSignInButton loading & error experience', () => {
 			.__PROCYON_INITIAL_AUTH_USER__;
 	});
 
-	test('shows an accessible pending status with reserved button height while the GIS script loads', () => {
+	test('shows an accessible pending status overlaid on the reserved widget space while the GIS script loads', () => {
 		const { getByRole } = render(<GoogleSignInButton />);
 		const status = getByRole('status');
 		expect(status.textContent).toMatch(/loading google sign-in/i);
-		// Reserve the real Google button's height so the card does not shift
-		// when the widget renders into the container.
-		expect(status.style.minHeight).toBe('40px');
+		// The reserved height must live on the widget container and the status
+		// must overlay that same space: a status as a sibling flex item would
+		// add a gap-4 (16px) that vanishes when the status is removed — a
+		// layout shift. Absolute positioning keeps it out of the flex flow.
+		expect(status.style.position).toBe('absolute');
+		const space = status.parentElement as HTMLElement;
+		expect(space.style.minHeight).toBe('40px');
 	});
 
 	test('clears the pending status once the Google button renders', () => {
@@ -91,6 +95,10 @@ describe('GoogleSignInButton loading & error experience', () => {
 		expect(initialize).toHaveBeenCalledTimes(1);
 		expect(renderButton).toHaveBeenCalledTimes(1);
 		expect(view.queryByRole('status')).toBeNull();
+		// The reserved space stays on the widget container after the status is
+		// removed, so clearing the pending state cannot shift the layout.
+		const space = view.getByTestId('google-signin-widget-space');
+		expect(space.style.minHeight).toBe('40px');
 	});
 
 	test('shows the GIS error with a Reload button after the script fails to load', () => {
@@ -126,18 +134,21 @@ describe('GoogleSignInButton loading & error experience', () => {
 		expect(queryByRole('button', { name: /reload/i })).toBeTruthy();
 	});
 
-	test('Reload restarts polling and renders the button once the script is available', () => {
-		const view = render(<GoogleSignInButton />);
-		advanceTimers(6000); // script fails to load
-		fireEvent.click(view.getByRole('button', { name: /reload/i }));
-		expect(view.getByRole('status')).toBeTruthy(); // pending again
-		expect(view.queryByText(/not loaded/i)).toBeNull();
-		const { initialize, renderButton } = stubGoogle(); // script "arrives"
-		advanceTimers(100);
-		expect(initialize).toHaveBeenCalledTimes(1);
-		expect(renderButton).toHaveBeenCalledTimes(1);
-		expect(view.queryByRole('status')).toBeNull();
-		expect(view.queryByText(/not loaded/i)).toBeNull();
+	test('Reload performs an actual page reload (the GIS script is injected only by Layout.astro)', () => {
+		// Installing window.google after clicking cannot recover a failed
+		// Layout.astro script request — only a real reload retries it.
+		const originalReload = window.location.reload;
+		const reload = mock(() => {});
+		(window.location as unknown as { reload: () => void }).reload = reload;
+		try {
+			const view = render(<GoogleSignInButton />);
+			advanceTimers(6000); // script fails to load
+			fireEvent.click(view.getByRole('button', { name: /reload/i }));
+			expect(reload).toHaveBeenCalledTimes(1);
+		} finally {
+			(window.location as unknown as { reload: () => void }).reload =
+				originalReload;
+		}
 	});
 
 	test('stops polling after unmount (cleanup retained)', () => {
