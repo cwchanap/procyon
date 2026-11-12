@@ -65,3 +65,11 @@
 ## Explicit exclusions
 
 No change to Aeroplane rules, dice/AI scheduling, persisted v2 schema or save ordering, HPA-761 capture/feed semantics, database schema, other game variants beyond Chess Start readability, alternate authentication, full event-sourcing, art or audio production, and no new persistence service. Correct the reports with the fewest maintainable, testable changes.
+
+## Outcome (2026-11-12, Step 5 verification)
+
+**Tested SHA `91debba8` (this branch's tip, tasks 1–4). Branch not pushed/deployed; production still serves the pre-branch app baseline (exact deployed SHA unavailable — fingerprint-consistent with `f17dbf1` per triage).** All new-UI evidence below is from a local production build served by `astro preview`; full detail in the SDD scratch reports (`.superpowers/sdd/2026-11-11-hpa-763-playtest-fixes/task-5-report.md`, gitignored).
+
+Checks (from `apps/web`): `bun test src` 2158 pass / 0 fail · typecheck clean · lint 0 errors + 61 pre-existing warnings (files untouched by this branch) · production build OK with the dummy client ID already committed in `playwright.config.ts` (guard intact: build without the ID still fails) · focused Playwright `e2e/{aeroplane,homepage,auth-basic,auth,chess-rival}.spec.ts` **42/42 pass** (no live OAuth).
+
+Findings: **fixed + verified on the production build** — feed reconstructed across reload (9→9 / 8→8 entries, identical content), GIS pending → error + Reload flow, AI-turn Roll disabled in ink-600 (not brass) at 1280×900 and 390×844, "Last roll by …" wording, five-game homepage copy, "⏳ Preparing opponent…" → enabled Start; **verified, not reimplemented** — match/mute persistence (findings 1/3), intro not clipped (finding 6). Unknowns preserved: Google Authorized JavaScript origins, client-ID validity, OAuth success (no credentials, no real OAuth; button render is not authorization evidence), exact deployed SHA, API/Worker SHA. Pre-existing React #418/#425 hydration errors on stored-match loads (fresh loads clean) remain an unconfirmed triage hypothesis. PR ready-marking and push are handled by the controller.
