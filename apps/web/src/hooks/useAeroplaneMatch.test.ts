@@ -720,6 +720,32 @@ describe('useAeroplaneMatch roll presentation and AI roll pacing', () => {
 		expect(blockedMatch.result.current.presentationQueue).toHaveLength(0);
 	});
 
+	test('a human roll() call during an AI turn is rejected by the actor guard', () => {
+		const match = createHookHarness(aiTurnFixture(), { aiDelayMs: 100 });
+		expect(match.result.current.isHumanTurn).toBe(false);
+		const before = match.state();
+		const diceBefore = match.result.current.diceRng;
+		const aiRngBefore = match.aiRng();
+
+		// The hook-level backstop behind the disabled Roll control: a human
+		// call must not commit anything while an AI seat awaits its roll.
+		match.roll();
+
+		expect(match.result.current.actions).toHaveLength(0);
+		expect(match.state()).toEqual(before);
+		expect(match.result.current.diceRng).toEqual(diceBefore);
+		expect(match.aiRng()).toEqual(aiRngBefore);
+		expect(match.result.current.rollPresentation).toBeNull();
+		expect(match.eventFeed()).toHaveLength(0);
+
+		// The scheduled AI turn still commits exactly one action.
+		match.advanceTime(100);
+		expect(match.result.current.actions.map(action => action.actor)).toEqual([
+			'ai',
+		]);
+		expect(match.result.current.actions[0]?.kind).toBe('roll');
+	});
+
 	test('the roll presentation is not persisted into the match snapshot', () => {
 		const match = createHookHarness(aiTurnFixture(), { aiDelayMs: 100 });
 		match.advanceTime(100);

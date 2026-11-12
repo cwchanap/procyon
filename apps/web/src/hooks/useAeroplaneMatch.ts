@@ -737,9 +737,10 @@ export function useAeroplaneMatch(
 	const [presentationQueue, setPresentationQueue] = useState<
 		AeroplanePresentation[]
 	>([]);
-	const [eventFeed, setEventFeed] = useState<AeroplaneFeedEntry[]>(
-		initial.feed
-	);
+	// Start empty on server and client: production SSR has no storage, so
+	// the server renders an empty feed and the first client render must match
+	// it to hydrate cleanly. The derived feed publishes after mount.
+	const [eventFeed, setEventFeed] = useState<AeroplaneFeedEntry[]>([]);
 	const [rollPresentation, setRollPresentation] =
 		useState<AeroplaneRollPresentation | null>(null);
 	const [noMoveNotice, setNoMoveNotice] =
@@ -1100,6 +1101,17 @@ export function useAeroplaneMatch(
 			previous === null ? null : { ...previous, animate: false }
 		);
 	}, [clearPresentation]);
+
+	// Publish the derived feed once after mount. initial.feed is computed
+	// during first-render initialization only, presentation ids already start
+	// beyond it, and no timer or user commit can run before this mount effect
+	// — so restored entries land first and a live append can neither be lost
+	// nor duplicated.
+	useEffect(() => {
+		if (initial.feed.length > 0) {
+			setEventFeed(initial.feed);
+		}
+	}, [initial.feed]);
 
 	// Persist a newly-created match and drive AI turns, including red-first
 	// turns when a human chooses yellow/blue/green. The generation guard keeps

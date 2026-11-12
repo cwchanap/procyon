@@ -580,9 +580,12 @@ test.describe('Aeroplane Chess critical journey', () => {
 		await expect(rollButton).toBeDisabled();
 		await expect(status(page)).toContainText('Yellow is rolling');
 
-		// Force-clicking the inactive control must not commit a human roll;
-		// the hook's actor guard is the backstop behind the disabled state.
-		await rollButton.click({ force: true }).catch(() => {});
+		// A forced click on a natively disabled button cannot dispatch a click
+		// event, so this click attempts the control without exercising the
+		// hook's actor guard. The assertions below therefore demonstrate the
+		// disabled control and clean AI handoff — not the guard backstop, which
+		// useAeroplaneMatch.test.ts proves directly.
+		await rollButton.click({ force: true });
 
 		// Yellow, blue and green each take exactly one paced AI turn, then the
 		// human turn returns — the forced click added no extra action.
