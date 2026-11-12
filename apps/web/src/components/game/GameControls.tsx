@@ -8,6 +8,9 @@ interface GameControlsProps {
 	 * game can't start with stale/default config (no API key). */
 	startDisabled?: boolean;
 	startLabel?: React.ReactNode;
+	/** Visible explanation shown near Start while a resolved setup blocks
+	 * starting (the button itself stays disabled — never bypassed). */
+	startBlockedReason?: string | null;
 	showLlmTools?: boolean;
 	isDebugMode: boolean;
 	canExport: boolean;
@@ -24,6 +27,7 @@ const GameControls: React.FC<GameControlsProps> = ({
 	aiConfigured,
 	startDisabled = false,
 	startLabel,
+	startBlockedReason,
 	showLlmTools,
 	isDebugMode,
 	canExport,
@@ -50,6 +54,12 @@ const GameControls: React.FC<GameControlsProps> = ({
 			>
 				{buttonContent}
 			</button>
+
+			{startBlockedReason && (
+				<p role='status' className='w-full text-center text-sm text-ivory-dim'>
+					{startBlockedReason}
+				</p>
+			)}
 
 			{isGameOver && (
 				<button

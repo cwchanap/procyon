@@ -86,6 +86,25 @@ describe('GameControls', () => {
 		expect(queryByRole('button', { name: /debug mode/i })).toBeTruthy();
 	});
 
+	test('startBlockedReason renders as a visible status and stays hidden when absent', () => {
+		const withReason = render(
+			<GameControls
+				{...makeDefaultProps()}
+				startDisabled
+				startBlockedReason='Sign in and configure an AI provider before starting a language-model opponent.'
+			/>
+		);
+		expect(withReason.getByRole('status').textContent).toBe(
+			'Sign in and configure an AI provider before starting a language-model opponent.'
+		);
+		withReason.unmount();
+
+		const withoutReason = render(
+			<GameControls {...makeDefaultProps()} startDisabled />
+		);
+		expect(withoutReason.queryByRole('status')).toBeNull();
+	});
+
 	test('export button requires canExport and onExport', () => {
 		const onExport = mock();
 		const missingOnExport = render(
