@@ -131,16 +131,22 @@ describe('GoogleSignInButton loading & error experience', () => {
 		advanceTimers(6000); // exceed the ~5s bounded poll (50 × 100ms)
 		expect(queryByRole('status')).toBeNull();
 		expect(getByText(/not loaded/i)).toBeTruthy();
+		// The pending status region unmounts with the error, so the error
+		// container must announce itself: a plain div is not a live region.
+		expect(getByRole('alert').textContent).toMatch(/not loaded/i);
 		expect(getByRole('button', { name: /reload/i })).toBeTruthy();
 	});
 
 	test('shows the existing error UI instead of a blank card when id.initialize throws', () => {
 		const { renderButton } = stubGoogle({ initializeThrows: true });
-		const { getByText, queryByRole } = render(<GoogleSignInButton />);
+		const { getByText, getByRole, queryByRole } = render(
+			<GoogleSignInButton />
+		);
 		advanceTimers(100);
 		expect(renderButton).not.toHaveBeenCalled();
 		expect(queryByRole('status')).toBeNull();
 		expect(getByText(/failed to initialize/i)).toBeTruthy();
+		expect(getByRole('alert').textContent).toMatch(/failed to initialize/i);
 		expect(queryByRole('button', { name: /reload/i })).toBeTruthy();
 	});
 
@@ -148,12 +154,15 @@ describe('GoogleSignInButton loading & error experience', () => {
 		const { initialize, renderButton } = stubGoogle({
 			renderButtonThrows: true,
 		});
-		const { getByText, queryByRole } = render(<GoogleSignInButton />);
+		const { getByText, getByRole, queryByRole } = render(
+			<GoogleSignInButton />
+		);
 		advanceTimers(100);
 		expect(initialize).toHaveBeenCalledTimes(1);
 		expect(renderButton).toHaveBeenCalledTimes(1);
 		expect(queryByRole('status')).toBeNull();
 		expect(getByText(/failed to initialize/i)).toBeTruthy();
+		expect(getByRole('alert').textContent).toMatch(/failed to initialize/i);
 		expect(queryByRole('button', { name: /reload/i })).toBeTruthy();
 	});
 
@@ -199,7 +208,9 @@ describe('GoogleSignInButton loading & error experience', () => {
 				})
 		) as unknown as typeof fetch;
 
-		const { getByText, queryByRole } = render(<GoogleSignInButton />);
+		const { getByText, getByRole, queryByRole } = render(
+			<GoogleSignInButton />
+		);
 		advanceTimers(100);
 		expect(capturedCallback).not.toBeNull();
 
@@ -208,6 +219,7 @@ describe('GoogleSignInButton loading & error experience', () => {
 		});
 
 		expect(getByText('Account suspended')).toBeTruthy();
+		expect(getByRole('alert').textContent).toMatch(/account suspended/i);
 		expect(queryByRole('button', { name: /reload/i })).toBeNull();
 	});
 
