@@ -50,18 +50,31 @@ function stubGoogle(options?: StubOptions) {
 }
 
 describe('GoogleSignInButton loading & error experience', () => {
+	let originalClientId: string;
+	let hadGoogle: boolean;
+	let originalGoogle: unknown;
+	let hadInitialAuthUser: boolean;
+	let originalInitialAuthUser: unknown;
+	let originalFetch: typeof globalThis.fetch;
+
 	beforeEach(() => {
+		const win = window as unknown as Record<string, unknown>;
+		originalClientId = env.PUBLIC_GOOGLE_CLIENT_ID;
+		hadGoogle = 'google' in win;
+		originalGoogle = win.google;
+		hadInitialAuthUser = '__PROCYON_INITIAL_AUTH_USER__' in win;
+		originalInitialAuthUser = win.__PROCYON_INITIAL_AUTH_USER__;
+		originalFetch = globalThis.fetch;
+
 		// The component reads the client ID from the live `env` object at
 		// effect/render time, so mutating the exported object (no mock.module —
 		// it leaks process-wide, see ChessGame.test.tsx) is deterministic.
 		env.PUBLIC_GOOGLE_CLIENT_ID = TEST_CLIENT_ID;
-		delete (window as unknown as Record<string, unknown>).google;
+		delete win.google;
 		// Give useAuth a server snapshot so it skips its background
 		// fetchSession() — otherwise the async fetch rejection resolves after
 		// the test body and logs act() warnings (ChessGame.test.tsx pattern).
-		(
-			window as unknown as Record<string, unknown>
-		).__PROCYON_INITIAL_AUTH_USER__ = {
+		win.__PROCYON_INITIAL_AUTH_USER__ = {
 			username: 'gis-test-user',
 		};
 		jest.useFakeTimers();
@@ -69,9 +82,19 @@ describe('GoogleSignInButton loading & error experience', () => {
 
 	afterEach(() => {
 		// reactSetup's afterEach also runs RTL cleanup() and useRealTimers.
-		env.PUBLIC_GOOGLE_CLIENT_ID = '';
-		delete (window as unknown as Record<string, unknown>)
-			.__PROCYON_INITIAL_AUTH_USER__;
+		const win = window as unknown as Record<string, unknown>;
+		env.PUBLIC_GOOGLE_CLIENT_ID = originalClientId;
+		if (hadGoogle) {
+			win.google = originalGoogle;
+		} else {
+			delete win.google;
+		}
+		if (hadInitialAuthUser) {
+			win.__PROCYON_INITIAL_AUTH_USER__ = originalInitialAuthUser;
+		} else {
+			delete win.__PROCYON_INITIAL_AUTH_USER__;
+		}
+		globalThis.fetch = originalFetch;
 	});
 
 	test('shows an accessible pending status overlaid on the reserved widget space while the GIS script loads', () => {
@@ -149,6 +172,43 @@ describe('GoogleSignInButton loading & error experience', () => {
 			(window.location as unknown as { reload: () => void }).reload =
 				originalReload;
 		}
+	});
+
+	test('does not render Reload when Google sign-in is rejected by the server', async () => {
+		let capturedCallback: ((response: { credential: string }) => void) | null =
+			null;
+		(window as unknown as Record<string, unknown>).google = {
+			accounts: {
+				id: {
+					initialize: mock(
+						(config: {
+							callback: (response: { credential: string }) => void;
+						}) => {
+							capturedCallback = config.callback;
+						}
+					),
+					renderButton: mock(() => {}),
+				},
+			},
+		};
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify({ error: 'Account suspended' }), {
+					status: 403,
+					headers: { 'Content-Type': 'application/json' },
+				})
+		) as unknown as typeof fetch;
+
+		const { getByText, queryByRole } = render(<GoogleSignInButton />);
+		advanceTimers(100);
+		expect(capturedCallback).not.toBeNull();
+
+		await act(async () => {
+			await capturedCallback!({ credential: 'fake-id-token' });
+		});
+
+		expect(getByText('Account suspended')).toBeTruthy();
+		expect(queryByRole('button', { name: /reload/i })).toBeNull();
 	});
 
 	test('stops polling after unmount (cleanup retained)', () => {
