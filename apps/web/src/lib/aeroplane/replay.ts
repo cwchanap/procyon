@@ -285,17 +285,17 @@ function finishResult(
 }
 
 /**
- * DEV/test-only diagnostic.  Rebuild from the deterministic root and report
- * the first roll, move, event, checksum, or final-state mismatch.  The input
- * envelope and its nested records are never mutated.  Sky Tycoon's Chance
- * deck is regenerated from the root seed and drawn cyclically, so only the
- * dice and AI streams are compared at the end.
+ * Rebuild a validated match from its deterministic root and report the first
+ * roll, move, event, checksum, or final-state mismatch, along with the ordered
+ * display steps for feed reconstruction.  Callers that have not yet run
+ * `validatePersistedAeroplaneMatch` (such as diagnostics and tests) should use
+ * `replayMatch` instead.  The input envelope and its nested records are never
+ * mutated.  Sky Tycoon's Chance deck is regenerated from the root seed and
+ * drawn cyclically, so only the dice and AI streams are compared at the end.
  */
-export function replayMatch(value: PersistedAeroplaneMatchV2): ReplayResult {
-	const validation: PersistedAeroplaneValidationResult =
-		validatePersistedAeroplaneMatch(value);
-	if (!validation.ok) return { kind: 'invalid', reason: validation.reason };
-	const snapshot = validation.value;
+export function replayValidatedMatch(
+	snapshot: PersistedAeroplaneMatchV2
+): ReplayResult {
 	const initial = createAeroplaneMatch(snapshot.config, snapshot.rootSeed);
 	let state = initial.state;
 	let diceRng = initial.diceRng;
@@ -398,4 +398,17 @@ export function replayMatch(value: PersistedAeroplaneMatchV2): ReplayResult {
 		snapshot.actions.length,
 		steps
 	);
+}
+
+/**
+ * Validate and rebuild a persisted match from its deterministic root, reporting
+ * the first validation failure or roll, move, event, checksum, or final-state
+ * mismatch.  Used in diagnostics, tests, and production restores when the
+ * caller has not already validated the envelope.
+ */
+export function replayMatch(value: PersistedAeroplaneMatchV2): ReplayResult {
+	const validation: PersistedAeroplaneValidationResult =
+		validatePersistedAeroplaneMatch(value);
+	if (!validation.ok) return { kind: 'invalid', reason: validation.reason };
+	return replayValidatedMatch(validation.value);
 }

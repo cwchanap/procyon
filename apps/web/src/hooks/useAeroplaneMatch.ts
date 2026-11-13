@@ -24,7 +24,10 @@ import {
 import { getLegalMoves } from '../lib/aeroplane/rules';
 import { getChatterLine } from '../lib/aeroplane/chatter';
 import { deriveHumanMoment, type HumanMoment } from '../lib/aeroplane/rewards';
-import { replayMatch } from '../lib/aeroplane/replay';
+import {
+	replayValidatedMatch,
+	type ReplayFeedStep,
+} from '../lib/aeroplane/replay';
 import { normalizeRngState, type RngState } from '../lib/aeroplane/rng';
 import type { SubmitPlayHistoryInput } from '../lib/play-history';
 import { useTerminalHistorySave } from './useTerminalHistorySave';
@@ -96,55 +99,24 @@ export type AeroplaneFeedEntry =
 	| AeroplanePresentation
 	| AeroplaneRollOnlyFeedEntry;
 
-/**
- * Display-only reconstruction step (from live commit or the replay
- * diagnostic): the recorded action, the effective resolved move (null for a
- * no-move roll), and the committed post-action state the formatter reads
- * turn/phase/result from.
- */
-export interface AeroplaneFeedStep {
-	readonly action: AeroplaneActionRecord;
-	readonly move: ResolvedMove | null;
-	readonly state: AeroplaneState;
+function buildRollOnlyEntry(
+	step: ReplayFeedStep & { readonly move: null },
+	id: number
+): AeroplaneRollOnlyFeedEntry {
+	return {
+		id,
+		move: null,
+		events: [],
+		action: step.action,
+		nextPlayer: step.state.currentPlayer,
+	};
 }
 
-/**
- * The one pure feed-entry formatter, shared by live play and saved-match
- * restoration.  Move entries carry the effective move with deterministic
- * `getChatterLine` selection (terminal win/loss copy included); no-move
- * rolls become roll-only entries carrying the committed next player and the
- * HPA-761 action-event semantics (Customs skip, capture details).  The id is
- * assigned by the caller so restoration can use sequential ids.
- */
-export function buildAeroplaneFeedEntry(
-	step: AeroplaneFeedStep & { readonly move: ResolvedMove },
+function buildMovePresentation(
+	step: ReplayFeedStep & { readonly move: ResolvedMove },
 	id: number,
 	seats: readonly AiSeat[]
-): AeroplanePresentation;
-export function buildAeroplaneFeedEntry(
-	step: AeroplaneFeedStep & { readonly move: null },
-	id: number,
-	seats: readonly AiSeat[]
-): AeroplaneRollOnlyFeedEntry;
-export function buildAeroplaneFeedEntry(
-	step: AeroplaneFeedStep,
-	id: number,
-	seats: readonly AiSeat[]
-): AeroplaneFeedEntry;
-export function buildAeroplaneFeedEntry(
-	step: AeroplaneFeedStep,
-	id: number,
-	seats: readonly AiSeat[]
-): AeroplaneFeedEntry {
-	if (step.move === null) {
-		return {
-			id,
-			move: null,
-			events: [],
-			action: step.action,
-			nextPlayer: step.state.currentPlayer,
-		};
-	}
+): AeroplanePresentation {
 	const move = step.move;
 	const personality =
 		seats.find(seat => seat.color === move.color)?.personality ?? 'cautious';
@@ -177,6 +149,32 @@ export function buildAeroplaneFeedEntry(
 		action: step.action,
 		...(chatter === undefined ? {} : { chatter }),
 	};
+}
+
+/**
+ * The one pure feed-entry formatter, shared by live play and saved-match
+ * restoration.  Move entries carry the effective move with deterministic
+ * `getChatterLine` selection (terminal win/loss copy included); no-move
+ * rolls become roll-only entries carrying the committed next player and the
+ * HPA-761 action-event semantics (Customs skip, capture details).  The id is
+ * assigned by the caller so restoration can use sequential ids.
+ */
+export function buildAeroplaneFeedEntry(
+	step: ReplayFeedStep,
+	id: number,
+	seats: readonly AiSeat[]
+): AeroplaneFeedEntry {
+	if (step.move === null) {
+		return buildRollOnlyEntry(
+			step as ReplayFeedStep & { readonly move: null },
+			id
+		);
+	}
+	return buildMovePresentation(
+		step as ReplayFeedStep & { readonly move: ResolvedMove },
+		id,
+		seats
+	);
 }
 
 /**
@@ -632,10 +630,21 @@ export function buildAeroplaneHistoryPayload(
 function reconstructFeed(
 	value: PersistedAeroplaneMatchV2,
 	seats: readonly AiSeat[],
-	nextId: () => number,
-	dev: boolean
+	dev: boolean,
+	startId = 0
 ): AeroplaneFeedEntry[] {
-	const result = replayMatch(value);
+	let result;
+	try {
+		result = replayValidatedMatch(value);
+	} catch (error) {
+		if (dev) {
+			const reason = error instanceof Error ? error.message : String(error);
+			globalThis.console?.warn(
+				`Aeroplane feed reconstruction threw: ${reason}`
+			);
+		}
+		return [];
+	}
 	if (result.kind !== 'ok') {
 		if (dev) {
 			globalThis.console?.warn(
@@ -644,8 +653,8 @@ function reconstructFeed(
 		}
 		return [];
 	}
-	return result.steps.map(step =>
-		buildAeroplaneFeedEntry(step, nextId(), seats)
+	return result.steps.map((step, index) =>
+		buildAeroplaneFeedEntry(step, startId + index + 1, seats)
 	);
 }
 
@@ -671,7 +680,7 @@ export function useAeroplaneMatch(
 		active: ActiveAeroplaneMatch;
 		overrides: AeroplaneDevOverrides;
 		setup: AeroplaneConfig;
-		feed: AeroplaneFeedEntry[];
+		fixtureIsAuthoritative: boolean;
 	} | null>(null);
 	const devRef = useRef(options.dev ?? import.meta.env.DEV);
 	if (initialRef.current === null) {
@@ -685,10 +694,6 @@ export function useAeroplaneMatch(
 			fixture: options.fixture,
 		});
 		const seed = overrides.seed ?? nextSeed(options.seed);
-		const restored = restoreActiveMatch(
-			storageRef.current,
-			diagnosticsRef.current
-		);
 		const fixtureIsAuthoritative =
 			overrides.seed !== undefined ||
 			overrides.config !== undefined ||
@@ -696,34 +701,20 @@ export function useAeroplaneMatch(
 			overrides.seats !== undefined ||
 			overrides.diceRng !== undefined ||
 			overrides.aiRng !== undefined;
-		const active =
-			!fixtureIsAuthoritative && restored.kind === 'ok'
-				? activeFromPersisted(restored.match)
-				: activeFromFresh(
-						options.initialConfig ?? options.config ?? {},
-						seed,
-						overrides,
-						nowRef.current()
-					);
-		let restoredFeed: AeroplaneFeedEntry[] = [];
-		if (!fixtureIsAuthoritative && restored.kind === 'ok') {
-			// Sequential display ids 1..N; presentationIdRef seeds from the count.
-			let nextId = 0;
-			restoredFeed = reconstructFeed(
-				restored.match,
-				active.seats,
-				() => {
-					nextId += 1;
-					return nextId;
-				},
-				dev
-			);
-		}
+		// Keep first render identical to SSR: storage restoration and feed
+		// replay wait until the post-mount effect so saved games hydrate
+		// cleanly without throwing away server DOM.
+		const active = activeFromFresh(
+			options.initialConfig ?? options.config ?? {},
+			seed,
+			overrides,
+			nowRef.current()
+		);
 		initialRef.current = {
 			active,
 			overrides,
 			setup: { ...active.config },
-			feed: restoredFeed,
+			fixtureIsAuthoritative,
 		};
 	}
 
@@ -737,9 +728,7 @@ export function useAeroplaneMatch(
 	const [presentationQueue, setPresentationQueue] = useState<
 		AeroplanePresentation[]
 	>([]);
-	// Start empty on server and client: production SSR has no storage, so
-	// the server renders an empty feed and the first client render must match
-	// it to hydrate cleanly. The derived feed publishes after mount.
+	// Start empty on server and client; restored feed entries publish after mount.
 	const [eventFeed, setEventFeed] = useState<AeroplaneFeedEntry[]>([]);
 	const [rollPresentation, setRollPresentation] =
 		useState<AeroplaneRollPresentation | null>(null);
@@ -759,8 +748,9 @@ export function useAeroplaneMatch(
 	const presentationTimersRef = useRef(
 		new Set<ReturnType<typeof setTimeout>>()
 	);
-	const presentationIdRef = useRef(initial.feed.length);
+	const presentationIdRef = useRef(0);
 	const rollIdRef = useRef(0);
+	const didMountRestoreRef = useRef(false);
 	const skipAnimationsRef = useRef(initial.overrides.skipAnimations ?? false);
 
 	const clearPresentation = useCallback(() => {
@@ -802,9 +792,9 @@ export function useAeroplaneMatch(
 	);
 
 	const enqueuePresentation = useCallback(
-		(step: AeroplaneFeedStep & { readonly move: ResolvedMove }) => {
+		(step: ReplayFeedStep & { readonly move: ResolvedMove }) => {
 			if (skipAnimationsRef.current) return;
-			const item = buildAeroplaneFeedEntry(
+			const item = buildMovePresentation(
 				step,
 				(presentationIdRef.current += 1),
 				activeRef.current.seats
@@ -952,10 +942,9 @@ export function useAeroplaneMatch(
 			// must announce a no-move roll even when the feed is suppressed.
 			const rollOnlyEntry: AeroplaneRollOnlyFeedEntry | null =
 				result.legalMoves.length === 0
-					? buildAeroplaneFeedEntry(
+					? buildRollOnlyEntry(
 							{ action: rollAction, move: null, state: result.state },
-							(presentationIdRef.current += 1),
-							current.seats
+							(presentationIdRef.current += 1)
 						)
 					: null;
 			setNoMoveNotice(rollOnlyEntry);
@@ -1073,15 +1062,18 @@ export function useAeroplaneMatch(
 		const editableSetup = { ...next.config };
 		setSetupState(editableSetup);
 		setupRef.current = editableSetup;
-		presentationIdRef.current = 0;
-		setEventFeed(
-			reconstructFeed(
-				restored.match,
-				next.seats,
-				() => (presentationIdRef.current += 1),
-				devRef.current
-			)
+		const restoredFeed = reconstructFeed(
+			restored.match,
+			next.seats,
+			devRef.current
 		);
+		// Keep presentation ids monotonic across resumes so the board never
+		// treats the next move as an already-processed id and skips cues.
+		presentationIdRef.current = Math.max(
+			presentationIdRef.current,
+			restoredFeed.length
+		);
+		setEventFeed(restoredFeed);
 		setHumanMoments([]);
 		commit(next);
 		return true;
@@ -1102,28 +1094,53 @@ export function useAeroplaneMatch(
 		);
 	}, [clearPresentation]);
 
-	// Publish the derived feed once after mount. initial.feed is computed
-	// during first-render initialization only, presentation ids already start
-	// beyond it, and no timer or user commit can run before this mount effect
-	// — so restored entries land first and a live append can neither be lost
-	// nor duplicated.
+	// Restore any persisted match and replay its feed once after mount so SSR
+	// and the first client render always match, or persist the fresh match if
+	// storage has none. Prepending preserves any live entries committed before
+	// mount effects ran and avoids StrictMode/Fast Refresh duplication.
 	useEffect(() => {
-		if (initial.feed.length > 0) {
-			setEventFeed(initial.feed);
+		if (didMountRestoreRef.current) return;
+		didMountRestoreRef.current = true;
+		if (initial.fixtureIsAuthoritative) {
+			save(activeRef.current);
+			return;
 		}
-	}, [initial.feed]);
+		if (activeRef.current !== initial.active) return;
+		const restored = restoreActiveMatch(
+			storageRef.current,
+			diagnosticsRef.current
+		);
+		if (restored.kind !== 'ok') {
+			save(activeRef.current);
+			return;
+		}
+		const next = activeFromPersisted(restored.match);
+		const editableSetup = { ...next.config };
+		activeRef.current = next;
+		setupRef.current = editableSetup;
+		setActiveMatch(next);
+		setSetupState(editableSetup);
+		const baseId = presentationIdRef.current;
+		const restoredFeed = reconstructFeed(
+			restored.match,
+			next.seats,
+			devRef.current,
+			baseId
+		);
+		presentationIdRef.current = baseId + restoredFeed.length;
+		if (restoredFeed.length > 0) {
+			setEventFeed(previous => [...restoredFeed, ...previous]);
+		}
+	}, [initial, save]);
 
-	// Persist a newly-created match and drive AI turns, including red-first
-	// turns when a human chooses yellow/blue/green. The generation guard keeps
-	// a timer from committing after reset or unmount. Rolling is authoritative
-	// immediately; AI rolls and decisions share one paced timer slot so the
-	// previous die face stays visible.
-	useEffect(() => {
-		save(activeRef.current);
-	}, [save]);
-
+	// Drive AI turns, including red-first turns when a human chooses
+	// yellow/blue/green. The generation guard keeps a timer from committing
+	// after reset or unmount. Rolling is authoritative immediately; AI rolls
+	// and decisions share one paced timer slot so the previous die face stays
+	// visible.
 	useEffect(() => {
 		const current = activeMatch;
+		if (current !== activeRef.current) return;
 		if (isHumanTurn(current) || aiTimerRef.current !== null) return;
 		const generation = generationRef.current;
 		if (current.state.phase === 'awaiting-roll') {

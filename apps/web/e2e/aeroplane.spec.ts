@@ -589,22 +589,20 @@ test.describe('Aeroplane Chess critical journey', () => {
 
 		// Yellow, blue and green each take exactly one paced AI turn, then the
 		// human turn returns — the forced click added no extra action.
-		await expect(status(page)).toContainText('Blue is rolling', {
-			timeout: 15_000,
-		});
 		await expect(rollButton).toBeEnabled({ timeout: 15_000 });
 		const saved = await storedMatch(page);
 		expect(
 			saved.actions.map(action => ({
 				actor: action.actor,
 				kind: action.kind,
+				color: action.color,
 			}))
 		).toEqual([
-			{ actor: 'human', kind: 'roll' },
-			{ actor: 'human', kind: 'move' },
-			{ actor: 'ai', kind: 'roll' },
-			{ actor: 'ai', kind: 'roll' },
-			{ actor: 'ai', kind: 'roll' },
+			{ actor: 'human', kind: 'roll', color: 'red' },
+			{ actor: 'human', kind: 'move', color: 'red' },
+			{ actor: 'ai', kind: 'roll', color: 'yellow' },
+			{ actor: 'ai', kind: 'roll', color: 'blue' },
+			{ actor: 'ai', kind: 'roll', color: 'green' },
 		]);
 		await expect(status(page)).toContainText('Red to roll');
 		await expect(dieRoller).toHaveText('Last roll by Green');
