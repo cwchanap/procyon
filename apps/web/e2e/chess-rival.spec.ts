@@ -737,10 +737,11 @@ test.describe('Chess rival — failure & fallback journeys', () => {
 		await expect(opponentRadio(page, /Language model/i)).toBeChecked({
 			timeout: 20000,
 		});
-		const notice = page.getByRole('status');
-		await expect(notice).toContainText(
-			/on-device computer is unavailable on this device, so a language-model opponent was selected/i
-		);
+		const notice = page.getByRole('status').filter({
+			hasText:
+				/on-device computer is unavailable on this device, so a language-model opponent was selected/i,
+		});
+		await expect(notice).toBeVisible();
 	});
 
 	test('remembered LLM that is unavailable falls back to the supported engine with a notice', async ({
@@ -754,10 +755,11 @@ test.describe('Chess rival — failure & fallback journeys', () => {
 		await waitForSetupResolved(page);
 
 		await expect(opponentRadio(page, /On-device computer/i)).toBeChecked();
-		const notice = page.getByRole('status');
-		await expect(notice).toContainText(
-			/language-model opponent is unavailable, so the on-device computer was selected/i
-		);
+		const notice = page.getByRole('status').filter({
+			hasText:
+				/language-model opponent is unavailable, so the on-device computer was selected/i,
+		});
+		await expect(notice).toBeVisible();
 	});
 
 	test('an explicit unusable opponent choice is not auto-overridden', async ({
