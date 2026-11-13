@@ -47,7 +47,10 @@ export function GoogleSignInButton({
 }: GoogleSignInButtonProps) {
 	const { signInWithGoogle } = useAuth();
 	const buttonRef = useRef<HTMLDivElement>(null);
-	const [error, setError] = useState('');
+	const [error, setError] = useState<{
+		message: string;
+		reloadable: boolean;
+	} | null>(null);
 	const [loading, setLoading] = useState(false);
 	// True while the bounded poll waits for the GIS script; the widget space
 	// reserves the button height so clearing it cannot shift the layout.
@@ -56,7 +59,10 @@ export function GoogleSignInButton({
 	useEffect(() => {
 		const clientId = env.PUBLIC_GOOGLE_CLIENT_ID;
 		if (!clientId) {
-			setError('Google Sign-In is not configured.');
+			setError({
+				message: 'Google Sign-In is not configured.',
+				reloadable: false,
+			});
 			setPending(false);
 			return;
 		}
@@ -71,9 +77,11 @@ export function GoogleSignInButton({
 			if (!window.google?.accounts?.id) {
 				attempts++;
 				if (attempts >= MAX_ATTEMPTS) {
-					setError(
-						'Google Sign-In library not loaded. Please refresh the page.'
-					);
+					setError({
+						message:
+							'Google Sign-In library not loaded. Please refresh the page.',
+						reloadable: true,
+					});
 					setPending(false);
 					return;
 				}
@@ -86,20 +94,33 @@ export function GoogleSignInButton({
 					client_id: clientId,
 					callback: async (response: GoogleCredentialResponse) => {
 						setLoading(true);
-						setError('');
-						const result = await signInWithGoogle(response.credential);
-						if (result.success) {
-							window.location.href = '/';
-						} else {
-							setError(result.error || 'Sign-in failed');
+						setError(null);
+						try {
+							const result = await signInWithGoogle(response.credential);
+							if (result.success) {
+								window.location.href = '/';
+							} else {
+								setError({
+									message: result.error || 'Sign-in failed',
+									reloadable: false,
+								});
+							}
+						} catch {
+							setError({
+								message: 'Sign-in failed',
+								reloadable: false,
+							});
+						} finally {
+							setLoading(false);
 						}
-						setLoading(false);
 					},
 				});
 			} catch {
-				setError(
-					'Google Sign-In failed to initialize. Please reload the page.'
-				);
+				setError({
+					message:
+						'Google Sign-In failed to initialize. Please reload the page.',
+					reloadable: true,
+				});
 				setPending(false);
 				return;
 			}
@@ -116,9 +137,11 @@ export function GoogleSignInButton({
 						width: buttonWidth,
 					});
 				} catch {
-					setError(
-						'Google Sign-In failed to initialize. Please reload the page.'
-					);
+					setError({
+						message:
+							'Google Sign-In failed to initialize. Please reload the page.',
+						reloadable: true,
+					});
 					setPending(false);
 					return;
 				}
@@ -150,17 +173,19 @@ export function GoogleSignInButton({
 			{loading && <div className='text-ivory-dim text-sm'>Signing in...</div>}
 			{error && (
 				<div className='text-destructive text-sm text-center bg-destructive/10 border border-destructive/30 rounded-lg p-3'>
-					{error}
-					<button
-						type='button'
-						// The GIS script is injected once by Layout.astro; only a
-						// real page reload can retry that request — polling again
-						// cannot recover a failed script load.
-						onClick={() => window.location.reload()}
-						className='mt-3 block mx-auto rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/20'
-					>
-						Reload
-					</button>
+					{error.message}
+					{error.reloadable && (
+						<button
+							type='button'
+							// The GIS script is injected once by Layout.astro; only a
+							// real page reload can retry that request — polling again
+							// cannot recover a failed script load.
+							onClick={() => window.location.reload()}
+							className='mt-3 block mx-auto rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/20'
+						>
+							Reload
+						</button>
+					)}
 				</div>
 			)}
 			{/* Reserves the real Google button's height; the pending status
