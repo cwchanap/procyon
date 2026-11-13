@@ -487,6 +487,25 @@ describe('Aeroplane die roller label', () => {
 		);
 	});
 
+	test('labels the prior roll as the last roll during the same seat bonus turn', () => {
+		// Red rolled 6 and kept the turn (bonus roll): the old face stays
+		// visible while Red awaits a fresh roll, so it must not read as the
+		// current roll.
+		const { getByTestId } = render(
+			<AeroplaneStatus
+				state={fixtureState({
+					currentPlayer: 'red',
+					phase: 'awaiting-roll',
+					pendingRoll: null,
+				})}
+				rollPresentation={rollPresentation({ face: 6, color: 'red' })}
+			/>
+		);
+		expect(getByTestId('aeroplane-die-roller').textContent).toBe(
+			'Last roll by Red'
+		);
+	});
+
 	test('retains the Rolled-by label while the roller is the current seat', () => {
 		const { getByTestId } = render(
 			<AeroplaneStatus

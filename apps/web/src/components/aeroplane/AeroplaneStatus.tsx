@@ -196,9 +196,10 @@ export const AeroplaneStatus: React.FC<AeroplaneStatusProps> = ({
 							data-testid='aeroplane-die-roller'
 							className='text-center text-xs font-mono uppercase tracking-[0.18em] text-ivory-dim'
 						>
-							{roller !== state.currentPlayer
-								? `Last roll by ${colorLabel[roller]}`
-								: `Rolled by ${colorLabel[roller]}`}
+							{state.phase === 'awaiting-choice' &&
+							roller === state.currentPlayer
+								? `Rolled by ${colorLabel[roller]}`
+								: `Last roll by ${colorLabel[roller]}`}
 						</p>
 					)}
 				</div>
