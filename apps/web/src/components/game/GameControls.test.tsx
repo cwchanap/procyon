@@ -86,23 +86,45 @@ describe('GameControls', () => {
 		expect(queryByRole('button', { name: /debug mode/i })).toBeTruthy();
 	});
 
-	test('startBlockedReason renders as a visible status and stays hidden when absent', () => {
-		const withReason = render(
+	test('startBlockedReason announces in an always-mounted status region below the button row', () => {
+		const reason =
+			'Sign in and configure an AI provider before starting a language-model opponent.';
+		const view = render(
 			<GameControls
 				{...makeDefaultProps()}
+				hasGameStarted
+				canExport
+				onExport={mock()}
 				startDisabled
-				startBlockedReason='Sign in and configure an AI provider before starting a language-model opponent.'
 			/>
 		);
-		expect(withReason.getByRole('status').textContent).toBe(
-			'Sign in and configure an AI provider before starting a language-model opponent.'
-		);
-		withReason.unmount();
+		const statusRegion = view.getByRole('status');
+		expect(statusRegion.textContent).toBe('');
 
-		const withoutReason = render(
-			<GameControls {...makeDefaultProps()} startDisabled />
+		// All action buttons share one flex row outside the live region so
+		// inserting a block reason cannot split Debug/Export onto another line.
+		const startBtn = view.getByRole('button', {
+			name: '⏳ Loading AI config…',
+		});
+		const debugBtn = view.getByRole('button', { name: /debug mode/i });
+		const exportBtn = view.getByRole('button', { name: /export game/i });
+		const buttonRow = startBtn.parentElement;
+		expect(debugBtn.parentElement).toBe(buttonRow);
+		expect(exportBtn.parentElement).toBe(buttonRow);
+		expect(buttonRow?.contains(statusRegion)).toBe(false);
+
+		view.rerender(
+			<GameControls
+				{...makeDefaultProps()}
+				hasGameStarted
+				canExport
+				onExport={mock()}
+				startDisabled
+				startBlockedReason={reason}
+			/>
 		);
-		expect(withoutReason.queryByRole('status')).toBeNull();
+		expect(view.getByRole('status')).toBe(statusRegion);
+		expect(statusRegion.textContent).toBe(reason);
 	});
 
 	test('export button requires canExport and onExport', () => {
