@@ -46,54 +46,60 @@ const GameControls: React.FC<GameControlsProps> = ({
 				: '▶️ Start');
 
 	return (
-		<div className='flex gap-4 justify-center flex-wrap'>
-			<button
-				onClick={onStartOrReset}
-				disabled={startDisabled}
-				className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
-			>
-				{buttonContent}
-			</button>
-
-			{startBlockedReason && (
-				<p role='status' className='w-full text-center text-sm text-ivory-dim'>
-					{startBlockedReason}
-				</p>
-			)}
-
-			{isGameOver && (
+		<div className='flex flex-col items-center'>
+			<div className='flex gap-4 justify-center flex-wrap'>
 				<button
-					onClick={onReset}
-					className='bg-brass text-ink-900 px-6 py-3 font-semibold rounded-lg hover:bg-brass-bright transition-colors duration-150 shadow-lg'
+					onClick={onStartOrReset}
+					disabled={startDisabled}
+					className='bg-ink-700 border border-line px-6 py-3 text-ivory font-semibold rounded-lg hover:bg-ink-600 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
 				>
-					🎮 Play Again
+					{buttonContent}
 				</button>
-			)}
 
-			{showTools && (
-				<>
+				{isGameOver && (
 					<button
-						onClick={onToggleDebug}
-						className={`bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 ${
-							isDebugMode
-								? 'bg-brass/20 text-brass border-brass'
-								: 'text-ivory-dim hover:bg-ink-600'
-						}`}
+						onClick={onReset}
+						className='bg-brass text-ink-900 px-6 py-3 font-semibold rounded-lg hover:bg-brass-bright transition-colors duration-150 shadow-lg'
 					>
-						🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
+						🎮 Play Again
 					</button>
+				)}
 
-					{canExport && onExport && (
+				{showTools && (
+					<>
 						<button
-							onClick={onExport}
-							className='bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 text-ivory-dim hover:bg-ink-600'
-							title='Export game with AI prompts and responses'
+							onClick={onToggleDebug}
+							className={`bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 ${
+								isDebugMode
+									? 'bg-brass/20 text-brass border-brass'
+									: 'text-ivory-dim hover:bg-ink-600'
+							}`}
 						>
-							📥 Export Game
+							🐛 {isDebugMode ? 'Debug ON' : 'Debug Mode'}
 						</button>
-					)}
-				</>
-			)}
+
+						{canExport && onExport && (
+							<button
+								onClick={onExport}
+								className='bg-ink-700 border border-line px-4 py-2 text-xs font-medium rounded-lg transition-colors duration-150 text-ivory-dim hover:bg-ink-600'
+								title='Export game with AI prompts and responses'
+							>
+								📥 Export Game
+							</button>
+						)}
+					</>
+				)}
+			</div>
+
+			{/* Always-mounted live region below the button row so screen readers
+			    announce block reasons when inserted without shifting buttons. */}
+			<div role='status'>
+				{startBlockedReason && (
+					<p className='mt-2 text-center text-sm text-ivory-dim'>
+						{startBlockedReason}
+					</p>
+				)}
+			</div>
 		</div>
 	);
 };

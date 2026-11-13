@@ -122,11 +122,12 @@ describe('ChessGame — rival setup & preview', () => {
 		}) as HTMLButtonElement;
 		expect(blockedStart.disabled).toBe(true);
 
-		// Switching back to the on-device engine lifts the block: the reason
-		// disappears and Start becomes actionable.
+		// Switching back to the on-device engine lifts the block: the status
+		// region clears (while staying mounted for future announcements) and
+		// Start becomes actionable.
 		fireEvent.click(view.getByRole('radio', { name: /On-device computer/i }));
 		await waitFor(() => {
-			expect(view.queryByRole('status')).toBeNull();
+			expect(view.getByRole('status').textContent).toBe('');
 		});
 		expect(
 			(view.getByRole('button', { name: /^▶️ Start$/ }) as HTMLButtonElement)
@@ -142,7 +143,7 @@ describe('ChessGame — rival setup & preview', () => {
 		// skeleton — so nothing flashes a White-oriented board or announces
 		// an opponent fallback.
 		expect(view.queryByRole('radiogroup', { name: /opponent/i })).toBeNull();
-		expect(view.queryByRole('status')).toBeNull();
+		expect(view.getByRole('status').textContent).toBe('');
 		expect(squareButtons(view)).toHaveLength(0);
 		expect(view.queryByTestId('board-loading-skeleton')).toBeTruthy();
 		// The engine details panel must not announce "Ready to load" before the
