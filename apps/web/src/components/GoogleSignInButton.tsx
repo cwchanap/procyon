@@ -157,7 +157,7 @@ export function GoogleSignInButton({
 
 	if (error && !env.PUBLIC_GOOGLE_CLIENT_ID) {
 		return (
-			<div className='text-center text-ivory-dim text-sm'>
+			<div role='alert' className='text-center text-ivory-dim text-sm'>
 				Google Sign-In is not configured. Please set{' '}
 				<code className='bg-ink-800 px-1 rounded'>PUBLIC_GOOGLE_CLIENT_ID</code>{' '}
 				in your environment.
@@ -172,7 +172,10 @@ export function GoogleSignInButton({
 		>
 			{loading && <div className='text-ivory-dim text-sm'>Signing in...</div>}
 			{error && (
-				<div className='text-destructive text-sm text-center bg-destructive/10 border border-destructive/30 rounded-lg p-3'>
+				<div
+					role='alert'
+					className='text-destructive text-sm text-center bg-destructive/10 border border-destructive/30 rounded-lg p-3'
+				>
 					{error.message}
 					{error.reloadable && (
 						<button
