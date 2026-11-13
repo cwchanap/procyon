@@ -10,6 +10,8 @@ import {
 import { rollFair } from '../lib/aeroplane/dice';
 import { checksumState } from '../lib/aeroplane/checksum';
 import { getChatterLine } from '../lib/aeroplane/chatter';
+import * as persistenceModule from '../lib/aeroplane/persistence';
+import * as replayModule from '../lib/aeroplane/replay';
 import {
 	ACTIVE_MATCH_STORAGE_KEY,
 	restoreActiveMatch,
@@ -2236,5 +2238,110 @@ describe('useAeroplaneMatch restored feed reconstruction', () => {
 		} finally {
 			warnSpy.mockRestore();
 		}
+	});
+
+	test('a thrown replay error keeps the restored match, shows an empty feed and warns in DEV', () => {
+		const storage = memoryStorage();
+		const first = createHookHarness(freshMatchFixture(), {
+			storage,
+			aiDelayMs: 0,
+			config: { ...CLASSIC_CONFIG, chatter: true },
+		});
+		driveOneCommit(first);
+		const savedState = first.state();
+		first.unmount();
+
+		const replaySpy = jest
+			.spyOn(replayModule, 'replayValidatedMatch')
+			.mockImplementation(() => {
+				throw new Error('simulated replay crash');
+			});
+		const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			const second = createHookHarness(undefined, { storage, aiDelayMs: 0 });
+			expect(second.state()).toEqual(savedState);
+			expect(second.eventFeed()).toEqual([]);
+			expect(warnSpy).toHaveBeenCalledTimes(1);
+			expect(warnSpy.mock.calls[0]?.[0]).toContain('simulated replay crash');
+			second.unmount();
+		} finally {
+			replaySpy.mockRestore();
+			warnSpy.mockRestore();
+		}
+	});
+
+	test('initial restore does not repeat validatePersistedAeroplaneMatch during feed reconstruction', () => {
+		const storage = memoryStorage();
+		const first = createHookHarness(freshMatchFixture(), {
+			storage,
+			aiDelayMs: 0,
+		});
+		driveOneCommit(first);
+		first.unmount();
+
+		const validateSpy = jest.spyOn(
+			persistenceModule,
+			'validatePersistedAeroplaneMatch'
+		);
+		try {
+			const second = createHookHarness(undefined, { storage, aiDelayMs: 0 });
+			expect(validateSpy).toHaveBeenCalledTimes(1);
+			second.unmount();
+		} finally {
+			validateSpy.mockRestore();
+		}
+	});
+
+	test('resume keeps presentation ids strictly increasing beyond previously queued moves', () => {
+		const storage = memoryStorage();
+		// Save an empty-history snapshot we can resume into later.
+		const snapshotMatch = createAeroplaneMatch(CLASSIC_CONFIG, 39413);
+		const emptySnapshot: PersistedAeroplaneMatchV2 = {
+			version: 2,
+			savedAt: new Date(0).toISOString(),
+			rootSeed: snapshotMatch.rootSeed,
+			config: snapshotMatch.state.config,
+			state: snapshotMatch.state,
+			seats: snapshotMatch.seats,
+			diceRng: snapshotMatch.diceRng,
+			aiRng: snapshotMatch.aiRng,
+			actions: [],
+		};
+
+		// Play a live move so presentation ids advance (id = 1).
+		const live = createHookHarness(oneLegalHumanMoveFixture(), {
+			storage,
+			aiDelayMs: 100_000,
+			presentationMs: 100_000,
+		});
+		live.roll();
+		const idBeforeResume = live.result.current.presentationQueue[0]!.id;
+		expect(idBeforeResume).toBe(1);
+
+		// Overwrite storage with the 0-action snapshot and resume.
+		expect(saveActiveMatch(emptySnapshot, storage)).toBe(true);
+		act(() => {
+			expect(live.result.current.resume()).toBe(true);
+		});
+		expect(live.eventFeed()).toHaveLength(0);
+
+		// Play a move in the resumed match: its presentation id must not reuse
+		// the id already seen before resume (otherwise the board skips its cue).
+		const resumeMoveFixture = oneLegalHumanMoveFixture();
+		const postResumeSaved: PersistedAeroplaneMatchV2 = {
+			...emptySnapshot,
+			config: resumeMoveFixture.state!.config,
+			state: resumeMoveFixture.state!,
+			diceRng: resumeMoveFixture.diceRng!,
+			aiRng: resumeMoveFixture.aiRng!,
+		};
+		expect(saveActiveMatch(postResumeSaved, storage)).toBe(true);
+		act(() => {
+			expect(live.result.current.resume()).toBe(true);
+		});
+		live.roll();
+		const idAfterResume = live.result.current.presentationQueue[0]!.id;
+		expect(idAfterResume).toBeGreaterThan(idBeforeResume);
+		live.unmount();
 	});
 });

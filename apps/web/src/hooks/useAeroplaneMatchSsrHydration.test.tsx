@@ -4,7 +4,11 @@ import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
 import { setupReactDom } from '../test/reactSetup';
+import AeroplaneBoard from '../components/aeroplane/AeroplaneBoard';
 import AeroplaneEventFeed from '../components/aeroplane/AeroplaneEventFeed';
+import AeroplaneSetup from '../components/aeroplane/AeroplaneSetup';
+import AeroplaneStatus from '../components/aeroplane/AeroplaneStatus';
+import { CLASSIC_CONFIG } from '../lib/aeroplane/game';
 import {
 	ACTIVE_MATCH_STORAGE_KEY,
 	useAeroplaneMatch,
@@ -131,6 +135,50 @@ function SsrHydrationProbe(props: {
 	);
 }
 
+/**
+ * Full-surface island probe matching AeroplaneGame's board, status, setup, and
+ * feed wiring so any state/config/feed hydration mismatch is surfaced.
+ */
+function FullSurfaceSsrProbe(props: {
+	captured: { current: UseAeroplaneMatchResult | null };
+	options?: UseAeroplaneMatchOptions;
+}): React.ReactElement {
+	const match = useAeroplaneMatch(SIGNED_OUT_AUTH, {
+		dev: true,
+		...props.options,
+	});
+	props.captured.current = match;
+	return (
+		<div>
+			<AeroplaneBoard
+				state={match.state}
+				legalMoves={match.legalMoves}
+				isHumanTurn={match.isHumanTurn}
+				presentationQueue={match.presentationQueue}
+				onRoll={match.roll}
+				onSelectMove={match.selectMove}
+			/>
+			<AeroplaneStatus
+				state={match.state}
+				legalMoves={match.legalMoves}
+				isHumanTurn={match.isHumanTurn}
+				isAnimating={match.isAnimating}
+				rollPresentation={match.rollPresentation}
+				noMoveNotice={match.noMoveNotice}
+			/>
+			<AeroplaneSetup
+				setup={match.setup}
+				onChange={match.setSetup}
+				onStart={() => match.newMatch()}
+			/>
+			<AeroplaneEventFeed
+				events={match.eventFeed}
+				onSkipAnimations={match.skipAnimations}
+			/>
+		</div>
+	);
+}
+
 /** Remove the browser surface only for the server pass, as real SSR has. */
 function withoutBrowserGlobals(render: () => string): string {
 	const globals = globalThis as Record<string, unknown>;
@@ -164,7 +212,10 @@ interface HydratedPage {
 }
 
 /** Hydrate server HTML in the browser-like environment, collecting errors. */
-async function hydrateFromServerHtml(html: string): Promise<HydratedPage> {
+async function hydrateFromServerHtml(
+	html: string,
+	Probe: typeof SsrHydrationProbe = SsrHydrationProbe
+): Promise<HydratedPage> {
 	const container = document.createElement('div');
 	container.innerHTML = html;
 	document.body.appendChild(container);
@@ -182,7 +233,7 @@ async function hydrateFromServerHtml(html: string): Promise<HydratedPage> {
 		act(() => {
 			root = hydrateRoot(
 				container,
-				<SsrHydrationProbe
+				<Probe
 					captured={captured}
 					// Keep any post-append AI scheduling quiet until unmount.
 					options={{ aiDelayMs: 100_000 }}
@@ -300,6 +351,62 @@ describe('useAeroplaneMatch SSR→hydrate feed restoration', () => {
 			expect(page.container.textContent).toContain(
 				'Your flight log will appear here.'
 			);
+		} finally {
+			page.unmount();
+		}
+	});
+
+	test('a real mid-game saved match (non-default config, moved planes, changed turn) hydrates cleanly without mismatch', async () => {
+		// Save a non-default Sky Tycoon / Quick Chill match after Red launches
+		// and passes the turn to Yellow — board, status, setup, and feed all
+		// differ from the fresh server render.
+		const storage = memoryStorage();
+		const { result, unmount } = renderHook(() =>
+			useAeroplaneMatch(SIGNED_OUT_AUTH, {
+				storage,
+				dev: true,
+				aiDelayMs: 100_000,
+				fixture: {
+					seed: rootSeedForRolls([6, 3]),
+					config: { ...CLASSIC_CONFIG, mode: 'sky-tycoon' },
+					skipAnimations: false,
+				},
+			})
+		);
+		act(() => {
+			result.current.roll();
+		});
+		act(() => {
+			result.current.select('red-0');
+		});
+		act(() => {
+			result.current.roll();
+		});
+		expect(result.current.state.currentPlayer).toBe('yellow');
+		expect(
+			result.current.state.planes.find(p => p.id === 'red-0')?.progress
+		).toBeGreaterThan(0);
+		const raw = storage.getItem(ACTIVE_MATCH_STORAGE_KEY)!;
+		expect(raw).toBeTruthy();
+		const expectedState = result.current.state;
+		unmount();
+
+		const html = withoutBrowserGlobals(() =>
+			renderToString(<FullSurfaceSsrProbe captured={{ current: null }} />)
+		);
+		expect(html).not.toContain('aria-label="Sky Tycoon balances"');
+
+		window.localStorage.setItem(ACTIVE_MATCH_STORAGE_KEY, raw);
+		const page = await hydrateFromServerHtml(html, FullSurfaceSsrProbe);
+		try {
+			expect(hydrationProblems(page.errors)).toEqual([]);
+			expect(page.captured.current!.state).toEqual(expectedState);
+			expect(page.captured.current!.setup.mode).toBe('sky-tycoon');
+			expect(page.captured.current!.eventFeed.length).toBeGreaterThan(0);
+			expect(page.container.textContent).toContain('Yellow is rolling');
+			expect(
+				page.container.querySelector('[aria-label="Sky Tycoon balances"]')
+			).not.toBeNull();
 		} finally {
 			page.unmount();
 		}
