@@ -24,7 +24,7 @@
     "typecheck": "astro sync && tsc --noEmit"
   },
   "dependencies": {
-    "@astrojs/react": "^3.6.2",
+    "@astrojs/react": "^7.1.7",
     "@astrojs/tailwind": "^5.1.1",
     "@procyon/game-core": "workspace:*",
     "@supabase/ssr": "^0.12.7",
