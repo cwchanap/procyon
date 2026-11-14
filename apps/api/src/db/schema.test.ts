@@ -170,7 +170,7 @@ describe('database schema - type constraints', () => {
 		expect(validGameIds).toContain(GameId.Xiangqi);
 		expect(validGameIds).toContain(GameId.Shogi);
 		expect(validGameIds).toContain(GameId.Jungle);
-		expect(validGameIds).toContain('aeroplane');
+		expect(validGameIds).toContain(GameId.Aeroplane);
 	});
 
 	test('playHistory status accepts valid GameResultStatus values', () => {

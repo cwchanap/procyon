@@ -198,7 +198,7 @@ app.get('/:id/full', authMiddleware, async c => {
 		const user = getUser(c);
 		const userId = user.userId;
 		const db = getDB();
-		const configId = parseInt(c.req.param('id'));
+		const configId = parseInt(c.req.param('id') ?? '');
 
 		if (isNaN(configId)) {
 			return c.json({ error: 'Invalid configuration ID' }, 400);
@@ -238,7 +238,7 @@ app.delete('/:id', authMiddleware, async c => {
 		const user = getUser(c);
 		const userId = user.userId;
 		const db = getDB();
-		const configId = parseInt(c.req.param('id'));
+		const configId = parseInt(c.req.param('id') ?? '');
 
 		if (isNaN(configId)) {
 			return c.json({ error: 'Invalid configuration ID' }, 400);
