@@ -34,7 +34,7 @@ export function readLocalPuzzleProgress(
 	userId?: string | null
 ): LocalPuzzleProgress {
 	const key = getStorageKey(userId ?? null);
-	let raw: string | null = null;
+	let raw: string | null;
 	try {
 		raw = localStorage.getItem(key);
 	} catch (err) {

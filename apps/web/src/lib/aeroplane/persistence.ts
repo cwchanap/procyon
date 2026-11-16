@@ -46,8 +46,7 @@ export interface InvalidValidationResult {
 }
 
 export type PersistedAeroplaneValidationResult =
-	| ValidationResult
-	| InvalidValidationResult;
+	ValidationResult | InvalidValidationResult;
 
 const PERSONALITIES = new Set<Personality>([
 	'cautious',
@@ -391,7 +390,7 @@ function validState(
 	}
 
 	const authoritative = value as unknown as AeroplaneState;
-	let legalMoveCount = 0;
+	let legalMoveCount: number;
 	try {
 		legalMoveCount =
 			authoritative.phase === 'awaiting-choice' &&
