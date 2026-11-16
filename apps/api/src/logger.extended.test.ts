@@ -44,7 +44,6 @@ describe('logger safeStringify - error fallback path', () => {
 		//   2. a payload whose .message matches our unique string (our specific call).
 		// The catch-block fallback call has message "Logger serialization failed",
 		// so it passes through and the error output can be serialized normally.
-		// eslint-disable-next-line no-global-assign -- Intentional mock to test safeStringify error handling
 		JSON.stringify = ((...args: Parameters<typeof JSON.stringify>) => {
 			if (
 				typeof args[1] === 'function' &&
@@ -64,7 +63,6 @@ describe('logger safeStringify - error fallback path', () => {
 			const output = logSpy.mock.calls[0]?.[0] as string;
 			expect(output).toContain('Logger serialization failed');
 		} finally {
-			// eslint-disable-next-line no-global-assign -- Restore after test
 			JSON.stringify = originalStringify;
 		}
 	});

@@ -474,7 +474,7 @@ Your move:`;
 		const groups: { [key: string]: string[] } = {};
 
 		for (const move of moves) {
-			let pieceType = 'Unknown';
+			let pieceType: string;
 
 			if (move.includes('drop')) {
 				const pieceMatch = move.match(/\(([^)]+) drop\)/);
