@@ -261,7 +261,6 @@ app.post(
 
 			// Perform all database operations in a single transaction.
 			const result = await db.transaction(async tx => {
-				let savedRecord: PlayHistory | null = null;
 				let ratingUpdate: {
 					oldRating: number;
 					newRating: number;
@@ -291,7 +290,7 @@ app.post(
 					throw new Error('Failed to create play history record');
 				}
 
-				savedRecord = record as PlayHistory;
+				const savedRecord = record as PlayHistory;
 
 				// Ratings are only created for LLM games whose game identity maps to
 				// a rated variant. Engine games, including Aeroplane, stay unrated.

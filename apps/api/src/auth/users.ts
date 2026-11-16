@@ -141,7 +141,8 @@ export async function upsertGoogleUser(
 					// data). Reject rather than silently merging identities.
 					if (racedByEmail.googleSub !== input.sub) {
 						throw new Error(
-							'Email already associated with a different account'
+							'Email already associated with a different account',
+							{ cause: err }
 						);
 					}
 					return racedByEmail;
